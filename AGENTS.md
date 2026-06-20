@@ -22,7 +22,8 @@ Project-specific guidance for future implementation work.
 ## Implementation Conventions
 
 - Keep one shared OpenCode server process per IDE application.
-- Keep browser/tool-window state project-scoped.
+- Keep browser/tool-window state project-scoped, except the mirrored OpenCode web-session settings store.
+- The mirrored OpenCode web-session settings store is intentionally application-global by design; it should preserve OpenCode's own settings across embedded sessions and projects unless this decision is explicitly revisited.
 - Put command construction, auth helpers, URL helpers, path detection, and route encoding in `OpenCodeServerProtocol`.
 - Keep OpenCode process lifecycle in `SharedOpenCodeServerManager`.
 - Keep JCEF/tool-window integration in `OpenCodeWebToolWindowFactory`.
