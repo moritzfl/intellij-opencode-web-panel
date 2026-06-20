@@ -172,4 +172,52 @@ class OpenCodeSettingsStateTest {
 
         assertEquals("{}", settings.openCodeLocalStorageSnapshot)
     }
+
+    @Test
+    fun projectSettingsUseIdeProjectRootByDefault() {
+        assertEquals(OpenCodeProjectDirectoryMode.AUTO, OpenCodeProjectSettingsState().projectDirectoryModeValue())
+        assertEquals("/tmp/project", OpenCodeProjectSettingsState().effectiveProjectDirectory("/tmp/project"))
+    }
+
+    @Test
+    fun projectSettingsOverrideIdeProjectRoot() {
+        val settings = OpenCodeProjectSettingsState().apply {
+            projectDirectoryMode = OpenCodeProjectDirectoryMode.CUSTOM.name
+            openCodeProjectDirectory = "/tmp/opencode-project"
+        }
+
+        assertEquals("/tmp/opencode-project", settings.effectiveProjectDirectory("/tmp/project"))
+    }
+
+    @Test
+    fun projectSettingsSanitizeConfiguredDirectory() {
+        val settings = OpenCodeProjectSettingsState()
+
+        settings.loadState(
+            OpenCodeProjectSettingsState().apply {
+                projectDirectoryMode = OpenCodeProjectDirectoryMode.CUSTOM.name
+                openCodeProjectDirectory = "  /tmp/opencode-project  "
+            },
+        )
+
+        assertEquals(OpenCodeProjectDirectoryMode.CUSTOM, settings.projectDirectoryModeValue())
+        assertEquals("/tmp/opencode-project", settings.openCodeProjectDirectory)
+    }
+
+    @Test
+    fun projectSettingsStoreSystemIndependentDirectory() {
+        assertEquals(
+            "C:/Users/Alice/project",
+            OpenCodeProjectSettingsState.sanitizeProjectDirectory("  C:\\Users\\Alice\\project  "),
+        )
+    }
+
+    @Test
+    fun projectSettingsUnknownModeFallsBackToAuto() {
+        val settings = OpenCodeProjectSettingsState()
+
+        settings.loadState(OpenCodeProjectSettingsState().apply { projectDirectoryMode = "legacy-value" })
+
+        assertEquals(OpenCodeProjectDirectoryMode.AUTO, settings.projectDirectoryModeValue())
+    }
 }

@@ -3,6 +3,7 @@ package de.moritzf.opencodewebpanel
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodeWebToolWindowFactory
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodeServerLifecycleState
 import de.moritzf.opencodewebpanel.toolWindow.SharedOpenCodeServerManager
+import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsConfigurable
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable
 import com.intellij.openapi.project.DumbAware
 import com.intellij.testFramework.TestDataPath
@@ -38,6 +39,8 @@ class OpenCodePluginTest : BasePlatformTestCase() {
         assertTrue(pluginXml.contains("serviceImplementation=\"de.moritzf.opencodewebpanel.toolWindow.SharedOpenCodeServerManager\""))
         assertTrue(pluginXml.contains("applicationConfigurable"))
         assertTrue(pluginXml.contains("instance=\"de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable\""))
+        assertTrue(pluginXml.contains("projectConfigurable"))
+        assertTrue(pluginXml.contains("instance=\"de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsConfigurable\""))
         assertTrue(pluginXml.contains("notificationGroup"))
         assertTrue(pluginXml.contains("displayType=\"BALLOON\""))
         assertFalse(pluginXml.contains("postStartupActivity"))
@@ -48,6 +51,7 @@ class OpenCodePluginTest : BasePlatformTestCase() {
 
         assertTrue(pluginXml.contains("displayName=\"OpenCode Web Panel\""))
         assertEquals("OpenCode Web Panel", OpenCodeSettingsConfigurable().displayName)
+        assertEquals("OpenCode Web Panel", OpenCodeProjectSettingsConfigurable(project).displayName)
     }
 
     fun testSharedServerManagerStopsServerAndClearsLifecycleState() {

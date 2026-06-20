@@ -26,6 +26,8 @@ import com.intellij.ui.jcef.JBCefJSQuery
 import com.intellij.util.Alarm
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.components.BorderLayoutPanel
+import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsListener
+import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsState
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsListener
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
 import org.cef.browser.CefBrowser
@@ -279,6 +281,16 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
                     }
                 },
             )
+            project.messageBus.connect(this).subscribe(
+                OpenCodeProjectSettingsListener.TOPIC,
+                object : OpenCodeProjectSettingsListener {
+                    override fun projectDirectoryChanged(directory: String?) {
+                        ApplicationManager.getApplication().invokeLater {
+                            if (!isContentDisposed()) applyOpenCodeProjectDirectoryChange()
+                        }
+                    }
+                },
+            )
         }
 
         private fun installFileDropTransferHandler() {
@@ -414,7 +426,7 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
             if (isContentDisposed()) return
             serverManager.ensureStarted(
                 project,
-                project.basePath,
+                openCodeProjectDirectory(),
                 callbackActive = { !isContentDisposed() },
                 onStarted = { loadProjectPage() },
                 onFailed = { showErrorInBrowser() },
@@ -456,7 +468,7 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
             val serverUrl = serverManager.getServerUrl() ?: return
             val settings = OpenCodeSettingsState.getInstance()
             val script = OpenCodeServerProtocol.buildOpenProjectScript(
-                project.basePath,
+                openCodeProjectDirectory(),
                 serverUrl,
                 settings.openMostRecentConversationOnStartup,
             ) ?: return
@@ -481,7 +493,7 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
 
             val serverUrl = serverManager.getServerUrl() ?: return
             val script = OpenCodeServerProtocol.buildFileLinkHandlerScript(
-                project.basePath,
+                openCodeProjectDirectory(),
                 enabled = true,
                 openFileCallback = openFileLinkQuery.inject("rawHref"),
             ) ?: return
@@ -529,7 +541,7 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
 
         private fun openFileLinkInIde(href: String?) {
             val routeBasePath = OpenCodeServerProtocol.routeDirectoryFromUrl(browser.cefBrowser.url)
-            val target = OpenCodeServerProtocol.resolveFileLink(href, project.basePath, routeBasePath) ?: return
+            val target = OpenCodeServerProtocol.resolveFileLink(href, openCodeProjectDirectory(), routeBasePath) ?: return
             val virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(target.path) ?: return
             ApplicationManager.getApplication().invokeLater {
                 if (project.isDisposed) return@invokeLater
@@ -641,7 +653,7 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
 
         private fun resolveCodeReferencePath(parsed: OpenCodeServerProtocol.ParsedCodeReference): com.intellij.openapi.vfs.VirtualFile? {
             if (!parsed.hasPath) return null
-            val projectBasePath = project.basePath?.takeIf { it.isNotBlank() }
+            val projectBasePath = openCodeProjectDirectory()?.takeIf { it.isNotBlank() }
             val candidates = buildList {
                 runCatching { Path.of(parsed.path) }.getOrNull()?.let { path ->
                     if (path.isAbsolute) add(path)
@@ -867,12 +879,23 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
                 return
             }
             val script = OpenCodeServerProtocol.buildFileLinkHandlerScript(
-                project.basePath,
+                openCodeProjectDirectory(),
                 enabled = true,
                 openFileCallback = openFileLinkQuery.inject("rawHref"),
             ) ?: return
             browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
             fileLinkScriptScheduled = true
+        }
+
+        private fun applyOpenCodeProjectDirectoryChange() {
+            openProjectScriptScheduled = false
+            fileLinkScriptScheduled = false
+            openProjectAlarm.cancelAllRequests()
+            checkAndLoadContent()
+        }
+
+        private fun openCodeProjectDirectory(): String? {
+            return OpenCodeProjectSettingsState.getInstance(project).effectiveProjectDirectory(project.basePath)
         }
 
         private fun applyExternalLinkNavigation(enabled: Boolean) {
