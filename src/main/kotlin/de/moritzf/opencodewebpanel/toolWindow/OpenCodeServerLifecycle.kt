@@ -33,6 +33,10 @@ internal fun isOpenCodeServerLifecycleStatusVisible(state: OpenCodeServerLifecyc
     return state != OpenCodeServerLifecycleState.RUNNING
 }
 
+internal fun isOpenCodeServerRetryVisible(state: OpenCodeServerLifecycleState): Boolean {
+    return state == OpenCodeServerLifecycleState.FAILED
+}
+
 private fun escapeLifecycleStatusHtml(value: String): String {
     return value
         .replace("&", "&amp;")

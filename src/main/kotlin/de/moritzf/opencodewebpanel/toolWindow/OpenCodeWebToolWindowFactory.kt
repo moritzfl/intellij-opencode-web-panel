@@ -1,5 +1,6 @@
 package de.moritzf.opencodewebpanel.toolWindow
 
+import com.intellij.icons.AllIcons
 import com.intellij.ide.BrowserUtil
 import com.intellij.ide.ui.LafManager
 import com.intellij.ide.ui.LafManagerListener
@@ -44,6 +45,7 @@ import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.Base64
+import javax.swing.JButton
 import javax.swing.JComponent
 import javax.swing.TransferHandler
 
@@ -71,10 +73,16 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
         private val project = toolWindow.project
         private val browser = JBCefBrowser()
         private val lifecycleStatusLabel = JBLabel()
+        private val retryServerButton = JButton("Retry", AllIcons.Actions.Restart).apply {
+            isVisible = false
+            toolTipText = "Retry starting the OpenCode server"
+            accessibleContext.accessibleName = "Retry starting OpenCode server"
+        }
         private val lifecycleStatusPanel = BorderLayoutPanel().apply {
             isOpaque = false
             border = JBUI.Borders.empty(4, 8)
             addToLeft(lifecycleStatusLabel)
+            addToRight(retryServerButton)
         }
         private val contentPanel = BorderLayoutPanel().apply {
             isOpaque = false
@@ -218,6 +226,7 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
                 }
                 null
             }
+            retryServerButton.addActionListener { retryOpenCodeServerStart() }
             browser.jbCefClient.addRequestHandler(authHandler, browser.cefBrowser)
             browser.jbCefClient.addLoadHandler(loadHandler, browser.cefBrowser)
             installFileDropTransferHandler()
@@ -417,9 +426,18 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
         private fun updateLifecycleIndicator(state: OpenCodeServerLifecycleState) {
             lifecycleStatusLabel.text = formatOpenCodeServerLifecycleStatusText(state)
             lifecycleStatusLabel.toolTipText = "OpenCode server is ${state.displayLabel.lowercase()}"
+            retryServerButton.isVisible = isOpenCodeServerRetryVisible(state)
+            retryServerButton.isEnabled = state == OpenCodeServerLifecycleState.FAILED
             lifecycleStatusPanel.isVisible = isOpenCodeServerLifecycleStatusVisible(state)
             contentPanel.revalidate()
             contentPanel.repaint()
+        }
+
+        private fun retryOpenCodeServerStart() {
+            if (isContentDisposed()) return
+            retryServerButton.isEnabled = false
+            serverManager.stopServer()
+            checkAndLoadContent()
         }
 
         fun checkAndLoadContent() {

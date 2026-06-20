@@ -429,6 +429,15 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun lifecycleRetryIsVisibleOnlyWhenServerFailed() {
+        assertTrue(isOpenCodeServerRetryVisible(OpenCodeServerLifecycleState.FAILED))
+        assertFalse(isOpenCodeServerRetryVisible(OpenCodeServerLifecycleState.STARTING))
+        assertFalse(isOpenCodeServerRetryVisible(OpenCodeServerLifecycleState.RUNNING))
+        assertFalse(isOpenCodeServerRetryVisible(OpenCodeServerLifecycleState.RESTARTING))
+        assertFalse(isOpenCodeServerRetryVisible(OpenCodeServerLifecycleState.STOPPED))
+    }
+
+    @Test
     fun intellijMcpServerWaitsOnlyWhenEnabledButNotRunning() {
         assertTrue(
             IntellijMcpServerStartup.shouldWaitFor(
