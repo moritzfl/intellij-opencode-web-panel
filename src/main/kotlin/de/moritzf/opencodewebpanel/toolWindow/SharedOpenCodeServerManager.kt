@@ -331,10 +331,18 @@ class SharedOpenCodeServerManager : Disposable {
 
     private fun waitForIntellijMcpServerIfNeeded(startId: Long): Boolean {
         val initialStatus = IntellijMcpServerStartup.currentStatus()
-        if (!IntellijMcpServerStartup.shouldWaitFor(initialStatus)) return true
+        if (!IntellijMcpServerStartup.shouldWaitFor(initialStatus, OpenCodeSettingsState.getInstance().waitForIntellijMcpServer)) return true
 
         thisLogger().info("Waiting for ${initialStatus.message} before starting OpenCode")
-        return when (IntellijMcpServerStartup.waitUntilReady(initialStatus, isStillCurrent = { isCurrentStart(startId) })) {
+        return when (
+            IntellijMcpServerStartup.waitUntilReady(
+                initialStatus,
+                shouldWaitForStatus = { status ->
+                    IntellijMcpServerStartup.shouldWaitFor(status, OpenCodeSettingsState.getInstance().waitForIntellijMcpServer)
+                },
+                isStillCurrent = { isCurrentStart(startId) },
+            )
+        ) {
             IntellijMcpServerWaitResult.READY -> true
             IntellijMcpServerWaitResult.TIMED_OUT -> {
                 thisLogger().warn("Timed out waiting for IntelliJ MCP server; starting OpenCode anyway")

@@ -127,6 +127,20 @@ class OpenCodeSettingsStateTest {
     }
 
     @Test
+    fun waitForIntellijMcpServerIsEnabledByDefault() {
+        assertEquals(true, OpenCodeSettingsState().waitForIntellijMcpServer)
+    }
+
+    @Test
+    fun waitForIntellijMcpServerLoadsPersistedValue() {
+        val settings = OpenCodeSettingsState()
+
+        settings.loadState(OpenCodeSettingsState().apply { waitForIntellijMcpServer = false })
+
+        assertEquals(false, settings.waitForIntellijMcpServer)
+    }
+
+    @Test
     fun openCodeLocalStorageSnapshotUsesEmptyObjectByDefault() {
         assertEquals("{}", OpenCodeSettingsState().openCodeLocalStorageSnapshot)
     }

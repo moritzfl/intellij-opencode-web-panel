@@ -65,13 +65,14 @@ internal object IntellijMcpServerStartup {
         }
     }
 
-    fun shouldWaitFor(status: IntellijMcpServerStartupStatus): Boolean {
-        return status.state == IntellijMcpServerStartupState.ENABLED_NOT_RUNNING
+    fun shouldWaitFor(status: IntellijMcpServerStartupStatus, enabled: Boolean = true): Boolean {
+        return enabled && status.state == IntellijMcpServerStartupState.ENABLED_NOT_RUNNING
     }
 
     fun waitUntilReady(
         initialStatus: IntellijMcpServerStartupStatus = currentStatus(),
         statusProvider: () -> IntellijMcpServerStartupStatus = ::currentStatus,
+        shouldWaitForStatus: (IntellijMcpServerStartupStatus) -> Boolean = ::shouldWaitFor,
         isStillCurrent: () -> Boolean = { true },
         nowMillis: () -> Long = System::currentTimeMillis,
         sleepMillis: (Long) -> Unit = Thread::sleep,
@@ -79,7 +80,7 @@ internal object IntellijMcpServerStartup {
         pollIntervalMillis: Long = POLL_INTERVAL_MILLIS,
     ): IntellijMcpServerWaitResult {
         var status = initialStatus
-        if (!shouldWaitFor(status)) return IntellijMcpServerWaitResult.READY
+        if (!shouldWaitForStatus(status)) return IntellijMcpServerWaitResult.READY
 
         val deadlineMillis = nowMillis() + timeoutMillis
         while (isStillCurrent()) {
@@ -92,7 +93,7 @@ internal object IntellijMcpServerStartup {
                 return IntellijMcpServerWaitResult.CANCELLED
             }
             status = statusProvider()
-            if (!shouldWaitFor(status)) return IntellijMcpServerWaitResult.READY
+            if (!shouldWaitForStatus(status)) return IntellijMcpServerWaitResult.READY
         }
         return IntellijMcpServerWaitResult.CANCELLED
     }

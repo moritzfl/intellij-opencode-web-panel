@@ -423,6 +423,15 @@ class OpenCodeServerProtocolTest {
                 ),
             ),
         )
+        assertFalse(
+            IntellijMcpServerStartup.shouldWaitFor(
+                IntellijMcpServerStartupStatus(
+                    IntellijMcpServerStartupState.ENABLED_NOT_RUNNING,
+                    "not running",
+                ),
+                enabled = false,
+            ),
+        )
     }
 
     @Test
@@ -483,6 +492,38 @@ class OpenCodeServerProtocolTest {
 
         assertEquals(IntellijMcpServerWaitResult.TIMED_OUT, result)
         assertEquals(listOf(400L, 400L, 200L), sleeps)
+    }
+
+    @Test
+    fun intellijMcpServerWaitStopsWhenSettingIsDisabled() {
+        var now = 0L
+        var enabled = true
+        val sleeps = mutableListOf<Long>()
+
+        val result = IntellijMcpServerStartup.waitUntilReady(
+            initialStatus = IntellijMcpServerStartupStatus(
+                IntellijMcpServerStartupState.ENABLED_NOT_RUNNING,
+                "not running",
+            ),
+            statusProvider = {
+                IntellijMcpServerStartupStatus(
+                    IntellijMcpServerStartupState.ENABLED_NOT_RUNNING,
+                    "not running",
+                )
+            },
+            shouldWaitForStatus = { status -> IntellijMcpServerStartup.shouldWaitFor(status, enabled) },
+            nowMillis = { now },
+            sleepMillis = { millis ->
+                sleeps += millis
+                now += millis
+                enabled = false
+            },
+            timeoutMillis = 2_000L,
+            pollIntervalMillis = 500L,
+        )
+
+        assertEquals(IntellijMcpServerWaitResult.READY, result)
+        assertEquals(listOf(500L), sleeps)
     }
 
     @Test

@@ -74,6 +74,7 @@ class OpenCodeSettingsConfigurable : Configurable {
     private val forceCompactLayoutCheckBox = JBCheckBox("Lock to compact view")
     private val suppressProjectSwitchPromptsCheckBox = JBCheckBox("Suppress project-switch prompts")
     private val enableSystemNotificationsCheckBox = JBCheckBox("Forward OpenCode system notifications to the IDE")
+    private val waitForIntellijMcpServerCheckBox = JBCheckBox("Wait for IntelliJ MCP server before starting OpenCode")
     private val uiZoomSpinner = JSpinner(
         SpinnerNumberModel(
             OpenCodeSettingsState.DEFAULT_UI_ZOOM_PERCENT,
@@ -189,6 +190,10 @@ class OpenCodeSettingsConfigurable : Configurable {
                 cell(enableSystemNotificationsCheckBox)
                     .comment("Show OpenCode browser notifications as IntelliJ notifications and route notification clicks back to OpenCode.")
             }
+            row {
+                cell(waitForIntellijMcpServerCheckBox)
+                    .comment("If IntelliJ's MCP server is enabled, wait briefly for it to start before launching OpenCode so configured MCP clients can connect.")
+            }
         }
         panel = JBTabbedPane().apply {
             addTab("OpenCode Server Setup", serverSetupPanel)
@@ -213,6 +218,7 @@ class OpenCodeSettingsConfigurable : Configurable {
             forceCompactLayoutCheckBox.isSelected != settings.forceCompactLayout ||
             suppressProjectSwitchPromptsCheckBox.isSelected != settings.suppressProjectSwitchPrompts ||
             enableSystemNotificationsCheckBox.isSelected != settings.enableSystemNotifications ||
+            waitForIntellijMcpServerCheckBox.isSelected != settings.waitForIntellijMcpServer ||
             uiZoomPercent() != OpenCodeSettingsState.sanitizeUiZoomPercent(settings.uiZoomPercent)
         return passwordModified || portModeModified || fixedPortModified || binaryModeModified || binaryPathModified || uiSettingsModified
     }
@@ -254,6 +260,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         settings.forceCompactLayout = forceCompactLayoutCheckBox.isSelected
         settings.suppressProjectSwitchPrompts = suppressProjectSwitchPromptsCheckBox.isSelected
         settings.enableSystemNotifications = enableSystemNotificationsCheckBox.isSelected
+        settings.waitForIntellijMcpServer = waitForIntellijMcpServerCheckBox.isSelected
         settings.uiZoomPercent = nextUiZoomPercent
         fixedPortField.text = nextFixedPort.toString()
         binaryPathField.text = nextBinaryPath
@@ -317,6 +324,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         forceCompactLayoutCheckBox.isSelected = settings.forceCompactLayout
         suppressProjectSwitchPromptsCheckBox.isSelected = settings.suppressProjectSwitchPrompts
         enableSystemNotificationsCheckBox.isSelected = settings.enableSystemNotifications
+        waitForIntellijMcpServerCheckBox.isSelected = settings.waitForIntellijMcpServer
         uiZoomSpinner.value = OpenCodeSettingsState.sanitizeUiZoomPercent(settings.uiZoomPercent)
         loadPasswordField()
         updatePasswordHint()
