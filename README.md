@@ -58,9 +58,9 @@ OpenCode Web Panel embeds the OpenCode web app directly inside JetBrains IDEs, k
    Find the "OpenCode Web Panel" icon in the right IDE sidebar and click it.
 
 3. **Start the service automatically**  
-   The plugin generates a temporary password, starts the OpenCode service, and lets OpenCode choose an available port:
+   The plugin uses a password stored in IntelliJ Password Safe, generating one only when none exists, starts the OpenCode service, and lets OpenCode choose an available port:
    ```
-   OPENCODE_SERVER_PASSWORD=<generated> \
+   OPENCODE_SERVER_PASSWORD=<stored-password> \
    opencode serve --hostname 127.0.0.1 --port 0 --print-logs
    ```
 
@@ -72,7 +72,7 @@ OpenCode Web Panel embeds the OpenCode web app directly inside JetBrains IDEs, k
 The plugin uses the following defaults:
 - Host: `127.0.0.1`
 - Port: automatically selected by OpenCode
-- Password: generated each time the plugin starts the OpenCode service
+- Password: generated when missing, stored in IntelliJ Password Safe, and reused until you edit or regenerate it in settings
 
 ## Troubleshooting
 
