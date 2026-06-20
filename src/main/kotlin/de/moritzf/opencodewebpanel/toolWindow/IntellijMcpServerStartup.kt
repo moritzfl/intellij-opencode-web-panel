@@ -1,10 +1,6 @@
 package de.moritzf.opencodewebpanel.toolWindow
 
-import com.intellij.ide.plugins.PluginManagerCore
-import com.intellij.openapi.extensions.PluginId
-
 internal object IntellijMcpServerStartup {
-    private const val MCP_PLUGIN_ID = "com.intellij.mcpServer"
     private const val MCP_SETTINGS_CLASS = "com.intellij.mcpserver.settings.McpServerSettings"
     private const val MCP_SERVICE_CLASS = "com.intellij.mcpserver.impl.McpServerService"
     private const val WAIT_TIMEOUT_MILLIS = 30_000L
@@ -12,11 +8,7 @@ internal object IntellijMcpServerStartup {
 
     fun currentStatus(): IntellijMcpServerStartupStatus {
         return runCatching {
-            val classLoader = mcpPluginClassLoader()
-                ?: return IntellijMcpServerStartupStatus(
-                    IntellijMcpServerStartupState.NOT_CONFIGURED_OR_DISABLED,
-                    "IntelliJ MCP server plugin is not installed or is disabled",
-                )
+            val classLoader = IntellijMcpServerStartup::class.java.classLoader
             val enabled = isMcpServerEnabled(classLoader)
                 ?: return IntellijMcpServerStartupStatus(
                     IntellijMcpServerStartupState.UNAVAILABLE,
@@ -96,13 +88,6 @@ internal object IntellijMcpServerStartup {
             if (!shouldWaitForStatus(status)) return IntellijMcpServerWaitResult.READY
         }
         return IntellijMcpServerWaitResult.CANCELLED
-    }
-
-    private fun mcpPluginClassLoader(): ClassLoader? {
-        val pluginId = PluginId.getId(MCP_PLUGIN_ID)
-        val descriptor = PluginManagerCore.getPlugin(pluginId) ?: return null
-        if (PluginManagerCore.isDisabled(pluginId)) return null
-        return descriptor.pluginClassLoader
     }
 
     private fun isMcpServerEnabled(classLoader: ClassLoader): Boolean? {

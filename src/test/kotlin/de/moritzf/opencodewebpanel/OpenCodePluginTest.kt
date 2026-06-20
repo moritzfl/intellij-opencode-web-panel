@@ -1,6 +1,6 @@
 package de.moritzf.opencodewebpanel
 
-import de.moritzf.opencodewebpanel.toolWindow.OpenCodeWebToolWindowFactory
+import de.moritzf.opencodewebpanel.toolWindow.OpenCodeWebToolWindowFactoryImpl
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodeServerLifecycleState
 import de.moritzf.opencodewebpanel.toolWindow.SharedOpenCodeServerManager
 import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsConfigurable
@@ -19,7 +19,7 @@ import java.util.concurrent.TimeUnit
 class OpenCodePluginTest : BasePlatformTestCase() {
 
     fun testToolWindowFactoryIsAvailableDuringIndexing() {
-        assertTrue(DumbAware::class.java.isAssignableFrom(OpenCodeWebToolWindowFactory::class.java))
+        assertTrue(DumbAware::class.java.isAssignableFrom(OpenCodeWebToolWindowFactoryImpl::class.java))
     }
 
     fun testSharedOpenCodeServerManagerIsApplicationScoped() {
@@ -34,7 +34,7 @@ class OpenCodePluginTest : BasePlatformTestCase() {
         assertTrue(pluginXml.contains("id=\"OpenCode Web Panel\""))
         assertTrue(pluginXml.contains("anchor=\"right\""))
         assertTrue(pluginXml.contains("icon=\"/icons/opencode.svg\""))
-        assertTrue(pluginXml.contains("factoryClass=\"de.moritzf.opencodewebpanel.toolWindow.OpenCodeWebToolWindowFactory\""))
+        assertTrue(pluginXml.contains("factoryClass=\"de.moritzf.opencodewebpanel.toolWindow.OpenCodeWebToolWindowFactoryImpl\""))
         assertTrue(pluginXml.contains("applicationService"))
         assertTrue(pluginXml.contains("serviceImplementation=\"de.moritzf.opencodewebpanel.toolWindow.SharedOpenCodeServerManager\""))
         assertTrue(pluginXml.contains("applicationConfigurable"))

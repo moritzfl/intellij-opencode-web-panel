@@ -11,12 +11,13 @@
     </description>
 
     <depends>com.intellij.modules.platform</depends>
+    <depends optional="true" config-file="opencode-mcp.xml">com.intellij.mcpServer</depends>
 
     <extensions defaultExtensionNs="com.intellij">
         <applicationConfigurable id="opencode.web.panel.settings" parentId="tools" displayName="OpenCode Web Panel" instance="de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable"/>
         <projectConfigurable id="opencode.web.panel.project.settings" parentId="tools" displayName="OpenCode Web Panel" instance="de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsConfigurable"/>
         <applicationService serviceImplementation="de.moritzf.opencodewebpanel.toolWindow.SharedOpenCodeServerManager"/>
         <notificationGroup id="OpenCode Web Panel" displayType="BALLOON"/>
-        <toolWindow factoryClass="de.moritzf.opencodewebpanel.toolWindow.OpenCodeWebToolWindowFactory" id="OpenCode Web Panel" anchor="right" icon="/icons/opencode.svg"/>
+        <toolWindow factoryClass="de.moritzf.opencodewebpanel.toolWindow.OpenCodeWebToolWindowFactoryImpl" id="OpenCode Web Panel" anchor="right" icon="/icons/opencode.svg"/>
     </extensions>
 </idea-plugin>
