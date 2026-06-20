@@ -31,6 +31,7 @@ internal object OpenCodeBrowserSnippets {
               const layoutStorageKey = 'opencode.global.dat:layout.page';
               const scope = 'local';
               const openMostRecentConversation = $openMostRecentConversationLiteral;
+              let foundRecentSession = false;
               const routeDirectory = (value) => {
                 const bytes = new TextEncoder().encode(value);
                 let binary = '';
@@ -43,11 +44,13 @@ internal object OpenCodeBrowserSnippets {
                   const layout = rawLayout ? JSON.parse(rawLayout) : undefined;
                   const session = layout && layout.lastProjectSession && layout.lastProjectSession[directory];
                   if (session && typeof session.directory === 'string' && typeof session.id === 'string') {
+                    foundRecentSession = true;
                     path = '/' + routeDirectory(session.directory) + '/session/' + encodeURIComponent(session.id);
                   }
                 } catch (_) {}
               }
               const navigationKey = 'opencode.intellij.project.opened:' + directory;
+              const navigationPendingUntilKey = navigationKey + ':pending-until';
               const getNavigationState = () => {
                 try {
                   return window.sessionStorage.getItem(navigationKey);
@@ -59,6 +62,20 @@ internal object OpenCodeBrowserSnippets {
                 try {
                   window.sessionStorage.setItem(navigationKey, value);
                 } catch (_) {}
+              };
+              const shouldKeepWaitingForRecentSession = () => {
+                if (!openMostRecentConversation || foundRecentSession) return false;
+                try {
+                  let pendingUntil = Number(window.sessionStorage.getItem(navigationPendingUntilKey) || '0');
+                  const now = Date.now();
+                  if (!Number.isFinite(pendingUntil) || pendingUntil <= 0) {
+                    pendingUntil = now + 10000;
+                    window.sessionStorage.setItem(navigationPendingUntilKey, String(pendingUntil));
+                  }
+                  return now < pendingUntil;
+                } catch (_) {
+                  return false;
+                }
               };
               $originGuard
               try {
@@ -81,17 +98,22 @@ internal object OpenCodeBrowserSnippets {
               }
               const projectSessionPrefix = projectPath + '/';
               const onProjectSessionRoute = window.location.pathname === projectPath || window.location.pathname.startsWith(projectSessionPrefix);
-              if (getNavigationState() === 'complete') return;
-              if (window.location.pathname !== projectPath && onProjectSessionRoute) {
-                setNavigationState('complete');
+              const keepWaitingForRecentSession = shouldKeepWaitingForRecentSession();
+              if (getNavigationState() === path && !keepWaitingForRecentSession) return;
+              if (window.location.pathname === path) {
+                if (!keepWaitingForRecentSession) setNavigationState(path);
+                return;
+              }
+              if (window.location.pathname !== projectPath && onProjectSessionRoute && !foundRecentSession) {
+                setNavigationState(window.location.pathname);
                 return;
               }
               if (window.location.pathname !== path) {
-                setNavigationState('complete');
+                if (!keepWaitingForRecentSession) setNavigationState(path);
                 window.location.assign(path);
                 return;
               }
-              setNavigationState('complete');
+              if (!keepWaitingForRecentSession) setNavigationState(path);
             })();
         """
         return script.trimIndent()

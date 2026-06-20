@@ -267,6 +267,7 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("opencode.intellij.project.opened:"))
         assertTrue(script.contains("const openMostRecentConversation = false"))
         assertTrue(script.contains("const setNavigationState = (value)"))
+        assertTrue(script.contains("if (getNavigationState() === path && !keepWaitingForRecentSession) return"))
         assertTrue(script.contains("state.projects[scope]"))
         assertTrue(script.contains("state.lastProject[scope] = directory"))
         assertTrue(script.contains("if (window.location.pathname !== path)"))
@@ -292,8 +293,27 @@ class OpenCodeServerProtocolTest {
         )!!
 
         assertTrue(script.contains("const openMostRecentConversation = true"))
+        assertTrue(script.contains("let foundRecentSession = false"))
+        assertTrue(script.contains("foundRecentSession = true"))
         assertTrue(script.contains("layout.lastProjectSession[directory]"))
         assertTrue(script.contains("'/session/' + encodeURIComponent(session.id)"))
+    }
+
+    @Test
+    fun buildOpenProjectScriptRetriesUntilRecentSessionIsRestored() {
+        val script = OpenCodeServerProtocol.buildOpenProjectScript(
+            "/tmp/project",
+            "http://127.0.0.1:60482/",
+            openMostRecentConversation = true,
+        )!!
+
+        assertTrue(script.contains("const navigationPendingUntilKey = navigationKey + ':pending-until'"))
+        assertTrue(script.contains("pendingUntil = now + 10000"))
+        assertTrue(script.contains("const keepWaitingForRecentSession = shouldKeepWaitingForRecentSession()"))
+        assertTrue(script.contains("if (!keepWaitingForRecentSession) setNavigationState(path)"))
+        assertTrue(script.contains("onProjectSessionRoute && !foundRecentSession"))
+        assertFalse(script.contains("getNavigationState() === 'complete'"))
+        assertFalse(script.contains("setNavigationState('complete')"))
     }
 
     @Test
