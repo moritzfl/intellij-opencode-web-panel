@@ -14,9 +14,9 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
     var fixedPort: Int = DEFAULT_FIXED_PORT
     var binaryMode: String = OpenCodeBinaryMode.AUTO.name
     var binaryPath: String = ""
-    var openMostRecentConversationOnStartup: Boolean = false
+    var openMostRecentConversationOnStartup: Boolean = true
     var uiZoomPercent: Int = DEFAULT_UI_ZOOM_PERCENT
-    var openFileLinksInIde: Boolean = false
+    var openFileLinksInIde: Boolean = true
 
     override fun getState(): OpenCodeSettingsState = this
 

@@ -78,8 +78,8 @@ class OpenCodeSettingsStateTest {
     }
 
     @Test
-    fun openMostRecentConversationOnStartupIsDisabledByDefault() {
-        assertEquals(false, OpenCodeSettingsState().openMostRecentConversationOnStartup)
+    fun openMostRecentConversationOnStartupIsEnabledByDefault() {
+        assertEquals(true, OpenCodeSettingsState().openMostRecentConversationOnStartup)
     }
 
     @Test
@@ -97,7 +97,7 @@ class OpenCodeSettingsStateTest {
     }
 
     @Test
-    fun openFileLinksInIdeIsDisabledByDefault() {
-        assertEquals(false, OpenCodeSettingsState().openFileLinksInIde)
+    fun openFileLinksInIdeIsEnabledByDefault() {
+        assertEquals(true, OpenCodeSettingsState().openFileLinksInIde)
     }
 }
