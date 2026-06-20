@@ -139,7 +139,7 @@ internal object OpenCodeServerProtocol {
         port: String = DYNAMIC_PORT,
         executable: String = DEFAULT_EXECUTABLE,
         path: String = resolvePath(),
-        command: List<String> = buildOpenCodeCommand(port, executable),
+        command: List<String> = buildOpenCodeCommand(port, resolveExecutableForLaunch(executable, path)),
     ): ProcessBuilder {
         val processBuilder = ProcessBuilder()
             .command(command)
@@ -214,7 +214,12 @@ internal object OpenCodeServerProtocol {
             ?.absolutePath
     }
 
+    fun resolveExecutableForLaunch(executable: String = DEFAULT_EXECUTABLE, path: String = resolvePath()): String {
+        return detectExecutablePath(executable, path) ?: executable.ifBlank { DEFAULT_EXECUTABLE }
+    }
+
     private fun commonExecutablePaths(environment: Map<String, String>): List<String> {
+        val home = environmentValue(environment, "HOME")
         val appData = environmentValue(environment, "APPDATA")
         val localAppData = environmentValue(environment, "LOCALAPPDATA")
         val userProfile = environmentValue(environment, "USERPROFILE")
@@ -227,6 +232,11 @@ internal object OpenCodeServerProtocol {
             "/bin",
             "/usr/sbin",
             "/sbin",
+            home?.unixChild(".opencode/bin"),
+            home?.unixChild(".local/bin"),
+            home?.unixChild(".npm-global/bin"),
+            home?.unixChild(".bun/bin"),
+            home?.unixChild(".cargo/bin"),
             "C:\\Program Files\\nodejs",
             "C:\\Program Files (x86)\\nodejs",
             appData?.windowsChild("npm"),
@@ -249,6 +259,8 @@ internal object OpenCodeServerProtocol {
     }
 
     private fun String.windowsChild(child: String): String = trimEnd('\\', '/') + "\\" + child
+
+    private fun String.unixChild(child: String): String = trimEnd('/') + "/" + child
 
     private fun candidateExecutableNames(executable: String): List<String> {
         val lower = executable.lowercase()
