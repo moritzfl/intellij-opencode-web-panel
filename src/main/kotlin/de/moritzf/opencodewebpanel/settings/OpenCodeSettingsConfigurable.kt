@@ -193,15 +193,15 @@ class OpenCodeSettingsConfigurable : Configurable {
                 cell(openFileLinksInIdeCheckBox)
                     .comment("Open markdown links that point to workspace-relative, absolute, or file: paths in IntelliJ.")
             }
-            row {
-                cell(openExternalLinksInBrowserCheckBox)
-                    .comment("Open http:// and https:// links outside the local OpenCode app in the system browser instead of navigating the embedded panel.")
-            }
             indent {
                 row {
                     cell(enableCodeNavigationCheckBox)
                         .comment("Click on file names, class names, or code references in chat messages to open them in IntelliJ.")
                 }
+            }
+            row {
+                cell(openExternalLinksInBrowserCheckBox)
+                    .comment("Open http:// and https:// links outside the local OpenCode app in the system browser instead of navigating the embedded panel.")
             }
             row {
                 cell(enableChatFileDropCheckBox)
@@ -225,7 +225,7 @@ class OpenCodeSettingsConfigurable : Configurable {
             }
             row {
                 cell(waitForIntellijMcpServerCheckBox)
-                    .comment("If IntelliJ's MCP server is enabled, wait briefly for it to start before launching OpenCode so configured MCP clients can connect.")
+                    .comment("If IntelliJ's MCP server is enabled, wait briefly for it to report that it is running before launching OpenCode.")
             }
         }
         panel = JBTabbedPane().apply {

@@ -1,6 +1,8 @@
 package de.moritzf.opencodewebpanel.toolWindow
 
 internal object IntellijMcpServerStartup {
+    private const val MCP_PLUGIN_ID = "com.intellij.mcpServer"
+    private const val PLUGIN_MANAGER_CLASS = "com.intellij.ide.plugins.PluginManager"
     private const val MCP_SETTINGS_CLASS = "com.intellij.mcpserver.settings.McpServerSettings"
     private const val MCP_SERVICE_CLASS = "com.intellij.mcpserver.impl.McpServerService"
     private const val WAIT_TIMEOUT_MILLIS = 30_000L
@@ -8,52 +10,20 @@ internal object IntellijMcpServerStartup {
 
     fun currentStatus(): IntellijMcpServerStartupStatus {
         return runCatching {
-            val classLoader = IntellijMcpServerStartup::class.java.classLoader
-            val enabled = isMcpServerEnabled(classLoader)
+            val classLoader = mcpClassLoader()
                 ?: return IntellijMcpServerStartupStatus(
-                    IntellijMcpServerStartupState.UNAVAILABLE,
-                    "IntelliJ MCP server settings are unavailable",
-                )
-            if (!enabled) {
-                return IntellijMcpServerStartupStatus(
                     IntellijMcpServerStartupState.NOT_CONFIGURED_OR_DISABLED,
-                    "IntelliJ MCP server is disabled",
+                    "IntelliJ MCP server plugin is not installed, disabled, or unavailable",
                 )
-            }
-
-            val service = mcpServerService(classLoader)
-                ?: return IntellijMcpServerStartupStatus(
-                    IntellijMcpServerStartupState.UNAVAILABLE,
-                    "IntelliJ MCP server service is unavailable",
-                )
-            val serviceClass = service.javaClass
-            val running = serviceClass.getMethod("isRunning").invoke(service) as? Boolean ?: false
-            if (!running) {
-                return IntellijMcpServerStartupStatus(
-                    IntellijMcpServerStartupState.ENABLED_NOT_RUNNING,
-                    "IntelliJ MCP server is enabled but not running yet",
-                )
-            }
-
-            val url = runCatching { serviceClass.getMethod("getServerSseUrl").invoke(service) as? String }
-                .getOrNull()
-                ?.takeIf { it.isNotBlank() }
-            IntellijMcpServerStartupStatus(
-                IntellijMcpServerStartupState.RUNNING,
-                if (url == null) "IntelliJ MCP server is running" else "IntelliJ MCP server is running at $url",
+            statusForRuntimeState(
+                enabled = isMcpServerEnabled(classLoader),
+                service = mcpServerService(classLoader),
             )
         }.getOrElse { error ->
-            if (error.isMissingMcpServer()) {
-                IntellijMcpServerStartupStatus(
-                    IntellijMcpServerStartupState.NOT_CONFIGURED_OR_DISABLED,
-                    "IntelliJ MCP server plugin is not installed, disabled, or incompatible",
-                )
-            } else {
-                IntellijMcpServerStartupStatus(
-                    IntellijMcpServerStartupState.UNAVAILABLE,
-                    "IntelliJ MCP server status is unavailable: ${error.message ?: error::class.java.simpleName}",
-                )
-            }
+            IntellijMcpServerStartupStatus(
+                IntellijMcpServerStartupState.UNAVAILABLE,
+                "IntelliJ MCP server status is unavailable: ${error.message ?: error::class.java.simpleName}",
+            )
         }
     }
 
@@ -90,6 +60,45 @@ internal object IntellijMcpServerStartup {
         return IntellijMcpServerWaitResult.CANCELLED
     }
 
+    internal fun statusForRuntimeState(enabled: Boolean?, service: Any?): IntellijMcpServerStartupStatus {
+        return when {
+            enabled == false -> IntellijMcpServerStartupStatus(
+                IntellijMcpServerStartupState.NOT_CONFIGURED_OR_DISABLED,
+                "IntelliJ MCP server is disabled",
+            )
+            enabled == null -> IntellijMcpServerStartupStatus(
+                IntellijMcpServerStartupState.UNAVAILABLE,
+                "IntelliJ MCP server settings are unavailable",
+            )
+            service == null -> IntellijMcpServerStartupStatus(
+                IntellijMcpServerStartupState.UNAVAILABLE,
+                "IntelliJ MCP server service is unavailable",
+            )
+            isMcpServerRunning(service) -> {
+                val url = mcpServerSseUrl(service)
+                IntellijMcpServerStartupStatus(
+                    IntellijMcpServerStartupState.ENABLED,
+                    if (url == null) "IntelliJ MCP server is running" else "IntelliJ MCP server is running at $url",
+                )
+            }
+            else -> IntellijMcpServerStartupStatus(
+                IntellijMcpServerStartupState.ENABLED_NOT_RUNNING,
+                "IntelliJ MCP server is enabled but not running yet",
+            )
+        }
+    }
+
+    private fun mcpClassLoader(): ClassLoader? {
+        // Direct plugin descriptor lookup APIs are verifier-visible internal APIs in 2026.2.
+        val pluginManagerClass = Class.forName(PLUGIN_MANAGER_CLASS)
+        val loadedPlugins = pluginManagerClass.getMethod("getLoadedPlugins").invoke(null) as? Iterable<*>
+            ?: return null
+        return loadedPlugins.firstNotNullOfOrNull { descriptor ->
+            if (descriptor?.reflectValue("getPluginId")?.toString() != MCP_PLUGIN_ID) return@firstNotNullOfOrNull null
+            descriptor.reflectClassLoader("getPluginClassLoader")
+        }
+    }
+
     private fun isMcpServerEnabled(classLoader: ClassLoader): Boolean? {
         val settingsClass = Class.forName(MCP_SETTINGS_CLASS, true, classLoader)
         val settings = settingsClass.getMethod("getInstance").invoke(null) ?: return null
@@ -103,15 +112,22 @@ internal object IntellijMcpServerStartup {
         return companion.javaClass.getMethod("getInstance").invoke(companion)
     }
 
-    private fun Throwable.isMissingMcpServer(): Boolean {
-        var current: Throwable? = this
-        while (current != null) {
-            if (current is ClassNotFoundException || current is NoClassDefFoundError) {
-                return true
-            }
-            current = current.cause
-        }
-        return false
+    private fun isMcpServerRunning(service: Any): Boolean {
+        return service.javaClass.getMethod("isRunning").invoke(service) as? Boolean ?: false
+    }
+
+    private fun mcpServerSseUrl(service: Any): String? {
+        return runCatching { service.javaClass.getMethod("getServerSseUrl").invoke(service) as? String }
+            .getOrNull()
+            ?.takeIf { it.isNotBlank() }
+    }
+
+    private fun Any.reflectValue(methodName: String): Any? {
+        return javaClass.getMethod(methodName).invoke(this)
+    }
+
+    private fun Any.reflectClassLoader(methodName: String): ClassLoader? {
+        return javaClass.getMethod(methodName).invoke(this) as? ClassLoader
     }
 }
 
@@ -121,7 +137,7 @@ internal data class IntellijMcpServerStartupStatus(
 )
 
 internal enum class IntellijMcpServerStartupState {
-    RUNNING,
+    ENABLED,
     ENABLED_NOT_RUNNING,
     NOT_CONFIGURED_OR_DISABLED,
     UNAVAILABLE,

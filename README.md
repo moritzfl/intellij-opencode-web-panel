@@ -74,7 +74,7 @@ Open <kbd>Settings/Preferences</kbd> > <kbd>Tools</kbd> > <kbd>OpenCode Web Pane
 - Sync OpenCode's system color scheme with the IDE theme.
 - Suppress project-switch prompts that are not useful inside the embedded panel.
 - Forward OpenCode browser notifications to the IDE.
-- Wait briefly for IntelliJ MCP server startup before launching OpenCode.
+- Wait briefly for IntelliJ MCP server readiness before launching OpenCode.
 
 ### Project Settings
 

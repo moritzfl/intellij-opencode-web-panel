@@ -364,7 +364,14 @@ class SharedOpenCodeServerManager : Disposable {
 
     private fun waitForIntellijMcpServerIfNeeded(startId: Long): Boolean {
         val initialStatus = IntellijMcpServerStartup.currentStatus()
-        if (!IntellijMcpServerStartup.shouldWaitFor(initialStatus, OpenCodeSettingsState.getInstance().waitForIntellijMcpServer)) return true
+        if (!IntellijMcpServerStartup.shouldWaitFor(initialStatus, OpenCodeSettingsState.getInstance().waitForIntellijMcpServer)) {
+            if (initialStatus.state == IntellijMcpServerStartupState.UNAVAILABLE) {
+                thisLogger().warn(initialStatus.message)
+            } else {
+                thisLogger().info(initialStatus.message)
+            }
+            return true
+        }
 
         thisLogger().info("Waiting for ${initialStatus.message} before starting OpenCode")
         return when (

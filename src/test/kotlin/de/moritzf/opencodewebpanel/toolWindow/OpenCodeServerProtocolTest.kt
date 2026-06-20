@@ -16,6 +16,15 @@ import java.util.concurrent.TimeUnit
 
 class OpenCodeServerProtocolTest {
 
+    class FakeMcpService(
+        private val running: Boolean,
+        private val url: String? = null,
+    ) {
+        fun isRunning(): Boolean = running
+
+        fun getServerSseUrl(): String? = url
+    }
+
     @Test
     fun buildOpenCodeCommandUsesLoopbackDynamicPortAndLogs() {
         assertEquals(
@@ -438,6 +447,26 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun intellijMcpServerStatusUsesRuntimeState() {
+        val runningStatus = IntellijMcpServerStartup.statusForRuntimeState(
+            enabled = true,
+            service = FakeMcpService(true, "http://127.0.0.1:64342/sse"),
+        )
+        val stoppedStatus = IntellijMcpServerStartup.statusForRuntimeState(
+            enabled = true,
+            service = FakeMcpService(false),
+        )
+        val disabledStatus = IntellijMcpServerStartup.statusForRuntimeState(enabled = false, service = null)
+        val unavailableStatus = IntellijMcpServerStartup.statusForRuntimeState(enabled = null, service = null)
+
+        assertEquals(IntellijMcpServerStartupState.ENABLED, runningStatus.state)
+        assertEquals("IntelliJ MCP server is running at http://127.0.0.1:64342/sse", runningStatus.message)
+        assertEquals(IntellijMcpServerStartupState.ENABLED_NOT_RUNNING, stoppedStatus.state)
+        assertEquals(IntellijMcpServerStartupState.NOT_CONFIGURED_OR_DISABLED, disabledStatus.state)
+        assertEquals(IntellijMcpServerStartupState.UNAVAILABLE, unavailableStatus.state)
+    }
+
+    @Test
     fun intellijMcpServerWaitsOnlyWhenEnabledButNotRunning() {
         assertTrue(
             IntellijMcpServerStartup.shouldWaitFor(
@@ -450,7 +479,7 @@ class OpenCodeServerProtocolTest {
         assertFalse(
             IntellijMcpServerStartup.shouldWaitFor(
                 IntellijMcpServerStartupStatus(
-                    IntellijMcpServerStartupState.RUNNING,
+                    IntellijMcpServerStartupState.ENABLED,
                     "running",
                 ),
             ),
@@ -496,7 +525,7 @@ class OpenCodeServerProtocolTest {
             statusProvider = {
                 checks += 1
                 IntellijMcpServerStartupStatus(
-                    if (checks < 2) IntellijMcpServerStartupState.ENABLED_NOT_RUNNING else IntellijMcpServerStartupState.RUNNING,
+                    if (checks < 2) IntellijMcpServerStartupState.ENABLED_NOT_RUNNING else IntellijMcpServerStartupState.ENABLED,
                     "status $checks",
                 )
             },
