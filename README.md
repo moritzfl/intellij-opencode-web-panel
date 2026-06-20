@@ -123,6 +123,10 @@ Useful development commands:
 - `runIde` launches a sandbox IDE with the plugin installed.
 - `runIdeForUiTests` launches the sandbox IDE with the JetBrains Robot Server enabled.
 
+## Acknowledgements
+
+This project started as a fork of an early draft by xausky: https://github.com/xausky/intellij-opencode-web-ui/
+
 ## License
 
 This project is licensed under the MIT License.
