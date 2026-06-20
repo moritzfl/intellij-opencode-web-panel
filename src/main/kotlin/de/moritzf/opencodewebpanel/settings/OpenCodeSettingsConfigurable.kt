@@ -193,11 +193,9 @@ class OpenCodeSettingsConfigurable : Configurable {
                 cell(openFileLinksInIdeCheckBox)
                     .comment("Open markdown links that point to workspace-relative, absolute, or file: paths in IntelliJ.")
             }
-            indent {
-                row {
-                    cell(enableCodeNavigationCheckBox)
-                        .comment("Click on file names, class names, or code references in chat messages to open them in IntelliJ.")
-                }
+            row {
+                cell(enableCodeNavigationCheckBox)
+                    .comment("Click on file names, class names, or code references in chat messages to open them in IntelliJ.")
             }
             row {
                 cell(openExternalLinksInBrowserCheckBox)
