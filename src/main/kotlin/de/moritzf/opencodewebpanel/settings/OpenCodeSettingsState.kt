@@ -16,6 +16,7 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
     var binaryPath: String = ""
     var openMostRecentConversationOnStartup: Boolean = false
     var uiZoomPercent: Int = DEFAULT_UI_ZOOM_PERCENT
+    var openFileLinksInIde: Boolean = false
 
     override fun getState(): OpenCodeSettingsState = this
 
@@ -26,6 +27,7 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
         binaryPath = state.binaryPath.trim()
         openMostRecentConversationOnStartup = state.openMostRecentConversationOnStartup
         uiZoomPercent = sanitizeUiZoomPercent(state.uiZoomPercent)
+        openFileLinksInIde = state.openFileLinksInIde
     }
 
     fun portModeValue(): OpenCodePortMode = OpenCodePortMode.fromStorageValue(portMode)

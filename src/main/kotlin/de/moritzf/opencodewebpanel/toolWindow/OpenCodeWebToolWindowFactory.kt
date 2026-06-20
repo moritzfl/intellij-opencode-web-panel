@@ -3,9 +3,11 @@ package de.moritzf.opencodewebpanel.toolWindow
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.thisLogger
+import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
+import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.ui.jcef.JBCefBrowser
@@ -44,6 +46,7 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
         private val serverManager = SharedOpenCodeServerManager.getInstance()
         private val openProjectAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
         private var openProjectScriptScheduled = false
+        private var fileLinkScriptScheduled = false
         private val resourceRequestHandler = object : CefResourceRequestHandlerAdapter() {
             override fun onBeforeResourceLoad(browser: CefBrowser?, frame: CefFrame?, request: CefRequest?): Boolean {
                 val password = serverManager.getServerPassword() ?: return false
@@ -55,6 +58,21 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
             }
         }
         private val authHandler = object : CefRequestHandlerAdapter() {
+            override fun onBeforeBrowse(
+                browser: CefBrowser?,
+                frame: CefFrame?,
+                request: CefRequest?,
+                userGesture: Boolean,
+                isRedirect: Boolean,
+            ): Boolean {
+                val requestUrl = request?.url ?: return false
+                if (!OpenCodeServerProtocol.isOpenFileLinkRequest(requestUrl)) return false
+                if (OpenCodeSettingsState.getInstance().openFileLinksInIde) {
+                    openFileLinkInIde(OpenCodeServerProtocol.openFileLinkHref(requestUrl))
+                }
+                return true
+            }
+
             override fun getResourceRequestHandler(
                 browser: CefBrowser?,
                 frame: CefFrame?,
@@ -86,12 +104,19 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
             }
         }
         private val loadHandler = object : CefLoadHandlerAdapter() {
+            override fun onLoadStart(browser: CefBrowser?, frame: CefFrame?, transitionType: CefRequest.TransitionType?) {
+                if (frame?.isMain == true) {
+                    fileLinkScriptScheduled = false
+                }
+            }
+
             override fun onLoadEnd(browser: CefBrowser?, frame: CefFrame?, httpStatusCode: Int) {
                 if (frame?.isMain != true) return
                 if (httpStatusCode !in 200..399) return
                 if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverManager.getServerUrl(), frame.url)) return
 
                 scheduleOpenProjectScript()
+                scheduleFileLinkScript()
             }
         }
         init {
@@ -105,6 +130,10 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
                         if (OpenCodeServerProtocol.isOpenCodeServerPage(serverManager.getServerUrl(), browser.cefBrowser.url)) {
                             browser.cefBrowser.reload()
                         }
+                    }
+
+                    override fun fileLinkNavigationChanged(enabled: Boolean) {
+                        applyFileLinkNavigation(enabled)
                     }
                 },
             )
@@ -127,10 +156,12 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
 
             thisLogger().info("Loading OpenCode project page")
             openProjectScriptScheduled = false
+            fileLinkScriptScheduled = false
             openProjectAlarm.cancelAllRequests()
             applyBrowserZoom()
             browser.loadURL(url)
             scheduleOpenProjectScript()
+            scheduleFileLinkScript()
         }
 
         private fun applyBrowserZoom(zoomPercent: Int = OpenCodeSettingsState.getInstance().uiZoomPercent) {
@@ -161,6 +192,44 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
                     delayMillis,
                 )
             }
+        }
+
+        private fun scheduleFileLinkScript() {
+            if (fileLinkScriptScheduled) return
+            if (!OpenCodeSettingsState.getInstance().openFileLinksInIde) return
+
+            val serverUrl = serverManager.getServerUrl() ?: return
+            val script = OpenCodeServerProtocol.buildFileLinkHandlerScript(project.basePath, enabled = true) ?: return
+            val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
+            fileLinkScriptScheduled = true
+
+            listOf(250, 750, 1500, 3000, 5000, 8000, 12000).forEach { delayMillis ->
+                openProjectAlarm.addRequest(
+                    {
+                        if (!project.isDisposed && OpenCodeSettingsState.getInstance().openFileLinksInIde) {
+                            browser.cefBrowser.executeJavaScript(script, rootUrl, 0)
+                        }
+                    },
+                    delayMillis,
+                )
+            }
+        }
+
+        private fun openFileLinkInIde(href: String?) {
+            val target = OpenCodeServerProtocol.resolveFileLink(href, project.basePath) ?: return
+            val virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(target.path) ?: return
+            ApplicationManager.getApplication().invokeLater {
+                if (project.isDisposed) return@invokeLater
+                OpenFileDescriptor(project, virtualFile, target.line ?: -1, target.column ?: -1).navigate(true)
+            }
+        }
+
+        private fun applyFileLinkNavigation(enabled: Boolean) {
+            val serverUrl = serverManager.getServerUrl() ?: return
+            if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)) return
+            val script = OpenCodeServerProtocol.buildFileLinkHandlerScript(project.basePath, enabled) ?: return
+            browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
+            fileLinkScriptScheduled = enabled
         }
 
         private fun showErrorInBrowser() {

@@ -5,6 +5,8 @@ import com.intellij.util.messages.Topic
 interface OpenCodeSettingsListener {
     fun uiZoomChanged(zoomPercent: Int)
 
+    fun fileLinkNavigationChanged(enabled: Boolean)
+
     companion object {
         val TOPIC: Topic<OpenCodeSettingsListener> = Topic.create(
             "OpenCode Web Panel settings",

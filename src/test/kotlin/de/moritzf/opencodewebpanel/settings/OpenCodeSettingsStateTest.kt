@@ -95,4 +95,9 @@ class OpenCodeSettingsStateTest {
 
         assertEquals(OpenCodeSettingsState.MAX_UI_ZOOM_PERCENT, settings.uiZoomPercent)
     }
+
+    @Test
+    fun openFileLinksInIdeIsDisabledByDefault() {
+        assertEquals(false, OpenCodeSettingsState().openFileLinksInIde)
+    }
 }

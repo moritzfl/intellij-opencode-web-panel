@@ -3,9 +3,11 @@ package de.moritzf.opencodewebpanel.toolWindow
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URI
+import java.net.URLDecoder
 import java.net.URLEncoder
 import java.nio.file.Files
 import java.nio.charset.StandardCharsets
+import java.nio.file.Path
 import java.security.SecureRandom
 import java.util.Base64
 import kotlin.math.ln
@@ -16,6 +18,8 @@ internal object OpenCodeServerProtocol {
     const val CHECK_INTERVAL_SECONDS = 30L
     const val BASIC_AUTH_USERNAME = "opencode"
     const val DEFAULT_EXECUTABLE = "opencode"
+    const val OPEN_FILE_LINK_SCHEME = "opencode-web-panel"
+    const val OPEN_FILE_LINK_HOST = "open-file"
 
     private val secureRandom = SecureRandom()
     fun buildServerRootUrl(serverUrl: String): String {
@@ -114,6 +118,124 @@ internal object OpenCodeServerProtocol {
             })();
         """.trimIndent()
     }
+
+    fun buildFileLinkHandlerScript(projectBasePath: String?, enabled: Boolean = true): String? {
+        if (projectBasePath.isNullOrBlank()) return null
+        val directory = escapeJavaScript(projectBasePath)
+        val enabledLiteral = enabled.toString()
+        return """
+            (() => {
+              window.__opencodeIntellijFileLinksEnabled = $enabledLiteral;
+              if (window.__opencodeIntellijFileLinksInstalled) return;
+              window.__opencodeIntellijFileLinksInstalled = true;
+              const directory = '$directory';
+              const isLocalFileLink = (href) => {
+                if (!href || href.startsWith('#')) return false;
+                if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(href)) return href.toLowerCase().startsWith('file:');
+                if (href.startsWith('/') || href.startsWith('./') || href.startsWith('../')) return true;
+                if (/^[A-Za-z]:[\\/]/.test(href)) return true;
+                return !href.startsWith('//') && !href.includes('://');
+              };
+              document.addEventListener('click', (event) => {
+                if (!window.__opencodeIntellijFileLinksEnabled) return;
+                const link = event.target && event.target.closest ? event.target.closest('a[href]') : null;
+                if (!link) return;
+                const rawHref = link.getAttribute('href') || '';
+                if (!isLocalFileLink(rawHref)) return;
+                event.preventDefault();
+                event.stopPropagation();
+                const target = '${OPEN_FILE_LINK_SCHEME}://${OPEN_FILE_LINK_HOST}?href=' + encodeURIComponent(rawHref) + '&base=' + encodeURIComponent(directory);
+                window.location.assign(target);
+              }, true);
+            })();
+        """.trimIndent()
+    }
+
+    fun isOpenFileLinkRequest(requestUrl: String?): Boolean {
+        if (requestUrl == null) return false
+        return try {
+            val uri = URI(requestUrl)
+            uri.scheme == OPEN_FILE_LINK_SCHEME && uri.host == OPEN_FILE_LINK_HOST
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    fun openFileLinkHref(requestUrl: String?): String? {
+        if (!isOpenFileLinkRequest(requestUrl)) return null
+        return URI(requestUrl).rawQuery
+            ?.split('&')
+            ?.firstOrNull { it.substringBefore('=') == "href" }
+            ?.substringAfter('=', "")
+            ?.let { URLDecoder.decode(it, StandardCharsets.UTF_8) }
+    }
+
+    fun resolveFileLink(href: String?, projectBasePath: String?): FileLinkTarget? {
+        if (href.isNullOrBlank() || projectBasePath.isNullOrBlank()) return null
+        val parsed = parseFileLink(href, projectBasePath) ?: return null
+        val path = if (parsed.path.isAbsolute) parsed.path else Path.of(projectBasePath).resolve(parsed.path).normalize()
+        if (!Files.exists(path) || !Files.isRegularFile(path)) return null
+        return FileLinkTarget(path, parsed.line?.coerceAtLeast(0), parsed.column?.coerceAtLeast(0))
+    }
+
+    private fun parseFileLink(href: String, projectBasePath: String): FileLinkTarget? {
+        val withoutFragment = href.substringBefore('#')
+        val fragment = href.substringAfter('#', missingDelimiterValue = "")
+        val pathPart = withoutFragment.substringBefore('?')
+        val query = withoutFragment.substringAfter('?', missingDelimiterValue = "")
+        val decodedPath = decodeFileLinkPath(pathPart).ifBlank { return null }
+        val fragmentLineColumn = parseLineColumn(fragment)
+        val queryLine = parseQueryLine(query)
+        val trailingLineColumn = if (fragmentLineColumn == null && queryLine == null) {
+            parseTrailingLineColumn(decodedPath, projectBasePath)
+        } else {
+            null
+        }
+        val pathText = trailingLineColumn?.first ?: decodedPath
+        return runCatching {
+            FileLinkTarget(
+                Path.of(pathText).normalize(),
+                fragmentLineColumn?.first ?: queryLine ?: trailingLineColumn?.second,
+                fragmentLineColumn?.second ?: trailingLineColumn?.third,
+            )
+        }.getOrNull()
+    }
+
+    private fun decodeFileLinkPath(value: String): String {
+        if (!value.startsWith("file:", ignoreCase = true)) return URI(null, null, value, null).path ?: value
+        val uri = runCatching { URI(value) }.getOrNull() ?: return value.removePrefix("file:")
+        val host = uri.host.orEmpty()
+        val path = uri.path.orEmpty()
+        val decoded = when {
+            host.isNotEmpty() && !host.equals("localhost", ignoreCase = true) -> "$host/${path.trimStart('/')}"
+            else -> path
+        }
+        return decoded.replace(Regex("^/([A-Za-z]:/)"), "$1")
+    }
+
+    private fun parseLineColumn(fragment: String): Pair<Int?, Int?>? {
+        val match = Regex("^L?(\\d+)(?::(\\d+))?(?:-.+)?$").find(fragment) ?: return null
+        return Pair(match.groupValues[1].toIntOrNull()?.minus(1), match.groupValues.getOrNull(2)?.toIntOrNull()?.minus(1))
+    }
+
+    private fun parseQueryLine(query: String): Int? {
+        if (query.isBlank()) return null
+        return query.split('&')
+            .firstOrNull { it.substringBefore('=') == "start" }
+            ?.substringAfter('=', "")
+            ?.toIntOrNull()
+            ?.minus(1)
+    }
+
+    private fun parseTrailingLineColumn(path: String, projectBasePath: String): Triple<String, Int?, Int?>? {
+        val match = Regex("^(.+?):(\\d+)(?::(\\d+))?$").find(path) ?: return null
+        val candidate = match.groupValues[1]
+        val resolved = if (Path.of(candidate).isAbsolute) Path.of(candidate) else Path.of(projectBasePath).resolve(candidate).normalize()
+        if (!Files.exists(resolved)) return null
+        return Triple(candidate, match.groupValues[2].toIntOrNull()?.minus(1), match.groupValues.getOrNull(3)?.toIntOrNull()?.minus(1))
+    }
+
+    data class FileLinkTarget(val path: Path, val line: Int?, val column: Int?)
 
     fun isOpenCodeServerPage(serverUrl: String?, frameUrl: String?): Boolean {
         return shouldSendBasicAuthHeader(serverUrl, frameUrl)

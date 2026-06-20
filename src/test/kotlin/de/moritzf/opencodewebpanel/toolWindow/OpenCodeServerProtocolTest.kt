@@ -2,6 +2,7 @@ package de.moritzf.opencodewebpanel.toolWindow
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -292,6 +293,61 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("const openMostRecentConversation = true"))
         assertTrue(script.contains("layout.lastProjectSession[directory]"))
         assertTrue(script.contains("'/session/' + encodeURIComponent(session.id)"))
+    }
+
+    @Test
+    fun buildFileLinkHandlerScriptInterceptsLocalFileLinks() {
+        val script = OpenCodeServerProtocol.buildFileLinkHandlerScript("/tmp/project")!!
+
+        assertTrue(script.contains("window.__opencodeIntellijFileLinksEnabled = true"))
+        assertTrue(script.contains("event.target.closest('a[href]')"))
+        assertTrue(script.contains("href.toLowerCase().startsWith('file:')"))
+        assertTrue(script.contains("href.startsWith('/')"))
+        assertTrue(script.contains("!href.includes('://')"))
+        assertTrue(script.contains("${OpenCodeServerProtocol.OPEN_FILE_LINK_SCHEME}://${OpenCodeServerProtocol.OPEN_FILE_LINK_HOST}"))
+    }
+
+    @Test
+    fun buildFileLinkHandlerScriptCanDisableInstalledHandler() {
+        val script = OpenCodeServerProtocol.buildFileLinkHandlerScript("/tmp/project", enabled = false)!!
+
+        assertTrue(script.contains("window.__opencodeIntellijFileLinksEnabled = false"))
+    }
+
+    @Test
+    fun openFileLinkRequestParsesHref() {
+        val url = "${OpenCodeServerProtocol.OPEN_FILE_LINK_SCHEME}://${OpenCodeServerProtocol.OPEN_FILE_LINK_HOST}?href=src%2FMain.kt"
+
+        assertTrue(OpenCodeServerProtocol.isOpenFileLinkRequest(url))
+        assertEquals("src/Main.kt", OpenCodeServerProtocol.openFileLinkHref(url))
+        assertFalse(OpenCodeServerProtocol.isOpenFileLinkRequest("https://example.com/src/Main.kt"))
+    }
+
+    @Test
+    fun resolveFileLinkUsesOpenCodeFileUrlStartQueryAsLine() {
+        val projectDir = Files.createTempDirectory("opencode-file-link-test")
+        val file = Files.writeString(projectDir.resolve("Main.kt"), "fun main() {}")
+
+        val target = OpenCodeServerProtocol.resolveFileLink("${file.toUri()}?start=10&end=20", projectDir.toString())
+
+        assertNotNull(target)
+        assertEquals(file.normalize(), target!!.path)
+        assertEquals(9, target.line)
+        assertNull(target.column)
+    }
+
+    @Test
+    fun resolveFileLinkSupportsOpenCodeRelativeFileUrlTabs() {
+        val projectDir = Files.createTempDirectory("opencode-file-link-test")
+        val file = Files.createDirectories(projectDir.resolve("src")).resolve("Main.kt")
+        Files.writeString(file, "fun main() {}")
+
+        val target = OpenCodeServerProtocol.resolveFileLink("file://src/Main.kt?start=3&end=4", projectDir.toString())
+
+        assertNotNull(target)
+        assertEquals(file.normalize(), target!!.path)
+        assertEquals(2, target.line)
+        assertNull(target.column)
     }
 
     @Test

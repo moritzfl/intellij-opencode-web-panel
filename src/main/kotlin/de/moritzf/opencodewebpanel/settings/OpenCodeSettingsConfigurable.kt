@@ -67,6 +67,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         accessibleContext.accessibleName = "Detect OpenCode path"
     }
     private val openMostRecentConversationCheckBox = JBCheckBox("Open the most recent conversation for the project on startup")
+    private val openFileLinksInIdeCheckBox = JBCheckBox("Open local file links in the IDE")
     private val uiZoomSpinner = JSpinner(
         SpinnerNumberModel(
             OpenCodeSettingsState.DEFAULT_UI_ZOOM_PERCENT,
@@ -156,6 +157,10 @@ class OpenCodeSettingsConfigurable : Configurable {
                 cell(openMostRecentConversationCheckBox)
                     .comment("When the tool window opens, restore the project's most recent OpenCode conversation instead of opening a new conversation.")
             }
+            row {
+                cell(openFileLinksInIdeCheckBox)
+                    .comment("Open markdown links that point to workspace-relative, absolute, or file: paths in IntelliJ.")
+            }
         }
         panel = JBTabbedPane().apply {
             addTab("OpenCode Server Setup", serverSetupPanel)
@@ -174,6 +179,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         val binaryModeModified = selectedBinaryMode() != settings.binaryModeValue()
         val binaryPathModified = binaryPath() != settings.binaryPath.trim()
         val uiSettingsModified = openMostRecentConversationCheckBox.isSelected != settings.openMostRecentConversationOnStartup ||
+            openFileLinksInIdeCheckBox.isSelected != settings.openFileLinksInIde ||
             uiZoomPercent() != OpenCodeSettingsState.sanitizeUiZoomPercent(settings.uiZoomPercent)
         return passwordModified || portModeModified || fixedPortModified || binaryModeModified || binaryPathModified || uiSettingsModified
     }
@@ -185,6 +191,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         val oldBinaryMode = settings.binaryModeValue()
         val oldBinaryPath = settings.binaryPath.trim()
         val oldUiZoomPercent = OpenCodeSettingsState.sanitizeUiZoomPercent(settings.uiZoomPercent)
+        val oldOpenFileLinksInIde = settings.openFileLinksInIde
         val oldPassword = savedPassword
 
         val nextPassword = password() ?: OpenCodePasswordStore.getInstance().generatePasswordForEditing()
@@ -203,6 +210,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         settings.binaryMode = nextBinaryMode.name
         settings.binaryPath = nextBinaryPath
         settings.openMostRecentConversationOnStartup = openMostRecentConversationCheckBox.isSelected
+        settings.openFileLinksInIde = openFileLinksInIdeCheckBox.isSelected
         settings.uiZoomPercent = nextUiZoomPercent
         fixedPortField.text = nextFixedPort.toString()
         binaryPathField.text = nextBinaryPath
@@ -220,6 +228,11 @@ class OpenCodeSettingsConfigurable : Configurable {
                 .syncPublisher(OpenCodeSettingsListener.TOPIC)
                 .uiZoomChanged(nextUiZoomPercent)
         }
+        if (oldOpenFileLinksInIde != settings.openFileLinksInIde) {
+            ApplicationManager.getApplication().messageBus
+                .syncPublisher(OpenCodeSettingsListener.TOPIC)
+                .fileLinkNavigationChanged(settings.openFileLinksInIde)
+        }
     }
 
     override fun reset() {
@@ -235,6 +248,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         fixedPortField.text = OpenCodeSettingsState.sanitizePort(settings.fixedPort).toString()
         binaryPathField.text = settings.binaryPath.trim()
         openMostRecentConversationCheckBox.isSelected = settings.openMostRecentConversationOnStartup
+        openFileLinksInIdeCheckBox.isSelected = settings.openFileLinksInIde
         uiZoomSpinner.value = OpenCodeSettingsState.sanitizeUiZoomPercent(settings.uiZoomPercent)
         loadPasswordField()
         updatePasswordHint()
