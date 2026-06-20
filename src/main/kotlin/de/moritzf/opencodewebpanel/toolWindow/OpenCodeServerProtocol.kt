@@ -74,7 +74,7 @@ internal object OpenCodeServerProtocol {
                   }
                 } catch (_) {}
               }
-              const navigationKey = 'opencode.intellij.project.opened:' + path;
+              const navigationKey = 'opencode.intellij.project.opened:' + directory;
               const getNavigationState = () => {
                 try {
                   return window.sessionStorage.getItem(navigationKey);
@@ -106,15 +106,19 @@ internal object OpenCodeServerProtocol {
                   window.console.warn('Failed to seed OpenCode project state', error);
                 }
               }
+              const projectSessionPrefix = projectPath + '/';
+              const onProjectSessionRoute = window.location.pathname === projectPath || window.location.pathname.startsWith(projectSessionPrefix);
+              if (getNavigationState() === 'complete') return;
+              if (window.location.pathname !== projectPath && onProjectSessionRoute) {
+                setNavigationState('complete');
+                return;
+              }
               if (window.location.pathname !== path) {
-                setNavigationState('pending');
+                setNavigationState('complete');
                 window.location.assign(path);
                 return;
               }
-              if (getNavigationState() !== 'complete') {
-                setNavigationState('complete');
-                window.location.reload();
-              }
+              setNavigationState('complete');
             })();
         """.trimIndent()
     }
@@ -124,7 +128,11 @@ internal object OpenCodeServerProtocol {
     }
 
     fun buildDispatchDroppedFilesScript(files: List<DroppedFilePayload>): String? {
-        if (files.isEmpty()) return null
+        return buildDispatchDroppedFilesScript(files, enabled = true)
+    }
+
+    fun buildDispatchDroppedFilesScript(files: List<DroppedFilePayload>, enabled: Boolean): String? {
+        if (!enabled || files.isEmpty()) return null
         val fileEntries = files.joinToString(",\n") { file ->
             "{ name: '${escapeJavaScript(file.name)}', mime: '${escapeJavaScript(file.mime)}', lastModified: ${file.lastModified}, base64: '${file.base64}' }"
         }
@@ -164,17 +172,48 @@ internal object OpenCodeServerProtocol {
     }
 
     fun buildFileLinkHandlerScript(projectBasePath: String?, enabled: Boolean, openFileCallback: String?): String? {
+        if (!enabled) return null
         if (projectBasePath.isNullOrBlank()) return null
         val directory = escapeJavaScript(projectBasePath)
-        val enabledLiteral = enabled.toString()
         val openFileAction = openFileCallback ?: "window.location.assign('${OPEN_FILE_LINK_SCHEME}://${OPEN_FILE_LINK_HOST}?href=' + encodeURIComponent(rawHref) + '&base=' + encodeURIComponent(directory))"
         return """
             (() => {
-              window.__opencodeIntellijFileLinksEnabled = $enabledLiteral;
               if (window.__opencodeIntellijFileLinksInstalled) return;
               window.__opencodeIntellijFileLinksInstalled = true;
               const directory = '$directory';
               const unsupportedProtocol = /^(https?|mailto|tel|data|blob|javascript):/i;
+              const absoluteFilePath = /^(\/|[A-Za-z]:[\\/])/;
+              const decodeRouteDirectory = (value) => {
+                try {
+                  const base64 = value.replace(/-/g, '+').replace(/_/g, '/');
+                  const padded = base64 + '='.repeat((4 - base64.length % 4) % 4);
+                  const binary = atob(padded);
+                  const bytes = new Uint8Array(binary.length);
+                  for (let index = 0; index < binary.length; index += 1) {
+                    bytes[index] = binary.charCodeAt(index);
+                  }
+                  return new TextDecoder().decode(bytes);
+                } catch (_) {
+                  return '';
+                }
+              };
+              const openCodeRoutePath = (value) => {
+                const text = (value || '').trim();
+                if (text.startsWith('/')) return text;
+                if (!/^https?:\/\//i.test(text)) return '';
+                try {
+                  const url = new URL(text);
+                  return url.origin === window.location.origin ? url.pathname : '';
+                } catch (_) {
+                  return '';
+                }
+              };
+              const isOpenCodeAppRoute = (value) => {
+                const path = openCodeRoutePath(value);
+                const match = /^\/([^/?#]+)\/session(?:[/?#]|$)/.exec(path);
+                if (!match) return false;
+                return absoluteFilePath.test(decodeRouteDirectory(match[1]));
+              };
               const looksLikeFilePath = (value) => {
                 if (!value) return false;
                 const text = value.trim();
@@ -195,13 +234,13 @@ internal object OpenCodeServerProtocol {
               };
               const isLocalFileLink = (href) => {
                 if (!href || href.startsWith('#')) return false;
+                if (isOpenCodeAppRoute(href)) return false;
                 if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(href)) return !unsupportedProtocol.test(href);
                 if (href.startsWith('/') || href.startsWith('./') || href.startsWith('../')) return true;
                 if (/^[A-Za-z]:[\\/]/.test(href)) return true;
                 return !href.startsWith('//') && !href.includes('://');
               };
               document.addEventListener('click', (event) => {
-                if (!window.__opencodeIntellijFileLinksEnabled) return;
                 const link = event.target && event.target.closest ? event.target.closest('a') : null;
                 if (!link) return;
                 const rawHref = link.getAttribute('href') || inferredFileLink(link);
@@ -255,11 +294,32 @@ internal object OpenCodeServerProtocol {
         val basePaths = listOfNotNull(routeBasePath?.takeIf { it.isNotBlank() }, projectBasePath?.takeIf { it.isNotBlank() })
             .distinct()
         if (href.isNullOrBlank() || basePaths.isEmpty()) return null
+        if (isOpenCodeSessionRouteHref(href)) return null
         val parsed = parseFileLink(href, basePaths) ?: return null
         val path = candidateFileLinkPaths(parsed, basePaths)
             .firstOrNull { Files.exists(it) && Files.isRegularFile(it) }
             ?: return null
         return FileLinkTarget(path, parsed.line?.coerceAtLeast(0), parsed.column?.coerceAtLeast(0))
+    }
+
+    fun isOpenCodeSessionRouteHref(href: String?): Boolean {
+        val text = href?.trim()?.takeIf { it.isNotBlank() } ?: return false
+        val routePath = when {
+            text.startsWith('/') -> text
+            text.startsWith("http://", ignoreCase = true) || text.startsWith("https://", ignoreCase = true) -> {
+                runCatching { URI(text).path }.getOrNull() ?: return false
+            }
+            else -> return false
+        }
+        val match = Regex("^/([^/]+)/session(?:/|${'$'})")
+            .find(routePath.substringBefore('?').substringBefore('#'))
+            ?: return false
+        val directory = decodeDirectory(match.groupValues[1]) ?: return false
+        return looksLikeAbsoluteFilesystemPath(directory)
+    }
+
+    private fun looksLikeAbsoluteFilesystemPath(value: String): Boolean {
+        return value.startsWith('/') || Regex("^[A-Za-z]:[\\\\/]").containsMatchIn(value)
     }
 
     private fun parseFileLink(href: String, basePaths: List<String>): ParsedFileLink? {

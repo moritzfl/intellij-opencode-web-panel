@@ -271,7 +271,8 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("state.lastProject[scope] = directory"))
         assertTrue(script.contains("if (window.location.pathname !== path)"))
         assertTrue(script.contains("window.location.assign(path)"))
-        assertTrue(script.contains("window.location.reload()"))
+        assertTrue(script.contains("const onProjectSessionRoute = window.location.pathname === projectPath"))
+        assertFalse(script.contains("window.location.reload()"))
         assertTrue(script.contains("const projectPath = '/L3RtcC9teSAncHJvamVjdCc/session'"))
         assertTrue(script.contains("const directory = '/tmp/my \\'project\\''"))
     }
@@ -299,20 +300,20 @@ class OpenCodeServerProtocolTest {
     fun buildFileLinkHandlerScriptInterceptsLocalFileLinks() {
         val script = OpenCodeServerProtocol.buildFileLinkHandlerScript("/tmp/project")!!
 
-        assertTrue(script.contains("window.__opencodeIntellijFileLinksEnabled = true"))
+        assertTrue(script.contains("window.__opencodeIntellijFileLinksInstalled"))
         assertTrue(script.contains("event.target.closest('a')"))
         assertTrue(script.contains("inferredFileLink(link)"))
         assertTrue(script.contains("unsupportedProtocol"))
+        assertTrue(script.contains("decodeRouteDirectory"))
+        assertTrue(script.contains("isOpenCodeAppRoute(href)"))
         assertTrue(script.contains("href.startsWith('/')"))
         assertTrue(script.contains("!href.includes('://')"))
         assertTrue(script.contains("${OpenCodeServerProtocol.OPEN_FILE_LINK_SCHEME}://${OpenCodeServerProtocol.OPEN_FILE_LINK_HOST}"))
     }
 
     @Test
-    fun buildFileLinkHandlerScriptCanDisableInstalledHandler() {
-        val script = OpenCodeServerProtocol.buildFileLinkHandlerScript("/tmp/project", enabled = false)!!
-
-        assertTrue(script.contains("window.__opencodeIntellijFileLinksEnabled = false"))
+    fun buildFileLinkHandlerScriptIsMissingWhenDisabled() {
+        assertNull(OpenCodeServerProtocol.buildFileLinkHandlerScript("/tmp/project", enabled = false))
     }
 
     @Test
@@ -353,6 +354,23 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun buildDispatchDroppedFilesScriptIsMissingWhenDisabled() {
+        assertNull(
+            OpenCodeServerProtocol.buildDispatchDroppedFilesScript(
+                listOf(
+                    OpenCodeServerProtocol.DroppedFilePayload(
+                        name = "hello.txt",
+                        mime = "text/plain",
+                        lastModified = 123,
+                        base64 = "aGVsbG8=",
+                    ),
+                ),
+                enabled = false,
+            ),
+        )
+    }
+
+    @Test
     fun openFileLinkRequestParsesHref() {
         val url = "${OpenCodeServerProtocol.OPEN_FILE_LINK_SCHEME}://${OpenCodeServerProtocol.OPEN_FILE_LINK_HOST}?href=src%2FMain.kt"
 
@@ -379,6 +397,24 @@ class OpenCodeServerProtocolTest {
 
         assertNotNull(target)
         assertEquals(file.normalize(), target!!.path)
+    }
+
+    @Test
+    fun isOpenCodeSessionRouteHrefDetectsOpenCodeAppSessionRoutes() {
+        val projectRoute = "/${OpenCodeServerProtocol.encodeDirectory("/tmp/project")}/session/session-id"
+
+        assertTrue(OpenCodeServerProtocol.isOpenCodeSessionRouteHref(projectRoute))
+        assertTrue(OpenCodeServerProtocol.isOpenCodeSessionRouteHref("http://127.0.0.1:60482$projectRoute"))
+        assertFalse(OpenCodeServerProtocol.isOpenCodeSessionRouteHref("/tmp/session/readme.md"))
+        assertFalse(OpenCodeServerProtocol.isOpenCodeSessionRouteHref("license.md"))
+    }
+
+    @Test
+    fun resolveFileLinkIgnoresOpenCodeAppSessionRoutes() {
+        val projectDir = Files.createTempDirectory("opencode-file-link-test")
+        val route = "/${OpenCodeServerProtocol.encodeDirectory(projectDir.toString())}/session/session-id"
+
+        assertNull(OpenCodeServerProtocol.resolveFileLink(route, projectDir.toString()))
     }
 
     @Test

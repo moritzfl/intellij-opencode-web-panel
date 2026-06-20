@@ -191,7 +191,10 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
 
             ApplicationManager.getApplication().executeOnPooledThread {
                 val payloads = regularFiles.mapNotNull { droppedFilePayload(it) }
-                val script = OpenCodeServerProtocol.buildDispatchDroppedFilesScript(payloads) ?: return@executeOnPooledThread
+                val script = OpenCodeServerProtocol.buildDispatchDroppedFilesScript(
+                    payloads,
+                    enabled = OpenCodeSettingsState.getInstance().enableChatFileDrop,
+                ) ?: return@executeOnPooledThread
                 val rootUrl = serverManager.getServerUrl()?.let { OpenCodeServerProtocol.buildServerRootUrl(it) }
                     ?: return@executeOnPooledThread
                 ApplicationManager.getApplication().invokeLater {
@@ -308,13 +311,18 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
         private fun applyFileLinkNavigation(enabled: Boolean) {
             val serverUrl = serverManager.getServerUrl() ?: return
             if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)) return
+            fileLinkScriptScheduled = false
+            if (!enabled) {
+                browser.cefBrowser.reload()
+                return
+            }
             val script = OpenCodeServerProtocol.buildFileLinkHandlerScript(
                 project.basePath,
-                enabled,
+                enabled = true,
                 openFileCallback = openFileLinkQuery.inject("rawHref"),
             ) ?: return
             browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
-            fileLinkScriptScheduled = enabled
+            fileLinkScriptScheduled = true
         }
 
         private fun showErrorInBrowser() {
