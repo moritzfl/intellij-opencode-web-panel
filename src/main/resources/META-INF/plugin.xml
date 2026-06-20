@@ -6,10 +6,8 @@
 
     <depends>com.intellij.modules.platform</depends>
 
-    <resource-bundle>messages.MyBundle</resource-bundle>
-
     <extensions defaultExtensionNs="com.intellij">
-        <toolWindow factoryClass="com.github.xausky.opencodewebui.toolWindow.MyToolWindowFactory" id="OpenCodeWeb" anchor="right" icon="/icons/ocw.svg" displayName="OpenCodeWeb"/>
-        <postStartupActivity implementation="com.github.xausky.opencodewebui.startup.MyStartupActivity"/>
+        <applicationService serviceImplementation="com.github.xausky.opencodewebui.toolWindow.SharedOpenCodeServerManager"/>
+        <toolWindow factoryClass="com.github.xausky.opencodewebui.toolWindow.OpenCodeWebToolWindowFactory" id="OpenCodeWeb" anchor="right" icon="/icons/opencode.svg" displayName="OpenCodeWeb"/>
     </extensions>
 </idea-plugin>
