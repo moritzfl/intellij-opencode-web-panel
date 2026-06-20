@@ -8,6 +8,7 @@ import java.nio.file.Files
 import java.nio.charset.StandardCharsets
 import java.security.SecureRandom
 import java.util.Base64
+import kotlin.math.ln
 
 internal object OpenCodeServerProtocol {
     const val HOST = "127.0.0.1"
@@ -240,6 +241,11 @@ internal object OpenCodeServerProtocol {
 
     fun resolveExecutableForLaunch(executable: String = DEFAULT_EXECUTABLE, path: String = resolvePath()): String {
         return detectExecutablePath(executable, path) ?: executable.ifBlank { DEFAULT_EXECUTABLE }
+    }
+
+    fun toCefZoomLevel(percent: Int): Double {
+        val scale = percent.coerceAtLeast(1) / 100.0
+        return ln(scale) / ln(1.2)
     }
 
     private fun commonExecutablePaths(environment: Map<String, String>): List<String> {

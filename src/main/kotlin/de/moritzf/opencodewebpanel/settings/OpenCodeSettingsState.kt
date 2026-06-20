@@ -15,6 +15,7 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
     var binaryMode: String = OpenCodeBinaryMode.AUTO.name
     var binaryPath: String = ""
     var openMostRecentConversationOnStartup: Boolean = false
+    var uiZoomPercent: Int = DEFAULT_UI_ZOOM_PERCENT
 
     override fun getState(): OpenCodeSettingsState = this
 
@@ -24,6 +25,7 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
         binaryMode = OpenCodeBinaryMode.fromStorageValue(state.binaryMode).name
         binaryPath = state.binaryPath.trim()
         openMostRecentConversationOnStartup = state.openMostRecentConversationOnStartup
+        uiZoomPercent = sanitizeUiZoomPercent(state.uiZoomPercent)
     }
 
     fun portModeValue(): OpenCodePortMode = OpenCodePortMode.fromStorageValue(portMode)
@@ -46,6 +48,9 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
 
     companion object {
         const val DEFAULT_FIXED_PORT = 4096
+        const val DEFAULT_UI_ZOOM_PERCENT = 100
+        const val MIN_UI_ZOOM_PERCENT = 50
+        const val MAX_UI_ZOOM_PERCENT = 200
 
         fun getInstance(): OpenCodeSettingsState {
             return ApplicationManager.getApplication().getService(OpenCodeSettingsState::class.java)
@@ -53,6 +58,10 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
 
         fun sanitizePort(port: Int): Int {
             return port.takeIf { it in 1..65535 } ?: DEFAULT_FIXED_PORT
+        }
+
+        fun sanitizeUiZoomPercent(percent: Int): Int {
+            return percent.coerceIn(MIN_UI_ZOOM_PERCENT, MAX_UI_ZOOM_PERCENT)
         }
     }
 }

@@ -26,7 +26,9 @@ import javax.swing.ButtonGroup
 import javax.swing.JButton
 import javax.swing.JComponent
 import javax.swing.JPanel
+import javax.swing.JSpinner
 import javax.swing.JToggleButton
+import javax.swing.SpinnerNumberModel
 
 class OpenCodeSettingsConfigurable : Configurable {
     private var panel: JComponent? = null
@@ -65,6 +67,17 @@ class OpenCodeSettingsConfigurable : Configurable {
         accessibleContext.accessibleName = "Detect OpenCode path"
     }
     private val openMostRecentConversationCheckBox = JBCheckBox("Open the most recent conversation for the project on startup")
+    private val uiZoomSpinner = JSpinner(
+        SpinnerNumberModel(
+            OpenCodeSettingsState.DEFAULT_UI_ZOOM_PERCENT,
+            OpenCodeSettingsState.MIN_UI_ZOOM_PERCENT,
+            OpenCodeSettingsState.MAX_UI_ZOOM_PERCENT,
+            10,
+        ),
+    ).apply {
+        toolTipText = "Scale the embedded OpenCode UI"
+        accessibleContext.accessibleName = "OpenCode UI zoom percentage"
+    }
     private val hintLabel = JBLabel().apply { isVisible = false }
     private val hiddenPasswordEchoChar = passwordField.echoChar
     private val passwordLoadGeneration = AtomicLong(0)
@@ -135,6 +148,10 @@ class OpenCodeSettingsConfigurable : Configurable {
             }
         }
         val uiSettingsPanel = panel {
+            row("Zoom:") {
+                cell(uiZoomSpinner)
+                    .comment("Scale the embedded OpenCode UI. Default: ${OpenCodeSettingsState.DEFAULT_UI_ZOOM_PERCENT}%.")
+            }
             row {
                 cell(openMostRecentConversationCheckBox)
                     .comment("When the tool window opens, restore the project's most recent OpenCode conversation instead of opening a new conversation.")
@@ -156,7 +173,8 @@ class OpenCodeSettingsConfigurable : Configurable {
         val fixedPortModified = fixedPortOrDefault() != OpenCodeSettingsState.sanitizePort(settings.fixedPort)
         val binaryModeModified = selectedBinaryMode() != settings.binaryModeValue()
         val binaryPathModified = binaryPath() != settings.binaryPath.trim()
-        val uiSettingsModified = openMostRecentConversationCheckBox.isSelected != settings.openMostRecentConversationOnStartup
+        val uiSettingsModified = openMostRecentConversationCheckBox.isSelected != settings.openMostRecentConversationOnStartup ||
+            uiZoomPercent() != OpenCodeSettingsState.sanitizeUiZoomPercent(settings.uiZoomPercent)
         return passwordModified || portModeModified || fixedPortModified || binaryModeModified || binaryPathModified || uiSettingsModified
     }
 
@@ -166,6 +184,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         val oldFixedPort = OpenCodeSettingsState.sanitizePort(settings.fixedPort)
         val oldBinaryMode = settings.binaryModeValue()
         val oldBinaryPath = settings.binaryPath.trim()
+        val oldUiZoomPercent = OpenCodeSettingsState.sanitizeUiZoomPercent(settings.uiZoomPercent)
         val oldPassword = savedPassword
 
         val nextPassword = password() ?: OpenCodePasswordStore.getInstance().generatePasswordForEditing()
@@ -178,11 +197,13 @@ class OpenCodeSettingsConfigurable : Configurable {
         val nextFixedPort = fixedPortOrDefault()
         val nextBinaryMode = selectedBinaryMode()
         val nextBinaryPath = binaryPath()
+        val nextUiZoomPercent = uiZoomPercent()
         settings.portMode = nextPortMode.name
         settings.fixedPort = nextFixedPort
         settings.binaryMode = nextBinaryMode.name
         settings.binaryPath = nextBinaryPath
         settings.openMostRecentConversationOnStartup = openMostRecentConversationCheckBox.isSelected
+        settings.uiZoomPercent = nextUiZoomPercent
         fixedPortField.text = nextFixedPort.toString()
         binaryPathField.text = nextBinaryPath
         updatePasswordHint()
@@ -193,6 +214,11 @@ class OpenCodeSettingsConfigurable : Configurable {
             oldBinaryMode != nextBinaryMode || oldBinaryPath != nextBinaryPath
         ) {
             SharedOpenCodeServerManager.getInstance().stopServer()
+        }
+        if (oldUiZoomPercent != nextUiZoomPercent) {
+            ApplicationManager.getApplication().messageBus
+                .syncPublisher(OpenCodeSettingsListener.TOPIC)
+                .uiZoomChanged(nextUiZoomPercent)
         }
     }
 
@@ -209,6 +235,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         fixedPortField.text = OpenCodeSettingsState.sanitizePort(settings.fixedPort).toString()
         binaryPathField.text = settings.binaryPath.trim()
         openMostRecentConversationCheckBox.isSelected = settings.openMostRecentConversationOnStartup
+        uiZoomSpinner.value = OpenCodeSettingsState.sanitizeUiZoomPercent(settings.uiZoomPercent)
         loadPasswordField()
         updatePasswordHint()
         updatePortControls()
@@ -235,6 +262,10 @@ class OpenCodeSettingsConfigurable : Configurable {
     }
 
     private fun binaryPath(): String = binaryPathField.text.trim()
+
+    private fun uiZoomPercent(): Int {
+        return OpenCodeSettingsState.sanitizeUiZoomPercent((uiZoomSpinner.value as? Number)?.toInt() ?: OpenCodeSettingsState.DEFAULT_UI_ZOOM_PERCENT)
+    }
 
     private fun loadPasswordField() {
         val store = OpenCodePasswordStore.getInstance()

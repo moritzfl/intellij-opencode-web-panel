@@ -193,6 +193,13 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun toCefZoomLevelConvertsPercentageScale() {
+        assertEquals(0.0, OpenCodeServerProtocol.toCefZoomLevel(100), 0.0001)
+        assertEquals(1.0, OpenCodeServerProtocol.toCefZoomLevel(120), 0.0001)
+        assertTrue(OpenCodeServerProtocol.toCefZoomLevel(80) < 0.0)
+    }
+
+    @Test
     fun parseServerUrlAcceptsOpenCodeOutputAndTrimsTrailingSlash() {
         assertEquals(
             "http://127.0.0.1:60482",

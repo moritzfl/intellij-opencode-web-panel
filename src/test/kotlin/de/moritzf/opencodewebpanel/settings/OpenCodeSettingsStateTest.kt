@@ -81,4 +81,18 @@ class OpenCodeSettingsStateTest {
     fun openMostRecentConversationOnStartupIsDisabledByDefault() {
         assertEquals(false, OpenCodeSettingsState().openMostRecentConversationOnStartup)
     }
+
+    @Test
+    fun uiZoomPercentUsesDefaultValue() {
+        assertEquals(OpenCodeSettingsState.DEFAULT_UI_ZOOM_PERCENT, OpenCodeSettingsState().uiZoomPercent)
+    }
+
+    @Test
+    fun uiZoomPercentIsSanitizedWhenLoadingState() {
+        val settings = OpenCodeSettingsState()
+
+        settings.loadState(OpenCodeSettingsState().apply { uiZoomPercent = 500 })
+
+        assertEquals(OpenCodeSettingsState.MAX_UI_ZOOM_PERCENT, settings.uiZoomPercent)
+    }
 }

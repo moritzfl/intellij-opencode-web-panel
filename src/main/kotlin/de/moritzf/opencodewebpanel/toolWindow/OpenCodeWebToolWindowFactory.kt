@@ -11,6 +11,7 @@ import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.ui.jcef.JBCefBrowser
 import com.intellij.ui.content.ContentFactory
 import com.intellij.util.Alarm
+import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsListener
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
 import org.cef.browser.CefBrowser
 import org.cef.browser.CefFrame
@@ -96,6 +97,17 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
         init {
             browser.jbCefClient.addRequestHandler(authHandler, browser.cefBrowser)
             browser.jbCefClient.addLoadHandler(loadHandler, browser.cefBrowser)
+            ApplicationManager.getApplication().messageBus.connect(this).subscribe(
+                OpenCodeSettingsListener.TOPIC,
+                object : OpenCodeSettingsListener {
+                    override fun uiZoomChanged(zoomPercent: Int) {
+                        applyBrowserZoom(zoomPercent)
+                        if (OpenCodeServerProtocol.isOpenCodeServerPage(serverManager.getServerUrl(), browser.cefBrowser.url)) {
+                            browser.cefBrowser.reload()
+                        }
+                    }
+                },
+            )
         }
 
         fun getContent() = browser.component
@@ -116,8 +128,14 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
             thisLogger().info("Loading OpenCode project page")
             openProjectScriptScheduled = false
             openProjectAlarm.cancelAllRequests()
+            applyBrowserZoom()
             browser.loadURL(url)
             scheduleOpenProjectScript()
+        }
+
+        private fun applyBrowserZoom(zoomPercent: Int = OpenCodeSettingsState.getInstance().uiZoomPercent) {
+            val zoomPercent = OpenCodeSettingsState.sanitizeUiZoomPercent(zoomPercent)
+            browser.cefBrowser.setZoomLevel(OpenCodeServerProtocol.toCefZoomLevel(zoomPercent))
         }
 
         private fun scheduleOpenProjectScript() {
