@@ -119,33 +119,60 @@ internal object OpenCodeServerProtocol {
         """.trimIndent()
     }
 
-    fun buildFileLinkHandlerScript(projectBasePath: String?, enabled: Boolean = true): String? {
+    fun buildFileLinkHandlerScript(projectBasePath: String?): String? {
+        return buildFileLinkHandlerScript(projectBasePath, enabled = true)
+    }
+
+    fun buildFileLinkHandlerScript(projectBasePath: String?, enabled: Boolean): String? {
+        return buildFileLinkHandlerScript(projectBasePath, enabled, openFileCallback = null)
+    }
+
+    fun buildFileLinkHandlerScript(projectBasePath: String?, enabled: Boolean, openFileCallback: String?): String? {
         if (projectBasePath.isNullOrBlank()) return null
         val directory = escapeJavaScript(projectBasePath)
         val enabledLiteral = enabled.toString()
+        val openFileAction = openFileCallback ?: "window.location.assign('${OPEN_FILE_LINK_SCHEME}://${OPEN_FILE_LINK_HOST}?href=' + encodeURIComponent(rawHref) + '&base=' + encodeURIComponent(directory))"
         return """
             (() => {
               window.__opencodeIntellijFileLinksEnabled = $enabledLiteral;
               if (window.__opencodeIntellijFileLinksInstalled) return;
               window.__opencodeIntellijFileLinksInstalled = true;
               const directory = '$directory';
+              const unsupportedProtocol = /^(https?|mailto|tel|data|blob|javascript):/i;
+              const looksLikeFilePath = (value) => {
+                if (!value) return false;
+                const text = value.trim();
+                return text.length > 0 && text.length < 512 && !/\s/.test(text) && /[./\\]/.test(text);
+              };
+              const inferredFileLink = (link) => {
+                const row = link.closest ? link.closest('tr') : null;
+                const cell = link.closest ? link.closest('td,th') : null;
+                if (!row || !cell) return '';
+                const cells = Array.from(row.children);
+                const index = cells.indexOf(cell);
+                if (index <= 0) return '';
+                for (const candidate of cells.slice(0, index).reverse()) {
+                  const text = (candidate.textContent || '').trim();
+                  if (looksLikeFilePath(text)) return text;
+                }
+                return '';
+              };
               const isLocalFileLink = (href) => {
                 if (!href || href.startsWith('#')) return false;
-                if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(href)) return href.toLowerCase().startsWith('file:');
+                if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(href)) return !unsupportedProtocol.test(href);
                 if (href.startsWith('/') || href.startsWith('./') || href.startsWith('../')) return true;
                 if (/^[A-Za-z]:[\\/]/.test(href)) return true;
                 return !href.startsWith('//') && !href.includes('://');
               };
               document.addEventListener('click', (event) => {
                 if (!window.__opencodeIntellijFileLinksEnabled) return;
-                const link = event.target && event.target.closest ? event.target.closest('a[href]') : null;
+                const link = event.target && event.target.closest ? event.target.closest('a') : null;
                 if (!link) return;
-                const rawHref = link.getAttribute('href') || '';
+                const rawHref = link.getAttribute('href') || inferredFileLink(link);
                 if (!isLocalFileLink(rawHref)) return;
                 event.preventDefault();
                 event.stopPropagation();
-                const target = '${OPEN_FILE_LINK_SCHEME}://${OPEN_FILE_LINK_HOST}?href=' + encodeURIComponent(rawHref) + '&base=' + encodeURIComponent(directory);
-                window.location.assign(target);
+                $openFileAction;
               }, true);
             })();
         """.trimIndent()
@@ -170,15 +197,36 @@ internal object OpenCodeServerProtocol {
             ?.let { URLDecoder.decode(it, StandardCharsets.UTF_8) }
     }
 
+    fun routeDirectoryFromUrl(frameUrl: String?): String? {
+        if (frameUrl.isNullOrBlank()) return null
+        return try {
+            val encodedDirectory = URI(frameUrl).path
+                ?.trimStart('/')
+                ?.substringBefore('/')
+                ?.takeIf { it.isNotBlank() }
+                ?: return null
+            decodeDirectory(encodedDirectory)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     fun resolveFileLink(href: String?, projectBasePath: String?): FileLinkTarget? {
-        if (href.isNullOrBlank() || projectBasePath.isNullOrBlank()) return null
-        val parsed = parseFileLink(href, projectBasePath) ?: return null
-        val path = if (parsed.path.isAbsolute) parsed.path else Path.of(projectBasePath).resolve(parsed.path).normalize()
-        if (!Files.exists(path) || !Files.isRegularFile(path)) return null
+        return resolveFileLink(href, projectBasePath, routeBasePath = null)
+    }
+
+    fun resolveFileLink(href: String?, projectBasePath: String?, routeBasePath: String?): FileLinkTarget? {
+        val basePaths = listOfNotNull(routeBasePath?.takeIf { it.isNotBlank() }, projectBasePath?.takeIf { it.isNotBlank() })
+            .distinct()
+        if (href.isNullOrBlank() || basePaths.isEmpty()) return null
+        val parsed = parseFileLink(href, basePaths) ?: return null
+        val path = candidateFileLinkPaths(parsed, basePaths)
+            .firstOrNull { Files.exists(it) && Files.isRegularFile(it) }
+            ?: return null
         return FileLinkTarget(path, parsed.line?.coerceAtLeast(0), parsed.column?.coerceAtLeast(0))
     }
 
-    private fun parseFileLink(href: String, projectBasePath: String): FileLinkTarget? {
+    private fun parseFileLink(href: String, basePaths: List<String>): ParsedFileLink? {
         val withoutFragment = href.substringBefore('#')
         val fragment = href.substringAfter('#', missingDelimiterValue = "")
         val pathPart = withoutFragment.substringBefore('?')
@@ -187,21 +235,38 @@ internal object OpenCodeServerProtocol {
         val fragmentLineColumn = parseLineColumn(fragment)
         val queryLine = parseQueryLine(query)
         val trailingLineColumn = if (fragmentLineColumn == null && queryLine == null) {
-            parseTrailingLineColumn(decodedPath, projectBasePath)
+            parseTrailingLineColumn(decodedPath, basePaths)
         } else {
             null
         }
         val pathText = trailingLineColumn?.first ?: decodedPath
         return runCatching {
-            FileLinkTarget(
+            ParsedFileLink(
                 Path.of(pathText).normalize(),
                 fragmentLineColumn?.first ?: queryLine ?: trailingLineColumn?.second,
                 fragmentLineColumn?.second ?: trailingLineColumn?.third,
+                fallbackToProjectFileName = pathPart.startsWith("sandbox:", ignoreCase = true),
             )
         }.getOrNull()
     }
 
+    private fun candidateFileLinkPaths(parsed: ParsedFileLink, basePaths: List<String>): List<Path> {
+        val paths = if (parsed.path.isAbsolute) {
+            listOf(parsed.path)
+        } else {
+            basePaths.map { Path.of(it).resolve(parsed.path).normalize() }
+        }
+        val fallbacks = if (parsed.fallbackToProjectFileName) {
+            parsed.path.fileName?.let { fileName -> basePaths.map { Path.of(it).resolve(fileName).normalize() } }.orEmpty()
+        } else {
+            emptyList()
+        }
+        return (paths + fallbacks)
+            .distinct()
+    }
+
     private fun decodeFileLinkPath(value: String): String {
+        if (value.startsWith("sandbox:", ignoreCase = true)) return value.substringAfter(':')
         if (!value.startsWith("file:", ignoreCase = true)) return URI(null, null, value, null).path ?: value
         val uri = runCatching { URI(value) }.getOrNull() ?: return value.removePrefix("file:")
         val host = uri.host.orEmpty()
@@ -227,15 +292,26 @@ internal object OpenCodeServerProtocol {
             ?.minus(1)
     }
 
-    private fun parseTrailingLineColumn(path: String, projectBasePath: String): Triple<String, Int?, Int?>? {
+    private fun parseTrailingLineColumn(path: String, basePaths: List<String>): Triple<String, Int?, Int?>? {
         val match = Regex("^(.+?):(\\d+)(?::(\\d+))?$").find(path) ?: return null
         val candidate = match.groupValues[1]
-        val resolved = if (Path.of(candidate).isAbsolute) Path.of(candidate) else Path.of(projectBasePath).resolve(candidate).normalize()
-        if (!Files.exists(resolved)) return null
+        val exists = if (Path.of(candidate).isAbsolute) {
+            Files.exists(Path.of(candidate))
+        } else {
+            basePaths.any { Files.exists(Path.of(it).resolve(candidate).normalize()) }
+        }
+        if (!exists) return null
         return Triple(candidate, match.groupValues[2].toIntOrNull()?.minus(1), match.groupValues.getOrNull(3)?.toIntOrNull()?.minus(1))
     }
 
     data class FileLinkTarget(val path: Path, val line: Int?, val column: Int?)
+
+    private data class ParsedFileLink(
+        val path: Path,
+        val line: Int?,
+        val column: Int?,
+        val fallbackToProjectFileName: Boolean,
+    )
 
     fun isOpenCodeServerPage(serverUrl: String?, frameUrl: String?): Boolean {
         return shouldSendBasicAuthHeader(serverUrl, frameUrl)
@@ -433,6 +509,13 @@ internal object OpenCodeServerProtocol {
         return Base64.getUrlEncoder()
             .withoutPadding()
             .encodeToString(directory.toByteArray(StandardCharsets.UTF_8))
+    }
+
+    private fun decodeDirectory(directory: String): String? {
+        val padding = "=".repeat((4 - directory.length % 4) % 4)
+        return runCatching {
+            String(Base64.getUrlDecoder().decode(directory + padding), StandardCharsets.UTF_8)
+        }.getOrNull()
     }
 
     private fun encodeUrlParameter(value: String): String {

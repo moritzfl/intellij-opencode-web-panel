@@ -300,8 +300,9 @@ class OpenCodeServerProtocolTest {
         val script = OpenCodeServerProtocol.buildFileLinkHandlerScript("/tmp/project")!!
 
         assertTrue(script.contains("window.__opencodeIntellijFileLinksEnabled = true"))
-        assertTrue(script.contains("event.target.closest('a[href]')"))
-        assertTrue(script.contains("href.toLowerCase().startsWith('file:')"))
+        assertTrue(script.contains("event.target.closest('a')"))
+        assertTrue(script.contains("inferredFileLink(link)"))
+        assertTrue(script.contains("unsupportedProtocol"))
         assertTrue(script.contains("href.startsWith('/')"))
         assertTrue(script.contains("!href.includes('://')"))
         assertTrue(script.contains("${OpenCodeServerProtocol.OPEN_FILE_LINK_SCHEME}://${OpenCodeServerProtocol.OPEN_FILE_LINK_HOST}"))
@@ -315,12 +316,44 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun buildFileLinkHandlerScriptCanUseDirectCallback() {
+        val script = OpenCodeServerProtocol.buildFileLinkHandlerScript(
+            "/tmp/project",
+            enabled = true,
+            openFileCallback = "window.intellijOpenFile(rawHref)",
+        )!!
+
+        assertTrue(script.contains("window.intellijOpenFile(rawHref)"))
+        assertFalse(script.contains("window.location.assign(target)"))
+    }
+
+    @Test
     fun openFileLinkRequestParsesHref() {
         val url = "${OpenCodeServerProtocol.OPEN_FILE_LINK_SCHEME}://${OpenCodeServerProtocol.OPEN_FILE_LINK_HOST}?href=src%2FMain.kt"
 
         assertTrue(OpenCodeServerProtocol.isOpenFileLinkRequest(url))
         assertEquals("src/Main.kt", OpenCodeServerProtocol.openFileLinkHref(url))
         assertFalse(OpenCodeServerProtocol.isOpenFileLinkRequest("https://example.com/src/Main.kt"))
+    }
+
+    @Test
+    fun routeDirectoryFromUrlDecodesOpenCodeProjectRoute() {
+        val directory = "/Users/moritz/Desktop/git/benjamin"
+        val url = "http://127.0.0.1:57099/${OpenCodeServerProtocol.encodeDirectory(directory)}/session/license.md"
+
+        assertEquals(directory, OpenCodeServerProtocol.routeDirectoryFromUrl(url))
+    }
+
+    @Test
+    fun resolveFileLinkPrefersOpenCodeRouteDirectoryForRelativeLinks() {
+        val ideProjectDir = Files.createTempDirectory("opencode-ide-project")
+        val openCodeDir = Files.createTempDirectory("opencode-route-project")
+        val file = Files.writeString(openCodeDir.resolve("license.md"), "license")
+
+        val target = OpenCodeServerProtocol.resolveFileLink("license.md", ideProjectDir.toString(), openCodeDir.toString())
+
+        assertNotNull(target)
+        assertEquals(file.normalize(), target!!.path)
     }
 
     @Test
@@ -347,6 +380,22 @@ class OpenCodeServerProtocolTest {
         assertNotNull(target)
         assertEquals(file.normalize(), target!!.path)
         assertEquals(2, target.line)
+        assertNull(target.column)
+    }
+
+    @Test
+    fun resolveFileLinkSupportsSandboxLinksByProjectFileName() {
+        val projectDir = Files.createTempDirectory("opencode-file-link-test")
+        val file = Files.writeString(projectDir.resolve("bcoca-reference-11.pdf"), "pdf")
+
+        val target = OpenCodeServerProtocol.resolveFileLink(
+            "sandbox:/mnt/data/bcoca-reference-11.pdf",
+            projectDir.toString(),
+        )
+
+        assertNotNull(target)
+        assertEquals(file.normalize(), target!!.path)
+        assertNull(target.line)
         assertNull(target.column)
     }
 
