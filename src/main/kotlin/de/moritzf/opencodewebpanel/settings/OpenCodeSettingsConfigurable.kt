@@ -363,7 +363,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         updatePasswordHint()
 
         ApplicationManager.getApplication().executeOnPooledThread {
-            val result = runCatching { store.ensurePasswordBlocking() }
+            val result = runCatching { store.loadFreshBlocking() }
             ApplicationManager.getApplication().invokeLater({
                 if (generation != passwordLoadGeneration.get()) return@invokeLater
                 passwordLoading = false
