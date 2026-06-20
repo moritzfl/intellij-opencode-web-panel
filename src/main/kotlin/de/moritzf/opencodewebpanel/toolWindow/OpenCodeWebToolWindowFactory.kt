@@ -66,15 +66,14 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
         private val project = toolWindow.project
         private val browser = JBCefBrowser()
         private val lifecycleStatusLabel = JBLabel()
+        private val lifecycleStatusPanel = BorderLayoutPanel().apply {
+            isOpaque = false
+            border = JBUI.Borders.empty(4, 8)
+            addToLeft(lifecycleStatusLabel)
+        }
         private val contentPanel = BorderLayoutPanel().apply {
             isOpaque = false
-            addToTop(
-                BorderLayoutPanel().apply {
-                    isOpaque = false
-                    border = JBUI.Borders.empty(4, 8)
-                    addToLeft(lifecycleStatusLabel)
-                },
-            )
+            addToTop(lifecycleStatusPanel)
             addToCenter(browser.component)
         }
         private val openFileLinkQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
@@ -371,6 +370,9 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
         private fun updateLifecycleIndicator(state: OpenCodeServerLifecycleState) {
             lifecycleStatusLabel.text = formatOpenCodeServerLifecycleStatusText(state)
             lifecycleStatusLabel.toolTipText = "OpenCode server is ${state.displayLabel.lowercase()}"
+            lifecycleStatusPanel.isVisible = isOpenCodeServerLifecycleStatusVisible(state)
+            contentPanel.revalidate()
+            contentPanel.repaint()
         }
 
         fun checkAndLoadContent() {

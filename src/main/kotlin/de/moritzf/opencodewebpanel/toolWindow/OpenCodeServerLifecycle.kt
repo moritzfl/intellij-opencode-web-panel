@@ -29,6 +29,10 @@ internal fun formatOpenCodeServerLifecycleStatusText(state: OpenCodeServerLifecy
         "OpenCode server: ${escapeLifecycleStatusHtml(state.displayLabel)}</html>"
 }
 
+internal fun isOpenCodeServerLifecycleStatusVisible(state: OpenCodeServerLifecycleState): Boolean {
+    return state != OpenCodeServerLifecycleState.RUNNING
+}
+
 private fun escapeLifecycleStatusHtml(value: String): String {
     return value
         .replace("&", "&amp;")

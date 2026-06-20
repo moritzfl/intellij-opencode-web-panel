@@ -381,6 +381,15 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun lifecycleStatusIsHiddenWhenServerIsRunning() {
+        assertFalse(isOpenCodeServerLifecycleStatusVisible(OpenCodeServerLifecycleState.RUNNING))
+        assertTrue(isOpenCodeServerLifecycleStatusVisible(OpenCodeServerLifecycleState.STARTING))
+        assertTrue(isOpenCodeServerLifecycleStatusVisible(OpenCodeServerLifecycleState.FAILED))
+        assertTrue(isOpenCodeServerLifecycleStatusVisible(OpenCodeServerLifecycleState.RESTARTING))
+        assertTrue(isOpenCodeServerLifecycleStatusVisible(OpenCodeServerLifecycleState.STOPPED))
+    }
+
+    @Test
     fun buildDispatchDroppedFilesScriptCreatesBrowserDropEvent() {
         val script = OpenCodeServerProtocol.buildDispatchDroppedFilesScript(
             listOf(
