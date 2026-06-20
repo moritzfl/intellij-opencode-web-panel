@@ -76,4 +76,9 @@ class OpenCodeSettingsStateTest {
         assertEquals(OpenCodeBinaryMode.AUTO, settings.binaryModeValue())
         assertEquals("opencode", settings.executablePath())
     }
+
+    @Test
+    fun openMostRecentConversationOnStartupIsDisabledByDefault() {
+        assertEquals(false, OpenCodeSettingsState().openMostRecentConversationOnStartup)
+    }
 }

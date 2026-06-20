@@ -5,12 +5,13 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
 import com.intellij.openapi.options.Configurable
-import com.intellij.openapi.ui.DialogPanel
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.ui.TextFieldWithBrowseButton
 import com.intellij.ui.components.JBLabel
+import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.JBPasswordField
 import com.intellij.ui.components.JBRadioButton
+import com.intellij.ui.components.JBTabbedPane
 import com.intellij.ui.components.JBTextField
 import com.intellij.ui.dsl.builder.AlignX
 import com.intellij.ui.dsl.builder.RightGap
@@ -24,10 +25,11 @@ import java.util.concurrent.atomic.AtomicLong
 import javax.swing.ButtonGroup
 import javax.swing.JButton
 import javax.swing.JComponent
+import javax.swing.JPanel
 import javax.swing.JToggleButton
 
 class OpenCodeSettingsConfigurable : Configurable {
-    private var panel: DialogPanel? = null
+    private var panel: JComponent? = null
     private val passwordField = JBPasswordField().apply {
         columns = 40
         toolTipText = "Password used for the local OpenCode web server"
@@ -62,6 +64,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         toolTipText = "Auto-detect opencode and fill the path"
         accessibleContext.accessibleName = "Detect OpenCode path"
     }
+    private val openMostRecentConversationCheckBox = JBCheckBox("Open the most recent conversation for the project on startup")
     private val hintLabel = JBLabel().apply { isVisible = false }
     private val hiddenPasswordEchoChar = passwordField.echoChar
     private val passwordLoadGeneration = AtomicLong(0)
@@ -92,46 +95,54 @@ class OpenCodeSettingsConfigurable : Configurable {
         }
         detectBinaryButton.addActionListener { detectBinaryPath() }
 
-        panel = panel {
-            group("OpenCode Server") {
-                buttonsGroup("Binary:") {
-                    row {
-                        cell(autoBinaryRadioButton)
-                            .comment("Find opencode from PATH plus common install locations, including Homebrew, system paths, and npm locations on Windows.")
-                    }
-                    row {
-                        cell(customBinaryRadioButton).gap(RightGap.SMALL)
-                        cell(binaryPathField)
-                            .resizableColumn()
-                            .align(AlignX.FILL)
-                            .gap(RightGap.SMALL)
-                        cell(detectBinaryButton)
-                    }
+        val serverSetupPanel = panel {
+            buttonsGroup("Binary:") {
+                row {
+                    cell(autoBinaryRadioButton)
+                        .comment("Find opencode from PATH plus common install locations, including Homebrew, system paths, and npm locations on Windows.")
                 }
-                buttonsGroup("Port:") {
-                    row {
-                        cell(autoPortRadioButton)
-                            .comment("Let OpenCode choose an available loopback port. This is the default.")
-                    }
-                    row {
-                        cell(fixedPortRadioButton).gap(RightGap.SMALL)
-                        cell(fixedPortField)
-                            .comment("Use a fixed port on 127.0.0.1. Default: ${OpenCodeSettingsState.DEFAULT_FIXED_PORT}.")
-                    }
-                }
-                row("Password:") {
-                    cell(passwordField)
+                row {
+                    cell(customBinaryRadioButton).gap(RightGap.SMALL)
+                    cell(binaryPathField)
                         .resizableColumn()
                         .align(AlignX.FILL)
                         .gap(RightGap.SMALL)
-                    cell(showPasswordButton).gap(RightGap.SMALL)
-                    cell(copyPasswordButton).gap(RightGap.SMALL)
-                    cell(generatePasswordButton)
-                }
-                row {
-                    cell(hintLabel)
+                    cell(detectBinaryButton)
                 }
             }
+            buttonsGroup("Port:") {
+                row {
+                    cell(autoPortRadioButton)
+                        .comment("Let OpenCode choose an available loopback port. This is the default.")
+                }
+                row {
+                    cell(fixedPortRadioButton).gap(RightGap.SMALL)
+                    cell(fixedPortField)
+                        .comment("Use a fixed port on 127.0.0.1. Default: ${OpenCodeSettingsState.DEFAULT_FIXED_PORT}.")
+                }
+            }
+            row("Password:") {
+                cell(passwordField)
+                    .resizableColumn()
+                    .align(AlignX.FILL)
+                    .gap(RightGap.SMALL)
+                cell(showPasswordButton).gap(RightGap.SMALL)
+                cell(copyPasswordButton).gap(RightGap.SMALL)
+                cell(generatePasswordButton)
+            }
+            row {
+                cell(hintLabel)
+            }
+        }
+        val uiSettingsPanel = panel {
+            row {
+                cell(openMostRecentConversationCheckBox)
+                    .comment("When the tool window opens, restore the project's most recent OpenCode conversation instead of opening a new conversation.")
+            }
+        }
+        panel = JBTabbedPane().apply {
+            addTab("OpenCode Server Setup", serverSetupPanel)
+            addTab("OpenCode UI Settings", uiSettingsPanel)
         }
         reset()
         return panel!!
@@ -145,7 +156,8 @@ class OpenCodeSettingsConfigurable : Configurable {
         val fixedPortModified = fixedPortOrDefault() != OpenCodeSettingsState.sanitizePort(settings.fixedPort)
         val binaryModeModified = selectedBinaryMode() != settings.binaryModeValue()
         val binaryPathModified = binaryPath() != settings.binaryPath.trim()
-        return passwordModified || portModeModified || fixedPortModified || binaryModeModified || binaryPathModified
+        val uiSettingsModified = openMostRecentConversationCheckBox.isSelected != settings.openMostRecentConversationOnStartup
+        return passwordModified || portModeModified || fixedPortModified || binaryModeModified || binaryPathModified || uiSettingsModified
     }
 
     override fun apply() {
@@ -170,6 +182,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         settings.fixedPort = nextFixedPort
         settings.binaryMode = nextBinaryMode.name
         settings.binaryPath = nextBinaryPath
+        settings.openMostRecentConversationOnStartup = openMostRecentConversationCheckBox.isSelected
         fixedPortField.text = nextFixedPort.toString()
         binaryPathField.text = nextBinaryPath
         updatePasswordHint()
@@ -195,6 +208,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         }
         fixedPortField.text = OpenCodeSettingsState.sanitizePort(settings.fixedPort).toString()
         binaryPathField.text = settings.binaryPath.trim()
+        openMostRecentConversationCheckBox.isSelected = settings.openMostRecentConversationOnStartup
         loadPasswordField()
         updatePasswordHint()
         updatePortControls()

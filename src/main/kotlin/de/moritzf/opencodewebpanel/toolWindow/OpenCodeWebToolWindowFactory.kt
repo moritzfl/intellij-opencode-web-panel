@@ -11,6 +11,7 @@ import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.ui.jcef.JBCefBrowser
 import com.intellij.ui.content.ContentFactory
 import com.intellij.util.Alarm
+import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
 import org.cef.browser.CefBrowser
 import org.cef.browser.CefFrame
 import org.cef.callback.CefAuthCallback
@@ -123,7 +124,12 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
             if (openProjectScriptScheduled) return
 
             val serverUrl = serverManager.getServerUrl() ?: return
-            val script = OpenCodeServerProtocol.buildOpenProjectScript(project.basePath, serverUrl) ?: return
+            val settings = OpenCodeSettingsState.getInstance()
+            val script = OpenCodeServerProtocol.buildOpenProjectScript(
+                project.basePath,
+                serverUrl,
+                settings.openMostRecentConversationOnStartup,
+            ) ?: return
             val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
             openProjectScriptScheduled = true
 

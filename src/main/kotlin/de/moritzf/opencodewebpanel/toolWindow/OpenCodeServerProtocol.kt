@@ -33,19 +33,43 @@ internal object OpenCodeServerProtocol {
         return "$root/${encodeDirectory(projectBasePath)}/session"
     }
 
-    fun buildOpenProjectScript(projectBasePath: String?, serverUrl: String? = null): String? {
+    fun buildOpenProjectScript(
+        projectBasePath: String?,
+        serverUrl: String? = null,
+        openMostRecentConversation: Boolean = false,
+    ): String? {
         if (projectBasePath.isNullOrBlank()) return null
         val directory = escapeJavaScript(projectBasePath)
-        val path = escapeJavaScript("/${encodeDirectory(projectBasePath)}/session")
+        val projectPath = escapeJavaScript("/${encodeDirectory(projectBasePath)}/session")
         val expectedOrigin = serverUrl?.let { escapeJavaScript(buildOrigin(it)) }
         val originGuard = expectedOrigin?.let { "if (window.location.origin !== '$it') return;" }.orEmpty()
+        val openMostRecentConversationLiteral = openMostRecentConversation.toString()
         return """
             (() => {
               const directory = '$directory';
-              const path = '$path';
+              const projectPath = '$projectPath';
+              let path = projectPath;
               const storageKey = 'opencode.global.dat:server';
-              const navigationKey = 'opencode.intellij.project.opened:' + path;
+              const layoutStorageKey = 'opencode.global.dat:layout.page';
               const scope = 'local';
+              const openMostRecentConversation = $openMostRecentConversationLiteral;
+              const routeDirectory = (value) => {
+                const bytes = new TextEncoder().encode(value);
+                let binary = '';
+                bytes.forEach((byte) => binary += String.fromCharCode(byte));
+                return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+              };
+              if (openMostRecentConversation) {
+                try {
+                  const rawLayout = window.localStorage.getItem(layoutStorageKey);
+                  const layout = rawLayout ? JSON.parse(rawLayout) : undefined;
+                  const session = layout && layout.lastProjectSession && layout.lastProjectSession[directory];
+                  if (session && typeof session.directory === 'string' && typeof session.id === 'string') {
+                    path = '/' + routeDirectory(session.directory) + '/session/' + encodeURIComponent(session.id);
+                  }
+                } catch (_) {}
+              }
+              const navigationKey = 'opencode.intellij.project.opened:' + path;
               const getNavigationState = () => {
                 try {
                   return window.sessionStorage.getItem(navigationKey);

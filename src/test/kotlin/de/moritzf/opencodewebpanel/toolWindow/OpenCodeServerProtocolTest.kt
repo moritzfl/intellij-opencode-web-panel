@@ -255,14 +255,16 @@ class OpenCodeServerProtocolTest {
 
         assertTrue(script.contains("if (window.location.origin !== 'http://127.0.0.1:60482') return;"))
         assertTrue(script.contains("opencode.global.dat:server"))
+        assertTrue(script.contains("opencode.global.dat:layout.page"))
         assertTrue(script.contains("opencode.intellij.project.opened:"))
+        assertTrue(script.contains("const openMostRecentConversation = false"))
         assertTrue(script.contains("const setNavigationState = (value)"))
         assertTrue(script.contains("state.projects[scope]"))
         assertTrue(script.contains("state.lastProject[scope] = directory"))
         assertTrue(script.contains("if (window.location.pathname !== path)"))
         assertTrue(script.contains("window.location.assign(path)"))
         assertTrue(script.contains("window.location.reload()"))
-        assertTrue(script.contains("const path = '/L3RtcC9teSAncHJvamVjdCc/session'"))
+        assertTrue(script.contains("const projectPath = '/L3RtcC9teSAncHJvamVjdCc/session'"))
         assertTrue(script.contains("const directory = '/tmp/my \\'project\\''"))
     }
 
@@ -270,6 +272,19 @@ class OpenCodeServerProtocolTest {
     fun buildOpenProjectScriptIsMissingWithoutProjectPath() {
         assertNull(OpenCodeServerProtocol.buildOpenProjectScript(null))
         assertNull(OpenCodeServerProtocol.buildOpenProjectScript(""))
+    }
+
+    @Test
+    fun buildOpenProjectScriptCanOpenMostRecentProjectConversation() {
+        val script = OpenCodeServerProtocol.buildOpenProjectScript(
+            "/tmp/project",
+            "http://127.0.0.1:60482/",
+            openMostRecentConversation = true,
+        )!!
+
+        assertTrue(script.contains("const openMostRecentConversation = true"))
+        assertTrue(script.contains("layout.lastProjectSession[directory]"))
+        assertTrue(script.contains("'/session/' + encodeURIComponent(session.id)"))
     }
 
     @Test

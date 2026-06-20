@@ -14,6 +14,7 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
     var fixedPort: Int = DEFAULT_FIXED_PORT
     var binaryMode: String = OpenCodeBinaryMode.AUTO.name
     var binaryPath: String = ""
+    var openMostRecentConversationOnStartup: Boolean = false
 
     override fun getState(): OpenCodeSettingsState = this
 
@@ -22,6 +23,7 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
         fixedPort = sanitizePort(state.fixedPort)
         binaryMode = OpenCodeBinaryMode.fromStorageValue(state.binaryMode).name
         binaryPath = state.binaryPath.trim()
+        openMostRecentConversationOnStartup = state.openMostRecentConversationOnStartup
     }
 
     fun portModeValue(): OpenCodePortMode = OpenCodePortMode.fromStorageValue(portMode)
