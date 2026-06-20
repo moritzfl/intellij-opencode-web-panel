@@ -600,17 +600,27 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
-    fun buildIdeThemeSyncScriptWritesLightOrDarkColorScheme() {
+    fun buildIdeThemeSyncScriptPatchesMatchMediaForPrefersColorScheme() {
         val darkScript = OpenCodeServerProtocol.buildIdeThemeSyncScript(enabled = true, dark = true)!!
         val lightScript = OpenCodeServerProtocol.buildIdeThemeSyncScript(enabled = true, dark = false)!!
 
-        assertTrue(darkScript.contains(OpenCodeServerProtocol.OPEN_CODE_COLOR_SCHEME_STORAGE_KEY))
-        assertTrue(darkScript.contains("const nextValue = 'dark'"))
-        assertTrue(lightScript.contains("const nextValue = 'light'"))
-        assertTrue(darkScript.contains("if (oldValue !== nextValue) window.localStorage.setItem(key, nextValue)"))
-        assertTrue(darkScript.contains("window.localStorage.setItem(key, nextValue)"))
-        assertTrue(darkScript.contains("new StorageEvent('storage'"))
-        assertFalse(darkScript.contains("window.location.reload()"))
+        assertTrue(darkScript.contains("(prefers-color-scheme: dark)"))
+        assertTrue(darkScript.contains("const dark = true"))
+        assertTrue(lightScript.contains("const dark = false"))
+        assertTrue(darkScript.contains("window.__opencodeIntellijThemeInstalled"))
+        assertTrue(darkScript.contains("window.matchMedia = (q) => q === QUERY ? mql : orig(q)"))
+        assertTrue(darkScript.contains("matches: dark"))
+        assertFalse(darkScript.contains("window.localStorage.setItem"))
+        assertFalse(darkScript.contains("StorageEvent"))
+    }
+
+    @Test
+    fun buildIdeThemeSyncScriptDispatchesChangeEventOnUpdate() {
+        val script = OpenCodeServerProtocol.buildIdeThemeSyncScript(enabled = true, dark = true)!!
+
+        assertTrue(script.contains("MediaQueryListEvent('change'"))
+        assertTrue(script.contains("window.__opencodeIntellijThemeMql"))
+        assertTrue(script.contains("window.__opencodeIntellijThemeDark !== dark"))
     }
 
     @Test

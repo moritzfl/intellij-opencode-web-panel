@@ -441,27 +441,41 @@ internal object OpenCodeBrowserSnippets {
 
     fun buildIdeThemeSyncScript(enabled: Boolean, dark: Boolean): String? {
         if (!enabled) return null
-        val colorScheme = if (dark) "dark" else "light"
+        val darkLiteral = dark.toString()
         @Language("JavaScript")
         val script = """
             (() => {
-              const key = '${OpenCodeServerProtocol.OPEN_CODE_COLOR_SCHEME_STORAGE_KEY}';
-              const nextValue = '$colorScheme';
-              try {
-                const oldValue = window.localStorage.getItem(key);
-                if (oldValue !== nextValue) window.localStorage.setItem(key, nextValue);
-                window.dispatchEvent(new StorageEvent('storage', {
-                  key,
-                  oldValue,
-                  newValue: nextValue,
-                  storageArea: window.localStorage,
-                  url: window.location.href,
-                }));
-              } catch (error) {
-                if (window.console && window.console.warn) {
-                  window.console.warn('Failed to sync OpenCode color scheme with IntelliJ', error);
+              const QUERY = '(prefers-color-scheme: dark)';
+              const dark = $darkLiteral;
+              if (window.__opencodeIntellijThemeInstalled) {
+                if (window.__opencodeIntellijThemeMql && window.__opencodeIntellijThemeDark !== dark) {
+                  window.__opencodeIntellijThemeDark = dark;
+                  window.__opencodeIntellijThemeMql.matches = dark;
+                  window.__opencodeIntellijThemeMql.dispatchEvent(new MediaQueryListEvent('change', { matches: dark, media: QUERY }));
                 }
+                return;
               }
+              window.__opencodeIntellijThemeInstalled = true;
+              window.__opencodeIntellijThemeDark = dark;
+              const orig = window.matchMedia.bind(window);
+              window.__opencodeIntellijOrigMatchMedia = orig;
+              const mql = {
+                matches: dark,
+                media: QUERY,
+                onchange: null,
+                __listeners: new Set(),
+                addEventListener(type, listener) { if (type === 'change' && typeof listener === 'function') this.__listeners.add(listener); },
+                removeEventListener(type, listener) { if (type === 'change') this.__listeners.delete(listener); },
+                addListener(listener) { if (typeof listener === 'function') this.__listeners.add(listener); },
+                removeListener(listener) { this.__listeners.delete(listener); },
+                dispatchEvent(event) {
+                  if (typeof this.onchange === 'function') this.onchange.call(this, event);
+                  for (const listener of this.__listeners) { try { listener.call(this, event); } catch (_) {} }
+                  return true;
+                },
+              };
+              window.__opencodeIntellijThemeMql = mql;
+              window.matchMedia = (q) => q === QUERY ? mql : orig(q);
             })();
         """
         return script.trimIndent()
