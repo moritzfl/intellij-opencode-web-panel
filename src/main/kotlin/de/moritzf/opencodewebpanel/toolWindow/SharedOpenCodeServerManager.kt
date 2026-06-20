@@ -11,6 +11,7 @@ import de.moritzf.opencodewebpanel.settings.OpenCodePasswordStore
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledFuture
@@ -20,6 +21,7 @@ class SharedOpenCodeServerManager : Disposable {
 
     companion object {
         private const val PROCESS_STOP_TIMEOUT_SECONDS = 5L
+        private const val MAX_LOG_LINES = 500
 
         fun getInstance(): SharedOpenCodeServerManager {
             return ApplicationManager.getApplication().getService(SharedOpenCodeServerManager::class.java)
@@ -47,6 +49,28 @@ class SharedOpenCodeServerManager : Disposable {
     private var nextStartAllowedAtMillis = 0L
     private val scheduler = Executors.newSingleThreadScheduledExecutor { runnable ->
         Thread(runnable, "OpenCode-Server-Checker").apply { isDaemon = true }
+    }
+    private val serverLogLines = Collections.synchronizedList(mutableListOf<String>())
+
+    fun getServerLog(): String {
+        return synchronized(serverLogLines) {
+            serverLogLines.joinToString("\n")
+        }
+    }
+
+    fun clearServerLog() {
+        synchronized(serverLogLines) {
+            serverLogLines.clear()
+        }
+    }
+
+    private fun appendServerLog(line: String) {
+        synchronized(serverLogLines) {
+            if (serverLogLines.size >= MAX_LOG_LINES) {
+                serverLogLines.removeAt(0)
+            }
+            serverLogLines.add(line)
+        }
     }
 
     fun ensureStarted(
@@ -171,6 +195,7 @@ class SharedOpenCodeServerManager : Disposable {
             setLifecycleState(OpenCodeServerLifecycleState.STOPPED)
             futureToCancel?.cancel(true)
             destroyProcess(processToDestroy)
+            clearServerLog()
         } catch (e: Exception) {
             thisLogger().error("Error stopping OpenCode server: ${e.message}")
         }
@@ -272,6 +297,7 @@ class SharedOpenCodeServerManager : Disposable {
                     reader.useLines { lines ->
                         lines.forEach { line ->
                             thisLogger().info(line)
+                            appendServerLog(line)
                             OpenCodeServerProtocol.parseServerUrl(line)?.let { url ->
                                 if (setServerUrlForStart(startId, url)) {
                                     urlLatch.countDown()
@@ -281,6 +307,13 @@ class SharedOpenCodeServerManager : Disposable {
                     }
                 } catch (e: Exception) {
                     thisLogger().info("Stopped reading OpenCode output: ${e.message}")
+                    appendServerLog("Stopped reading OpenCode output: ${e.message}")
+                }
+                if (isCurrentStart(startId)) {
+                    thisLogger().warn("OpenCode process output stream ended; triggering immediate health check")
+                    ApplicationManager.getApplication().executeOnPooledThread {
+                        if (isCurrentStart(startId)) checkServerHealth()
+                    }
                 }
             }, "OpenCode-Output-Reader")
             logThread.isDaemon = true

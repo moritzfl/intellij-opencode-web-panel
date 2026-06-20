@@ -1,5 +1,6 @@
 package de.moritzf.opencodewebpanel.toolWindow
 
+import com.intellij.ide.BrowserUtil
 import com.intellij.ide.ui.LafManager
 import com.intellij.ide.ui.LafManagerListener
 import com.intellij.notification.Notification
@@ -82,10 +83,12 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
         private val openCodeReferenceQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
         private val openCodeLocalStorageQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
         private val systemNotificationQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
+        private val openExternalLinkQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
         private val serverManager = SharedOpenCodeServerManager.getInstance()
         private val openProjectAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
         private var openProjectScriptScheduled = false
         private var fileLinkScriptScheduled = false
+        private var externalLinkScriptScheduled = false
         private var codeNavigationScriptScheduled = false
         private var compactLayoutScriptScheduled = false
         private var ideThemeSyncScriptScheduled = false
@@ -156,6 +159,7 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
             override fun onLoadStart(browser: CefBrowser?, frame: CefFrame?, transitionType: CefRequest.TransitionType?) {
                 if (frame?.isMain == true) {
                     fileLinkScriptScheduled = false
+                    externalLinkScriptScheduled = false
                     codeNavigationScriptScheduled = false
                     compactLayoutScriptScheduled = false
                     ideThemeSyncScriptScheduled = false
@@ -176,6 +180,7 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
                 scheduleOpenProjectScript()
                 installOpenCodeLocalStorageSync(frame.url)
                 scheduleFileLinkScript()
+                scheduleExternalLinkScript()
                 scheduleCodeNavigationScript()
                 scheduleIdeThemeSyncScript()
                 scheduleProjectSwitchPromptSuppressionScript()
@@ -186,6 +191,12 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
             openFileLinkQuery.addHandler { href ->
                 if (OpenCodeSettingsState.getInstance().openFileLinksInIde) {
                     openFileLinkInIde(href)
+                }
+                null
+            }
+            openExternalLinkQuery.addHandler { href ->
+                if (OpenCodeSettingsState.getInstance().openExternalLinksInBrowser) {
+                    openExternalLinkInBrowser(href)
                 }
                 null
             }
@@ -231,6 +242,10 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
 
                     override fun fileLinkNavigationChanged(enabled: Boolean) {
                         applyFileLinkNavigation(enabled)
+                    }
+
+                    override fun externalLinkNavigationChanged(enabled: Boolean) {
+                        applyExternalLinkNavigation(enabled)
                     }
 
                     override fun codeNavigationChanged(enabled: Boolean) {
@@ -414,6 +429,7 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
             thisLogger().info("Loading OpenCode project page")
             openProjectScriptScheduled = false
             fileLinkScriptScheduled = false
+            externalLinkScriptScheduled = false
             compactLayoutScriptScheduled = false
             ideThemeSyncScriptScheduled = false
             projectSwitchPromptSuppressionScriptScheduled = false
@@ -423,6 +439,7 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
             browser.loadURL(url)
             scheduleOpenProjectScript()
             scheduleFileLinkScript()
+            scheduleExternalLinkScript()
             scheduleIdeThemeSyncScript()
             scheduleProjectSwitchPromptSuppressionScript()
             scheduleSystemNotificationBridgeScript()
@@ -483,6 +500,33 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
             }
         }
 
+        private fun scheduleExternalLinkScript() {
+            if (externalLinkScriptScheduled) return
+            if (!OpenCodeSettingsState.getInstance().openExternalLinksInBrowser) return
+
+            val serverUrl = serverManager.getServerUrl() ?: return
+            val script = OpenCodeServerProtocol.buildExternalLinkHandlerScript(
+                enabled = true,
+                openExternalCallback = openExternalLinkQuery.inject("href"),
+            ) ?: return
+            val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
+            externalLinkScriptScheduled = true
+
+            listOf(250, 750, 1500, 3000, 5000, 8000, 12000).forEach { delayMillis ->
+                openProjectAlarm.addRequest(
+                    {
+                        if (!project.isDisposed &&
+                            OpenCodeSettingsState.getInstance().openExternalLinksInBrowser &&
+                            OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)
+                        ) {
+                            browser.cefBrowser.executeJavaScript(script, rootUrl, 0)
+                        }
+                    },
+                    delayMillis,
+                )
+            }
+        }
+
         private fun openFileLinkInIde(href: String?) {
             val routeBasePath = OpenCodeServerProtocol.routeDirectoryFromUrl(browser.cefBrowser.url)
             val target = OpenCodeServerProtocol.resolveFileLink(href, project.basePath, routeBasePath) ?: return
@@ -490,6 +534,14 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
             ApplicationManager.getApplication().invokeLater {
                 if (project.isDisposed) return@invokeLater
                 OpenFileDescriptor(project, virtualFile, target.line ?: -1, target.column ?: -1).navigate(true)
+            }
+        }
+
+        private fun openExternalLinkInBrowser(href: String?) {
+            val serverUrl = serverManager.getServerUrl() ?: return
+            val target = OpenCodeServerProtocol.externalHttpUrl(href, serverUrl) ?: return
+            ApplicationManager.getApplication().executeOnPooledThread {
+                BrowserUtil.browse(target)
             }
         }
 
@@ -821,6 +873,22 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
             ) ?: return
             browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
             fileLinkScriptScheduled = true
+        }
+
+        private fun applyExternalLinkNavigation(enabled: Boolean) {
+            val serverUrl = serverManager.getServerUrl() ?: return
+            if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)) return
+            externalLinkScriptScheduled = false
+            if (!enabled) {
+                browser.cefBrowser.reload()
+                return
+            }
+            val script = OpenCodeServerProtocol.buildExternalLinkHandlerScript(
+                enabled = true,
+                openExternalCallback = openExternalLinkQuery.inject("href"),
+            ) ?: return
+            browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
+            externalLinkScriptScheduled = true
         }
 
         private fun injectCompactLayoutEarly() {

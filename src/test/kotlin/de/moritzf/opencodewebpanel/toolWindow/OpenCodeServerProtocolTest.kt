@@ -325,6 +325,45 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun buildExternalLinkHandlerScriptInterceptsOnlyExternalHttpLinks() {
+        val script = OpenCodeServerProtocol.buildExternalLinkHandlerScript(
+            enabled = true,
+            openExternalCallback = "window.intellijOpenExternal(href)",
+        )!!
+
+        assertTrue(script.contains("window.__opencodeIntellijExternalLinksInstalled"))
+        assertTrue(script.contains("event.target.closest('a')"))
+        assertTrue(script.contains("url.protocol !== 'http:' && url.protocol !== 'https:'"))
+        assertTrue(script.contains("url.origin === window.location.origin"))
+        assertTrue(script.contains("window.__opencodeIntellijNativeWindowOpen"))
+        assertTrue(script.contains("window.open = function(url, target, features)"))
+        assertTrue(script.contains("event.preventDefault()"))
+        assertTrue(script.contains("event.stopImmediatePropagation()"))
+        assertTrue(script.contains("window.intellijOpenExternal(href)"))
+    }
+
+    @Test
+    fun buildExternalLinkHandlerScriptIsMissingWhenDisabled() {
+        assertNull(OpenCodeServerProtocol.buildExternalLinkHandlerScript(enabled = false, openExternalCallback = "callback(href)"))
+    }
+
+    @Test
+    fun buildExternalLinkHandlerScriptIsMissingWithoutCallback() {
+        assertNull(OpenCodeServerProtocol.buildExternalLinkHandlerScript(enabled = true, openExternalCallback = null))
+    }
+
+    @Test
+    fun externalHttpUrlAllowsOnlyHttpLinksOutsideOpenCodeOrigin() {
+        val serverUrl = "http://127.0.0.1:4096"
+
+        assertEquals("https://example.com/docs", OpenCodeServerProtocol.externalHttpUrl("https://example.com/docs", serverUrl))
+        assertEquals("http://example.com/docs", OpenCodeServerProtocol.externalHttpUrl(" http://example.com/docs ", serverUrl))
+        assertNull(OpenCodeServerProtocol.externalHttpUrl("http://127.0.0.1:4096/docs", serverUrl))
+        assertNull(OpenCodeServerProtocol.externalHttpUrl("/docs", serverUrl))
+        assertNull(OpenCodeServerProtocol.externalHttpUrl("mailto:test@example.com", serverUrl))
+    }
+
+    @Test
     fun buildRestoreOpenCodeLocalStorageScriptIsMissingWithoutSnapshot() {
         assertNull(OpenCodeServerProtocol.buildRestoreOpenCodeLocalStorageScript(null))
         assertNull(OpenCodeServerProtocol.buildRestoreOpenCodeLocalStorageScript("{}"))

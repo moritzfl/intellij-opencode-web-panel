@@ -109,6 +109,24 @@ internal object OpenCodeServerProtocol {
         return OpenCodeBrowserSnippets.buildFileLinkHandlerScript(projectBasePath, enabled, openFileCallback)
     }
 
+    fun buildExternalLinkHandlerScript(enabled: Boolean, openExternalCallback: String?): String? {
+        return OpenCodeBrowserSnippets.buildExternalLinkHandlerScript(enabled, openExternalCallback)
+    }
+
+    fun externalHttpUrl(href: String?, serverUrl: String): String? {
+        val text = href?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        return try {
+            val uri = URI(text)
+            val scheme = uri.scheme?.lowercase()
+            if (scheme != "http" && scheme != "https") return null
+            if (uri.host.isNullOrBlank()) return null
+            if (shouldSendBasicAuthHeader(serverUrl, text)) return null
+            uri.toString()
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     fun isOpenFileLinkRequest(requestUrl: String?): Boolean {
         if (requestUrl == null) return false
         return try {

@@ -102,6 +102,11 @@ class OpenCodeSettingsStateTest {
     }
 
     @Test
+    fun openExternalLinksInBrowserIsEnabledByDefault() {
+        assertEquals(true, OpenCodeSettingsState().openExternalLinksInBrowser)
+    }
+
+    @Test
     fun chatFileDropIsEnabledByDefault() {
         assertEquals(true, OpenCodeSettingsState().enableChatFileDrop)
     }

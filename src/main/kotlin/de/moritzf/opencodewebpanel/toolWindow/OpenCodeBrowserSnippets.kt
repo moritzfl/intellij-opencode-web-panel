@@ -247,6 +247,59 @@ internal object OpenCodeBrowserSnippets {
         return html.trimIndent()
     }
 
+    fun buildExternalLinkHandlerScript(enabled: Boolean, openExternalCallback: String?): String? {
+        if (!enabled || openExternalCallback == null) return null
+        @Language("JavaScript")
+        val script = """
+            (() => {
+              if (window.__opencodeIntellijExternalLinksInstalled) return;
+              window.__opencodeIntellijExternalLinksInstalled = true;
+              const externalHttpUrl = (rawHref, baseHref) => {
+                if (!rawHref || rawHref.trim().startsWith('#')) return '';
+                let url;
+                try {
+                  url = new URL(rawHref, baseHref || window.location.href);
+                } catch (_) {
+                  return '';
+                }
+                if (url.protocol !== 'http:' && url.protocol !== 'https:') return '';
+                if (url.origin === window.location.origin) return '';
+                return url.href;
+              };
+              const openExternal = (href) => {
+                try {
+                  $openExternalCallback;
+                } catch (error) {
+                  if (window.console && window.console.warn) {
+                    window.console.warn('Failed to forward external link to IntelliJ', error);
+                  }
+                }
+              };
+              const nativeWindowOpen = window.open;
+              window.__opencodeIntellijNativeWindowOpen = nativeWindowOpen;
+              window.open = function(url, target, features) {
+                const href = externalHttpUrl(typeof url === 'string' ? url : String(url == null ? '' : url));
+                if (href) {
+                  openExternal(href);
+                  return null;
+                }
+                return nativeWindowOpen ? nativeWindowOpen.apply(window, arguments) : null;
+              };
+              document.addEventListener('click', (event) => {
+                if (event.defaultPrevented) return;
+                const link = event.target && event.target.closest ? event.target.closest('a') : null;
+                if (!link) return;
+                const href = externalHttpUrl(link.getAttribute('href'), link.href);
+                if (!href) return;
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                openExternal(href);
+              }, true);
+            })();
+        """
+        return script.trimIndent()
+    }
+
     fun buildSystemNotificationBridgeScript(enabled: Boolean, notificationCallback: String?): String? {
         if (!enabled || notificationCallback == null) return null
         @Language("JavaScript")

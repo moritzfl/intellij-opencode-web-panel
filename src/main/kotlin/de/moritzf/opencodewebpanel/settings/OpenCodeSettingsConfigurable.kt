@@ -18,6 +18,8 @@ import com.intellij.ui.dsl.builder.AlignX
 import com.intellij.ui.dsl.builder.RightGap
 import com.intellij.ui.dsl.builder.panel
 import com.intellij.util.ui.UIUtil
+import de.moritzf.opencodewebpanel.toolWindow.OpenCodeServerLifecycleState
+import de.moritzf.opencodewebpanel.toolWindow.OpenCodeServerLifecycleListener
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.toolWindow.SharedOpenCodeServerManager
 import java.awt.Toolkit
@@ -67,8 +69,20 @@ class OpenCodeSettingsConfigurable : Configurable {
         toolTipText = "Auto-detect opencode and fill the path"
         accessibleContext.accessibleName = "Detect OpenCode path"
     }
+    private val restartServerButton = JButton("Restart Server", AllIcons.Actions.Restart).apply {
+        toolTipText = "Stop and restart the local OpenCode server"
+        accessibleContext.accessibleName = "Restart OpenCode server"
+    }
+    private val viewServerLogButton = JButton("View Server Log", AllIcons.Actions.Show).apply {
+        toolTipText = "Show recent OpenCode server output"
+        accessibleContext.accessibleName = "View OpenCode server log"
+    }
+    private val serverStatusLabel = JBLabel().apply {
+        toolTipText = "Current OpenCode server status"
+    }
     private val openMostRecentConversationCheckBox = JBCheckBox("Open the most recent conversation for the project on startup")
     private val openFileLinksInIdeCheckBox = JBCheckBox("Open local file links in the IDE")
+    private val openExternalLinksInBrowserCheckBox = JBCheckBox("Open external HTTP links in the system browser")
     private val enableCodeNavigationCheckBox = JBCheckBox("Enable click-to-navigate on code references in chat")
     private val enableChatFileDropCheckBox = JBCheckBox("Enable file drag and drop into chat")
     private val forceCompactLayoutCheckBox = JBCheckBox("Lock to compact view")
@@ -93,6 +107,7 @@ class OpenCodeSettingsConfigurable : Configurable {
     private var savedPassword: String? = null
     private var passwordLoading = false
     private var passwordLoadError: String? = null
+    private var lifecycleConnection: com.intellij.util.messages.MessageBusConnection? = null
 
     override fun getDisplayName(): String = "OpenCode Web Panel"
 
@@ -116,6 +131,8 @@ class OpenCodeSettingsConfigurable : Configurable {
             updatePasswordHint()
         }
         detectBinaryButton.addActionListener { detectBinaryPath() }
+        restartServerButton.addActionListener { restartServer() }
+        viewServerLogButton.addActionListener { showServerLog() }
 
         val serverSetupPanel = panel {
             buttonsGroup("Binary:") {
@@ -155,6 +172,13 @@ class OpenCodeSettingsConfigurable : Configurable {
             row {
                 cell(hintLabel)
             }
+            row {
+                cell(serverStatusLabel)
+            }
+            row {
+                cell(restartServerButton).gap(RightGap.SMALL)
+                cell(viewServerLogButton)
+            }
         }
         val uiSettingsPanel = panel {
             row("Zoom:") {
@@ -168,6 +192,10 @@ class OpenCodeSettingsConfigurable : Configurable {
             row {
                 cell(openFileLinksInIdeCheckBox)
                     .comment("Open markdown links that point to workspace-relative, absolute, or file: paths in IntelliJ.")
+            }
+            row {
+                cell(openExternalLinksInBrowserCheckBox)
+                    .comment("Open http:// and https:// links outside the local OpenCode app in the system browser instead of navigating the embedded panel.")
             }
             indent {
                 row {
@@ -185,7 +213,7 @@ class OpenCodeSettingsConfigurable : Configurable {
             }
             row {
                 cell(syncThemeWithIdeCheckBox)
-                    .comment("Set OpenCode's color scheme to light or dark when the IntelliJ theme changes.")
+                    .comment("Patches the browser's prefers-color-scheme media query to match the IntelliJ theme. Only affects OpenCode when its color scheme is set to System.")
             }
             row {
                 cell(suppressProjectSwitchPromptsCheckBox)
@@ -205,6 +233,7 @@ class OpenCodeSettingsConfigurable : Configurable {
             addTab("OpenCode UI Settings", uiSettingsPanel)
         }
         reset()
+        subscribeToLifecycleChanges()
         return panel!!
     }
 
@@ -218,6 +247,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         val binaryPathModified = binaryPath() != settings.binaryPath.trim()
         val uiSettingsModified = openMostRecentConversationCheckBox.isSelected != settings.openMostRecentConversationOnStartup ||
             openFileLinksInIdeCheckBox.isSelected != settings.openFileLinksInIde ||
+            openExternalLinksInBrowserCheckBox.isSelected != settings.openExternalLinksInBrowser ||
             enableCodeNavigationCheckBox.isSelected != settings.enableCodeNavigation ||
             enableChatFileDropCheckBox.isSelected != settings.enableChatFileDrop ||
             forceCompactLayoutCheckBox.isSelected != settings.forceCompactLayout ||
@@ -238,6 +268,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         val oldBinaryPath = settings.binaryPath.trim()
         val oldUiZoomPercent = OpenCodeSettingsState.sanitizeUiZoomPercent(settings.uiZoomPercent)
         val oldOpenFileLinksInIde = settings.openFileLinksInIde
+        val oldOpenExternalLinksInBrowser = settings.openExternalLinksInBrowser
         val oldEnableCodeNavigation = settings.enableCodeNavigation
         val oldForceCompactLayout = settings.forceCompactLayout
         val oldSyncThemeWithIde = settings.syncThemeWithIde
@@ -262,6 +293,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         settings.binaryPath = nextBinaryPath
         settings.openMostRecentConversationOnStartup = openMostRecentConversationCheckBox.isSelected
         settings.openFileLinksInIde = openFileLinksInIdeCheckBox.isSelected
+        settings.openExternalLinksInBrowser = openExternalLinksInBrowserCheckBox.isSelected
         settings.enableCodeNavigation = enableCodeNavigationCheckBox.isSelected
         settings.enableChatFileDrop = enableChatFileDropCheckBox.isSelected
         settings.forceCompactLayout = forceCompactLayoutCheckBox.isSelected
@@ -290,6 +322,11 @@ class OpenCodeSettingsConfigurable : Configurable {
             ApplicationManager.getApplication().messageBus
                 .syncPublisher(OpenCodeSettingsListener.TOPIC)
                 .fileLinkNavigationChanged(settings.openFileLinksInIde)
+        }
+        if (oldOpenExternalLinksInBrowser != settings.openExternalLinksInBrowser) {
+            ApplicationManager.getApplication().messageBus
+                .syncPublisher(OpenCodeSettingsListener.TOPIC)
+                .externalLinkNavigationChanged(settings.openExternalLinksInBrowser)
         }
         if (oldEnableCodeNavigation != settings.enableCodeNavigation) {
             ApplicationManager.getApplication().messageBus
@@ -332,6 +369,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         binaryPathField.text = settings.binaryPath.trim()
         openMostRecentConversationCheckBox.isSelected = settings.openMostRecentConversationOnStartup
         openFileLinksInIdeCheckBox.isSelected = settings.openFileLinksInIde
+        openExternalLinksInBrowserCheckBox.isSelected = settings.openExternalLinksInBrowser
         enableCodeNavigationCheckBox.isSelected = settings.enableCodeNavigation
         enableChatFileDropCheckBox.isSelected = settings.enableChatFileDrop
         forceCompactLayoutCheckBox.isSelected = settings.forceCompactLayout
@@ -344,11 +382,39 @@ class OpenCodeSettingsConfigurable : Configurable {
         updatePasswordHint()
         updatePortControls()
         updateBinaryControls()
+        updateServerStatus()
     }
 
     override fun disposeUIResources() {
         panel = null
         passwordLoadGeneration.incrementAndGet()
+        lifecycleConnection?.disconnect()
+        lifecycleConnection = null
+    }
+
+    private fun subscribeToLifecycleChanges() {
+        lifecycleConnection?.disconnect()
+        lifecycleConnection = ApplicationManager.getApplication().messageBus.connect().also { connection ->
+            connection.subscribe(
+                OpenCodeServerLifecycleListener.TOPIC,
+                object : OpenCodeServerLifecycleListener {
+                    override fun stateChanged(state: OpenCodeServerLifecycleState) {
+                        ApplicationManager.getApplication().invokeLater {
+                            if (panel != null) updateServerStatus()
+                        }
+                    }
+                },
+            )
+        }
+    }
+
+    private fun updateServerStatus() {
+        val state = SharedOpenCodeServerManager.getInstance().getLifecycleState()
+        serverStatusLabel.text = formatLifecycleStatusText(state)
+    }
+
+    private fun formatLifecycleStatusText(state: OpenCodeServerLifecycleState): String {
+        return "<html><span style=\"color: ${state.colorHex}\">&#9679;</span>&nbsp;Server: ${state.displayLabel}</html>"
     }
 
     private fun password(): String? = String(passwordField.password).trim().ifBlank { null }
@@ -461,6 +527,27 @@ class OpenCodeSettingsConfigurable : Configurable {
         }
         binaryPathField.text = detectedPath
         updateBinaryControls()
+    }
+
+    private fun restartServer() {
+        SharedOpenCodeServerManager.getInstance().stopServer()
+    }
+
+    private fun showServerLog() {
+        val log = SharedOpenCodeServerManager.getInstance().getServerLog()
+        val text = if (log.isBlank()) "No server log available yet." else log
+        try {
+            val tempFile = java.io.File.createTempFile("opencode-server-log-", ".txt")
+            tempFile.deleteOnExit()
+            java.nio.file.Files.write(tempFile.toPath(), text.toByteArray(java.nio.charset.StandardCharsets.UTF_8))
+            java.awt.Desktop.getDesktop().open(tempFile)
+        } catch (e: Exception) {
+            Messages.showErrorDialog(
+                panel ?: restartServerButton,
+                "Could not open server log: ${e.message ?: e::class.java.simpleName}",
+                "Open Server Log",
+            )
+        }
     }
 
     private fun updatePasswordHint() {
