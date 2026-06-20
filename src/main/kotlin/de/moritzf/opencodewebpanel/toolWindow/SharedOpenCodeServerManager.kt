@@ -47,13 +47,19 @@ class SharedOpenCodeServerManager : Disposable {
 
     fun ensureStarted(project: Project, projectBasePath: String?, onStarted: () -> Unit, onFailed: () -> Unit) {
         val basePath = rememberBasePath(projectBasePath)
+        val callback = StartCallback(onStarted, onFailed)
 
         val url = getServerUrl()
-        if (url != null && checkServerResponding(url)) {
-            setServerRunning(true)
-            recordStartSuccess()
-            startPeriodicCheck()
-            ApplicationManager.getApplication().invokeLater(onStarted)
+        if (url != null) {
+            val validationId = synchronized(lock) {
+                pendingStarts.add(callback)
+                if (starting) return
+                starting = true
+                ++startSequence
+            }
+            ApplicationManager.getApplication().executeOnPooledThread {
+                validateExistingServerOrStart(project, basePath, url, validationId)
+            }
             return
         }
 
@@ -65,7 +71,7 @@ class SharedOpenCodeServerManager : Disposable {
         }
 
         val startId = synchronized(lock) {
-            pendingStarts.add(StartCallback(onStarted, onFailed))
+            pendingStarts.add(callback)
             if (starting) return
             starting = true
             ++startSequence
@@ -73,6 +79,18 @@ class SharedOpenCodeServerManager : Disposable {
 
         destroyCurrentProcess()
         startOpenCodeServer(project, basePath, startId)
+    }
+
+    private fun validateExistingServerOrStart(project: Project, projectBasePath: String?, url: String, startId: Long) {
+        if (!isCurrentStart(startId)) return
+        if (checkServerResponding(url)) {
+            setServerRunningForStart(startId)
+            finishStart(startId, success = true)
+            return
+        }
+        if (!isCurrentStart(startId)) return
+        destroyCurrentProcess()
+        startOpenCodeServer(project, projectBasePath, startId)
     }
 
     fun isServerRunning(): Boolean = synchronized(lock) { serverRunning }
