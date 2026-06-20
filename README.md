@@ -1,7 +1,5 @@
 # OpenCode Web Panel
 
-[![Build](https://github.com/moritzfl/intellij-opencode-web-panel/actions/workflows/build.yml/badge.svg)](https://github.com/moritzfl/intellij-opencode-web-panel/actions/workflows/build.yml)
-
 ## Overview
 
 OpenCode Web Panel is a JetBrains IDE plugin for IntelliJ IDEA, PyCharm, WebStorm, and other JetBrains IDEs. It provides a convenient embedded Web UI integration for OpenCode.
