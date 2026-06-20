@@ -1,9 +1,5 @@
 # OpenCode Web Panel
 
-Use the official OpenCode web UI without leaving your JetBrains IDE.
-
-OpenCode Web Panel embeds OpenCode in a right-side tool window in IntelliJ IDEA, PyCharm, WebStorm, and other JetBrains IDEs. You get the familiar OpenCode experience next to your editor, plus a few IDE-native conveniences that make it easier to move between chat, files, and code.
-
 ![OpenCode Web Panel running inside a JetBrains IDE](docs/opencode-web-panel.png)
 
 <!-- Plugin description -->
