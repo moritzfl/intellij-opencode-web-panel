@@ -4,6 +4,12 @@
     <name>OpenCode Web Panel</name>
     <vendor>moritzfl</vendor>
 
+    <description>
+        OpenCode Web Panel embeds the OpenCode web app directly inside JetBrains IDEs. It starts and authenticates a local OpenCode server, opens the current IDE project, preserves selected OpenCode UI state, and adds IDE-native file-link, code-reference, and file-drop integrations.
+
+        Browser-side integrations are configurable safeguards, so users can disable them if an OpenCode update conflicts with the embedded panel behavior. This is an unofficial community plugin for OpenCode and is not affiliated with OpenCode.
+    </description>
+
     <depends>com.intellij.modules.platform</depends>
 
     <extensions defaultExtensionNs="com.intellij">

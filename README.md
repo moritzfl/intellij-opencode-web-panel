@@ -10,23 +10,26 @@ OpenCode Web Panel is a JetBrains IDE plugin for IntelliJ IDEA, PyCharm, WebStor
 
 <!-- Plugin description -->
 
-## Plugin Description
+OpenCode Web Panel embeds the OpenCode web app directly inside JetBrains IDEs, keeping the panel focused on the IDE project where it was opened.
 
 > **Note:** This is an unofficial plugin for OpenCode, maintained by the community and not affiliated with OpenCode.
 
-### Features
+### What it does
 
-- **Auto-start Service** - Click the sidebar icon to automatically check and start the OpenCode server
-- **Smart Monitoring** - Periodically check server status and automatically restart failed services
-- **Auto Cleanup** - Automatically stop OpenCode service when IDE exits to release resources
-- **Sidebar Integration** - Display the plugin icon in the right sidebar, then click it to access the OpenCode Web Panel
-- **Project Sync** - Automatically load the Web interface for the current project
+- **Embedded OpenCode UI** - Opens OpenCode in a right-side IDE tool window instead of a separate browser tab.
+- **Project-coupled startup** - Starts `opencode serve` on `127.0.0.1`, authenticates automatically, and opens the current IDE project.
+- **Secure local auth** - Generates and stores the server password in IntelliJ Password Safe.
+- **State persistence** - Preserves selected OpenCode UI state across IDE restarts and dynamic port changes.
+- **IDE navigation** - Opens local file links and clickable code references from chat directly in the IDE.
+- **Chat file drop** - Lets you drag files from the IDE or desktop into the embedded OpenCode chat.
+- **Panel-friendly layout** - Keeps the OpenCode UI in compact mode and suppresses cross-project approval prompts by default.
+- **Configurable safeguards** - Browser-side integrations can be disabled independently if an OpenCode update conflicts with them.
 
-### Use Cases
+### Good for
 
-- Developers who need to use the OpenCode Web UI in JetBrains IDEs
-- Developers who need to automatically manage OpenCode servers
-- Users who want to quickly view the AI assistant interface during coding
+- Working with OpenCode without leaving IntelliJ IDEA, PyCharm, WebStorm, or other JetBrains IDEs.
+- Keeping OpenCode sessions aligned with the project currently open in the IDE.
+- Using OpenCode-generated file paths, code references, and attachments as IDE-native actions.
 <!-- Plugin description end -->
 
 ## Installation
