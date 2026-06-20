@@ -37,6 +37,7 @@ Project-specific guidance for future implementation work.
 - Fixed port mode sanitizes values to `1..65535`; default fixed port is `4096`.
 - Basic auth username is `opencode`.
 - If settings that affect the process change, stop the running server and let the next tool-window load restart it.
+- OpenCode uses a `(min-width: 768px)` `matchMedia` query to switch between compact (mobile) and wide (desktop) layouts. To force compact layout, `window.matchMedia` must be patched **before** the SPA bundle loads (`onLoadStart`), so `createMediaQuery` initializes with `matches: false` and never subscribes to real resize events.
 
 ## Settings
 
@@ -46,6 +47,16 @@ Project-specific guidance for future implementation work.
 - Binary setting supports `Auto detect` and `OpenCode path`.
 - `OpenCode path` includes a `Detect` action that fills an editable path value from auto-detection.
 - Password controls support edit, generate, show, and copy.
+
+## UI Behavior Settings and Injection Safeguards
+
+- UI behavior settings (`openFileLinksInIde`, `enableChatFileDrop`, `forceCompactLayout`) control **browser-side JavaScript/CSS injection** into the embedded OpenCode web app.
+- These settings are not cosmetic toggles — they are **safeguards**. If an injected behavior breaks the OpenCode UI or conflicts with an OpenCode update, the user must be able to disable it and get back to a clean, unmodified web app.
+- When a setting is **disabled**, no JavaScript or CSS for that behavior may be generated, injected, or scheduled. Script builders must return `null` when disabled.
+- When a setting is toggled **off** at runtime, the browser must reload the page so any previously installed listeners, patches, or stylesheets are fully removed — never inject a "disable" script.
+- When a setting is toggled **on** at runtime, inject the script immediately and/or reload the page as needed.
+- Settings that require early injection (before the SPA bundle loads, e.g. `forceCompactLayout`) must be injected in `onLoadStart`, not `onLoadEnd`.
+- Add unit tests verifying that disabled builders return `null` and that toggling triggers a reload, not a "disable" injection.
 
 ## Verification
 
