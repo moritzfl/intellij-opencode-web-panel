@@ -133,15 +133,19 @@ internal object OpenCodeServerProtocol {
             (() => {
               if (window.__opencodeIntellijCodeNavInstalled) return;
               window.__opencodeIntellijCodeNavInstalled = true;
-              const hasExtension = /\.[a-zA-Z][a-zA-Z0-9]{0,3}$/;
+              const hasExtension = /\.[a-zA-Z][a-zA-Z0-9]{0,8}(?::\d+)?$/;
+              const hasPathSeparator = /[\\/]/;
               const isPascalCase = /^[A-Z][a-zA-Z0-9_]*$/;
+              const isQualifiedClass = /^(?:[a-zA-Z_][a-zA-Z0-9_]*\.)+[A-Z][a-zA-Z0-9_]*$/;
               const isSnakeCase = /^[a-z][a-z0-9]*_[a-z0-9_]+$/;
               const looksLikeCodeRef = (text) => {
                 const t = text.trim();
-                if (t.length < 2 || t.length > 128) return false;
+                if (t.length < 2 || t.length > 512) return false;
                 if (t.includes(' ') || t.includes('\n')) return false;
                 if (hasExtension.test(t)) return true;
+                if (hasPathSeparator.test(t) && /:\d+$/.test(t)) return true;
                 if (isPascalCase.test(t)) return true;
+                if (isQualifiedClass.test(t)) return true;
                 if (isSnakeCase.test(t) && /[A-Z]/.test(t)) return true;
                 return false;
               };
@@ -399,12 +403,31 @@ internal object OpenCodeServerProtocol {
         } else {
             text to null
         }
-        val fileName = pathPart.substringAfterLast('/').ifBlank { return null }
-        val extension = fileName.substringAfterLast('.', "").ifBlank { null }
-        return ParsedCodeReference(fileName = fileName, extension = extension, line = line, hasPath = pathPart.contains('/'))
+        val hasPath = pathPart.contains('/') || pathPart.contains('\\')
+        val qualifiedName = if (!hasPath && Regex("^(?:[a-zA-Z_][a-zA-Z0-9_]*\\.)+[A-Z][a-zA-Z0-9_]*$").matches(pathPart)) {
+            pathPart
+        } else {
+            null
+        }
+        val fileName = if (qualifiedName != null) {
+            qualifiedName.substringAfterLast('.')
+        } else {
+            pathPart.substringAfterLast('/').substringAfterLast('\\')
+        }.ifBlank { return null }
+        val extension = if (qualifiedName == null) fileName.substringAfterLast('.', "").ifBlank { null } else null
+        return ParsedCodeReference(
+            path = pathPart,
+            qualifiedName = qualifiedName,
+            fileName = fileName,
+            extension = extension,
+            line = line,
+            hasPath = hasPath,
+        )
     }
 
     data class ParsedCodeReference(
+        val path: String,
+        val qualifiedName: String?,
         val fileName: String,
         val extension: String?,
         val line: Int?,

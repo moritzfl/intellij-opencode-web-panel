@@ -413,6 +413,8 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("window.__opencodeIntellijCodeNavInstalled"))
         assertTrue(script.contains("event.target.closest('code')"))
         assertTrue(script.contains("hasExtension"))
+        assertTrue(script.contains("hasPathSeparator"))
+        assertTrue(script.contains("isQualifiedClass"))
         assertTrue(script.contains("isPascalCase"))
         assertTrue(script.contains("window.intellijOpenCodeRef(ref)"))
     }
@@ -422,6 +424,8 @@ class OpenCodeServerProtocolTest {
         val ref = OpenCodeServerProtocol.parseCodeReference("Main.kt")!!
 
         assertEquals("Main.kt", ref.fileName)
+        assertEquals("Main.kt", ref.path)
+        assertNull(ref.qualifiedName)
         assertEquals("kt", ref.extension)
         assertNull(ref.line)
         assertFalse(ref.hasPath)
@@ -432,6 +436,8 @@ class OpenCodeServerProtocolTest {
         val ref = OpenCodeServerProtocol.parseCodeReference("src/Main.kt:42")!!
 
         assertEquals("Main.kt", ref.fileName)
+        assertEquals("src/Main.kt", ref.path)
+        assertNull(ref.qualifiedName)
         assertEquals("kt", ref.extension)
         assertEquals(41, ref.line)
         assertTrue(ref.hasPath)
@@ -442,8 +448,34 @@ class OpenCodeServerProtocolTest {
         val ref = OpenCodeServerProtocol.parseCodeReference("OpenCodeServerProtocol")!!
 
         assertEquals("OpenCodeServerProtocol", ref.fileName)
+        assertEquals("OpenCodeServerProtocol", ref.path)
+        assertNull(ref.qualifiedName)
         assertNull(ref.extension)
         assertNull(ref.line)
+    }
+
+    @Test
+    fun parseCodeReferenceHandlesQualifiedClassName() {
+        val ref = OpenCodeServerProtocol.parseCodeReference("de.moritzf.opencodewebpanel.toolWindow.OpenCodeServerProtocol")!!
+
+        assertEquals("OpenCodeServerProtocol", ref.fileName)
+        assertEquals("de.moritzf.opencodewebpanel.toolWindow.OpenCodeServerProtocol", ref.path)
+        assertEquals("de.moritzf.opencodewebpanel.toolWindow.OpenCodeServerProtocol", ref.qualifiedName)
+        assertNull(ref.extension)
+        assertNull(ref.line)
+        assertFalse(ref.hasPath)
+    }
+
+    @Test
+    fun parseCodeReferenceHandlesAbsolutePathWithLine() {
+        val ref = OpenCodeServerProtocol.parseCodeReference("/tmp/project/src/Main.kt:42")!!
+
+        assertEquals("Main.kt", ref.fileName)
+        assertEquals("/tmp/project/src/Main.kt", ref.path)
+        assertNull(ref.qualifiedName)
+        assertEquals("kt", ref.extension)
+        assertEquals(41, ref.line)
+        assertTrue(ref.hasPath)
     }
 
     @Test
