@@ -392,12 +392,13 @@ internal object OpenCodeBrowserSnippets {
                 return text;
               };
               document.addEventListener('click', (event) => {
+                if (event.defaultPrevented) return;
                 const code = event.target && event.target.closest ? event.target.closest('code') : null;
                 if (!code) return;
                 const ref = extractRef(code);
                 if (!ref) return;
                 event.preventDefault();
-                event.stopPropagation();
+                event.stopImmediatePropagation();
                 $openCodeCallback;
               }, true);
             })();
@@ -614,12 +615,13 @@ internal object OpenCodeBrowserSnippets {
                 return !href.startsWith('//') && !href.includes('://');
               };
               document.addEventListener('click', (event) => {
+                if (event.defaultPrevented) return;
                 const link = event.target && event.target.closest ? event.target.closest('a') : null;
                 if (!link) return;
                 const rawHref = link.getAttribute('href') || inferredFileLink(link);
                 if (!isLocalFileLink(rawHref)) return;
                 event.preventDefault();
-                event.stopPropagation();
+                event.stopImmediatePropagation();
                 $openFileAction;
               }, true);
             })();

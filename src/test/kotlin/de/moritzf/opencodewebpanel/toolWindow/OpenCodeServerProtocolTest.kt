@@ -478,7 +478,21 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("hasPathSeparator"))
         assertTrue(script.contains("isQualifiedClass"))
         assertTrue(script.contains("isPascalCase"))
+        assertTrue(script.contains("if (event.defaultPrevented) return"))
+        assertTrue(script.contains("event.stopImmediatePropagation()"))
         assertTrue(script.contains("window.intellijOpenCodeRef(ref)"))
+    }
+
+    @Test
+    fun buildFileLinkHandlerScriptStopsAlreadyHandledClicks() {
+        val script = OpenCodeServerProtocol.buildFileLinkHandlerScript(
+            "/tmp/project",
+            enabled = true,
+            openFileCallback = "window.intellijOpenFile(rawHref)",
+        )!!
+
+        assertTrue(script.contains("if (event.defaultPrevented) return"))
+        assertTrue(script.contains("event.stopImmediatePropagation()"))
     }
 
     @Test
