@@ -5,6 +5,7 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
 import com.intellij.openapi.options.Configurable
+import com.intellij.openapi.options.ConfigurationException
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.ui.TextFieldWithBrowseButton
 import com.intellij.ui.components.JBLabel
@@ -217,6 +218,7 @@ class OpenCodeSettingsConfigurable : Configurable {
     }
 
     override fun apply() {
+        val passwordForApply = passwordForApply()
         val settings = OpenCodeSettingsState.getInstance()
         val oldPortMode = settings.portModeValue()
         val oldFixedPort = OpenCodeSettingsState.sanitizePort(settings.fixedPort)
@@ -230,7 +232,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         val oldEnableSystemNotifications = settings.enableSystemNotifications
         val oldPassword = savedPassword
 
-        val nextPassword = password() ?: OpenCodePasswordStore.getInstance().generatePasswordForEditing()
+        val nextPassword = passwordForApply ?: OpenCodePasswordStore.getInstance().generatePasswordForEditing()
         OpenCodePasswordStore.getInstance().saveBlocking(nextPassword)
         savedPassword = nextPassword
         setPasswordText(nextPassword)
@@ -328,6 +330,27 @@ class OpenCodeSettingsConfigurable : Configurable {
     }
 
     private fun password(): String? = String(passwordField.password).trim().ifBlank { null }
+
+    private fun passwordForApply(): String? {
+        passwordLoadGeneration.incrementAndGet()
+        val currentPassword = password()
+        passwordLoading = false
+        if (currentPassword != null) {
+            passwordLoadError = null
+            return currentPassword
+        }
+        val result = runCatching { OpenCodePasswordStore.getInstance().loadFreshBlocking() }
+        val loadedPassword = result.getOrElse { error ->
+            passwordLoadError = "Could not load password from secure storage: ${error.message ?: error::class.java.simpleName}"
+            updatePasswordHint()
+            throw ConfigurationException(passwordLoadError!!)
+        }
+        savedPassword = loadedPassword
+        setPasswordText(loadedPassword)
+        passwordLoadError = null
+        updatePasswordHint()
+        return loadedPassword
+    }
 
     private fun selectedPortMode(): OpenCodePortMode {
         return if (fixedPortRadioButton.isSelected) OpenCodePortMode.FIXED else OpenCodePortMode.AUTO
