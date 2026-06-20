@@ -70,6 +70,22 @@ class OpenCodePluginTest : BasePlatformTestCase() {
         assertNull(service.getCheckScheduledFuture())
     }
 
+    fun testSharedServerManagerForceKillsStubbornServerProcess() {
+        val service = SharedOpenCodeServerManager.getInstance()
+        val process = StubbornProcess()
+        service.setServerProcess(process)
+        service.setServerRunning(true)
+        service.setServerUrl("http://127.0.0.1:60482")
+        service.setServerPassword("secret-password")
+
+        service.stopServer()
+
+        assertTrue(process.destroyed)
+        assertTrue(process.forceDestroyed)
+        assertFalse(process.isAlive)
+        assertNull(service.getServerProcess())
+    }
+
     override fun tearDown() {
         try {
             SharedOpenCodeServerManager.getInstance().stopServer()
@@ -104,6 +120,46 @@ class OpenCodePluginTest : BasePlatformTestCase() {
         override fun destroy() {
             destroyed = true
             alive = false
+        }
+
+        override fun isAlive(): Boolean = alive
+    }
+
+    private class StubbornProcess : Process() {
+        var destroyed = false
+            private set
+        var forceDestroyed = false
+            private set
+        private var alive = true
+
+        override fun getOutputStream(): OutputStream = ByteArrayOutputStream()
+
+        override fun getInputStream(): InputStream = ByteArrayInputStream(ByteArray(0))
+
+        override fun getErrorStream(): InputStream = ByteArrayInputStream(ByteArray(0))
+
+        override fun waitFor(): Int {
+            alive = false
+            return 0
+        }
+
+        override fun waitFor(timeout: Long, unit: TimeUnit): Boolean {
+            return !alive
+        }
+
+        override fun exitValue(): Int {
+            if (alive) throw IllegalThreadStateException("Process is still alive")
+            return 0
+        }
+
+        override fun destroy() {
+            destroyed = true
+        }
+
+        override fun destroyForcibly(): Process {
+            forceDestroyed = true
+            alive = false
+            return this
         }
 
         override fun isAlive(): Boolean = alive

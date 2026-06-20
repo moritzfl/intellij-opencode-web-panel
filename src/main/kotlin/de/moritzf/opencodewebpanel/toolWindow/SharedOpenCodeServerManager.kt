@@ -19,6 +19,8 @@ import java.util.concurrent.TimeUnit
 class SharedOpenCodeServerManager : Disposable {
 
     companion object {
+        private const val PROCESS_STOP_TIMEOUT_SECONDS = 5L
+
         fun getInstance(): SharedOpenCodeServerManager {
             return ApplicationManager.getApplication().getService(SharedOpenCodeServerManager::class.java)
         }
@@ -396,10 +398,24 @@ class SharedOpenCodeServerManager : Disposable {
     }
 
     private fun destroyProcess(process: Process?) {
-        if (process?.isAlive == true) {
-            process.destroy()
-            thisLogger().info("OpenCode server stopped")
+        if (process?.isAlive != true) return
+
+        process.destroy()
+        try {
+            if (!process.waitFor(PROCESS_STOP_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                thisLogger().warn("OpenCode server did not stop gracefully, killing it")
+                process.destroyForcibly()
+                if (!process.waitFor(PROCESS_STOP_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                    thisLogger().warn("OpenCode server process is still alive after force kill")
+                }
+            }
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+            if (process.isAlive) {
+                process.destroyForcibly()
+            }
         }
+        thisLogger().info("OpenCode server stopped")
     }
 
     private fun setStartedProcess(startId: Long, process: Process, password: String): Boolean {
