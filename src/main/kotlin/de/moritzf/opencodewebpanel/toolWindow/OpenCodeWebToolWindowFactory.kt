@@ -69,6 +69,8 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
         private var compactLayoutScriptScheduled = false
         private var projectSwitchPromptSuppressionScriptScheduled = false
         private var systemNotificationBridgeScriptScheduled = false
+        @Volatile
+        private var disposed = false
         private val resourceRequestHandler = object : CefResourceRequestHandlerAdapter() {
             override fun onBeforeResourceLoad(browser: CefBrowser?, frame: CefFrame?, request: CefRequest?): Boolean {
                 val password = serverManager.getServerPassword() ?: return false
@@ -246,6 +248,7 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
             if (regularFiles.isEmpty()) return false
 
             ApplicationManager.getApplication().executeOnPooledThread {
+                if (isContentDisposed()) return@executeOnPooledThread
                 val payloads = regularFiles.mapNotNull { droppedFilePayload(it) }
                 val script = OpenCodeServerProtocol.buildDispatchDroppedFilesScript(
                     payloads,
@@ -254,7 +257,7 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
                 val rootUrl = serverManager.getServerUrl()?.let { OpenCodeServerProtocol.buildServerRootUrl(it) }
                     ?: return@executeOnPooledThread
                 ApplicationManager.getApplication().invokeLater {
-                    if (!project.isDisposed && OpenCodeSettingsState.getInstance().enableChatFileDrop) {
+                    if (!isContentDisposed() && OpenCodeSettingsState.getInstance().enableChatFileDrop) {
                         browser.cefBrowser.executeJavaScript(script, rootUrl, 0)
                     }
                 }
@@ -277,15 +280,18 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
         fun getContent() = browser.component
 
         fun checkAndLoadContent() {
+            if (isContentDisposed()) return
             serverManager.ensureStarted(
                 project,
                 project.basePath,
+                callbackActive = { !isContentDisposed() },
                 onStarted = { loadProjectPage() },
                 onFailed = { showErrorInBrowser() },
             )
         }
 
         private fun loadProjectPage() {
+            if (isContentDisposed()) return
             val serverUrl = serverManager.getServerUrl() ?: return
             val url = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
 
@@ -703,10 +709,16 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
         }
 
         private fun showErrorInBrowser() {
+            if (isContentDisposed()) return
             browser.loadHTML(OpenCodeServerProtocol.buildStartupErrorPageHtml(OpenCodeSettingsState.getInstance().executablePath()))
         }
 
+        private fun isContentDisposed(): Boolean {
+            return disposed || project.isDisposed
+        }
+
         override fun dispose() {
+            disposed = true
             openProjectAlarm.cancelAllRequests()
             Disposer.dispose(browser)
         }

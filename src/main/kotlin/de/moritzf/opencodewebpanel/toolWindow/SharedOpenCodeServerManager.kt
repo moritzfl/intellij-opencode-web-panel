@@ -25,6 +25,7 @@ class SharedOpenCodeServerManager : Disposable {
     }
 
     private data class StartCallback(
+        val isActive: () -> Boolean,
         val onStarted: () -> Unit,
         val onFailed: () -> Unit,
     )
@@ -45,9 +46,15 @@ class SharedOpenCodeServerManager : Disposable {
         Thread(runnable, "OpenCode-Server-Checker").apply { isDaemon = true }
     }
 
-    fun ensureStarted(project: Project, projectBasePath: String?, onStarted: () -> Unit, onFailed: () -> Unit) {
+    fun ensureStarted(
+        project: Project,
+        projectBasePath: String?,
+        callbackActive: () -> Boolean = { true },
+        onStarted: () -> Unit,
+        onFailed: () -> Unit,
+    ) {
         val basePath = rememberBasePath(projectBasePath)
-        val callback = StartCallback(onStarted, onFailed)
+        val callback = StartCallback(callbackActive, onStarted, onFailed)
 
         val url = getServerUrl()
         if (url != null) {
@@ -327,6 +334,7 @@ class SharedOpenCodeServerManager : Disposable {
 
         ApplicationManager.getApplication().invokeLater {
             callbacks.forEach { callback ->
+                if (!callback.isActive()) return@forEach
                 if (success) callback.onStarted() else callback.onFailed()
             }
         }
