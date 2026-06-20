@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-06-21
+
+### Fixed
+
+- Wait for IntelliJ MCP server readiness without declaring an MCP plugin dependency.
+- Remove plugin verifier warnings from MCP integration and tool-window registration.
+- Show click-to-navigate as a first-class setting independent of local file-link handling.
+
 ## [1.0.0] - 2026-06-20
 
 ### Added
@@ -16,5 +24,6 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.0.0...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.0.1...HEAD
+[1.0.1]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.0.0...1.0.1
 [1.0.0]: https://github.com/moritzfl/intellij-opencode-web-panel/commits/1.0.0
