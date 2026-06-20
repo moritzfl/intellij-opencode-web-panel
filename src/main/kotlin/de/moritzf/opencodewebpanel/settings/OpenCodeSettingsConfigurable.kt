@@ -72,6 +72,7 @@ class OpenCodeSettingsConfigurable : Configurable {
     private val enableChatFileDropCheckBox = JBCheckBox("Enable file drag and drop into chat")
     private val forceCompactLayoutCheckBox = JBCheckBox("Lock to compact view")
     private val suppressProjectSwitchPromptsCheckBox = JBCheckBox("Suppress project-switch prompts")
+    private val enableSystemNotificationsCheckBox = JBCheckBox("Forward OpenCode system notifications to the IDE")
     private val uiZoomSpinner = JSpinner(
         SpinnerNumberModel(
             OpenCodeSettingsState.DEFAULT_UI_ZOOM_PERCENT,
@@ -183,6 +184,10 @@ class OpenCodeSettingsConfigurable : Configurable {
                 cell(suppressProjectSwitchPromptsCheckBox)
                     .comment("Hide OpenCode notifications that ask this panel to switch to another session or project for approval.")
             }
+            row {
+                cell(enableSystemNotificationsCheckBox)
+                    .comment("Show OpenCode browser notifications as IntelliJ notifications and route notification clicks back to OpenCode.")
+            }
         }
         panel = JBTabbedPane().apply {
             addTab("OpenCode Server Setup", serverSetupPanel)
@@ -206,6 +211,7 @@ class OpenCodeSettingsConfigurable : Configurable {
             enableChatFileDropCheckBox.isSelected != settings.enableChatFileDrop ||
             forceCompactLayoutCheckBox.isSelected != settings.forceCompactLayout ||
             suppressProjectSwitchPromptsCheckBox.isSelected != settings.suppressProjectSwitchPrompts ||
+            enableSystemNotificationsCheckBox.isSelected != settings.enableSystemNotifications ||
             uiZoomPercent() != OpenCodeSettingsState.sanitizeUiZoomPercent(settings.uiZoomPercent)
         return passwordModified || portModeModified || fixedPortModified || binaryModeModified || binaryPathModified || uiSettingsModified
     }
@@ -221,6 +227,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         val oldEnableCodeNavigation = settings.enableCodeNavigation
         val oldForceCompactLayout = settings.forceCompactLayout
         val oldSuppressProjectSwitchPrompts = settings.suppressProjectSwitchPrompts
+        val oldEnableSystemNotifications = settings.enableSystemNotifications
         val oldPassword = savedPassword
 
         val nextPassword = password() ?: OpenCodePasswordStore.getInstance().generatePasswordForEditing()
@@ -244,6 +251,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         settings.enableChatFileDrop = enableChatFileDropCheckBox.isSelected
         settings.forceCompactLayout = forceCompactLayoutCheckBox.isSelected
         settings.suppressProjectSwitchPrompts = suppressProjectSwitchPromptsCheckBox.isSelected
+        settings.enableSystemNotifications = enableSystemNotificationsCheckBox.isSelected
         settings.uiZoomPercent = nextUiZoomPercent
         fixedPortField.text = nextFixedPort.toString()
         binaryPathField.text = nextBinaryPath
@@ -281,6 +289,11 @@ class OpenCodeSettingsConfigurable : Configurable {
                 .syncPublisher(OpenCodeSettingsListener.TOPIC)
                 .projectSwitchPromptSuppressionChanged(settings.suppressProjectSwitchPrompts)
         }
+        if (oldEnableSystemNotifications != settings.enableSystemNotifications) {
+            ApplicationManager.getApplication().messageBus
+                .syncPublisher(OpenCodeSettingsListener.TOPIC)
+                .systemNotificationsChanged(settings.enableSystemNotifications)
+        }
     }
 
     override fun reset() {
@@ -301,6 +314,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         enableChatFileDropCheckBox.isSelected = settings.enableChatFileDrop
         forceCompactLayoutCheckBox.isSelected = settings.forceCompactLayout
         suppressProjectSwitchPromptsCheckBox.isSelected = settings.suppressProjectSwitchPrompts
+        enableSystemNotificationsCheckBox.isSelected = settings.enableSystemNotifications
         uiZoomSpinner.value = OpenCodeSettingsState.sanitizeUiZoomPercent(settings.uiZoomPercent)
         loadPasswordField()
         updatePasswordHint()

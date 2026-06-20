@@ -1,5 +1,10 @@
 package de.moritzf.opencodewebpanel.toolWindow
 
+import com.intellij.notification.Notification
+import com.intellij.notification.NotificationAction
+import com.intellij.notification.NotificationGroupManager
+import com.intellij.notification.NotificationType
+import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.thisLogger
@@ -48,13 +53,14 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
 
     override fun shouldBeAvailable(project: Project) = true
 
-    class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
+    class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposable {
 
         private val project = toolWindow.project
         private val browser = JBCefBrowser()
         private val openFileLinkQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
         private val openCodeReferenceQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
         private val openCodeLocalStorageQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
+        private val systemNotificationQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
         private val serverManager = SharedOpenCodeServerManager.getInstance()
         private val openProjectAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
         private var openProjectScriptScheduled = false
@@ -62,6 +68,7 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
         private var codeNavigationScriptScheduled = false
         private var compactLayoutScriptScheduled = false
         private var projectSwitchPromptSuppressionScriptScheduled = false
+        private var systemNotificationBridgeScriptScheduled = false
         private val resourceRequestHandler = object : CefResourceRequestHandlerAdapter() {
             override fun onBeforeResourceLoad(browser: CefBrowser?, frame: CefFrame?, request: CefRequest?): Boolean {
                 val password = serverManager.getServerPassword() ?: return false
@@ -125,6 +132,7 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
                     codeNavigationScriptScheduled = false
                     compactLayoutScriptScheduled = false
                     projectSwitchPromptSuppressionScriptScheduled = false
+                    systemNotificationBridgeScriptScheduled = false
                     restoreOpenCodeLocalStorage(frame.url)
                     installOpenCodeLocalStorageSync(frame.url)
                     injectCompactLayoutEarly()
@@ -141,6 +149,7 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
                 scheduleFileLinkScript()
                 scheduleCodeNavigationScript()
                 scheduleProjectSwitchPromptSuppressionScript()
+                scheduleSystemNotificationBridgeScript()
             }
         }
         init {
@@ -158,6 +167,12 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
             }
             openCodeLocalStorageQuery.addHandler { snapshot ->
                 syncOpenCodeLocalStorage(snapshot)
+                null
+            }
+            systemNotificationQuery.addHandler { payload ->
+                if (OpenCodeSettingsState.getInstance().enableSystemNotifications) {
+                    showSystemNotification(payload)
+                }
                 null
             }
             browser.jbCefClient.addRequestHandler(authHandler, browser.cefBrowser)
@@ -187,6 +202,10 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
 
                     override fun projectSwitchPromptSuppressionChanged(enabled: Boolean) {
                         applyProjectSwitchPromptSuppression(enabled)
+                    }
+
+                    override fun systemNotificationsChanged(enabled: Boolean) {
+                        applySystemNotifications(enabled)
                     }
                 },
             )
@@ -275,12 +294,14 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
             fileLinkScriptScheduled = false
             compactLayoutScriptScheduled = false
             projectSwitchPromptSuppressionScriptScheduled = false
+            systemNotificationBridgeScriptScheduled = false
             openProjectAlarm.cancelAllRequests()
             applyBrowserZoom()
             browser.loadURL(url)
             scheduleOpenProjectScript()
             scheduleFileLinkScript()
             scheduleProjectSwitchPromptSuppressionScript()
+            scheduleSystemNotificationBridgeScript()
         }
 
         private fun applyBrowserZoom(zoomPercent: Int = OpenCodeSettingsState.getInstance().uiZoomPercent) {
@@ -371,6 +392,53 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
             if (settings.openCodeLocalStorageSnapshot != sanitized) {
                 settings.openCodeLocalStorageSnapshot = sanitized
             }
+        }
+
+        private fun showSystemNotification(payload: String?) {
+            val openCodeNotification = OpenCodeServerProtocol.parseSystemNotificationPayload(payload) ?: return
+            ApplicationManager.getApplication().invokeLater {
+                if (project.isDisposed || !OpenCodeSettingsState.getInstance().enableSystemNotifications) return@invokeLater
+                val serverUrl = serverManager.getServerUrl() ?: return@invokeLater
+                if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)) return@invokeLater
+                val group = NotificationGroupManager.getInstance()
+                    .getNotificationGroup(OpenCodeServerProtocol.NOTIFICATION_GROUP_ID)
+                    ?: return@invokeLater
+                val title = notificationText(openCodeNotification.title, 200)
+                val body = notificationText(openCodeNotification.body, 1000)
+                val ideNotification = group.createNotification(title, body, NotificationType.INFORMATION)
+                ideNotification.addAction(object : NotificationAction("Open in OpenCode") {
+                    override fun actionPerformed(e: AnActionEvent, notification: Notification) {
+                        notification.expire()
+                        if (project.isDisposed) return
+                        toolWindow.activate({
+                            if (!project.isDisposed) {
+                                browser.component.requestFocusInWindow()
+                                triggerSystemNotificationClick(openCodeNotification.id)
+                            }
+                        }, true)
+                    }
+                })
+                ideNotification.notify(project)
+            }
+        }
+
+        private fun triggerSystemNotificationClick(notificationId: String) {
+            val serverUrl = serverManager.getServerUrl() ?: return
+            if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)) return
+            val script = OpenCodeServerProtocol.buildSystemNotificationClickScript(notificationId)
+            browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
+        }
+
+        private fun notificationText(value: String, maxLength: Int): String {
+            return value
+                .replace(Regex("\\s+"), " ")
+                .trim()
+                .take(maxLength)
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;")
+                .replace("'", "&#39;")
         }
 
         private fun openCodeReferenceInIde(ref: String?) {
@@ -512,6 +580,33 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
             }
         }
 
+        private fun scheduleSystemNotificationBridgeScript() {
+            if (systemNotificationBridgeScriptScheduled) return
+            if (!OpenCodeSettingsState.getInstance().enableSystemNotifications) return
+
+            val serverUrl = serverManager.getServerUrl() ?: return
+            val script = OpenCodeServerProtocol.buildSystemNotificationBridgeScript(
+                enabled = true,
+                notificationCallback = systemNotificationQuery.inject("payload"),
+            ) ?: return
+            val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
+            systemNotificationBridgeScriptScheduled = true
+
+            listOf(250, 750, 1500, 3000, 5000, 8000, 12000).forEach { delayMillis ->
+                openProjectAlarm.addRequest(
+                    {
+                        if (!project.isDisposed &&
+                            OpenCodeSettingsState.getInstance().enableSystemNotifications &&
+                            OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)
+                        ) {
+                            browser.cefBrowser.executeJavaScript(script, rootUrl, 0)
+                        }
+                    },
+                    delayMillis,
+                )
+            }
+        }
+
         private fun applyCodeNavigation(enabled: Boolean) {
             val serverUrl = serverManager.getServerUrl() ?: return
             if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)) return
@@ -539,6 +634,22 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
             val script = OpenCodeServerProtocol.buildProjectSwitchPromptSuppressionScript(enabled = true) ?: return
             browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
             projectSwitchPromptSuppressionScriptScheduled = true
+        }
+
+        private fun applySystemNotifications(enabled: Boolean) {
+            val serverUrl = serverManager.getServerUrl() ?: return
+            if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)) return
+            systemNotificationBridgeScriptScheduled = false
+            if (!enabled) {
+                browser.cefBrowser.reload()
+                return
+            }
+            val script = OpenCodeServerProtocol.buildSystemNotificationBridgeScript(
+                enabled = true,
+                notificationCallback = systemNotificationQuery.inject("payload"),
+            ) ?: return
+            browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
+            systemNotificationBridgeScriptScheduled = true
         }
 
         private fun applyFileLinkNavigation(enabled: Boolean) {

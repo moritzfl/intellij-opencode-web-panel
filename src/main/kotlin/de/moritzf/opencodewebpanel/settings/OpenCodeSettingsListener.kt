@@ -13,6 +13,8 @@ interface OpenCodeSettingsListener {
 
     fun projectSwitchPromptSuppressionChanged(enabled: Boolean) {}
 
+    fun systemNotificationsChanged(enabled: Boolean) {}
+
     companion object {
         val TOPIC: Topic<OpenCodeSettingsListener> = Topic.create(
             "OpenCode Web Panel settings",

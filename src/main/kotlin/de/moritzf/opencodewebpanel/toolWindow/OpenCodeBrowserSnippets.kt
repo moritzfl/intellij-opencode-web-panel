@@ -247,6 +247,116 @@ internal object OpenCodeBrowserSnippets {
         return html.trimIndent()
     }
 
+    fun buildSystemNotificationBridgeScript(enabled: Boolean, notificationCallback: String?): String? {
+        if (!enabled || notificationCallback == null) return null
+        @Language("JavaScript")
+        val script = """
+            (() => {
+              if (window.__opencodeIntellijNotificationBridgeInstalled) return;
+              window.__opencodeIntellijNotificationBridgeInstalled = true;
+              window.__opencodeIntellijNativeNotification = window.Notification;
+              const notifications = new Map();
+              let nextNotificationId = 1;
+              const encode = (value) => encodeURIComponent(String(value == null ? '' : value));
+              const sendToIde = (notification) => {
+                const payload = [
+                  notification.__opencodeIntellijNotificationId,
+                  notification.title,
+                  notification.body,
+                ].map(encode).join('\n');
+                try {
+                  $notificationCallback;
+                } catch (error) {
+                  if (window.console && window.console.warn) {
+                    window.console.warn('Failed to forward OpenCode notification to IntelliJ', error);
+                  }
+                }
+              };
+              const createEvent = (type, notification) => ({
+                type,
+                target: notification,
+                currentTarget: notification,
+                defaultPrevented: false,
+                preventDefault() { this.defaultPrevented = true; },
+                stopPropagation() {},
+              });
+              class IntellijNotification {
+                constructor(title, options = {}) {
+                  this.__opencodeIntellijNotificationId = String(nextNotificationId++);
+                  this.title = String(title == null ? '' : title);
+                  this.body = String(options && options.body != null ? options.body : '');
+                  this.icon = String(options && options.icon != null ? options.icon : '');
+                  this.tag = String(options && options.tag != null ? options.tag : '');
+                  this.data = options && 'data' in options ? options.data : null;
+                  this.onclick = null;
+                  this.onclose = null;
+                  this.onerror = null;
+                  this.onshow = null;
+                  this.__listeners = new Map();
+                  notifications.set(this.__opencodeIntellijNotificationId, this);
+                  window.setTimeout(() => {
+                    sendToIde(this);
+                    this.dispatchEvent(createEvent('show', this));
+                  }, 0);
+                }
+                close() {
+                  notifications.delete(this.__opencodeIntellijNotificationId);
+                  this.dispatchEvent(createEvent('close', this));
+                }
+                addEventListener(type, listener) {
+                  if (typeof listener !== 'function') return;
+                  const listeners = this.__listeners.get(type) || [];
+                  listeners.push(listener);
+                  this.__listeners.set(type, listeners);
+                }
+                removeEventListener(type, listener) {
+                  const listeners = this.__listeners.get(type) || [];
+                  this.__listeners.set(type, listeners.filter((candidate) => candidate !== listener));
+                }
+                dispatchEvent(event) {
+                  const handler = this['on' + event.type];
+                  if (typeof handler === 'function') handler.call(this, event);
+                  for (const listener of this.__listeners.get(event.type) || []) {
+                    listener.call(this, event);
+                  }
+                  return !event.defaultPrevented;
+                }
+                static requestPermission(callback) {
+                  const promise = Promise.resolve('granted');
+                  if (typeof callback === 'function') promise.then(callback);
+                  return promise;
+                }
+              }
+              Object.defineProperty(IntellijNotification, 'permission', { configurable: true, enumerable: true, get: () => 'granted' });
+              Object.defineProperty(IntellijNotification, 'maxActions', { configurable: true, enumerable: true, get: () => 0 });
+              window.__opencodeIntellijNotificationClick = (notificationId) => {
+                const notification = notifications.get(String(notificationId));
+                if (!notification) return;
+                notification.dispatchEvent(createEvent('click', notification));
+              };
+              try {
+                Object.defineProperty(window, 'Notification', { configurable: true, writable: true, value: IntellijNotification });
+              } catch (_) {
+                window.Notification = IntellijNotification;
+              }
+            })();
+        """
+        return script.trimIndent()
+    }
+
+    fun buildSystemNotificationClickScript(notificationId: String): String {
+        val id = escapeJavaScript(notificationId)
+        @Language("JavaScript")
+        val script = """
+            (() => {
+              if (typeof window.focus === 'function') window.focus();
+              const click = window.__opencodeIntellijNotificationClick;
+              if (typeof click === 'function') click('$id');
+            })();
+        """
+        return script.trimIndent()
+    }
+
     fun buildCodeNavigationScript(enabled: Boolean, openCodeCallback: String?): String? {
         if (!enabled || openCodeCallback == null) return null
         @Language("JavaScript")

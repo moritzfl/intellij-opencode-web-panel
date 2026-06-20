@@ -15,6 +15,7 @@
     <extensions defaultExtensionNs="com.intellij">
         <applicationConfigurable id="opencode.web.panel.settings" parentId="tools" displayName="OpenCode Web Panel" instance="de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable"/>
         <applicationService serviceImplementation="de.moritzf.opencodewebpanel.toolWindow.SharedOpenCodeServerManager"/>
+        <notificationGroup id="OpenCode Web Panel" displayType="BALLOON"/>
         <toolWindow factoryClass="de.moritzf.opencodewebpanel.toolWindow.OpenCodeWebToolWindowFactory" id="OpenCode Web Panel" anchor="right" icon="/icons/opencode.svg"/>
     </extensions>
 </idea-plugin>

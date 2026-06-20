@@ -23,6 +23,7 @@ internal object OpenCodeServerProtocol {
     const val OPEN_CODE_LOCAL_STORAGE_PREFIX = "opencode."
     const val OPEN_CODE_DEFAULT_SERVER_URL_STORAGE_KEY = "opencode.settings.dat:defaultServerUrl"
     const val OPEN_CODE_THEME_ID_STORAGE_KEY = "opencode-theme-id"
+    const val NOTIFICATION_GROUP_ID = "OpenCode Web Panel"
 
     private val secureRandom = SecureRandom()
     fun buildServerRootUrl(serverUrl: String): String {
@@ -73,6 +74,14 @@ internal object OpenCodeServerProtocol {
 
     fun buildCodeNavigationScript(enabled: Boolean, openCodeCallback: String?): String? {
         return OpenCodeBrowserSnippets.buildCodeNavigationScript(enabled, openCodeCallback)
+    }
+
+    fun buildSystemNotificationBridgeScript(enabled: Boolean, notificationCallback: String?): String? {
+        return OpenCodeBrowserSnippets.buildSystemNotificationBridgeScript(enabled, notificationCallback)
+    }
+
+    fun buildSystemNotificationClickScript(notificationId: String): String {
+        return OpenCodeBrowserSnippets.buildSystemNotificationClickScript(notificationId)
     }
 
     fun buildProjectSwitchPromptSuppressionScript(enabled: Boolean): String? {
@@ -201,6 +210,22 @@ internal object OpenCodeServerProtocol {
         val extension: String?,
         val line: Int?,
         val hasPath: Boolean,
+    )
+
+    fun parseSystemNotificationPayload(payload: String?): SystemNotificationPayload? {
+        val parts = payload?.split('\n', limit = 3) ?: return null
+        if (parts.size < 2) return null
+        val id = decodeUrlParameter(parts[0])?.trim().orEmpty()
+        val title = decodeUrlParameter(parts[1])?.trim().orEmpty()
+        val body = parts.getOrNull(2)?.let(::decodeUrlParameter)?.trim().orEmpty()
+        if (id.isBlank() || title.isBlank()) return null
+        return SystemNotificationPayload(id = id, title = title, body = body)
+    }
+
+    data class SystemNotificationPayload(
+        val id: String,
+        val title: String,
+        val body: String,
     )
 
     private fun looksLikeAbsoluteFilesystemPath(value: String): Boolean {
@@ -508,6 +533,10 @@ internal object OpenCodeServerProtocol {
 
     private fun encodeUrlParameter(value: String): String {
         return URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20")
+    }
+
+    private fun decodeUrlParameter(value: String): String? {
+        return runCatching { URLDecoder.decode(value, StandardCharsets.UTF_8) }.getOrNull()
     }
 
     private fun buildOrigin(serverUrl: String): String {

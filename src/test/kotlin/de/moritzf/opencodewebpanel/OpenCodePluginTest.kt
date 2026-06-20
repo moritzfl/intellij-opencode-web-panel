@@ -37,6 +37,8 @@ class OpenCodePluginTest : BasePlatformTestCase() {
         assertTrue(pluginXml.contains("serviceImplementation=\"de.moritzf.opencodewebpanel.toolWindow.SharedOpenCodeServerManager\""))
         assertTrue(pluginXml.contains("applicationConfigurable"))
         assertTrue(pluginXml.contains("instance=\"de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable\""))
+        assertTrue(pluginXml.contains("notificationGroup"))
+        assertTrue(pluginXml.contains("displayType=\"BALLOON\""))
         assertFalse(pluginXml.contains("postStartupActivity"))
     }
 

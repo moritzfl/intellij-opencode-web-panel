@@ -122,6 +122,11 @@ class OpenCodeSettingsStateTest {
     }
 
     @Test
+    fun systemNotificationsAreEnabledByDefault() {
+        assertEquals(true, OpenCodeSettingsState().enableSystemNotifications)
+    }
+
+    @Test
     fun openCodeLocalStorageSnapshotUsesEmptyObjectByDefault() {
         assertEquals("{}", OpenCodeSettingsState().openCodeLocalStorageSnapshot)
     }
