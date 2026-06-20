@@ -1,4 +1,4 @@
-package com.github.xausky.opencodewebui.toolWindow
+package de.moritzf.opencodewebpanel.toolWindow
 
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
@@ -7,6 +7,8 @@ import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.progress.Task.Backgroundable
 import com.intellij.openapi.project.Project
+import de.moritzf.opencodewebpanel.settings.OpenCodePasswordStore
+import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.util.concurrent.CountDownLatch
@@ -189,8 +191,11 @@ class SharedOpenCodeServerManager : Disposable {
     private fun runOpenCodeServerStart(projectBasePath: String?, startId: Long) {
         var process: Process? = null
         try {
-            val password = OpenCodeServerProtocol.generateServerPassword()
-            val processBuilder = OpenCodeServerProtocol.createProcessBuilder(projectBasePath, password)
+            val password = OpenCodePasswordStore.getInstance().ensurePasswordBlocking()
+            val settings = OpenCodeSettingsState.getInstance()
+            val port = settings.portArgument()
+            val executable = settings.executablePath()
+            val processBuilder = OpenCodeServerProtocol.createProcessBuilder(projectBasePath, password, port, executable)
             process = processBuilder.start()
 
             if (!setStartedProcess(startId, process, password)) {

@@ -1,13 +1,14 @@
 <!-- Plugin Configuration File. Read more: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
 <idea-plugin>
-    <id>com.github.xausky.opencodewebui</id>
-    <name>opencode-web-ui</name>
-    <vendor>xausky</vendor>
+    <id>de.moritzf.opencodewebpanel</id>
+    <name>OpenCode Web Panel</name>
+    <vendor>moritzfl</vendor>
 
     <depends>com.intellij.modules.platform</depends>
 
     <extensions defaultExtensionNs="com.intellij">
-        <applicationService serviceImplementation="com.github.xausky.opencodewebui.toolWindow.SharedOpenCodeServerManager"/>
-        <toolWindow factoryClass="com.github.xausky.opencodewebui.toolWindow.OpenCodeWebToolWindowFactory" id="OpenCodeWeb" anchor="right" icon="/icons/opencode.svg" displayName="OpenCodeWeb"/>
+        <applicationConfigurable id="opencode.web.panel.settings" parentId="tools" displayName="OpenCode Web Panel" instance="de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable"/>
+        <applicationService serviceImplementation="de.moritzf.opencodewebpanel.toolWindow.SharedOpenCodeServerManager"/>
+        <toolWindow factoryClass="de.moritzf.opencodewebpanel.toolWindow.OpenCodeWebToolWindowFactory" id="OpenCodeWebPanel" anchor="right" icon="/icons/opencode.svg" displayName="OpenCode Web Panel"/>
     </extensions>
 </idea-plugin>

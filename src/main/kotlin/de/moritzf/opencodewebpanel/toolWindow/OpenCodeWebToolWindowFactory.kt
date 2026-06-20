@@ -1,4 +1,4 @@
-package com.github.xausky.opencodewebui.toolWindow
+package de.moritzf.opencodewebpanel.toolWindow
 
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager

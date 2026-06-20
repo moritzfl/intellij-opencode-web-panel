@@ -1,7 +1,8 @@
-package com.github.xausky.opencodewebui
+package de.moritzf.opencodewebpanel
 
-import com.github.xausky.opencodewebui.toolWindow.OpenCodeWebToolWindowFactory
-import com.github.xausky.opencodewebui.toolWindow.SharedOpenCodeServerManager
+import de.moritzf.opencodewebpanel.toolWindow.OpenCodeWebToolWindowFactory
+import de.moritzf.opencodewebpanel.toolWindow.SharedOpenCodeServerManager
+import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable
 import com.intellij.openapi.project.DumbAware
 import com.intellij.testFramework.TestDataPath
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
@@ -26,14 +27,25 @@ class OpenCodePluginTest : BasePlatformTestCase() {
     fun testPluginDescriptorRegistersRightSidebarToolWindowAndSharedServerManager() {
         val pluginXml = javaClass.classLoader.getResource("META-INF/plugin.xml")!!.readText()
 
-        assertTrue(pluginXml.contains("id=\"OpenCodeWeb\""))
+        assertTrue(pluginXml.contains("<id>de.moritzf.opencodewebpanel</id>"))
+        assertTrue(pluginXml.contains("<name>OpenCode Web Panel</name>"))
+        assertTrue(pluginXml.contains("id=\"OpenCodeWebPanel\""))
         assertTrue(pluginXml.contains("anchor=\"right\""))
         assertTrue(pluginXml.contains("icon=\"/icons/opencode.svg\""))
-        assertTrue(pluginXml.contains("displayName=\"OpenCodeWeb\""))
-        assertTrue(pluginXml.contains("factoryClass=\"com.github.xausky.opencodewebui.toolWindow.OpenCodeWebToolWindowFactory\""))
+        assertTrue(pluginXml.contains("displayName=\"OpenCode Web Panel\""))
+        assertTrue(pluginXml.contains("factoryClass=\"de.moritzf.opencodewebpanel.toolWindow.OpenCodeWebToolWindowFactory\""))
         assertTrue(pluginXml.contains("applicationService"))
-        assertTrue(pluginXml.contains("serviceImplementation=\"com.github.xausky.opencodewebui.toolWindow.SharedOpenCodeServerManager\""))
+        assertTrue(pluginXml.contains("serviceImplementation=\"de.moritzf.opencodewebpanel.toolWindow.SharedOpenCodeServerManager\""))
+        assertTrue(pluginXml.contains("applicationConfigurable"))
+        assertTrue(pluginXml.contains("instance=\"de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable\""))
         assertFalse(pluginXml.contains("postStartupActivity"))
+    }
+
+    fun testSettingsConfigurableIsRegistered() {
+        val pluginXml = javaClass.classLoader.getResource("META-INF/plugin.xml")!!.readText()
+
+        assertTrue(pluginXml.contains("displayName=\"OpenCode Web Panel\""))
+        assertEquals("OpenCode Web Panel", OpenCodeSettingsConfigurable().displayName)
     }
 
     fun testSharedServerManagerStopsServerAndClearsLifecycleState() {

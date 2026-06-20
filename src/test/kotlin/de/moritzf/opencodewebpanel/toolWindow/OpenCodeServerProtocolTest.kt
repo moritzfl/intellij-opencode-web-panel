@@ -1,4 +1,4 @@
-package com.github.xausky.opencodewebui.toolWindow
+package de.moritzf.opencodewebpanel.toolWindow
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -24,16 +24,34 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun buildOpenCodeCommandUsesConfiguredFixedPort() {
+        assertEquals(
+            listOf("opencode", "serve", "--hostname", "127.0.0.1", "--port", "4096", "--print-logs"),
+            OpenCodeServerProtocol.buildOpenCodeCommand("4096"),
+        )
+    }
+
+    @Test
+    fun buildOpenCodeCommandUsesConfiguredExecutable() {
+        assertEquals(
+            listOf("/custom/bin/opencode", "serve", "--hostname", "127.0.0.1", "--port", "4096", "--print-logs"),
+            OpenCodeServerProtocol.buildOpenCodeCommand("4096", "/custom/bin/opencode"),
+        )
+    }
+
+    @Test
     fun createProcessBuilderSetsProjectDirectoryAndServerPassword() {
         val projectDirectory = Files.createTempDirectory("opencode-project")
         try {
             val processBuilder = OpenCodeServerProtocol.createProcessBuilder(
                 projectBasePath = projectDirectory.toString(),
                 password = "secret-password",
+                port = "4096",
+                executable = "/custom/bin/opencode",
                 path = "test-path",
             )
 
-            assertEquals(OpenCodeServerProtocol.buildOpenCodeCommand(), processBuilder.command())
+            assertEquals(OpenCodeServerProtocol.buildOpenCodeCommand("4096", "/custom/bin/opencode"), processBuilder.command())
             assertEquals(projectDirectory.toFile(), processBuilder.directory())
             assertTrue(processBuilder.redirectErrorStream())
             assertEquals("test-path", processBuilder.environment()["PATH"])
@@ -62,6 +80,72 @@ class OpenCodeServerProtocolTest {
             listOf("/custom/bin", "/usr/bin", "/bin").joinToString(File.pathSeparator),
             OpenCodeServerProtocol.resolvePath(currentPath, listOf("/usr/bin", "/bin")),
         )
+    }
+
+    @Test
+    fun resolvePathAddsExpandedWindowsPackageManagerLocations() {
+        val path = OpenCodeServerProtocol.resolvePath(
+            currentPath = "",
+            environment = mapOf(
+                "APPDATA" to "C:\\Users\\Alice\\AppData\\Roaming",
+                "LOCALAPPDATA" to "C:\\Users\\Alice\\AppData\\Local",
+                "USERPROFILE" to "C:\\Users\\Alice",
+                "PROGRAMDATA" to "C:\\ProgramData",
+                "NVM_HOME" to "C:\\Users\\Alice\\AppData\\Roaming\\nvm",
+            ),
+        )
+
+        assertTrue(path.contains("C:\\Users\\Alice\\AppData\\Roaming\\npm"))
+        assertTrue(path.contains("C:\\Users\\Alice\\AppData\\Local\\pnpm"))
+        assertTrue(path.contains("C:\\Users\\Alice\\scoop\\shims"))
+        assertTrue(path.contains("C:\\ProgramData\\chocolatey\\bin"))
+        assertFalse(path.contains("%APPDATA%"))
+        assertFalse(path.contains("%USERNAME%"))
+    }
+
+    @Test
+    fun detectExecutablePathFindsExecutableOnPath() {
+        val executableDirectory = Files.createTempDirectory("opencode-bin")
+        val executable = executableDirectory.resolve("opencode").toFile()
+        try {
+            executable.writeText("")
+            executable.setExecutable(true)
+
+            assertEquals(
+                executable.absolutePath,
+                OpenCodeServerProtocol.detectExecutablePath(path = executableDirectory.toString()),
+            )
+        } finally {
+            executable.delete()
+            executableDirectory.toFile().delete()
+        }
+    }
+
+    @Test
+    fun detectExecutablePathFindsWindowsCommandShimOnPath() {
+        val executableDirectory = Files.createTempDirectory("opencode-bin")
+        val executable = executableDirectory.resolve("opencode.cmd").toFile()
+        try {
+            executable.writeText("")
+
+            assertEquals(
+                executable.absolutePath,
+                OpenCodeServerProtocol.detectExecutablePath(path = executableDirectory.toString()),
+            )
+        } finally {
+            executable.delete()
+            executableDirectory.toFile().delete()
+        }
+    }
+
+    @Test
+    fun detectExecutablePathReturnsNullWhenExecutableIsMissing() {
+        val executableDirectory = Files.createTempDirectory("opencode-bin")
+        try {
+            assertNull(OpenCodeServerProtocol.detectExecutablePath(path = executableDirectory.toString()))
+        } finally {
+            executableDirectory.toFile().delete()
+        }
     }
 
     @Test

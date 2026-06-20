@@ -1,9 +1,10 @@
-package com.github.xausky.opencodewebui.toolWindow
+package de.moritzf.opencodewebpanel.toolWindow
 
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URLEncoder
+import java.nio.file.Files
 import java.nio.charset.StandardCharsets
 import java.security.SecureRandom
 import java.util.Base64
@@ -13,17 +14,9 @@ internal object OpenCodeServerProtocol {
     const val DYNAMIC_PORT = "0"
     const val CHECK_INTERVAL_SECONDS = 30L
     const val BASIC_AUTH_USERNAME = "opencode"
+    const val DEFAULT_EXECUTABLE = "opencode"
 
     private val secureRandom = SecureRandom()
-    private val commonExecutablePaths = listOf(
-        "/opt/homebrew/bin",
-        "/usr/local/bin",
-        "/usr/bin",
-        "/bin",
-        "/usr/sbin",
-        "/sbin",
-    )
-
     fun buildServerRootUrl(serverUrl: String): String {
         return serverUrl.trimEnd('/')
     }
@@ -136,15 +129,17 @@ internal object OpenCodeServerProtocol {
         return match?.groupValues?.get(1)?.trimEnd('/')
     }
 
-    fun buildOpenCodeCommand(): List<String> {
-        return listOf("opencode", "serve", "--hostname", HOST, "--port", DYNAMIC_PORT, "--print-logs")
+    fun buildOpenCodeCommand(port: String = DYNAMIC_PORT, executable: String = DEFAULT_EXECUTABLE): List<String> {
+        return listOf(executable.ifBlank { DEFAULT_EXECUTABLE }, "serve", "--hostname", HOST, "--port", port, "--print-logs")
     }
 
     fun createProcessBuilder(
         projectBasePath: String?,
         password: String,
+        port: String = DYNAMIC_PORT,
+        executable: String = DEFAULT_EXECUTABLE,
         path: String = resolvePath(),
-        command: List<String> = buildOpenCodeCommand(),
+        command: List<String> = buildOpenCodeCommand(port, executable),
     ): ProcessBuilder {
         val processBuilder = ProcessBuilder()
             .command(command)
@@ -191,12 +186,83 @@ internal object OpenCodeServerProtocol {
 
     fun resolvePath(
         currentPath: String = System.getenv("PATH").orEmpty(),
-        additionalPaths: List<String> = commonExecutablePaths,
+        additionalPaths: List<String>? = null,
+        environment: Map<String, String> = System.getenv(),
     ): String {
-        return (currentPath.split(File.pathSeparator) + additionalPaths)
+        return (currentPath.split(File.pathSeparator) + (additionalPaths ?: commonExecutablePaths(environment)))
             .filter { it.isNotBlank() }
             .distinct()
             .joinToString(File.pathSeparator)
+    }
+
+    fun detectExecutablePath(
+        executable: String = DEFAULT_EXECUTABLE,
+        path: String = resolvePath(),
+        pathSeparator: String = File.pathSeparator,
+    ): String? {
+        val command = executable.trim().takeIf { it.isNotBlank() } ?: return null
+        val commandFile = File(command)
+        if (commandFile.isAbsolute || command.contains('/') || command.contains('\\')) {
+            return commandFile.takeIf { it.isRunnableCommand() }?.absolutePath
+        }
+
+        return path.split(pathSeparator)
+            .asSequence()
+            .filter { it.isNotBlank() }
+            .flatMap { directory -> candidateExecutableNames(command).asSequence().map { File(directory, it) } }
+            .firstOrNull { it.isRunnableCommand() }
+            ?.absolutePath
+    }
+
+    private fun commonExecutablePaths(environment: Map<String, String>): List<String> {
+        val appData = environmentValue(environment, "APPDATA")
+        val localAppData = environmentValue(environment, "LOCALAPPDATA")
+        val userProfile = environmentValue(environment, "USERPROFILE")
+        val programData = environmentValue(environment, "PROGRAMDATA") ?: "C:\\ProgramData"
+        val nvmHome = environmentValue(environment, "NVM_HOME")
+        return listOfNotNull(
+            "/opt/homebrew/bin",
+            "/usr/local/bin",
+            "/usr/bin",
+            "/bin",
+            "/usr/sbin",
+            "/sbin",
+            "C:\\Program Files\\nodejs",
+            "C:\\Program Files (x86)\\nodejs",
+            appData?.windowsChild("npm"),
+            localAppData?.windowsChild("pnpm"),
+            localAppData?.windowsChild("Microsoft\\WindowsApps"),
+            localAppData?.windowsChild("Programs\\opencode"),
+            localAppData?.windowsChild("Volta\\bin"),
+            userProfile?.windowsChild(".bun\\bin"),
+            userProfile?.windowsChild("scoop\\shims"),
+            nvmHome,
+            programData.windowsChild("chocolatey\\bin"),
+        )
+    }
+
+    private fun environmentValue(environment: Map<String, String>, key: String): String? {
+        return environment.entries
+            .firstOrNull { it.key.equals(key, ignoreCase = true) }
+            ?.value
+            ?.takeIf { it.isNotBlank() }
+    }
+
+    private fun String.windowsChild(child: String): String = trimEnd('\\', '/') + "\\" + child
+
+    private fun candidateExecutableNames(executable: String): List<String> {
+        val lower = executable.lowercase()
+        val windowsExtensions = listOf(".cmd", ".exe", ".bat", ".ps1")
+        return (listOf(executable) + windowsExtensions.filterNot { lower.endsWith(it) }.map { executable + it }).distinct()
+    }
+
+    private fun File.isRunnableCommand(): Boolean {
+        return Files.isRegularFile(toPath()) && (Files.isExecutable(toPath()) || hasWindowsCommandExtension(name))
+    }
+
+    private fun hasWindowsCommandExtension(fileName: String): Boolean {
+        val lower = fileName.lowercase()
+        return lower.endsWith(".cmd") || lower.endsWith(".exe") || lower.endsWith(".bat") || lower.endsWith(".ps1")
     }
 
     fun encodeDirectory(directory: String): String {
