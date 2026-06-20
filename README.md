@@ -1,12 +1,12 @@
-# opencode-web-ui
+# OpenCode Web Panel
 
-![Build](https://github.com/xausky/opencode-web-ui/workflows/Build/badge.svg)
-[![Version](https://img.shields.io/jetbrains/plugin/v/30364-opencode-web-ui.svg)](https://plugins.jetbrains.com/plugin/30364-opencode-web-ui)
-[![Downloads](https://img.shields.io/jetbrains/plugin/d/30364-opencode-web-ui.svg)](https://plugins.jetbrains.com/plugin/30364-opencode-web-ui)
+[![Build](https://github.com/moritzfl/intellij-opencode-web-panel/actions/workflows/build.yml/badge.svg)](https://github.com/moritzfl/intellij-opencode-web-panel/actions/workflows/build.yml)
 
 ## Overview
 
-OpenCodeWeb is a JetBrains IDE plugin for IntelliJ IDEA, PyCharm, WebStorm, and other JetBrains IDEs. It provides a convenient embedded Web UI integration for OpenCode.
+OpenCode Web Panel is a JetBrains IDE plugin for IntelliJ IDEA, PyCharm, WebStorm, and other JetBrains IDEs. It provides a convenient embedded Web UI integration for OpenCode.
+
+![OpenCode Web Panel running inside a JetBrains IDE](docs/opencode-web-panel.png)
 
 <!-- Plugin description -->
 
@@ -19,12 +19,12 @@ OpenCodeWeb is a JetBrains IDE plugin for IntelliJ IDEA, PyCharm, WebStorm, and 
 - **Auto-start Service** - Click the sidebar icon to automatically check and start the OpenCode server
 - **Smart Monitoring** - Periodically check server status and automatically restart failed services
 - **Auto Cleanup** - Automatically stop OpenCode service when IDE exits to release resources
-- **Sidebar Integration** - Display plugin icon in the right sidebar, click to access OpenCode Web UI
+- **Sidebar Integration** - Display the plugin icon in the right sidebar, then click it to access the OpenCode Web Panel
 - **Project Sync** - Automatically load the Web interface for the current project
 
 ### Use Cases
 
-- Developers who need to use OpenCode Web UI in JetBrains IDE
+- Developers who need to use the OpenCode Web UI in JetBrains IDEs
 - Developers who need to automatically manage OpenCode servers
 - Users who want to quickly view the AI assistant interface during coding
 <!-- Plugin description end -->
@@ -33,19 +33,19 @@ OpenCodeWeb is a JetBrains IDE plugin for IntelliJ IDEA, PyCharm, WebStorm, and 
 
 - Install from the IDE plugin marketplace:
 
-  <kbd>Settings/Preferences</kbd> > <kbd>Plugins</kbd> > <kbd>Marketplace</kbd> > <kbd>Search "open code web"</kbd> >
+  <kbd>Settings/Preferences</kbd> > <kbd>Plugins</kbd> > <kbd>Marketplace</kbd> > <kbd>Search "OpenCode Web Panel"</kbd> >
   <kbd>Install</kbd>
 
 - Install from JetBrains Marketplace:
 
-  Visit [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/30364-opencode-web-ui) and install the plugin.
+  Visit the JetBrains Marketplace page for OpenCode Web Panel and install the plugin.
 
-  You can also download the [latest version](https://plugins.jetbrains.com/plugin/30364-opencode-web-ui/versions) from JetBrains Marketplace and install it with
+  You can also download the latest version from JetBrains Marketplace and install it with
   <kbd>Settings/Preferences</kbd> > <kbd>Plugins</kbd> > <kbd>Settings</kbd> > <kbd>Install Plugin from Disk...</kbd>
 
 - Install manually:
 
-  Download the [latest release](https://github.com/xausky/opencode-web-ui/releases/latest), then install it with
+  Download the [latest release](https://github.com/moritzfl/intellij-opencode-web-panel/releases/latest), then install it with
   <kbd>Settings/Preferences</kbd> > <kbd>Plugins</kbd> > <kbd>Settings</kbd> > <kbd>Install Plugin from Disk...</kbd>
 
 ## Usage
@@ -54,7 +54,7 @@ OpenCodeWeb is a JetBrains IDE plugin for IntelliJ IDEA, PyCharm, WebStorm, and 
    The plugin must be able to find the `opencode` command in your system `PATH`. If OpenCode is not installed, install it from the official OpenCode documentation.
 
 2. **Open the plugin tool window**  
-   Find the "OpenCodeWeb" icon in the right IDE sidebar and click it.
+   Find the "OpenCode Web Panel" icon in the right IDE sidebar and click it.
 
 3. **Start the service automatically**  
    The plugin generates a temporary password, starts the OpenCode service, and lets OpenCode choose an available port:

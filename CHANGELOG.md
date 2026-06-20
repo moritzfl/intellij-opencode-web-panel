@@ -1,6 +1,6 @@
 <!-- Keep a Changelog guide -> https://keepachangelog.com -->
 
-# opencode-web-ui Changelog
+# OpenCode Web Panel Changelog
 
 ## [Unreleased]
 
@@ -10,5 +10,5 @@
 
 - Initial scaffold created from [IntelliJ Platform Plugin Template](https://github.com/JetBrains/intellij-platform-plugin-template)
 
-[Unreleased]: https://github.com/xausky/opencode-web-ui/compare/1.0.0...HEAD
-[1.0.0]: https://github.com/xausky/opencode-web-ui/commits/1.0.0
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.0.0...HEAD
+[1.0.0]: https://github.com/moritzfl/intellij-opencode-web-panel/commits/1.0.0
