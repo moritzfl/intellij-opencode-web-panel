@@ -29,10 +29,9 @@ class OpenCodePluginTest : BasePlatformTestCase() {
 
         assertTrue(pluginXml.contains("<id>de.moritzf.opencodewebpanel</id>"))
         assertTrue(pluginXml.contains("<name>OpenCode Web Panel</name>"))
-        assertTrue(pluginXml.contains("id=\"OpenCodeWebPanel\""))
+        assertTrue(pluginXml.contains("id=\"OpenCode Web Panel\""))
         assertTrue(pluginXml.contains("anchor=\"right\""))
         assertTrue(pluginXml.contains("icon=\"/icons/opencode.svg\""))
-        assertTrue(pluginXml.contains("displayName=\"OpenCode Web Panel\""))
         assertTrue(pluginXml.contains("factoryClass=\"de.moritzf.opencodewebpanel.toolWindow.OpenCodeWebToolWindowFactory\""))
         assertTrue(pluginXml.contains("applicationService"))
         assertTrue(pluginXml.contains("serviceImplementation=\"de.moritzf.opencodewebpanel.toolWindow.SharedOpenCodeServerManager\""))
