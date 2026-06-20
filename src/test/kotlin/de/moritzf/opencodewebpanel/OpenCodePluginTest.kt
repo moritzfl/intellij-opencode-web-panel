@@ -1,6 +1,7 @@
 package de.moritzf.opencodewebpanel
 
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodeWebToolWindowFactory
+import de.moritzf.opencodewebpanel.toolWindow.OpenCodeServerLifecycleState
 import de.moritzf.opencodewebpanel.toolWindow.SharedOpenCodeServerManager
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable
 import com.intellij.openapi.project.DumbAware
@@ -64,6 +65,7 @@ class OpenCodePluginTest : BasePlatformTestCase() {
         assertTrue(process.destroyed)
         assertTrue(future.cancelled)
         assertFalse(service.isServerRunning())
+        assertEquals(OpenCodeServerLifecycleState.STOPPED, service.getLifecycleState())
         assertNull(service.getServerProcess())
         assertNull(service.getServerUrl())
         assertNull(service.getServerPassword())
@@ -84,6 +86,19 @@ class OpenCodePluginTest : BasePlatformTestCase() {
         assertTrue(process.forceDestroyed)
         assertFalse(process.isAlive)
         assertNull(service.getServerProcess())
+    }
+
+    fun testSharedServerManagerTracksManualRunningLifecycleState() {
+        val service = SharedOpenCodeServerManager.getInstance()
+
+        service.stopServer()
+        assertEquals(OpenCodeServerLifecycleState.STOPPED, service.getLifecycleState())
+
+        service.setServerRunning(true)
+        assertEquals(OpenCodeServerLifecycleState.RUNNING, service.getLifecycleState())
+
+        service.setServerRunning(false)
+        assertEquals(OpenCodeServerLifecycleState.STOPPED, service.getLifecycleState())
     }
 
     override fun tearDown() {

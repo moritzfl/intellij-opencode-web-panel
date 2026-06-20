@@ -37,6 +37,7 @@ class SharedOpenCodeServerManager : Disposable {
     private var startSequence = 0L
     private var starting = false
     private var serverRunning = false
+    private var lifecycleState = OpenCodeServerLifecycleState.STOPPED
     private var serverProcess: Process? = null
     private var serverUrl: String? = null
     private var serverPassword: String? = null
@@ -66,6 +67,7 @@ class SharedOpenCodeServerManager : Disposable {
                 starting = true
                 ++startSequence
             }
+            setLifecycleState(OpenCodeServerLifecycleState.STARTING)
             ApplicationManager.getApplication().executeOnPooledThread {
                 validateExistingServerOrStart(project, basePath, url, validationId)
             }
@@ -75,6 +77,7 @@ class SharedOpenCodeServerManager : Disposable {
         val backoffMillis = remainingStartBackoffMillis()
         if (backoffMillis > 0) {
             thisLogger().warn("Delaying OpenCode server start after recent failure for ${backoffMillis}ms")
+            setLifecycleState(OpenCodeServerLifecycleState.FAILED)
             ApplicationManager.getApplication().invokeLater(onFailed)
             return
         }
@@ -86,6 +89,7 @@ class SharedOpenCodeServerManager : Disposable {
             ++startSequence
         }
 
+        setLifecycleState(OpenCodeServerLifecycleState.STARTING)
         destroyCurrentProcess()
         startOpenCodeServer(project, basePath, startId)
     }
@@ -104,10 +108,13 @@ class SharedOpenCodeServerManager : Disposable {
 
     fun isServerRunning(): Boolean = synchronized(lock) { serverRunning }
 
+    fun getLifecycleState(): OpenCodeServerLifecycleState = synchronized(lock) { lifecycleState }
+
     fun setServerRunning(running: Boolean) {
         synchronized(lock) {
             serverRunning = running
         }
+        setLifecycleState(if (running) OpenCodeServerLifecycleState.RUNNING else OpenCodeServerLifecycleState.STOPPED)
     }
 
     fun getServerProcess(): Process? = synchronized(lock) { serverProcess }
@@ -161,6 +168,7 @@ class SharedOpenCodeServerManager : Disposable {
                 nextStartAllowedAtMillis = 0L
             }
 
+            setLifecycleState(OpenCodeServerLifecycleState.STOPPED)
             futureToCancel?.cancel(true)
             destroyProcess(processToDestroy)
         } catch (e: Exception) {
@@ -219,6 +227,7 @@ class SharedOpenCodeServerManager : Disposable {
             basePath = preferredBasePath
             ++startSequence
         }
+        setLifecycleState(OpenCodeServerLifecycleState.RESTARTING)
         cancelPeriodicCheck()
         destroyCurrentProcess()
         startOpenCodeServer(null, basePath, startId)
@@ -325,6 +334,8 @@ class SharedOpenCodeServerManager : Disposable {
             starting = false
             pendingStarts.toList().also { pendingStarts.clear() }
         }
+
+        setLifecycleState(if (success) OpenCodeServerLifecycleState.RUNNING else OpenCodeServerLifecycleState.FAILED)
 
         if (success) {
             recordStartSuccess()
@@ -454,6 +465,26 @@ class SharedOpenCodeServerManager : Disposable {
             serverRunning = false
             serverUrl = null
             serverPassword = null
+        }
+    }
+
+    private fun setLifecycleState(state: OpenCodeServerLifecycleState) {
+        val changed = synchronized(lock) {
+            if (lifecycleState == state) {
+                false
+            } else {
+                lifecycleState = state
+                true
+            }
+        }
+        if (changed) {
+            try {
+                ApplicationManager.getApplication().messageBus
+                    .syncPublisher(OpenCodeServerLifecycleListener.TOPIC)
+                    .stateChanged(state)
+            } catch (e: Exception) {
+                thisLogger().warn("Could not publish OpenCode server lifecycle state ${state.name}: ${e.message}")
+            }
         }
     }
 }

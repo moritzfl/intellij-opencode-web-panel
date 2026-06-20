@@ -372,6 +372,15 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun lifecycleStatusTextUsesCircleStatusStyle() {
+        val html = formatOpenCodeServerLifecycleStatusText(OpenCodeServerLifecycleState.STARTING)
+
+        assertTrue(html.contains("&#9679;"))
+        assertTrue(html.contains("#FFC107"))
+        assertTrue(html.contains("OpenCode server: Starting"))
+    }
+
+    @Test
     fun buildDispatchDroppedFilesScriptCreatesBrowserDropEvent() {
         val script = OpenCodeServerProtocol.buildDispatchDroppedFilesScript(
             listOf(

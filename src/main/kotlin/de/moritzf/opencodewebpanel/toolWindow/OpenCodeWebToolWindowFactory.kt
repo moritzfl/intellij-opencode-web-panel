@@ -15,11 +15,14 @@ import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
+import com.intellij.ui.components.JBLabel
+import com.intellij.ui.content.ContentFactory
 import com.intellij.ui.jcef.JBCefBrowser
 import com.intellij.ui.jcef.JBCefBrowserBase
 import com.intellij.ui.jcef.JBCefJSQuery
-import com.intellij.ui.content.ContentFactory
 import com.intellij.util.Alarm
+import com.intellij.util.ui.JBUI
+import com.intellij.util.ui.components.BorderLayoutPanel
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsListener
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
 import org.cef.browser.CefBrowser
@@ -62,6 +65,18 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
 
         private val project = toolWindow.project
         private val browser = JBCefBrowser()
+        private val lifecycleStatusLabel = JBLabel()
+        private val contentPanel = BorderLayoutPanel().apply {
+            isOpaque = false
+            addToTop(
+                BorderLayoutPanel().apply {
+                    isOpaque = false
+                    border = JBUI.Borders.empty(4, 8)
+                    addToLeft(lifecycleStatusLabel)
+                },
+            )
+            addToCenter(browser.component)
+        }
         private val openFileLinkQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
         private val openCodeReferenceQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
         private val openCodeLocalStorageQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
@@ -188,6 +203,17 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
             browser.jbCefClient.addRequestHandler(authHandler, browser.cefBrowser)
             browser.jbCefClient.addLoadHandler(loadHandler, browser.cefBrowser)
             installFileDropTransferHandler()
+            updateLifecycleIndicator(serverManager.getLifecycleState())
+            ApplicationManager.getApplication().messageBus.connect(this).subscribe(
+                OpenCodeServerLifecycleListener.TOPIC,
+                object : OpenCodeServerLifecycleListener {
+                    override fun stateChanged(state: OpenCodeServerLifecycleState) {
+                        ApplicationManager.getApplication().invokeLater {
+                            if (!isContentDisposed()) updateLifecycleIndicator(state)
+                        }
+                    }
+                },
+            )
             ApplicationManager.getApplication().messageBus.connect(this).subscribe(
                 OpenCodeSettingsListener.TOPIC,
                 object : OpenCodeSettingsListener {
@@ -340,7 +366,12 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
             }.getOrNull()
         }
 
-        fun getContent() = browser.component
+        fun getContent() = contentPanel
+
+        private fun updateLifecycleIndicator(state: OpenCodeServerLifecycleState) {
+            lifecycleStatusLabel.text = formatOpenCodeServerLifecycleStatusText(state)
+            lifecycleStatusLabel.toolTipText = "OpenCode server is ${state.displayLabel.lowercase()}"
+        }
 
         fun checkAndLoadContent() {
             if (isContentDisposed()) return
