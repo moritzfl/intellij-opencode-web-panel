@@ -75,6 +75,10 @@ internal object OpenCodeServerProtocol {
         return OpenCodeBrowserSnippets.buildCodeNavigationScript(enabled, openCodeCallback)
     }
 
+    fun buildProjectSwitchPromptSuppressionScript(enabled: Boolean): String? {
+        return OpenCodeBrowserSnippets.buildProjectSwitchPromptSuppressionScript(enabled)
+    }
+
     fun buildCompactLayoutScript(enabled: Boolean): String? {
         return OpenCodeBrowserSnippets.buildCompactLayoutScript(enabled)
     }

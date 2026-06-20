@@ -20,6 +20,7 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
     var enableCodeNavigation: Boolean = true
     var enableChatFileDrop: Boolean = true
     var forceCompactLayout: Boolean = true
+    var suppressProjectSwitchPrompts: Boolean = true
     var openCodeLocalStorageSnapshot: String = "{}"
 
     override fun getState(): OpenCodeSettingsState = this
@@ -35,6 +36,7 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
         enableCodeNavigation = state.enableCodeNavigation
         enableChatFileDrop = state.enableChatFileDrop
         forceCompactLayout = state.forceCompactLayout
+        suppressProjectSwitchPrompts = state.suppressProjectSwitchPrompts
         openCodeLocalStorageSnapshot = sanitizeOpenCodeLocalStorageSnapshot(state.openCodeLocalStorageSnapshot)
     }
 

@@ -444,6 +444,25 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun buildProjectSwitchPromptSuppressionScriptIsMissingWhenDisabled() {
+        assertNull(OpenCodeServerProtocol.buildProjectSwitchPromptSuppressionScript(enabled = false))
+    }
+
+    @Test
+    fun buildProjectSwitchPromptSuppressionScriptDismissesGoToSessionNotifications() {
+        val script = OpenCodeServerProtocol.buildProjectSwitchPromptSuppressionScript(enabled = true)!!
+
+        assertTrue(script.contains("window.__opencodeIntellijProjectSwitchPromptSuppressionInstalled"))
+        assertTrue(script.contains("[data-component=\"toast\"], [data-component=\"toast-v2\"]"))
+        assertTrue(script.contains("Permission required"))
+        assertTrue(script.contains("Berechtigung erforderlich"))
+        assertTrue(script.contains("Go to session"))
+        assertTrue(script.contains("Zur Sitzung gehen"))
+        assertTrue(script.contains("[data-slot=\"toast-close-button\"], [data-slot=\"toast-v2-close-button\"]"))
+        assertTrue(script.contains("new MutationObserver"))
+    }
+
+    @Test
     fun buildCodeNavigationScriptIsMissingWhenDisabled() {
         assertNull(OpenCodeServerProtocol.buildCodeNavigationScript(enabled = false, openCodeCallback = "callback(ref)"))
     }

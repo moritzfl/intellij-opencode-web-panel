@@ -61,6 +61,7 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
         private var fileLinkScriptScheduled = false
         private var codeNavigationScriptScheduled = false
         private var compactLayoutScriptScheduled = false
+        private var projectSwitchPromptSuppressionScriptScheduled = false
         private val resourceRequestHandler = object : CefResourceRequestHandlerAdapter() {
             override fun onBeforeResourceLoad(browser: CefBrowser?, frame: CefFrame?, request: CefRequest?): Boolean {
                 val password = serverManager.getServerPassword() ?: return false
@@ -123,6 +124,7 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
                     fileLinkScriptScheduled = false
                     codeNavigationScriptScheduled = false
                     compactLayoutScriptScheduled = false
+                    projectSwitchPromptSuppressionScriptScheduled = false
                     restoreOpenCodeLocalStorage(frame.url)
                     installOpenCodeLocalStorageSync(frame.url)
                     injectCompactLayoutEarly()
@@ -138,6 +140,7 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
                 installOpenCodeLocalStorageSync(frame.url)
                 scheduleFileLinkScript()
                 scheduleCodeNavigationScript()
+                scheduleProjectSwitchPromptSuppressionScript()
             }
         }
         init {
@@ -180,6 +183,10 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
 
                     override fun compactLayoutChanged(enabled: Boolean) {
                         applyCompactLayout(enabled)
+                    }
+
+                    override fun projectSwitchPromptSuppressionChanged(enabled: Boolean) {
+                        applyProjectSwitchPromptSuppression(enabled)
                     }
                 },
             )
@@ -267,11 +274,13 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
             openProjectScriptScheduled = false
             fileLinkScriptScheduled = false
             compactLayoutScriptScheduled = false
+            projectSwitchPromptSuppressionScriptScheduled = false
             openProjectAlarm.cancelAllRequests()
             applyBrowserZoom()
             browser.loadURL(url)
             scheduleOpenProjectScript()
             scheduleFileLinkScript()
+            scheduleProjectSwitchPromptSuppressionScript()
         }
 
         private fun applyBrowserZoom(zoomPercent: Int = OpenCodeSettingsState.getInstance().uiZoomPercent) {
@@ -482,6 +491,27 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
             }
         }
 
+        private fun scheduleProjectSwitchPromptSuppressionScript() {
+            if (projectSwitchPromptSuppressionScriptScheduled) return
+            if (!OpenCodeSettingsState.getInstance().suppressProjectSwitchPrompts) return
+
+            val serverUrl = serverManager.getServerUrl() ?: return
+            val script = OpenCodeServerProtocol.buildProjectSwitchPromptSuppressionScript(enabled = true) ?: return
+            val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
+            projectSwitchPromptSuppressionScriptScheduled = true
+
+            listOf(250, 750, 1500, 3000, 5000, 8000, 12000).forEach { delayMillis ->
+                openProjectAlarm.addRequest(
+                    {
+                        if (!project.isDisposed && OpenCodeSettingsState.getInstance().suppressProjectSwitchPrompts) {
+                            browser.cefBrowser.executeJavaScript(script, rootUrl, 0)
+                        }
+                    },
+                    delayMillis,
+                )
+            }
+        }
+
         private fun applyCodeNavigation(enabled: Boolean) {
             val serverUrl = serverManager.getServerUrl() ?: return
             if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)) return
@@ -496,6 +526,19 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
             ) ?: return
             browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
             codeNavigationScriptScheduled = true
+        }
+
+        private fun applyProjectSwitchPromptSuppression(enabled: Boolean) {
+            val serverUrl = serverManager.getServerUrl() ?: return
+            if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)) return
+            projectSwitchPromptSuppressionScriptScheduled = false
+            if (!enabled) {
+                browser.cefBrowser.reload()
+                return
+            }
+            val script = OpenCodeServerProtocol.buildProjectSwitchPromptSuppressionScript(enabled = true) ?: return
+            browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
+            projectSwitchPromptSuppressionScriptScheduled = true
         }
 
         private fun applyFileLinkNavigation(enabled: Boolean) {

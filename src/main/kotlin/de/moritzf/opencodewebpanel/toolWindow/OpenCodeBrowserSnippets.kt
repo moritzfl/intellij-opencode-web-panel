@@ -306,6 +306,58 @@ internal object OpenCodeBrowserSnippets {
         return script.trimIndent()
     }
 
+    fun buildProjectSwitchPromptSuppressionScript(enabled: Boolean): String? {
+        if (!enabled) return null
+        @Language("JavaScript")
+        val script = """
+            (() => {
+              if (window.__opencodeIntellijProjectSwitchPromptSuppressionInstalled) return;
+              window.__opencodeIntellijProjectSwitchPromptSuppressionInstalled = true;
+              const notificationTitles = new Set(['Permission required', 'Question', 'Berechtigung erforderlich', 'Frage']);
+              const goToSessionLabels = new Set(['Go to session', 'Zur Sitzung gehen']);
+              const text = (element) => (element && element.textContent ? element.textContent : '').replace(/\s+/g, ' ').trim();
+              const toastSelector = '[data-component="toast"], [data-component="toast-v2"]';
+              const titleSelector = '[data-slot="toast-title"], [data-slot="toast-v2-title"]';
+              const actionSelector = '[data-slot="toast-action"], [data-slot="toast-v2-actions"] button';
+              const closeSelector = '[data-slot="toast-close-button"], [data-slot="toast-v2-close-button"]';
+              const dismissIfProjectSwitchPrompt = (toast) => {
+                const title = toast.querySelector(titleSelector);
+                if (!notificationTitles.has(text(title))) return;
+                const actions = Array.from(toast.querySelectorAll(actionSelector));
+                if (!actions.some((action) => goToSessionLabels.has(text(action)))) return;
+                const close = toast.querySelector(closeSelector);
+                if (close && typeof close.click === 'function') {
+                  close.click();
+                } else {
+                  toast.remove();
+                }
+              };
+              const scan = (root) => {
+                if (!root || root.nodeType !== Node.ELEMENT_NODE) return;
+                if (root.matches && root.matches(toastSelector)) dismissIfProjectSwitchPrompt(root);
+                if (root.querySelectorAll) root.querySelectorAll(toastSelector).forEach(dismissIfProjectSwitchPrompt);
+              };
+              const install = () => {
+                const target = document.body || document.documentElement;
+                if (!target) return;
+                const observer = new MutationObserver((mutations) => {
+                  for (const mutation of mutations) {
+                    mutation.addedNodes.forEach(scan);
+                  }
+                });
+                observer.observe(target, { childList: true, subtree: true });
+                scan(target);
+              };
+              if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', install, { once: true });
+              } else {
+                install();
+              }
+            })();
+        """
+        return script.trimIndent()
+    }
+
     fun buildDispatchDroppedFilesScript(files: List<OpenCodeServerProtocol.DroppedFilePayload>): String? {
         return buildDispatchDroppedFilesScript(files, enabled = true)
     }

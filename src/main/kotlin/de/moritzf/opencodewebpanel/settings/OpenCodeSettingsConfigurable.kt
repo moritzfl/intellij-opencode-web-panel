@@ -71,6 +71,7 @@ class OpenCodeSettingsConfigurable : Configurable {
     private val enableCodeNavigationCheckBox = JBCheckBox("Enable click-to-navigate on code references in chat")
     private val enableChatFileDropCheckBox = JBCheckBox("Enable file drag and drop into chat")
     private val forceCompactLayoutCheckBox = JBCheckBox("Lock to compact view")
+    private val suppressProjectSwitchPromptsCheckBox = JBCheckBox("Suppress project-switch prompts")
     private val uiZoomSpinner = JSpinner(
         SpinnerNumberModel(
             OpenCodeSettingsState.DEFAULT_UI_ZOOM_PERCENT,
@@ -178,6 +179,10 @@ class OpenCodeSettingsConfigurable : Configurable {
                 cell(forceCompactLayoutCheckBox)
                     .comment("Prevent the OpenCode UI from switching to a wide desktop layout when the panel is enlarged.")
             }
+            row {
+                cell(suppressProjectSwitchPromptsCheckBox)
+                    .comment("Hide OpenCode notifications that ask this panel to switch to another session or project for approval.")
+            }
         }
         panel = JBTabbedPane().apply {
             addTab("OpenCode Server Setup", serverSetupPanel)
@@ -200,6 +205,7 @@ class OpenCodeSettingsConfigurable : Configurable {
             enableCodeNavigationCheckBox.isSelected != settings.enableCodeNavigation ||
             enableChatFileDropCheckBox.isSelected != settings.enableChatFileDrop ||
             forceCompactLayoutCheckBox.isSelected != settings.forceCompactLayout ||
+            suppressProjectSwitchPromptsCheckBox.isSelected != settings.suppressProjectSwitchPrompts ||
             uiZoomPercent() != OpenCodeSettingsState.sanitizeUiZoomPercent(settings.uiZoomPercent)
         return passwordModified || portModeModified || fixedPortModified || binaryModeModified || binaryPathModified || uiSettingsModified
     }
@@ -214,6 +220,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         val oldOpenFileLinksInIde = settings.openFileLinksInIde
         val oldEnableCodeNavigation = settings.enableCodeNavigation
         val oldForceCompactLayout = settings.forceCompactLayout
+        val oldSuppressProjectSwitchPrompts = settings.suppressProjectSwitchPrompts
         val oldPassword = savedPassword
 
         val nextPassword = password() ?: OpenCodePasswordStore.getInstance().generatePasswordForEditing()
@@ -236,6 +243,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         settings.enableCodeNavigation = enableCodeNavigationCheckBox.isSelected
         settings.enableChatFileDrop = enableChatFileDropCheckBox.isSelected
         settings.forceCompactLayout = forceCompactLayoutCheckBox.isSelected
+        settings.suppressProjectSwitchPrompts = suppressProjectSwitchPromptsCheckBox.isSelected
         settings.uiZoomPercent = nextUiZoomPercent
         fixedPortField.text = nextFixedPort.toString()
         binaryPathField.text = nextBinaryPath
@@ -268,6 +276,11 @@ class OpenCodeSettingsConfigurable : Configurable {
                 .syncPublisher(OpenCodeSettingsListener.TOPIC)
                 .compactLayoutChanged(settings.forceCompactLayout)
         }
+        if (oldSuppressProjectSwitchPrompts != settings.suppressProjectSwitchPrompts) {
+            ApplicationManager.getApplication().messageBus
+                .syncPublisher(OpenCodeSettingsListener.TOPIC)
+                .projectSwitchPromptSuppressionChanged(settings.suppressProjectSwitchPrompts)
+        }
     }
 
     override fun reset() {
@@ -287,6 +300,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         enableCodeNavigationCheckBox.isSelected = settings.enableCodeNavigation
         enableChatFileDropCheckBox.isSelected = settings.enableChatFileDrop
         forceCompactLayoutCheckBox.isSelected = settings.forceCompactLayout
+        suppressProjectSwitchPromptsCheckBox.isSelected = settings.suppressProjectSwitchPrompts
         uiZoomSpinner.value = OpenCodeSettingsState.sanitizeUiZoomPercent(settings.uiZoomPercent)
         loadPasswordField()
         updatePasswordHint()

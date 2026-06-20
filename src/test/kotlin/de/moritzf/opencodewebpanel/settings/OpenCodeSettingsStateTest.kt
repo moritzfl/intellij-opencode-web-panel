@@ -117,6 +117,11 @@ class OpenCodeSettingsStateTest {
     }
 
     @Test
+    fun suppressProjectSwitchPromptsIsEnabledByDefault() {
+        assertEquals(true, OpenCodeSettingsState().suppressProjectSwitchPrompts)
+    }
+
+    @Test
     fun openCodeLocalStorageSnapshotUsesEmptyObjectByDefault() {
         assertEquals("{}", OpenCodeSettingsState().openCodeLocalStorageSnapshot)
     }

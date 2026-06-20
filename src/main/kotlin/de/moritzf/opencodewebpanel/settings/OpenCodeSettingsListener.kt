@@ -11,6 +11,8 @@ interface OpenCodeSettingsListener {
 
     fun compactLayoutChanged(enabled: Boolean) {}
 
+    fun projectSwitchPromptSuppressionChanged(enabled: Boolean) {}
+
     companion object {
         val TOPIC: Topic<OpenCodeSettingsListener> = Topic.create(
             "OpenCode Web Panel settings",
