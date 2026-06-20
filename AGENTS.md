@@ -50,13 +50,14 @@ Project-specific guidance for future implementation work.
 
 ## UI Behavior Settings and Injection Safeguards
 
-- UI behavior settings (`openFileLinksInIde`, `enableChatFileDrop`, `forceCompactLayout`) control **browser-side JavaScript/CSS injection** into the embedded OpenCode web app.
+- UI behavior settings (`openFileLinksInIde`, `enableCodeNavigation`, `enableChatFileDrop`, `forceCompactLayout`) control **browser-side JavaScript/CSS injection** into the embedded OpenCode web app.
 - These settings are not cosmetic toggles — they are **safeguards**. If an injected behavior breaks the OpenCode UI or conflicts with an OpenCode update, the user must be able to disable it and get back to a clean, unmodified web app.
 - When a setting is **disabled**, no JavaScript or CSS for that behavior may be generated, injected, or scheduled. Script builders must return `null` when disabled.
 - When a setting is toggled **off** at runtime, the browser must reload the page so any previously installed listeners, patches, or stylesheets are fully removed — never inject a "disable" script.
 - When a setting is toggled **on** at runtime, inject the script immediately and/or reload the page as needed.
 - Settings that require early injection (before the SPA bundle loads, e.g. `forceCompactLayout`) must be injected in `onLoadStart`, not `onLoadEnd`.
 - Add unit tests verifying that disabled builders return `null` and that toggling triggers a reload, not a "disable" injection.
+- Before integrating or claiming fixes for browser-side JS/CSS injection, validate the planned script in a real OpenCode page with Playwright. Start `opencode serve --hostname 127.0.0.1 --port <port> --print-logs` with test auth if needed, navigate to the served app, inject the planned script there, and exercise representative DOM/user interactions. Do not rely only on `about:blank`, synthetic pages, or unit tests for injection behavior.
 
 ## Verification
 
