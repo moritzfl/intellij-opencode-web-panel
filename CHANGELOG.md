@@ -16,9 +16,5 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-### Fixed
-
-- Hardened server lifecycle handling for stale URLs, failed startup retries, process shutdown, and OpenCode health verification.
-
 [Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.0.0...HEAD
 [1.0.0]: https://github.com/moritzfl/intellij-opencode-web-panel/commits/1.0.0
