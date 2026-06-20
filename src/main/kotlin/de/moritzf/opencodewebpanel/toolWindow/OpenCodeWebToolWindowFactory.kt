@@ -54,6 +54,7 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
         private val browser = JBCefBrowser()
         private val openFileLinkQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
         private val openCodeReferenceQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
+        private val openCodeLocalStorageQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
         private val serverManager = SharedOpenCodeServerManager.getInstance()
         private val openProjectAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
         private var openProjectScriptScheduled = false
@@ -122,6 +123,8 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
                     fileLinkScriptScheduled = false
                     codeNavigationScriptScheduled = false
                     compactLayoutScriptScheduled = false
+                    restoreOpenCodeLocalStorage(frame.url)
+                    installOpenCodeLocalStorageSync(frame.url)
                     injectCompactLayoutEarly()
                 }
             }
@@ -132,6 +135,7 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
                 if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverManager.getServerUrl(), frame.url)) return
 
                 scheduleOpenProjectScript()
+                installOpenCodeLocalStorageSync(frame.url)
                 scheduleFileLinkScript()
                 scheduleCodeNavigationScript()
             }
@@ -147,6 +151,10 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
                 if (OpenCodeSettingsState.getInstance().enableCodeNavigation) {
                     openCodeReferenceInIde(ref)
                 }
+                null
+            }
+            openCodeLocalStorageQuery.addHandler { snapshot ->
+                syncOpenCodeLocalStorage(snapshot)
                 null
             }
             browser.jbCefClient.addRequestHandler(authHandler, browser.cefBrowser)
@@ -328,6 +336,31 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
             ApplicationManager.getApplication().invokeLater {
                 if (project.isDisposed) return@invokeLater
                 OpenFileDescriptor(project, virtualFile, target.line ?: -1, target.column ?: -1).navigate(true)
+            }
+        }
+
+        private fun restoreOpenCodeLocalStorage(frameUrl: String?) {
+            val serverUrl = serverManager.getServerUrl() ?: return
+            if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, frameUrl)) return
+            val snapshot = OpenCodeSettingsState.getInstance().openCodeLocalStorageSnapshot
+            val script = OpenCodeServerProtocol.buildRestoreOpenCodeLocalStorageScript(snapshot) ?: return
+            browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
+        }
+
+        private fun installOpenCodeLocalStorageSync(frameUrl: String?) {
+            val serverUrl = serverManager.getServerUrl() ?: return
+            if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, frameUrl)) return
+            val script = OpenCodeServerProtocol.buildSyncOpenCodeLocalStorageScript(openCodeLocalStorageQuery.inject("payload")) ?: return
+            browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
+        }
+
+        private fun syncOpenCodeLocalStorage(snapshot: String?) {
+            val text = snapshot?.trim() ?: return
+            val sanitized = OpenCodeSettingsState.sanitizeOpenCodeLocalStorageSnapshot(text)
+            if (sanitized == "{}" && text != "{}") return
+            val settings = OpenCodeSettingsState.getInstance()
+            if (settings.openCodeLocalStorageSnapshot != sanitized) {
+                settings.openCodeLocalStorageSnapshot = sanitized
             }
         }
 
@@ -516,17 +549,7 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
         }
 
         private fun showErrorInBrowser() {
-            val html = """
-                <html>
-                <body style="background-color: #2B2B2B; color: #A9B7C6; font-family: sans-serif; padding: 20px;">
-                    <h2>Failed to start OpenCode server</h2>
-                    <p>Please make sure 'opencode' is installed and available in your PATH.</p>
-                    <p>Run the following command to start the server manually:</p>
-                    <pre style="background: #3C3F41; padding: 10px; border-radius: 4px;">opencode serve --hostname 127.0.0.1 --port 0 --print-logs</pre>
-                </body>
-                </html>
-            """.trimIndent()
-            browser.loadHTML(html)
+            browser.loadHTML(OpenCodeServerProtocol.buildStartupErrorPageHtml(OpenCodeSettingsState.getInstance().executablePath()))
         }
 
         override fun dispose() {

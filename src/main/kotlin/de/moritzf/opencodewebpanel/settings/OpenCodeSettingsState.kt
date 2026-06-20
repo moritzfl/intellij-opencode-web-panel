@@ -20,6 +20,7 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
     var enableCodeNavigation: Boolean = true
     var enableChatFileDrop: Boolean = true
     var forceCompactLayout: Boolean = true
+    var openCodeLocalStorageSnapshot: String = "{}"
 
     override fun getState(): OpenCodeSettingsState = this
 
@@ -34,6 +35,7 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
         enableCodeNavigation = state.enableCodeNavigation
         enableChatFileDrop = state.enableChatFileDrop
         forceCompactLayout = state.forceCompactLayout
+        openCodeLocalStorageSnapshot = sanitizeOpenCodeLocalStorageSnapshot(state.openCodeLocalStorageSnapshot)
     }
 
     fun portModeValue(): OpenCodePortMode = OpenCodePortMode.fromStorageValue(portMode)
@@ -59,6 +61,7 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
         const val DEFAULT_UI_ZOOM_PERCENT = 100
         const val MIN_UI_ZOOM_PERCENT = 50
         const val MAX_UI_ZOOM_PERCENT = 200
+        const val MAX_OPEN_CODE_LOCAL_STORAGE_SNAPSHOT_CHARS = 2_000_000
 
         fun getInstance(): OpenCodeSettingsState {
             return ApplicationManager.getApplication().getService(OpenCodeSettingsState::class.java)
@@ -71,6 +74,14 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
         fun sanitizeUiZoomPercent(percent: Int): Int {
             return percent.coerceIn(MIN_UI_ZOOM_PERCENT, MAX_UI_ZOOM_PERCENT)
         }
+
+        fun sanitizeOpenCodeLocalStorageSnapshot(snapshot: String?): String {
+            val text = snapshot?.trim().orEmpty()
+            if (text.isBlank() || text.length > MAX_OPEN_CODE_LOCAL_STORAGE_SNAPSHOT_CHARS) return "{}"
+            if (!text.startsWith('{') || !text.endsWith('}')) return "{}"
+            return text
+        }
+
     }
 }
 

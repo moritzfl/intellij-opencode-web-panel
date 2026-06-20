@@ -329,6 +329,53 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun buildRestoreOpenCodeLocalStorageScriptIsMissingWithoutSnapshot() {
+        assertNull(OpenCodeServerProtocol.buildRestoreOpenCodeLocalStorageScript(null))
+        assertNull(OpenCodeServerProtocol.buildRestoreOpenCodeLocalStorageScript("{}"))
+    }
+
+    @Test
+    fun buildRestoreOpenCodeLocalStorageScriptRestoresOpenCodeKeysOnlyWhenMissing() {
+        val script = OpenCodeServerProtocol.buildRestoreOpenCodeLocalStorageScript(
+            "{\"opencode.global.dat:language\":\"{\\\"locale\\\":\\\"de\\\"}\"}",
+        )!!
+
+        assertTrue(script.contains("opencode.global.dat:language"))
+        assertTrue(script.contains(OpenCodeServerProtocol.OPEN_CODE_THEME_ID_STORAGE_KEY))
+        assertTrue(script.contains("opencode-color-scheme"))
+        assertTrue(script.contains("opencode\\.global\\.dat"))
+        assertTrue(script.contains("opencode\\.workspace\\."))
+        assertFalse(script.contains(OpenCodeServerProtocol.OPEN_CODE_DEFAULT_SERVER_URL_STORAGE_KEY))
+        assertTrue(script.contains("window.localStorage.getItem(key) === null"))
+        assertTrue(script.contains("window.localStorage.setItem(key, value)"))
+    }
+
+    @Test
+    fun buildSyncOpenCodeLocalStorageScriptMirrorsOpenCodeKeys() {
+        val script = OpenCodeServerProtocol.buildSyncOpenCodeLocalStorageScript("window.intellijStore(payload)")!!
+
+        assertTrue(script.contains("window.__opencodeIntellijLocalStorageSyncInstalled"))
+        assertTrue(script.contains("Storage.prototype.setItem"))
+        assertTrue(script.contains("Storage.prototype.removeItem"))
+        assertTrue(script.contains("Storage.prototype.clear"))
+        assertTrue(script.contains(OpenCodeServerProtocol.OPEN_CODE_THEME_ID_STORAGE_KEY))
+        assertTrue(script.contains("opencode-color-scheme"))
+        assertTrue(script.contains("opencode\\.global\\.dat"))
+        assertTrue(script.contains("opencode\\.workspace\\."))
+        assertFalse(script.contains(OpenCodeServerProtocol.OPEN_CODE_DEFAULT_SERVER_URL_STORAGE_KEY))
+        assertTrue(script.contains("window.intellijStore(payload)"))
+    }
+
+    @Test
+    fun buildStartupErrorPageHtmlPointsToSettings() {
+        val html = OpenCodeServerProtocol.buildStartupErrorPageHtml("/custom/bin/opencode")
+
+        assertTrue(html.contains("/custom/bin/opencode"))
+        assertTrue(html.contains("Settings &gt; Tools &gt; OpenCode Web Panel &gt; OpenCode Server Setup"))
+        assertTrue(html.contains("configure the OpenCode executable path"))
+    }
+
+    @Test
     fun buildDispatchDroppedFilesScriptCreatesBrowserDropEvent() {
         val script = OpenCodeServerProtocol.buildDispatchDroppedFilesScript(
             listOf(

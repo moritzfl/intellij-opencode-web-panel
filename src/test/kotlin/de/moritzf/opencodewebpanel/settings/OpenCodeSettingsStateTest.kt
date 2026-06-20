@@ -115,4 +115,18 @@ class OpenCodeSettingsStateTest {
     fun enableCodeNavigationIsEnabledByDefault() {
         assertEquals(true, OpenCodeSettingsState().enableCodeNavigation)
     }
+
+    @Test
+    fun openCodeLocalStorageSnapshotUsesEmptyObjectByDefault() {
+        assertEquals("{}", OpenCodeSettingsState().openCodeLocalStorageSnapshot)
+    }
+
+    @Test
+    fun invalidOpenCodeLocalStorageSnapshotFallsBackToEmptyObject() {
+        val settings = OpenCodeSettingsState()
+
+        settings.loadState(OpenCodeSettingsState().apply { openCodeLocalStorageSnapshot = "not-json" })
+
+        assertEquals("{}", settings.openCodeLocalStorageSnapshot)
+    }
 }

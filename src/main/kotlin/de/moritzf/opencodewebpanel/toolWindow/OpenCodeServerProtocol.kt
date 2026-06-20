@@ -20,6 +20,9 @@ internal object OpenCodeServerProtocol {
     const val DEFAULT_EXECUTABLE = "opencode"
     const val OPEN_FILE_LINK_SCHEME = "opencode-web-panel"
     const val OPEN_FILE_LINK_HOST = "open-file"
+    const val OPEN_CODE_LOCAL_STORAGE_PREFIX = "opencode."
+    const val OPEN_CODE_DEFAULT_SERVER_URL_STORAGE_KEY = "opencode.settings.dat:defaultServerUrl"
+    const val OPEN_CODE_THEME_ID_STORAGE_KEY = "opencode-theme-id"
 
     private val secureRandom = SecureRandom()
     fun buildServerRootUrl(serverUrl: String): String {
@@ -125,6 +128,128 @@ internal object OpenCodeServerProtocol {
 
     fun buildFileLinkHandlerScript(projectBasePath: String?): String? {
         return buildFileLinkHandlerScript(projectBasePath, enabled = true)
+    }
+
+    fun buildRestoreOpenCodeLocalStorageScript(snapshot: String?): String? {
+        val text = snapshot?.trim().orEmpty()
+        if (text.isBlank() || text == "{}") return null
+        val payload = escapeJavaScript(text)
+        return """
+            (() => {
+              const raw = '$payload';
+              const exactKeys = new Set([
+                '$OPEN_CODE_THEME_ID_STORAGE_KEY',
+                'opencode-color-scheme',
+                'opencode-theme-css-light',
+                'opencode-theme-css-dark',
+              ]);
+              const globalKeys = /^opencode\.global\.dat:(language|model|layout|layout\.page|permission|notification|tabs|open\.app|go-upsell)$/;
+              const workspaceKeys = /^opencode\.workspace\.[^:]+:workspace:(model-selection|terminal|project|icon|vcs)$/;
+              const shouldPersistKey = (key) => typeof key === 'string' && (exactKeys.has(key) || globalKeys.test(key) || workspaceKeys.test(key));
+              try {
+                const snapshot = JSON.parse(raw);
+                if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return;
+                for (const [key, value] of Object.entries(snapshot)) {
+                  if (!shouldPersistKey(key) || typeof value !== 'string') continue;
+                  if (window.localStorage.getItem(key) === null) {
+                    window.localStorage.setItem(key, value);
+                  }
+                }
+              } catch (error) {
+                if (window.console && window.console.warn) {
+                  window.console.warn('Failed to restore OpenCode localStorage snapshot', error);
+                }
+              }
+            })();
+        """.trimIndent()
+    }
+
+    fun buildSyncOpenCodeLocalStorageScript(openStorageCallback: String?): String? {
+        if (openStorageCallback == null) return null
+        return """
+            (() => {
+              const exactKeys = new Set([
+                '$OPEN_CODE_THEME_ID_STORAGE_KEY',
+                'opencode-color-scheme',
+                'opencode-theme-css-light',
+                'opencode-theme-css-dark',
+              ]);
+              const globalKeys = /^opencode\.global\.dat:(language|model|layout|layout\.page|permission|notification|tabs|open\.app|go-upsell)$/;
+              const workspaceKeys = /^opencode\.workspace\.[^:]+:workspace:(model-selection|terminal|project|icon|vcs)$/;
+              const shouldPersistKey = (key) => typeof key === 'string' && (exactKeys.has(key) || globalKeys.test(key) || workspaceKeys.test(key));
+              const snapshot = () => {
+                const entries = {};
+                for (let index = 0; index < window.localStorage.length; index += 1) {
+                  const key = window.localStorage.key(index);
+                  if (!shouldPersistKey(key)) continue;
+                  const value = window.localStorage.getItem(key);
+                  if (typeof value === 'string') entries[key] = value;
+                }
+                return entries;
+              };
+              const send = () => {
+                let payload = '{}';
+                try {
+                  payload = JSON.stringify(snapshot());
+                } catch (_) {
+                  return;
+                }
+                $openStorageCallback;
+              };
+              if (window.__opencodeIntellijLocalStorageSyncInstalled) {
+                send();
+                return;
+              }
+              window.__opencodeIntellijLocalStorageSyncInstalled = true;
+              let pending = undefined;
+              const queueSend = () => {
+                if (pending !== undefined) window.clearTimeout(pending);
+                pending = window.setTimeout(() => {
+                  pending = undefined;
+                  send();
+                }, 100);
+              };
+              const originalSetItem = Storage.prototype.setItem;
+              const originalRemoveItem = Storage.prototype.removeItem;
+              const originalClear = Storage.prototype.clear;
+              Storage.prototype.setItem = function(key, value) {
+                const result = originalSetItem.apply(this, arguments);
+                if (this === window.localStorage && shouldPersistKey(String(key))) queueSend();
+                return result;
+              };
+              Storage.prototype.removeItem = function(key) {
+                const result = originalRemoveItem.apply(this, arguments);
+                if (this === window.localStorage && shouldPersistKey(String(key))) queueSend();
+                return result;
+              };
+              Storage.prototype.clear = function() {
+                const result = originalClear.apply(this, arguments);
+                if (this === window.localStorage) queueSend();
+                return result;
+              };
+              document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'hidden') send();
+              });
+              window.addEventListener('pagehide', send);
+              window.addEventListener('beforeunload', send);
+              send();
+            })();
+        """.trimIndent()
+    }
+
+    fun buildStartupErrorPageHtml(executable: String): String {
+        val path = escapeHtml(executable.ifBlank { DEFAULT_EXECUTABLE })
+        return """
+            <html>
+            <body style="background-color: #2B2B2B; color: #A9B7C6; font-family: sans-serif; padding: 20px;">
+                <h2>Failed to start OpenCode server</h2>
+                <p>OpenCode Web Panel tried to start <code>$path</code>, but the server did not become available.</p>
+                <p>Check <strong>Settings &gt; Tools &gt; OpenCode Web Panel &gt; OpenCode Server Setup</strong> to configure the OpenCode executable path, use auto-detection, or adjust the port.</p>
+                <p>You can also verify the executable manually:</p>
+                <pre style="background: #3C3F41; padding: 10px; border-radius: 4px;">opencode serve --hostname 127.0.0.1 --port 0 --print-logs</pre>
+            </body>
+            </html>
+        """.trimIndent()
     }
 
     fun buildCodeNavigationScript(enabled: Boolean, openCodeCallback: String?): String? {
@@ -747,6 +872,15 @@ internal object OpenCodeServerProtocol {
             .replace("'", "\\'")
             .replace("\n", "\\n")
             .replace("\r", "\\r")
+    }
+
+    private fun escapeHtml(value: String): String {
+        return value
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace("\"", "&quot;")
+            .replace("'", "&#39;")
     }
 
     private fun buildOrigin(serverUrl: String): String {
