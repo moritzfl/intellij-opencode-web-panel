@@ -129,7 +129,7 @@ internal object OpenCodeBrowserSnippets {
               const raw = '$payload';
               const exactKeys = new Set([
                 '${OpenCodeServerProtocol.OPEN_CODE_THEME_ID_STORAGE_KEY}',
-                'opencode-color-scheme',
+                '${OpenCodeServerProtocol.OPEN_CODE_COLOR_SCHEME_STORAGE_KEY}',
                 'opencode-theme-css-light',
                 'opencode-theme-css-dark',
               ]);
@@ -162,7 +162,7 @@ internal object OpenCodeBrowserSnippets {
             (() => {
               const exactKeys = new Set([
                 '${OpenCodeServerProtocol.OPEN_CODE_THEME_ID_STORAGE_KEY}',
-                'opencode-color-scheme',
+                '${OpenCodeServerProtocol.OPEN_CODE_COLOR_SCHEME_STORAGE_KEY}',
                 'opencode-theme-css-light',
                 'opencode-theme-css-dark',
               ]);
@@ -433,6 +433,34 @@ internal object OpenCodeBrowserSnippets {
               } else {
                 const observer = new MutationObserver(() => { ensureStyle(); if (document.getElementById('opencode-intellij-compact-layout')) observer.disconnect(); });
                 observer.observe(document.documentElement, { childList: true, subtree: true });
+              }
+            })();
+        """
+        return script.trimIndent()
+    }
+
+    fun buildIdeThemeSyncScript(enabled: Boolean, dark: Boolean): String? {
+        if (!enabled) return null
+        val colorScheme = if (dark) "dark" else "light"
+        @Language("JavaScript")
+        val script = """
+            (() => {
+              const key = '${OpenCodeServerProtocol.OPEN_CODE_COLOR_SCHEME_STORAGE_KEY}';
+              const nextValue = '$colorScheme';
+              try {
+                const oldValue = window.localStorage.getItem(key);
+                if (oldValue !== nextValue) window.localStorage.setItem(key, nextValue);
+                window.dispatchEvent(new StorageEvent('storage', {
+                  key,
+                  oldValue,
+                  newValue: nextValue,
+                  storageArea: window.localStorage,
+                  url: window.location.href,
+                }));
+              } catch (error) {
+                if (window.console && window.console.warn) {
+                  window.console.warn('Failed to sync OpenCode color scheme with IntelliJ', error);
+                }
               }
             })();
         """

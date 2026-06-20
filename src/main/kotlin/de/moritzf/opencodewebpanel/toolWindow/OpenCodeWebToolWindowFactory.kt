@@ -1,5 +1,7 @@
 package de.moritzf.opencodewebpanel.toolWindow
 
+import com.intellij.ide.ui.LafManager
+import com.intellij.ide.ui.LafManagerListener
 import com.intellij.notification.Notification
 import com.intellij.notification.NotificationAction
 import com.intellij.notification.NotificationGroupManager
@@ -86,6 +88,7 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
         private var fileLinkScriptScheduled = false
         private var codeNavigationScriptScheduled = false
         private var compactLayoutScriptScheduled = false
+        private var ideThemeSyncScriptScheduled = false
         private var projectSwitchPromptSuppressionScriptScheduled = false
         private var systemNotificationBridgeScriptScheduled = false
         @Volatile
@@ -155,10 +158,12 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
                     fileLinkScriptScheduled = false
                     codeNavigationScriptScheduled = false
                     compactLayoutScriptScheduled = false
+                    ideThemeSyncScriptScheduled = false
                     projectSwitchPromptSuppressionScriptScheduled = false
                     systemNotificationBridgeScriptScheduled = false
                     restoreOpenCodeLocalStorage(frame.url)
                     installOpenCodeLocalStorageSync(frame.url)
+                    injectIdeThemeSyncEarly()
                     injectCompactLayoutEarly()
                 }
             }
@@ -172,6 +177,7 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
                 installOpenCodeLocalStorageSync(frame.url)
                 scheduleFileLinkScript()
                 scheduleCodeNavigationScript()
+                scheduleIdeThemeSyncScript()
                 scheduleProjectSwitchPromptSuppressionScript()
                 scheduleSystemNotificationBridgeScript()
             }
@@ -235,12 +241,26 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
                         applyCompactLayout(enabled)
                     }
 
+                    override fun ideThemeSyncChanged(enabled: Boolean) {
+                        applyIdeThemeSync(enabled)
+                    }
+
                     override fun projectSwitchPromptSuppressionChanged(enabled: Boolean) {
                         applyProjectSwitchPromptSuppression(enabled)
                     }
 
                     override fun systemNotificationsChanged(enabled: Boolean) {
                         applySystemNotifications(enabled)
+                    }
+                },
+            )
+            ApplicationManager.getApplication().messageBus.connect(this).subscribe(
+                LafManagerListener.TOPIC,
+                object : LafManagerListener {
+                    override fun lookAndFeelChanged(source: LafManager) {
+                        if (OpenCodeSettingsState.getInstance().syncThemeWithIde) {
+                            applyIdeThemeSync(enabled = true)
+                        }
                     }
                 },
             )
@@ -395,6 +415,7 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
             openProjectScriptScheduled = false
             fileLinkScriptScheduled = false
             compactLayoutScriptScheduled = false
+            ideThemeSyncScriptScheduled = false
             projectSwitchPromptSuppressionScriptScheduled = false
             systemNotificationBridgeScriptScheduled = false
             openProjectAlarm.cancelAllRequests()
@@ -402,6 +423,7 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
             browser.loadURL(url)
             scheduleOpenProjectScript()
             scheduleFileLinkScript()
+            scheduleIdeThemeSyncScript()
             scheduleProjectSwitchPromptSuppressionScript()
             scheduleSystemNotificationBridgeScript()
         }
@@ -682,6 +704,25 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
             }
         }
 
+        private fun scheduleIdeThemeSyncScript() {
+            if (ideThemeSyncScriptScheduled) return
+            if (!OpenCodeSettingsState.getInstance().syncThemeWithIde) return
+
+            val serverUrl = serverManager.getServerUrl() ?: return
+            ideThemeSyncScriptScheduled = true
+
+            listOf(250, 750, 1500, 3000, 5000, 8000, 12000).forEach { delayMillis ->
+                openProjectAlarm.addRequest(
+                    {
+                        if (!project.isDisposed && OpenCodeSettingsState.getInstance().syncThemeWithIde) {
+                            executeIdeThemeSyncScript(serverUrl)
+                        }
+                    },
+                    delayMillis,
+                )
+            }
+        }
+
         private fun scheduleSystemNotificationBridgeScript() {
             if (systemNotificationBridgeScriptScheduled) return
             if (!OpenCodeSettingsState.getInstance().enableSystemNotifications) return
@@ -754,6 +795,17 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
             systemNotificationBridgeScriptScheduled = true
         }
 
+        private fun applyIdeThemeSync(enabled: Boolean) {
+            val serverUrl = serverManager.getServerUrl() ?: return
+            if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)) return
+            ideThemeSyncScriptScheduled = false
+            if (!enabled) {
+                browser.cefBrowser.reload()
+                return
+            }
+            if (executeIdeThemeSyncScript(serverUrl)) ideThemeSyncScriptScheduled = true
+        }
+
         private fun applyFileLinkNavigation(enabled: Boolean) {
             val serverUrl = serverManager.getServerUrl() ?: return
             if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)) return
@@ -793,6 +845,39 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
                     delayMillis,
                 )
             }
+        }
+
+        private fun injectIdeThemeSyncEarly() {
+            if (ideThemeSyncScriptScheduled) return
+            if (!OpenCodeSettingsState.getInstance().syncThemeWithIde) return
+
+            val serverUrl = serverManager.getServerUrl() ?: return
+            ideThemeSyncScriptScheduled = true
+
+            executeIdeThemeSyncScript(serverUrl)
+            listOf(50, 250, 750, 1500, 3000).forEach { delayMillis ->
+                openProjectAlarm.addRequest(
+                    {
+                        if (!project.isDisposed && OpenCodeSettingsState.getInstance().syncThemeWithIde) {
+                            executeIdeThemeSyncScript(serverUrl)
+                        }
+                    },
+                    delayMillis,
+                )
+            }
+        }
+
+        private fun executeIdeThemeSyncScript(serverUrl: String): Boolean {
+            val script = OpenCodeServerProtocol.buildIdeThemeSyncScript(
+                enabled = OpenCodeSettingsState.getInstance().syncThemeWithIde,
+                dark = isIdeDarkTheme(),
+            ) ?: return false
+            browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
+            return true
+        }
+
+        private fun isIdeDarkTheme(): Boolean {
+            return LafManager.getInstance().currentUIThemeLookAndFeel?.isDark == true
         }
 
         private fun applyCompactLayout(enabled: Boolean) {

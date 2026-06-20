@@ -72,6 +72,7 @@ class OpenCodeSettingsConfigurable : Configurable {
     private val enableCodeNavigationCheckBox = JBCheckBox("Enable click-to-navigate on code references in chat")
     private val enableChatFileDropCheckBox = JBCheckBox("Enable file drag and drop into chat")
     private val forceCompactLayoutCheckBox = JBCheckBox("Lock to compact view")
+    private val syncThemeWithIdeCheckBox = JBCheckBox("Sync OpenCode color scheme with the IDE theme")
     private val suppressProjectSwitchPromptsCheckBox = JBCheckBox("Suppress project-switch prompts")
     private val enableSystemNotificationsCheckBox = JBCheckBox("Forward OpenCode system notifications to the IDE")
     private val waitForIntellijMcpServerCheckBox = JBCheckBox("Wait for IntelliJ MCP server before starting OpenCode")
@@ -183,6 +184,10 @@ class OpenCodeSettingsConfigurable : Configurable {
                     .comment("Prevent the OpenCode UI from switching to a wide desktop layout when the panel is enlarged.")
             }
             row {
+                cell(syncThemeWithIdeCheckBox)
+                    .comment("Set OpenCode's color scheme to light or dark when the IntelliJ theme changes.")
+            }
+            row {
                 cell(suppressProjectSwitchPromptsCheckBox)
                     .comment("Hide OpenCode notifications that ask this panel to switch to another session or project for approval.")
             }
@@ -216,6 +221,7 @@ class OpenCodeSettingsConfigurable : Configurable {
             enableCodeNavigationCheckBox.isSelected != settings.enableCodeNavigation ||
             enableChatFileDropCheckBox.isSelected != settings.enableChatFileDrop ||
             forceCompactLayoutCheckBox.isSelected != settings.forceCompactLayout ||
+            syncThemeWithIdeCheckBox.isSelected != settings.syncThemeWithIde ||
             suppressProjectSwitchPromptsCheckBox.isSelected != settings.suppressProjectSwitchPrompts ||
             enableSystemNotificationsCheckBox.isSelected != settings.enableSystemNotifications ||
             waitForIntellijMcpServerCheckBox.isSelected != settings.waitForIntellijMcpServer ||
@@ -234,6 +240,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         val oldOpenFileLinksInIde = settings.openFileLinksInIde
         val oldEnableCodeNavigation = settings.enableCodeNavigation
         val oldForceCompactLayout = settings.forceCompactLayout
+        val oldSyncThemeWithIde = settings.syncThemeWithIde
         val oldSuppressProjectSwitchPrompts = settings.suppressProjectSwitchPrompts
         val oldEnableSystemNotifications = settings.enableSystemNotifications
         val oldPassword = savedPassword
@@ -258,6 +265,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         settings.enableCodeNavigation = enableCodeNavigationCheckBox.isSelected
         settings.enableChatFileDrop = enableChatFileDropCheckBox.isSelected
         settings.forceCompactLayout = forceCompactLayoutCheckBox.isSelected
+        settings.syncThemeWithIde = syncThemeWithIdeCheckBox.isSelected
         settings.suppressProjectSwitchPrompts = suppressProjectSwitchPromptsCheckBox.isSelected
         settings.enableSystemNotifications = enableSystemNotificationsCheckBox.isSelected
         settings.waitForIntellijMcpServer = waitForIntellijMcpServerCheckBox.isSelected
@@ -293,6 +301,11 @@ class OpenCodeSettingsConfigurable : Configurable {
                 .syncPublisher(OpenCodeSettingsListener.TOPIC)
                 .compactLayoutChanged(settings.forceCompactLayout)
         }
+        if (oldSyncThemeWithIde != settings.syncThemeWithIde) {
+            ApplicationManager.getApplication().messageBus
+                .syncPublisher(OpenCodeSettingsListener.TOPIC)
+                .ideThemeSyncChanged(settings.syncThemeWithIde)
+        }
         if (oldSuppressProjectSwitchPrompts != settings.suppressProjectSwitchPrompts) {
             ApplicationManager.getApplication().messageBus
                 .syncPublisher(OpenCodeSettingsListener.TOPIC)
@@ -322,6 +335,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         enableCodeNavigationCheckBox.isSelected = settings.enableCodeNavigation
         enableChatFileDropCheckBox.isSelected = settings.enableChatFileDrop
         forceCompactLayoutCheckBox.isSelected = settings.forceCompactLayout
+        syncThemeWithIdeCheckBox.isSelected = settings.syncThemeWithIde
         suppressProjectSwitchPromptsCheckBox.isSelected = settings.suppressProjectSwitchPrompts
         enableSystemNotificationsCheckBox.isSelected = settings.enableSystemNotifications
         waitForIntellijMcpServerCheckBox.isSelected = settings.waitForIntellijMcpServer

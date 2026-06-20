@@ -25,6 +25,7 @@ internal object OpenCodeServerProtocol {
     const val OPEN_CODE_LOCAL_STORAGE_PREFIX = "opencode."
     const val OPEN_CODE_DEFAULT_SERVER_URL_STORAGE_KEY = "opencode.settings.dat:defaultServerUrl"
     const val OPEN_CODE_THEME_ID_STORAGE_KEY = "opencode-theme-id"
+    const val OPEN_CODE_COLOR_SCHEME_STORAGE_KEY = "opencode-color-scheme"
     const val NOTIFICATION_GROUP_ID = "OpenCode Web Panel"
 
     private val secureRandom = SecureRandom()
@@ -86,6 +87,10 @@ internal object OpenCodeServerProtocol {
 
     fun buildCompactLayoutScript(enabled: Boolean): String? {
         return OpenCodeBrowserSnippets.buildCompactLayoutScript(enabled)
+    }
+
+    fun buildIdeThemeSyncScript(enabled: Boolean, dark: Boolean): String? {
+        return OpenCodeBrowserSnippets.buildIdeThemeSyncScript(enabled, dark)
     }
 
     fun buildDispatchDroppedFilesScript(files: List<DroppedFilePayload>): String? {

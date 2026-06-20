@@ -11,6 +11,8 @@ interface OpenCodeSettingsListener {
 
     fun compactLayoutChanged(enabled: Boolean) {}
 
+    fun ideThemeSyncChanged(enabled: Boolean) {}
+
     fun projectSwitchPromptSuppressionChanged(enabled: Boolean) {}
 
     fun systemNotificationsChanged(enabled: Boolean) {}

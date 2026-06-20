@@ -595,6 +595,25 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun buildIdeThemeSyncScriptIsMissingWhenDisabled() {
+        assertNull(OpenCodeServerProtocol.buildIdeThemeSyncScript(enabled = false, dark = true))
+    }
+
+    @Test
+    fun buildIdeThemeSyncScriptWritesLightOrDarkColorScheme() {
+        val darkScript = OpenCodeServerProtocol.buildIdeThemeSyncScript(enabled = true, dark = true)!!
+        val lightScript = OpenCodeServerProtocol.buildIdeThemeSyncScript(enabled = true, dark = false)!!
+
+        assertTrue(darkScript.contains(OpenCodeServerProtocol.OPEN_CODE_COLOR_SCHEME_STORAGE_KEY))
+        assertTrue(darkScript.contains("const nextValue = 'dark'"))
+        assertTrue(lightScript.contains("const nextValue = 'light'"))
+        assertTrue(darkScript.contains("if (oldValue !== nextValue) window.localStorage.setItem(key, nextValue)"))
+        assertTrue(darkScript.contains("window.localStorage.setItem(key, nextValue)"))
+        assertTrue(darkScript.contains("new StorageEvent('storage'"))
+        assertFalse(darkScript.contains("window.location.reload()"))
+    }
+
+    @Test
     fun buildProjectSwitchPromptSuppressionScriptIsMissingWhenDisabled() {
         assertNull(OpenCodeServerProtocol.buildProjectSwitchPromptSuppressionScript(enabled = false))
     }

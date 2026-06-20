@@ -112,6 +112,20 @@ class OpenCodeSettingsStateTest {
     }
 
     @Test
+    fun syncThemeWithIdeIsEnabledByDefault() {
+        assertEquals(true, OpenCodeSettingsState().syncThemeWithIde)
+    }
+
+    @Test
+    fun syncThemeWithIdeLoadsPersistedValue() {
+        val settings = OpenCodeSettingsState()
+
+        settings.loadState(OpenCodeSettingsState().apply { syncThemeWithIde = false })
+
+        assertEquals(false, settings.syncThemeWithIde)
+    }
+
+    @Test
     fun enableCodeNavigationIsEnabledByDefault() {
         assertEquals(true, OpenCodeSettingsState().enableCodeNavigation)
     }

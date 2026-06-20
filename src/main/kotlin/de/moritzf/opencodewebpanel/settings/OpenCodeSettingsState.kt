@@ -20,6 +20,7 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
     var enableCodeNavigation: Boolean = true
     var enableChatFileDrop: Boolean = true
     var forceCompactLayout: Boolean = true
+    var syncThemeWithIde: Boolean = true
     var suppressProjectSwitchPrompts: Boolean = true
     var enableSystemNotifications: Boolean = true
     var waitForIntellijMcpServer: Boolean = true
@@ -38,6 +39,7 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
         enableCodeNavigation = state.enableCodeNavigation
         enableChatFileDrop = state.enableChatFileDrop
         forceCompactLayout = state.forceCompactLayout
+        syncThemeWithIde = state.syncThemeWithIde
         suppressProjectSwitchPrompts = state.suppressProjectSwitchPrompts
         enableSystemNotifications = state.enableSystemNotifications
         waitForIntellijMcpServer = state.waitForIntellijMcpServer
