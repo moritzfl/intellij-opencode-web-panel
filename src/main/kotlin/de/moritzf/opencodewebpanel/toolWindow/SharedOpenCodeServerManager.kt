@@ -252,6 +252,7 @@ class SharedOpenCodeServerManager : Disposable {
     private fun runOpenCodeServerStart(projectBasePath: String?, startId: Long) {
         var process: Process? = null
         try {
+            if (!waitForIntellijMcpServerIfNeeded(startId)) return
             val password = OpenCodePasswordStore.getInstance().ensurePasswordBlocking()
             val settings = OpenCodeSettingsState.getInstance()
             val port = settings.portArgument()
@@ -325,6 +326,21 @@ class SharedOpenCodeServerManager : Disposable {
             } else {
                 destroyProcess(process)
             }
+        }
+    }
+
+    private fun waitForIntellijMcpServerIfNeeded(startId: Long): Boolean {
+        val initialStatus = IntellijMcpServerStartup.currentStatus()
+        if (!IntellijMcpServerStartup.shouldWaitFor(initialStatus)) return true
+
+        thisLogger().info("Waiting for ${initialStatus.message} before starting OpenCode")
+        return when (IntellijMcpServerStartup.waitUntilReady(initialStatus, isStillCurrent = { isCurrentStart(startId) })) {
+            IntellijMcpServerWaitResult.READY -> true
+            IntellijMcpServerWaitResult.TIMED_OUT -> {
+                thisLogger().warn("Timed out waiting for IntelliJ MCP server; starting OpenCode anyway")
+                true
+            }
+            IntellijMcpServerWaitResult.CANCELLED -> false
         }
     }
 

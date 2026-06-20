@@ -390,6 +390,102 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun intellijMcpServerWaitsOnlyWhenEnabledButNotRunning() {
+        assertTrue(
+            IntellijMcpServerStartup.shouldWaitFor(
+                IntellijMcpServerStartupStatus(
+                    IntellijMcpServerStartupState.ENABLED_NOT_RUNNING,
+                    "not running",
+                ),
+            ),
+        )
+        assertFalse(
+            IntellijMcpServerStartup.shouldWaitFor(
+                IntellijMcpServerStartupStatus(
+                    IntellijMcpServerStartupState.RUNNING,
+                    "running",
+                ),
+            ),
+        )
+        assertFalse(
+            IntellijMcpServerStartup.shouldWaitFor(
+                IntellijMcpServerStartupStatus(
+                    IntellijMcpServerStartupState.NOT_CONFIGURED_OR_DISABLED,
+                    "disabled",
+                ),
+            ),
+        )
+        assertFalse(
+            IntellijMcpServerStartup.shouldWaitFor(
+                IntellijMcpServerStartupStatus(
+                    IntellijMcpServerStartupState.UNAVAILABLE,
+                    "unavailable",
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun intellijMcpServerWaitStopsWhenServerStarts() {
+        var now = 0L
+        var checks = 0
+        val sleeps = mutableListOf<Long>()
+
+        val result = IntellijMcpServerStartup.waitUntilReady(
+            initialStatus = IntellijMcpServerStartupStatus(
+                IntellijMcpServerStartupState.ENABLED_NOT_RUNNING,
+                "not running",
+            ),
+            statusProvider = {
+                checks += 1
+                IntellijMcpServerStartupStatus(
+                    if (checks < 2) IntellijMcpServerStartupState.ENABLED_NOT_RUNNING else IntellijMcpServerStartupState.RUNNING,
+                    "status $checks",
+                )
+            },
+            nowMillis = { now },
+            sleepMillis = { millis ->
+                sleeps += millis
+                now += millis
+            },
+            timeoutMillis = 2_000L,
+            pollIntervalMillis = 500L,
+        )
+
+        assertEquals(IntellijMcpServerWaitResult.READY, result)
+        assertEquals(listOf(500L, 500L), sleeps)
+    }
+
+    @Test
+    fun intellijMcpServerWaitTimesOut() {
+        var now = 0L
+        val sleeps = mutableListOf<Long>()
+
+        val result = IntellijMcpServerStartup.waitUntilReady(
+            initialStatus = IntellijMcpServerStartupStatus(
+                IntellijMcpServerStartupState.ENABLED_NOT_RUNNING,
+                "not running",
+            ),
+            statusProvider = {
+                IntellijMcpServerStartupStatus(
+                    IntellijMcpServerStartupState.ENABLED_NOT_RUNNING,
+                    "not running",
+                )
+            },
+            nowMillis = { now },
+            sleepMillis = { millis ->
+                sleeps += millis
+                now += millis
+            },
+            timeoutMillis = 1_000L,
+            pollIntervalMillis = 400L,
+        )
+
+        assertEquals(IntellijMcpServerWaitResult.TIMED_OUT, result)
+        assertEquals(listOf(400L, 400L, 200L), sleeps)
+    }
+
+    @Test
     fun buildDispatchDroppedFilesScriptCreatesBrowserDropEvent() {
         val script = OpenCodeServerProtocol.buildDispatchDroppedFilesScript(
             listOf(
