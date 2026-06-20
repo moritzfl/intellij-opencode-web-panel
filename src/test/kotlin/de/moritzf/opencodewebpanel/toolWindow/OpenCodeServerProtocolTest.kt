@@ -757,15 +757,42 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
-    fun checkServerRespondingReturnsTrueForHttpResponse() {
-        withSingleRequestHttpServer { url ->
-            assertTrue(OpenCodeServerProtocol.checkServerResponding(url, 1000, 1000))
+    fun checkServerRespondingReturnsTrueForOpenCodeHealthResponse() {
+        withSingleRequestHttpServer(body = "{\"healthy\":true}") { url ->
+            assertTrue(
+                OpenCodeServerProtocol.checkServerResponding(
+                    url,
+                    basicAuthHeader = "Basic test-token",
+                    connectTimeoutMillis = 1000,
+                    readTimeoutMillis = 1000,
+                ),
+            )
+        }
+    }
+
+    @Test
+    fun checkServerRespondingRejectsNonOpenCodeHealthResponse() {
+        withSingleRequestHttpServer(body = "ok") { url ->
+            assertFalse(
+                OpenCodeServerProtocol.checkServerResponding(
+                    url,
+                    basicAuthHeader = "Basic test-token",
+                    connectTimeoutMillis = 1000,
+                    readTimeoutMillis = 1000,
+                ),
+            )
         }
     }
 
     @Test
     fun checkServerRespondingReturnsFalseForInvalidUrl() {
-        assertFalse(OpenCodeServerProtocol.checkServerResponding("not-a-url", 100, 100))
+        assertFalse(
+            OpenCodeServerProtocol.checkServerResponding(
+                "not-a-url",
+                connectTimeoutMillis = 100,
+                readTimeoutMillis = 100,
+            ),
+        )
     }
 
     @Test
@@ -790,19 +817,22 @@ class OpenCodeServerProtocolTest {
         assertEquals(60_000L, OpenCodeServerProtocol.startFailureBackoffMillis(10))
     }
 
-    private fun withSingleRequestHttpServer(block: (String) -> Unit) {
+    private fun withSingleRequestHttpServer(body: String, block: (String) -> Unit) {
         val serverSocket = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1"))
         val executor = Executors.newSingleThreadExecutor()
         val responseFuture = executor.submit {
             try {
                 serverSocket.accept().use { socket ->
                     val reader = socket.getInputStream().bufferedReader()
+                    val requestLine = reader.readLine()
+                    if (requestLine != "GET ${OpenCodeServerProtocol.HEALTH_PATH} HTTP/1.1") {
+                        throw AssertionError("Unexpected request line: $requestLine")
+                    }
                     while (reader.readLine()?.isNotEmpty() == true) {
                         // Drain request headers before responding.
                     }
-                    val body = "ok"
                     socket.getOutputStream().write(
-                        "HTTP/1.1 200 OK\r\nContent-Length: ${body.length}\r\nConnection: close\r\n\r\n$body"
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ${body.length}\r\nConnection: close\r\n\r\n$body"
                             .toByteArray(Charsets.UTF_8),
                     )
                     socket.getOutputStream().flush()

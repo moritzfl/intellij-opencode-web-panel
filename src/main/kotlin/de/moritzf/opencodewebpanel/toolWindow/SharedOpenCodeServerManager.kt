@@ -350,7 +350,17 @@ class SharedOpenCodeServerManager : Disposable {
     }
 
     private fun checkServerResponding(serverUrl: String): Boolean {
-        val responding = OpenCodeServerProtocol.checkServerResponding(serverUrl)
+        val process = getServerProcess()
+        if (process?.isAlive != true) {
+            thisLogger().info("OpenCode health check skipped because the server process is not alive")
+            return false
+        }
+        val password = getServerPassword()
+        if (password.isNullOrBlank()) {
+            thisLogger().info("OpenCode health check skipped because no server password is available")
+            return false
+        }
+        val responding = OpenCodeServerProtocol.checkServerResponding(serverUrl, OpenCodeServerProtocol.buildBasicAuthHeader(password))
         if (!responding) thisLogger().info("OpenCode health check failed for $serverUrl")
         return responding
     }

@@ -75,7 +75,9 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
             override fun onBeforeResourceLoad(browser: CefBrowser?, frame: CefFrame?, request: CefRequest?): Boolean {
                 val password = serverManager.getServerPassword() ?: return false
                 val requestUrl = request?.url ?: return false
-                if (OpenCodeServerProtocol.shouldSendBasicAuthHeader(serverManager.getServerUrl(), requestUrl)) {
+                if (serverManager.getServerProcess()?.isAlive == true &&
+                    OpenCodeServerProtocol.shouldSendBasicAuthHeader(serverManager.getServerUrl(), requestUrl)
+                ) {
                     request.setHeaderByName("Authorization", OpenCodeServerProtocol.buildBasicAuthHeader(password), true)
                 }
                 return false
@@ -120,6 +122,7 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
                 callback: CefAuthCallback?,
             ): Boolean {
                 val password = serverManager.getServerPassword() ?: return false
+                if (serverManager.getServerProcess()?.isAlive != true) return false
                 if (!OpenCodeServerProtocol.shouldHandleBasicAuthChallenge(serverManager.getServerUrl(), isProxy, host, port)) {
                     return false
                 }

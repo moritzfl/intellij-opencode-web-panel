@@ -17,6 +17,7 @@ internal object OpenCodeServerProtocol {
     const val CHECK_INTERVAL_SECONDS = 30L
     const val START_FAILURE_BACKOFF_BASE_MILLIS = 5_000L
     const val START_FAILURE_BACKOFF_MAX_MILLIS = 60_000L
+    const val HEALTH_PATH = "/api/health"
     const val BASIC_AUTH_USERNAME = "opencode"
     const val DEFAULT_EXECUTABLE = "opencode"
     const val OPEN_FILE_LINK_SCHEME = "opencode-web-panel"
@@ -393,16 +394,22 @@ internal object OpenCodeServerProtocol {
 
     fun checkServerResponding(
         serverUrl: String,
+        basicAuthHeader: String? = null,
         connectTimeoutMillis: Int = 2000,
         readTimeoutMillis: Int = 2000,
     ): Boolean {
         return try {
-            val connection = URI(serverUrl).toURL().openConnection() as HttpURLConnection
+            val connection = URI(buildHealthUrl(serverUrl)).toURL().openConnection() as HttpURLConnection
             try {
                 connection.connectTimeout = connectTimeoutMillis
                 connection.readTimeout = readTimeoutMillis
                 connection.requestMethod = "GET"
-                connection.responseCode in 200..499
+                if (!basicAuthHeader.isNullOrBlank()) {
+                    connection.setRequestProperty("Authorization", basicAuthHeader)
+                }
+                if (connection.responseCode != HttpURLConnection.HTTP_OK) return false
+                val body = connection.inputStream.bufferedReader().use { it.readText() }
+                Regex("\"healthy\"\\s*:\\s*true").containsMatchIn(body)
             } finally {
                 connection.disconnect()
             }
@@ -540,6 +547,10 @@ internal object OpenCodeServerProtocol {
 
     private fun decodeUrlParameter(value: String): String? {
         return runCatching { URLDecoder.decode(value, StandardCharsets.UTF_8) }.getOrNull()
+    }
+
+    private fun buildHealthUrl(serverUrl: String): String {
+        return buildServerRootUrl(serverUrl) + HEALTH_PATH
     }
 
     private fun buildOrigin(serverUrl: String): String {
