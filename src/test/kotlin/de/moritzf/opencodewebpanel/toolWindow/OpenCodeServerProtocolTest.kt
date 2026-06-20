@@ -328,6 +328,31 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun buildDispatchDroppedFilesScriptCreatesBrowserDropEvent() {
+        val script = OpenCodeServerProtocol.buildDispatchDroppedFilesScript(
+            listOf(
+                OpenCodeServerProtocol.DroppedFilePayload(
+                    name = "hello 'world'.txt",
+                    mime = "text/plain",
+                    lastModified = 123,
+                    base64 = "aGVsbG8=",
+                ),
+            ),
+        )!!
+
+        assertTrue(script.contains("new DataTransfer()"))
+        assertTrue(script.contains("new File([decode(entry.base64)], entry.name"))
+        assertTrue(script.contains("document.dispatchEvent(new DragEvent('drop'"))
+        assertTrue(script.contains("hello \\'world\\'.txt"))
+        assertTrue(script.contains("aGVsbG8="))
+    }
+
+    @Test
+    fun buildDispatchDroppedFilesScriptIsMissingWithoutFiles() {
+        assertNull(OpenCodeServerProtocol.buildDispatchDroppedFilesScript(emptyList()))
+    }
+
+    @Test
     fun openFileLinkRequestParsesHref() {
         val url = "${OpenCodeServerProtocol.OPEN_FILE_LINK_SCHEME}://${OpenCodeServerProtocol.OPEN_FILE_LINK_HOST}?href=src%2FMain.kt"
 

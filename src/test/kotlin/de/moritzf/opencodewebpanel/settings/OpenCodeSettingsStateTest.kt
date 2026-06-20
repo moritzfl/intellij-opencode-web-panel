@@ -100,4 +100,9 @@ class OpenCodeSettingsStateTest {
     fun openFileLinksInIdeIsEnabledByDefault() {
         assertEquals(true, OpenCodeSettingsState().openFileLinksInIde)
     }
+
+    @Test
+    fun chatFileDropIsEnabledByDefault() {
+        assertEquals(true, OpenCodeSettingsState().enableChatFileDrop)
+    }
 }

@@ -123,6 +123,42 @@ internal object OpenCodeServerProtocol {
         return buildFileLinkHandlerScript(projectBasePath, enabled = true)
     }
 
+    fun buildDispatchDroppedFilesScript(files: List<DroppedFilePayload>): String? {
+        if (files.isEmpty()) return null
+        val fileEntries = files.joinToString(",\n") { file ->
+            "{ name: '${escapeJavaScript(file.name)}', mime: '${escapeJavaScript(file.mime)}', lastModified: ${file.lastModified}, base64: '${file.base64}' }"
+        }
+        return """
+            (() => {
+              if (typeof DataTransfer !== 'function' || typeof File !== 'function' || typeof DragEvent !== 'function') {
+                console.warn('OpenCode Web Panel could not dispatch dropped files: browser drag APIs unavailable');
+                return;
+              }
+              const entries = [
+                $fileEntries
+              ];
+              const transfer = new DataTransfer();
+              const decode = (base64) => {
+                const binary = atob(base64);
+                const bytes = new Uint8Array(binary.length);
+                for (let index = 0; index < binary.length; index += 1) {
+                  bytes[index] = binary.charCodeAt(index);
+                }
+                return bytes;
+              };
+              for (const entry of entries) {
+                transfer.items.add(new File([decode(entry.base64)], entry.name, {
+                  type: entry.mime,
+                  lastModified: entry.lastModified,
+                }));
+              }
+              const options = { bubbles: true, cancelable: true, dataTransfer: transfer };
+              document.dispatchEvent(new DragEvent('dragover', options));
+              document.dispatchEvent(new DragEvent('drop', options));
+            })();
+        """.trimIndent()
+    }
+
     fun buildFileLinkHandlerScript(projectBasePath: String?, enabled: Boolean): String? {
         return buildFileLinkHandlerScript(projectBasePath, enabled, openFileCallback = null)
     }
@@ -305,6 +341,13 @@ internal object OpenCodeServerProtocol {
     }
 
     data class FileLinkTarget(val path: Path, val line: Int?, val column: Int?)
+
+    data class DroppedFilePayload(
+        val name: String,
+        val mime: String,
+        val lastModified: Long,
+        val base64: String,
+    )
 
     private data class ParsedFileLink(
         val path: Path,

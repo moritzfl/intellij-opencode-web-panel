@@ -26,6 +26,12 @@ import org.cef.handler.CefLoadHandlerAdapter
 import org.cef.handler.CefRequestHandlerAdapter
 import org.cef.misc.BoolRef
 import org.cef.network.CefRequest
+import java.awt.datatransfer.DataFlavor
+import java.io.File
+import java.nio.file.Files
+import java.util.Base64
+import javax.swing.JComponent
+import javax.swing.TransferHandler
 
 class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
 
@@ -131,6 +137,7 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
             }
             browser.jbCefClient.addRequestHandler(authHandler, browser.cefBrowser)
             browser.jbCefClient.addLoadHandler(loadHandler, browser.cefBrowser)
+            installFileDropTransferHandler()
             ApplicationManager.getApplication().messageBus.connect(this).subscribe(
                 OpenCodeSettingsListener.TOPIC,
                 object : OpenCodeSettingsListener {
@@ -146,6 +153,66 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
                     }
                 },
             )
+        }
+
+        private fun installFileDropTransferHandler() {
+            val handler = object : TransferHandler() {
+                override fun canImport(support: TransferSupport): Boolean {
+                    if (!OpenCodeSettingsState.getInstance().enableChatFileDrop) return false
+                    if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverManager.getServerUrl(), browser.cefBrowser.url)) return false
+                    if (!support.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) return false
+                    if (support.isDrop) support.dropAction = COPY
+                    return true
+                }
+
+                override fun importData(support: TransferSupport): Boolean {
+                    if (!canImport(support)) return false
+                    val droppedFiles = runCatching {
+                        @Suppress("UNCHECKED_CAST")
+                        support.transferable.getTransferData(DataFlavor.javaFileListFlavor) as? List<File>
+                    }.getOrNull().orEmpty()
+                    return dispatchDroppedFiles(droppedFiles)
+                }
+            }
+            installTransferHandler(browser.component, handler)
+            (browser.getBrowserComponent() as? JComponent)?.let { installTransferHandler(it, handler) }
+        }
+
+        private fun installTransferHandler(component: JComponent, handler: TransferHandler) {
+            component.transferHandler = handler
+            component.components
+                .filterIsInstance<JComponent>()
+                .forEach { installTransferHandler(it, handler) }
+        }
+
+        private fun dispatchDroppedFiles(files: List<File>): Boolean {
+            val regularFiles = files.filter { it.isFile }
+            if (regularFiles.isEmpty()) return false
+
+            ApplicationManager.getApplication().executeOnPooledThread {
+                val payloads = regularFiles.mapNotNull { droppedFilePayload(it) }
+                val script = OpenCodeServerProtocol.buildDispatchDroppedFilesScript(payloads) ?: return@executeOnPooledThread
+                val rootUrl = serverManager.getServerUrl()?.let { OpenCodeServerProtocol.buildServerRootUrl(it) }
+                    ?: return@executeOnPooledThread
+                ApplicationManager.getApplication().invokeLater {
+                    if (!project.isDisposed && OpenCodeSettingsState.getInstance().enableChatFileDrop) {
+                        browser.cefBrowser.executeJavaScript(script, rootUrl, 0)
+                    }
+                }
+            }
+            return true
+        }
+
+        private fun droppedFilePayload(file: File): OpenCodeServerProtocol.DroppedFilePayload? {
+            return runCatching {
+                val path = file.toPath()
+                OpenCodeServerProtocol.DroppedFilePayload(
+                    name = file.name,
+                    mime = Files.probeContentType(path) ?: "application/octet-stream",
+                    lastModified = file.lastModified(),
+                    base64 = Base64.getEncoder().encodeToString(Files.readAllBytes(path)),
+                )
+            }.getOrNull()
         }
 
         fun getContent() = browser.component

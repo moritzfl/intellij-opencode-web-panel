@@ -68,6 +68,7 @@ class OpenCodeSettingsConfigurable : Configurable {
     }
     private val openMostRecentConversationCheckBox = JBCheckBox("Open the most recent conversation for the project on startup")
     private val openFileLinksInIdeCheckBox = JBCheckBox("Open local file links in the IDE")
+    private val enableChatFileDropCheckBox = JBCheckBox("Enable file drag and drop into chat")
     private val uiZoomSpinner = JSpinner(
         SpinnerNumberModel(
             OpenCodeSettingsState.DEFAULT_UI_ZOOM_PERCENT,
@@ -161,6 +162,10 @@ class OpenCodeSettingsConfigurable : Configurable {
                 cell(openFileLinksInIdeCheckBox)
                     .comment("Open markdown links that point to workspace-relative, absolute, or file: paths in IntelliJ.")
             }
+            row {
+                cell(enableChatFileDropCheckBox)
+                    .comment("Allow dropping images, PDFs, and text files into the embedded OpenCode chat input.")
+            }
         }
         panel = JBTabbedPane().apply {
             addTab("OpenCode Server Setup", serverSetupPanel)
@@ -180,6 +185,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         val binaryPathModified = binaryPath() != settings.binaryPath.trim()
         val uiSettingsModified = openMostRecentConversationCheckBox.isSelected != settings.openMostRecentConversationOnStartup ||
             openFileLinksInIdeCheckBox.isSelected != settings.openFileLinksInIde ||
+            enableChatFileDropCheckBox.isSelected != settings.enableChatFileDrop ||
             uiZoomPercent() != OpenCodeSettingsState.sanitizeUiZoomPercent(settings.uiZoomPercent)
         return passwordModified || portModeModified || fixedPortModified || binaryModeModified || binaryPathModified || uiSettingsModified
     }
@@ -211,6 +217,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         settings.binaryPath = nextBinaryPath
         settings.openMostRecentConversationOnStartup = openMostRecentConversationCheckBox.isSelected
         settings.openFileLinksInIde = openFileLinksInIdeCheckBox.isSelected
+        settings.enableChatFileDrop = enableChatFileDropCheckBox.isSelected
         settings.uiZoomPercent = nextUiZoomPercent
         fixedPortField.text = nextFixedPort.toString()
         binaryPathField.text = nextBinaryPath
@@ -249,6 +256,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         binaryPathField.text = settings.binaryPath.trim()
         openMostRecentConversationCheckBox.isSelected = settings.openMostRecentConversationOnStartup
         openFileLinksInIdeCheckBox.isSelected = settings.openFileLinksInIde
+        enableChatFileDropCheckBox.isSelected = settings.enableChatFileDrop
         uiZoomSpinner.value = OpenCodeSettingsState.sanitizeUiZoomPercent(settings.uiZoomPercent)
         loadPasswordField()
         updatePasswordHint()

@@ -17,6 +17,7 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
     var openMostRecentConversationOnStartup: Boolean = true
     var uiZoomPercent: Int = DEFAULT_UI_ZOOM_PERCENT
     var openFileLinksInIde: Boolean = true
+    var enableChatFileDrop: Boolean = true
 
     override fun getState(): OpenCodeSettingsState = this
 
@@ -28,6 +29,7 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
         openMostRecentConversationOnStartup = state.openMostRecentConversationOnStartup
         uiZoomPercent = sanitizeUiZoomPercent(state.uiZoomPercent)
         openFileLinksInIde = state.openFileLinksInIde
+        enableChatFileDrop = state.enableChatFileDrop
     }
 
     fun portModeValue(): OpenCodePortMode = OpenCodePortMode.fromStorageValue(portMode)
