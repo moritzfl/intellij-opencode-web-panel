@@ -39,6 +39,8 @@ class SharedOpenCodeServerManager : Disposable {
     private var serverPassword: String? = null
     private var checkScheduledFuture: ScheduledFuture<*>? = null
     private var preferredBasePath: String? = null
+    private var consecutiveStartFailures = 0
+    private var nextStartAllowedAtMillis = 0L
     private val scheduler = Executors.newSingleThreadScheduledExecutor { runnable ->
         Thread(runnable, "OpenCode-Server-Checker").apply { isDaemon = true }
     }
@@ -49,8 +51,16 @@ class SharedOpenCodeServerManager : Disposable {
         val url = getServerUrl()
         if (url != null && checkServerResponding(url)) {
             setServerRunning(true)
+            recordStartSuccess()
             startPeriodicCheck()
             ApplicationManager.getApplication().invokeLater(onStarted)
+            return
+        }
+
+        val backoffMillis = remainingStartBackoffMillis()
+        if (backoffMillis > 0) {
+            thisLogger().warn("Delaying OpenCode server start after recent failure for ${backoffMillis}ms")
+            ApplicationManager.getApplication().invokeLater(onFailed)
             return
         }
 
@@ -62,7 +72,6 @@ class SharedOpenCodeServerManager : Disposable {
         }
 
         destroyCurrentProcess()
-        startPeriodicCheck()
         startOpenCodeServer(project, basePath, startId)
     }
 
@@ -121,6 +130,8 @@ class SharedOpenCodeServerManager : Disposable {
                 serverRunning = false
                 serverUrl = null
                 serverPassword = null
+                consecutiveStartFailures = 0
+                nextStartAllowedAtMillis = 0L
             }
 
             futureToCancel?.cancel(true)
@@ -155,10 +166,23 @@ class SharedOpenCodeServerManager : Disposable {
         thisLogger().info("Started periodic server health check")
     }
 
+    private fun cancelPeriodicCheck(mayInterruptIfRunning: Boolean = false) {
+        val future = synchronized(lock) {
+            checkScheduledFuture.also { checkScheduledFuture = null }
+        }
+        future?.cancel(mayInterruptIfRunning)
+    }
+
     private fun checkServerHealth() {
         val url = getServerUrl()
         val responding = url != null && checkServerResponding(url)
         if (!OpenCodeServerProtocol.shouldRestartServer(url, responding)) return
+
+        val backoffMillis = remainingStartBackoffMillis()
+        if (backoffMillis > 0) {
+            thisLogger().warn("Skipping OpenCode server restart during startup backoff for ${backoffMillis}ms")
+            return
+        }
 
         thisLogger().warn("Server is not responding, attempting to restart...")
         val basePath: String?
@@ -168,6 +192,7 @@ class SharedOpenCodeServerManager : Disposable {
             basePath = preferredBasePath
             ++startSequence
         }
+        cancelPeriodicCheck()
         destroyCurrentProcess()
         startOpenCodeServer(null, basePath, startId)
     }
@@ -274,6 +299,14 @@ class SharedOpenCodeServerManager : Disposable {
             pendingStarts.toList().also { pendingStarts.clear() }
         }
 
+        if (success) {
+            recordStartSuccess()
+            startPeriodicCheck()
+        } else {
+            cancelPeriodicCheck()
+            recordStartFailure()
+        }
+
         ApplicationManager.getApplication().invokeLater {
             callbacks.forEach { callback ->
                 if (success) callback.onStarted() else callback.onFailed()
@@ -294,6 +327,29 @@ class SharedOpenCodeServerManager : Disposable {
         val responding = OpenCodeServerProtocol.checkServerResponding(serverUrl)
         if (!responding) thisLogger().info("OpenCode health check failed for $serverUrl")
         return responding
+    }
+
+    private fun remainingStartBackoffMillis(nowMillis: Long = System.currentTimeMillis()): Long {
+        return synchronized(lock) {
+            (nextStartAllowedAtMillis - nowMillis).coerceAtLeast(0L)
+        }
+    }
+
+    private fun recordStartSuccess() {
+        synchronized(lock) {
+            consecutiveStartFailures = 0
+            nextStartAllowedAtMillis = 0L
+        }
+    }
+
+    private fun recordStartFailure(nowMillis: Long = System.currentTimeMillis()) {
+        val delayMillis = synchronized(lock) {
+            consecutiveStartFailures += 1
+            OpenCodeServerProtocol.startFailureBackoffMillis(consecutiveStartFailures).also { delay ->
+                nextStartAllowedAtMillis = nowMillis + delay
+            }
+        }
+        thisLogger().warn("OpenCode server start failed; next automatic start allowed in ${delayMillis}ms")
     }
 
     private fun destroyCurrentProcess() {

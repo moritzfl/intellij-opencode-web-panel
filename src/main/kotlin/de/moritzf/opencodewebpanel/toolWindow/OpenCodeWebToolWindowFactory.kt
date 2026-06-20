@@ -287,7 +287,7 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
 
         private fun loadProjectPage() {
             val serverUrl = serverManager.getServerUrl() ?: return
-            val url = OpenCodeServerProtocol.buildAuthenticatedServerRootUrl(serverUrl, serverManager.getServerPassword())
+            val url = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
 
             thisLogger().info("Loading OpenCode project page")
             openProjectScriptScheduled = false

@@ -218,30 +218,6 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
-    fun buildAuthenticatedServerRootUrlAddsEncodedAuthToken() {
-        assertEquals(
-            "http://127.0.0.1:60482?auth_token=b3BlbmNvZGU6c2VjcmV0LXBhc3N3b3Jk",
-            OpenCodeServerProtocol.buildAuthenticatedServerRootUrl("http://127.0.0.1:60482/", "secret-password"),
-        )
-        assertEquals(
-            "http://127.0.0.1:60482?auth_token=b3BlbmNvZGU6cA%3D%3D",
-            OpenCodeServerProtocol.buildAuthenticatedServerRootUrl("http://127.0.0.1:60482/", "p"),
-        )
-    }
-
-    @Test
-    fun buildAuthenticatedServerRootUrlFallsBackToRootWithoutPassword() {
-        assertEquals(
-            "http://127.0.0.1:60482",
-            OpenCodeServerProtocol.buildAuthenticatedServerRootUrl("http://127.0.0.1:60482/", null),
-        )
-        assertEquals(
-            "http://127.0.0.1:60482",
-            OpenCodeServerProtocol.buildAuthenticatedServerRootUrl("http://127.0.0.1:60482/", ""),
-        )
-    }
-
-    @Test
     fun buildProjectUrlLoadsServerRootWithoutProjectPath() {
         assertEquals(
             "http://127.0.0.1:60482",
@@ -793,10 +769,25 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
-    fun shouldRestartServerWhenUrlIsMissingOrHealthCheckFails() {
-        assertTrue(OpenCodeServerProtocol.shouldRestartServer(null, serverResponding = false))
+    fun shouldRestartServerOnlyWhenKnownUrlFailsHealthCheck() {
+        assertFalse(OpenCodeServerProtocol.shouldRestartServer(null, serverResponding = false))
         assertTrue(OpenCodeServerProtocol.shouldRestartServer("http://127.0.0.1:60482", serverResponding = false))
         assertFalse(OpenCodeServerProtocol.shouldRestartServer("http://127.0.0.1:60482", serverResponding = true))
+    }
+
+    @Test
+    fun shouldDelayServerStartOnlyBeforeBackoffExpires() {
+        assertTrue(OpenCodeServerProtocol.shouldDelayServerStart(nextStartAllowedAtMillis = 2_000, nowMillis = 1_999))
+        assertFalse(OpenCodeServerProtocol.shouldDelayServerStart(nextStartAllowedAtMillis = 2_000, nowMillis = 2_000))
+        assertFalse(OpenCodeServerProtocol.shouldDelayServerStart(nextStartAllowedAtMillis = 0, nowMillis = 1_999))
+    }
+
+    @Test
+    fun startFailureBackoffUsesExponentialDelayWithCap() {
+        assertEquals(5_000L, OpenCodeServerProtocol.startFailureBackoffMillis(1))
+        assertEquals(10_000L, OpenCodeServerProtocol.startFailureBackoffMillis(2))
+        assertEquals(20_000L, OpenCodeServerProtocol.startFailureBackoffMillis(3))
+        assertEquals(60_000L, OpenCodeServerProtocol.startFailureBackoffMillis(10))
     }
 
     private fun withSingleRequestHttpServer(block: (String) -> Unit) {

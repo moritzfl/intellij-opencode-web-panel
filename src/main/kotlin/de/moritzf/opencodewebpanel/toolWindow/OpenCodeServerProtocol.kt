@@ -4,7 +4,6 @@ import java.io.File
 import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URLDecoder
-import java.net.URLEncoder
 import java.nio.file.Files
 import java.nio.charset.StandardCharsets
 import java.nio.file.Path
@@ -16,6 +15,8 @@ internal object OpenCodeServerProtocol {
     const val HOST = "127.0.0.1"
     const val DYNAMIC_PORT = "0"
     const val CHECK_INTERVAL_SECONDS = 30L
+    const val START_FAILURE_BACKOFF_BASE_MILLIS = 5_000L
+    const val START_FAILURE_BACKOFF_MAX_MILLIS = 60_000L
     const val BASIC_AUTH_USERNAME = "opencode"
     const val DEFAULT_EXECUTABLE = "opencode"
     const val OPEN_FILE_LINK_SCHEME = "opencode-web-panel"
@@ -28,12 +29,6 @@ internal object OpenCodeServerProtocol {
     private val secureRandom = SecureRandom()
     fun buildServerRootUrl(serverUrl: String): String {
         return serverUrl.trimEnd('/')
-    }
-
-    fun buildAuthenticatedServerRootUrl(serverUrl: String, password: String?): String {
-        val root = buildServerRootUrl(serverUrl)
-        if (password.isNullOrBlank()) return root
-        return "$root?auth_token=${encodeUrlParameter(buildAuthToken(password))}"
     }
 
     fun buildProjectUrl(serverUrl: String, projectBasePath: String? = null): String {
@@ -417,7 +412,19 @@ internal object OpenCodeServerProtocol {
     }
 
     fun shouldRestartServer(serverUrl: String?, serverResponding: Boolean): Boolean {
-        return serverUrl == null || !serverResponding
+        return serverUrl != null && !serverResponding
+    }
+
+    fun shouldDelayServerStart(nextStartAllowedAtMillis: Long, nowMillis: Long = System.currentTimeMillis()): Boolean {
+        return nextStartAllowedAtMillis > nowMillis
+    }
+
+    fun startFailureBackoffMillis(consecutiveFailures: Int): Long {
+        var delay = START_FAILURE_BACKOFF_BASE_MILLIS
+        repeat((consecutiveFailures.coerceAtLeast(1) - 1).coerceAtMost(20)) {
+            delay = (delay * 2).coerceAtMost(START_FAILURE_BACKOFF_MAX_MILLIS)
+        }
+        return delay
     }
 
     fun resolvePath(
@@ -529,10 +536,6 @@ internal object OpenCodeServerProtocol {
         return runCatching {
             String(Base64.getUrlDecoder().decode(directory + padding), StandardCharsets.UTF_8)
         }.getOrNull()
-    }
-
-    private fun encodeUrlParameter(value: String): String {
-        return URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20")
     }
 
     private fun decodeUrlParameter(value: String): String? {
