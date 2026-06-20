@@ -4,11 +4,21 @@
 
 ## [Unreleased]
 
-## [1.0.0] - 2026-02-26
+## [1.0.0] - 2026-06-20
 
 ### Added
 
-- Initial scaffold created from [IntelliJ Platform Plugin Template](https://github.com/JetBrains/intellij-platform-plugin-template)
+- Embedded OpenCode web app in a right-side JetBrains IDE tool window.
+- Shared local OpenCode server startup with loopback binding, automatic port selection, and Password Safe-backed authentication.
+- Project-coupled startup that opens the current IDE project and can restore its most recent OpenCode conversation.
+- Persistence for selected OpenCode web-session settings across embedded sessions and dynamic ports.
+- IDE-native local file-link opening, clickable code-reference navigation, and limited file drag-and-drop into chat.
+- Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
+- IntelliJ notification bridge for OpenCode browser notifications.
+
+### Fixed
+
+- Hardened server lifecycle handling for stale URLs, failed startup retries, process shutdown, and OpenCode health verification.
 
 [Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.0.0...HEAD
 [1.0.0]: https://github.com/moritzfl/intellij-opencode-web-panel/commits/1.0.0
