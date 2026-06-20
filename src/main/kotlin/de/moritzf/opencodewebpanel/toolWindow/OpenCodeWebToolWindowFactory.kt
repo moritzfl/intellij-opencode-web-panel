@@ -55,6 +55,11 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
 
     class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposable {
 
+        private companion object {
+            private const val MAX_DROPPED_FILE_BYTES = 5L * 1024L * 1024L
+            private const val MAX_DROPPED_FILES_TOTAL_BYTES = 10L * 1024L * 1024L
+        }
+
         private val project = toolWindow.project
         private val browser = JBCefBrowser()
         private val openFileLinkQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
@@ -247,12 +252,15 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
         }
 
         private fun dispatchDroppedFiles(files: List<File>): Boolean {
-            val regularFiles = files.filter { it.isFile }
-            if (regularFiles.isEmpty()) return false
+            val selection = selectDroppedFiles(files)
+            if (selection.rejectionMessages.isNotEmpty()) {
+                showFileDropWarning(selection.rejectionMessages)
+            }
+            if (selection.acceptedFiles.isEmpty()) return selection.rejectionMessages.isNotEmpty()
 
             ApplicationManager.getApplication().executeOnPooledThread {
                 if (isContentDisposed()) return@executeOnPooledThread
-                val payloads = regularFiles.mapNotNull { droppedFilePayload(it) }
+                val payloads = selection.acceptedFiles.mapNotNull { droppedFilePayload(it) }
                 val script = OpenCodeServerProtocol.buildDispatchDroppedFilesScript(
                     payloads,
                     enabled = OpenCodeSettingsState.getInstance().enableChatFileDrop,
@@ -267,6 +275,58 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
             }
             return true
         }
+
+        private fun selectDroppedFiles(files: List<File>): DroppedFileSelection {
+            val acceptedFiles = mutableListOf<File>()
+            val rejectionMessages = mutableListOf<String>()
+            var totalBytes = 0L
+            files.forEach { file ->
+                val path = file.toPath()
+                if (!Files.isRegularFile(path)) {
+                    rejectionMessages += "${file.name} is not a regular file."
+                    return@forEach
+                }
+                val size = runCatching { Files.size(path) }.getOrNull()
+                if (size == null) {
+                    rejectionMessages += "${file.name} could not be read."
+                    return@forEach
+                }
+                if (size > MAX_DROPPED_FILE_BYTES) {
+                    rejectionMessages += "${file.name} is larger than ${formatFileSize(MAX_DROPPED_FILE_BYTES)}."
+                    return@forEach
+                }
+                if (totalBytes + size > MAX_DROPPED_FILES_TOTAL_BYTES) {
+                    rejectionMessages += "${file.name} would exceed the total drop limit of ${formatFileSize(MAX_DROPPED_FILES_TOTAL_BYTES)}."
+                    return@forEach
+                }
+                acceptedFiles += file
+                totalBytes += size
+            }
+            return DroppedFileSelection(acceptedFiles, rejectionMessages)
+        }
+
+        private fun showFileDropWarning(rejectionMessages: List<String>) {
+            val group = NotificationGroupManager.getInstance()
+                .getNotificationGroup(OpenCodeServerProtocol.NOTIFICATION_GROUP_ID)
+                ?: return
+            val visibleMessages = rejectionMessages.take(3)
+            val remaining = rejectionMessages.size - visibleMessages.size
+            val suffix = if (remaining > 0) "; $remaining more skipped" else ""
+            group.createNotification(
+                "Some files were not added to OpenCode",
+                notificationText(visibleMessages.joinToString("; ") + suffix, 1000),
+                NotificationType.WARNING,
+            ).notify(project)
+        }
+
+        private fun formatFileSize(bytes: Long): String {
+            return "${bytes / (1024L * 1024L)} MiB"
+        }
+
+        private data class DroppedFileSelection(
+            val acceptedFiles: List<File>,
+            val rejectionMessages: List<String>,
+        )
 
         private fun droppedFilePayload(file: File): OpenCodeServerProtocol.DroppedFilePayload? {
             return runCatching {
