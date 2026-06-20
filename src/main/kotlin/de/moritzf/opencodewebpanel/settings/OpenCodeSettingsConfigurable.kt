@@ -69,6 +69,7 @@ class OpenCodeSettingsConfigurable : Configurable {
     private val openMostRecentConversationCheckBox = JBCheckBox("Open the most recent conversation for the project on startup")
     private val openFileLinksInIdeCheckBox = JBCheckBox("Open local file links in the IDE")
     private val enableChatFileDropCheckBox = JBCheckBox("Enable file drag and drop into chat")
+    private val forceCompactLayoutCheckBox = JBCheckBox("Lock to compact view")
     private val uiZoomSpinner = JSpinner(
         SpinnerNumberModel(
             OpenCodeSettingsState.DEFAULT_UI_ZOOM_PERCENT,
@@ -166,6 +167,10 @@ class OpenCodeSettingsConfigurable : Configurable {
                 cell(enableChatFileDropCheckBox)
                     .comment("Allow dropping images, PDFs, and text files into the embedded OpenCode chat input.")
             }
+            row {
+                cell(forceCompactLayoutCheckBox)
+                    .comment("Prevent the OpenCode UI from switching to a wide desktop layout when the panel is enlarged.")
+            }
         }
         panel = JBTabbedPane().apply {
             addTab("OpenCode Server Setup", serverSetupPanel)
@@ -186,6 +191,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         val uiSettingsModified = openMostRecentConversationCheckBox.isSelected != settings.openMostRecentConversationOnStartup ||
             openFileLinksInIdeCheckBox.isSelected != settings.openFileLinksInIde ||
             enableChatFileDropCheckBox.isSelected != settings.enableChatFileDrop ||
+            forceCompactLayoutCheckBox.isSelected != settings.forceCompactLayout ||
             uiZoomPercent() != OpenCodeSettingsState.sanitizeUiZoomPercent(settings.uiZoomPercent)
         return passwordModified || portModeModified || fixedPortModified || binaryModeModified || binaryPathModified || uiSettingsModified
     }
@@ -198,6 +204,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         val oldBinaryPath = settings.binaryPath.trim()
         val oldUiZoomPercent = OpenCodeSettingsState.sanitizeUiZoomPercent(settings.uiZoomPercent)
         val oldOpenFileLinksInIde = settings.openFileLinksInIde
+        val oldForceCompactLayout = settings.forceCompactLayout
         val oldPassword = savedPassword
 
         val nextPassword = password() ?: OpenCodePasswordStore.getInstance().generatePasswordForEditing()
@@ -218,6 +225,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         settings.openMostRecentConversationOnStartup = openMostRecentConversationCheckBox.isSelected
         settings.openFileLinksInIde = openFileLinksInIdeCheckBox.isSelected
         settings.enableChatFileDrop = enableChatFileDropCheckBox.isSelected
+        settings.forceCompactLayout = forceCompactLayoutCheckBox.isSelected
         settings.uiZoomPercent = nextUiZoomPercent
         fixedPortField.text = nextFixedPort.toString()
         binaryPathField.text = nextBinaryPath
@@ -240,6 +248,11 @@ class OpenCodeSettingsConfigurable : Configurable {
                 .syncPublisher(OpenCodeSettingsListener.TOPIC)
                 .fileLinkNavigationChanged(settings.openFileLinksInIde)
         }
+        if (oldForceCompactLayout != settings.forceCompactLayout) {
+            ApplicationManager.getApplication().messageBus
+                .syncPublisher(OpenCodeSettingsListener.TOPIC)
+                .compactLayoutChanged(settings.forceCompactLayout)
+        }
     }
 
     override fun reset() {
@@ -257,6 +270,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         openMostRecentConversationCheckBox.isSelected = settings.openMostRecentConversationOnStartup
         openFileLinksInIdeCheckBox.isSelected = settings.openFileLinksInIde
         enableChatFileDropCheckBox.isSelected = settings.enableChatFileDrop
+        forceCompactLayoutCheckBox.isSelected = settings.forceCompactLayout
         uiZoomSpinner.value = OpenCodeSettingsState.sanitizeUiZoomPercent(settings.uiZoomPercent)
         loadPasswordField()
         updatePasswordHint()

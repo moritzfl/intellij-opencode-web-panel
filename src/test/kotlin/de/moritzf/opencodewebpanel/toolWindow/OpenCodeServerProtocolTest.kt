@@ -371,6 +371,32 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun buildCompactLayoutScriptIsMissingWhenDisabled() {
+        assertNull(OpenCodeServerProtocol.buildCompactLayoutScript(enabled = false))
+    }
+
+    @Test
+    fun buildCompactLayoutScriptPatchesMatchMediaAndInjectsStyle() {
+        val script = OpenCodeServerProtocol.buildCompactLayoutScript(enabled = true)!!
+
+        assertTrue(script.contains("window.__opencodeIntellijCompactInstalled"))
+        assertTrue(script.contains("window.matchMedia = "))
+        assertTrue(script.contains("(min-width: 768px)"))
+        assertTrue(script.contains("matches: false"))
+        assertTrue(script.contains("opencode-intellij-compact-layout"))
+        assertTrue(script.contains("md\\\\:flex-row"))
+        assertTrue(script.contains("md\\\\:flex-none"))
+        assertTrue(script.contains("flex-direction: column"))
+    }
+
+    @Test
+    fun buildCompactLayoutScriptIsIdempotent() {
+        val script = OpenCodeServerProtocol.buildCompactLayoutScript(enabled = true)!!
+
+        assertTrue(script.contains("if (window.__opencodeIntellijCompactInstalled) return"))
+    }
+
+    @Test
     fun openFileLinkRequestParsesHref() {
         val url = "${OpenCodeServerProtocol.OPEN_FILE_LINK_SCHEME}://${OpenCodeServerProtocol.OPEN_FILE_LINK_HOST}?href=src%2FMain.kt"
 

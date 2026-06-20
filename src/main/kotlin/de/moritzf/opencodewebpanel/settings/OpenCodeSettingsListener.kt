@@ -7,6 +7,8 @@ interface OpenCodeSettingsListener {
 
     fun fileLinkNavigationChanged(enabled: Boolean)
 
+    fun compactLayoutChanged(enabled: Boolean) {}
+
     companion object {
         val TOPIC: Topic<OpenCodeSettingsListener> = Topic.create(
             "OpenCode Web Panel settings",

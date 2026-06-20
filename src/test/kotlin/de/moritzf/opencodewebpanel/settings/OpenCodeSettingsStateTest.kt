@@ -105,4 +105,9 @@ class OpenCodeSettingsStateTest {
     fun chatFileDropIsEnabledByDefault() {
         assertEquals(true, OpenCodeSettingsState().enableChatFileDrop)
     }
+
+    @Test
+    fun forceCompactLayoutIsEnabledByDefault() {
+        assertEquals(true, OpenCodeSettingsState().forceCompactLayout)
+    }
 }

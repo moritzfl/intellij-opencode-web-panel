@@ -127,6 +127,37 @@ internal object OpenCodeServerProtocol {
         return buildFileLinkHandlerScript(projectBasePath, enabled = true)
     }
 
+    fun buildCompactLayoutScript(enabled: Boolean): String? {
+        if (!enabled) return null
+        return """
+            (() => {
+              if (window.__opencodeIntellijCompactInstalled) return;
+              window.__opencodeIntellijCompactInstalled = true;
+              const QUERY = '(min-width: 768px)';
+              const orig = window.matchMedia.bind(window);
+              window.__opencodeIntellijOrigMatchMedia = orig;
+              window.matchMedia = (q) => {
+                if (q !== QUERY) return orig(q);
+                return { matches: false, media: QUERY, onchange: null, addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false };
+              };
+              const style = document.createElement('style');
+              style.id = 'opencode-intellij-compact-layout';
+              style.textContent = '@media (min-width: 768px) {\n  .md\\:flex-row { flex-direction: column !important; }\n  .md\\:flex-none { flex: 1 1 0% !important; }\n  .hidden.md\\:flex { display: none !important; }\n  .hidden.md\\:block { display: none !important; }\n}';
+              const ensureStyle = () => {
+                if (!document.getElementById('opencode-intellij-compact-layout')) {
+                  (document.head || document.documentElement).appendChild(style);
+                }
+              };
+              if (document.head) {
+                ensureStyle();
+              } else {
+                const observer = new MutationObserver(() => { ensureStyle(); if (document.getElementById('opencode-intellij-compact-layout')) observer.disconnect(); });
+                observer.observe(document.documentElement, { childList: true, subtree: true });
+              }
+            })();
+        """.trimIndent()
+    }
+
     fun buildDispatchDroppedFilesScript(files: List<DroppedFilePayload>): String? {
         return buildDispatchDroppedFilesScript(files, enabled = true)
     }

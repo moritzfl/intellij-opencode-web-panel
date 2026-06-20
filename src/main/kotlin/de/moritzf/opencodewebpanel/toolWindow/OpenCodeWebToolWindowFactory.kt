@@ -56,6 +56,7 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
         private val openProjectAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
         private var openProjectScriptScheduled = false
         private var fileLinkScriptScheduled = false
+        private var compactLayoutScriptScheduled = false
         private val resourceRequestHandler = object : CefResourceRequestHandlerAdapter() {
             override fun onBeforeResourceLoad(browser: CefBrowser?, frame: CefFrame?, request: CefRequest?): Boolean {
                 val password = serverManager.getServerPassword() ?: return false
@@ -116,6 +117,8 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
             override fun onLoadStart(browser: CefBrowser?, frame: CefFrame?, transitionType: CefRequest.TransitionType?) {
                 if (frame?.isMain == true) {
                     fileLinkScriptScheduled = false
+                    compactLayoutScriptScheduled = false
+                    injectCompactLayoutEarly()
                 }
             }
 
@@ -150,6 +153,10 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
 
                     override fun fileLinkNavigationChanged(enabled: Boolean) {
                         applyFileLinkNavigation(enabled)
+                    }
+
+                    override fun compactLayoutChanged(enabled: Boolean) {
+                        applyCompactLayout(enabled)
                     }
                 },
             )
@@ -236,6 +243,7 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
             thisLogger().info("Loading OpenCode project page")
             openProjectScriptScheduled = false
             fileLinkScriptScheduled = false
+            compactLayoutScriptScheduled = false
             openProjectAlarm.cancelAllRequests()
             applyBrowserZoom()
             browser.loadURL(url)
@@ -323,6 +331,39 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
             ) ?: return
             browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
             fileLinkScriptScheduled = true
+        }
+
+        private fun injectCompactLayoutEarly() {
+            if (compactLayoutScriptScheduled) return
+            if (!OpenCodeSettingsState.getInstance().forceCompactLayout) return
+
+            val serverUrl = serverManager.getServerUrl() ?: return
+            val script = OpenCodeServerProtocol.buildCompactLayoutScript(enabled = true) ?: return
+            val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
+            compactLayoutScriptScheduled = true
+
+            // Inject immediately (onLoadStart — before SPA bundle executes)
+            browser.cefBrowser.executeJavaScript(script, rootUrl, 0)
+            // Re-inject on delays in case the early injection ran before JS context was ready
+            listOf(50, 250, 750, 1500, 3000).forEach { delayMillis ->
+                openProjectAlarm.addRequest(
+                    {
+                        if (!project.isDisposed && OpenCodeSettingsState.getInstance().forceCompactLayout) {
+                            browser.cefBrowser.executeJavaScript(script, rootUrl, 0)
+                        }
+                    },
+                    delayMillis,
+                )
+            }
+        }
+
+        private fun applyCompactLayout(enabled: Boolean) {
+            // Toggling requires a page reload — early injection on next load start
+            compactLayoutScriptScheduled = false
+            val serverUrl = serverManager.getServerUrl() ?: return
+            if (OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)) {
+                browser.cefBrowser.reload()
+            }
         }
 
         private fun showErrorInBrowser() {
