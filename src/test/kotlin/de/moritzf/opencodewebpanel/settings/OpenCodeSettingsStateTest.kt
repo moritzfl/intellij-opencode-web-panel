@@ -110,4 +110,9 @@ class OpenCodeSettingsStateTest {
     fun forceCompactLayoutIsEnabledByDefault() {
         assertEquals(true, OpenCodeSettingsState().forceCompactLayout)
     }
+
+    @Test
+    fun enableCodeNavigationIsEnabledByDefault() {
+        assertEquals(true, OpenCodeSettingsState().enableCodeNavigation)
+    }
 }

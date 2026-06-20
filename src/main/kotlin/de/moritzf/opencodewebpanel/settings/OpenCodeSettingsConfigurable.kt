@@ -68,6 +68,7 @@ class OpenCodeSettingsConfigurable : Configurable {
     }
     private val openMostRecentConversationCheckBox = JBCheckBox("Open the most recent conversation for the project on startup")
     private val openFileLinksInIdeCheckBox = JBCheckBox("Open local file links in the IDE")
+    private val enableCodeNavigationCheckBox = JBCheckBox("Enable click-to-navigate on code references in chat")
     private val enableChatFileDropCheckBox = JBCheckBox("Enable file drag and drop into chat")
     private val forceCompactLayoutCheckBox = JBCheckBox("Lock to compact view")
     private val uiZoomSpinner = JSpinner(
@@ -163,6 +164,12 @@ class OpenCodeSettingsConfigurable : Configurable {
                 cell(openFileLinksInIdeCheckBox)
                     .comment("Open markdown links that point to workspace-relative, absolute, or file: paths in IntelliJ.")
             }
+            indent {
+                row {
+                    cell(enableCodeNavigationCheckBox)
+                        .comment("Click on file names, class names, or code references in chat messages to open them in IntelliJ.")
+                }
+            }
             row {
                 cell(enableChatFileDropCheckBox)
                     .comment("Allow dropping images, PDFs, and text files into the embedded OpenCode chat input.")
@@ -190,6 +197,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         val binaryPathModified = binaryPath() != settings.binaryPath.trim()
         val uiSettingsModified = openMostRecentConversationCheckBox.isSelected != settings.openMostRecentConversationOnStartup ||
             openFileLinksInIdeCheckBox.isSelected != settings.openFileLinksInIde ||
+            enableCodeNavigationCheckBox.isSelected != settings.enableCodeNavigation ||
             enableChatFileDropCheckBox.isSelected != settings.enableChatFileDrop ||
             forceCompactLayoutCheckBox.isSelected != settings.forceCompactLayout ||
             uiZoomPercent() != OpenCodeSettingsState.sanitizeUiZoomPercent(settings.uiZoomPercent)
@@ -204,6 +212,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         val oldBinaryPath = settings.binaryPath.trim()
         val oldUiZoomPercent = OpenCodeSettingsState.sanitizeUiZoomPercent(settings.uiZoomPercent)
         val oldOpenFileLinksInIde = settings.openFileLinksInIde
+        val oldEnableCodeNavigation = settings.enableCodeNavigation
         val oldForceCompactLayout = settings.forceCompactLayout
         val oldPassword = savedPassword
 
@@ -224,6 +233,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         settings.binaryPath = nextBinaryPath
         settings.openMostRecentConversationOnStartup = openMostRecentConversationCheckBox.isSelected
         settings.openFileLinksInIde = openFileLinksInIdeCheckBox.isSelected
+        settings.enableCodeNavigation = enableCodeNavigationCheckBox.isSelected
         settings.enableChatFileDrop = enableChatFileDropCheckBox.isSelected
         settings.forceCompactLayout = forceCompactLayoutCheckBox.isSelected
         settings.uiZoomPercent = nextUiZoomPercent
@@ -248,6 +258,11 @@ class OpenCodeSettingsConfigurable : Configurable {
                 .syncPublisher(OpenCodeSettingsListener.TOPIC)
                 .fileLinkNavigationChanged(settings.openFileLinksInIde)
         }
+        if (oldEnableCodeNavigation != settings.enableCodeNavigation) {
+            ApplicationManager.getApplication().messageBus
+                .syncPublisher(OpenCodeSettingsListener.TOPIC)
+                .codeNavigationChanged(settings.enableCodeNavigation)
+        }
         if (oldForceCompactLayout != settings.forceCompactLayout) {
             ApplicationManager.getApplication().messageBus
                 .syncPublisher(OpenCodeSettingsListener.TOPIC)
@@ -269,6 +284,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         binaryPathField.text = settings.binaryPath.trim()
         openMostRecentConversationCheckBox.isSelected = settings.openMostRecentConversationOnStartup
         openFileLinksInIdeCheckBox.isSelected = settings.openFileLinksInIde
+        enableCodeNavigationCheckBox.isSelected = settings.enableCodeNavigation
         enableChatFileDropCheckBox.isSelected = settings.enableChatFileDrop
         forceCompactLayoutCheckBox.isSelected = settings.forceCompactLayout
         uiZoomSpinner.value = OpenCodeSettingsState.sanitizeUiZoomPercent(settings.uiZoomPercent)

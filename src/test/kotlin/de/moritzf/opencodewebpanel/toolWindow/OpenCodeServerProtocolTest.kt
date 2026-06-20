@@ -397,6 +397,62 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun buildCodeNavigationScriptIsMissingWhenDisabled() {
+        assertNull(OpenCodeServerProtocol.buildCodeNavigationScript(enabled = false, openCodeCallback = "callback(ref)"))
+    }
+
+    @Test
+    fun buildCodeNavigationScriptIsMissingWithoutCallback() {
+        assertNull(OpenCodeServerProtocol.buildCodeNavigationScript(enabled = true, openCodeCallback = null))
+    }
+
+    @Test
+    fun buildCodeNavigationScriptInstallsClickListenerOnCodeElements() {
+        val script = OpenCodeServerProtocol.buildCodeNavigationScript(enabled = true, openCodeCallback = "window.intellijOpenCodeRef(ref)")!!
+
+        assertTrue(script.contains("window.__opencodeIntellijCodeNavInstalled"))
+        assertTrue(script.contains("event.target.closest('code')"))
+        assertTrue(script.contains("hasExtension"))
+        assertTrue(script.contains("isPascalCase"))
+        assertTrue(script.contains("window.intellijOpenCodeRef(ref)"))
+    }
+
+    @Test
+    fun parseCodeReferenceExtractsFileNameAndExtension() {
+        val ref = OpenCodeServerProtocol.parseCodeReference("Main.kt")!!
+
+        assertEquals("Main.kt", ref.fileName)
+        assertEquals("kt", ref.extension)
+        assertNull(ref.line)
+        assertFalse(ref.hasPath)
+    }
+
+    @Test
+    fun parseCodeReferenceExtractsLineFromPathWithLine() {
+        val ref = OpenCodeServerProtocol.parseCodeReference("src/Main.kt:42")!!
+
+        assertEquals("Main.kt", ref.fileName)
+        assertEquals("kt", ref.extension)
+        assertEquals(41, ref.line)
+        assertTrue(ref.hasPath)
+    }
+
+    @Test
+    fun parseCodeReferenceHandlesPascalCaseClassName() {
+        val ref = OpenCodeServerProtocol.parseCodeReference("OpenCodeServerProtocol")!!
+
+        assertEquals("OpenCodeServerProtocol", ref.fileName)
+        assertNull(ref.extension)
+        assertNull(ref.line)
+    }
+
+    @Test
+    fun parseCodeReferenceReturnsNullForBlankInput() {
+        assertNull(OpenCodeServerProtocol.parseCodeReference(""))
+        assertNull(OpenCodeServerProtocol.parseCodeReference("   "))
+    }
+
+    @Test
     fun openFileLinkRequestParsesHref() {
         val url = "${OpenCodeServerProtocol.OPEN_FILE_LINK_SCHEME}://${OpenCodeServerProtocol.OPEN_FILE_LINK_HOST}?href=src%2FMain.kt"
 

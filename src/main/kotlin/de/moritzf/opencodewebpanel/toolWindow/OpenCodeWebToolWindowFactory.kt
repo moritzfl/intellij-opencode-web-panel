@@ -52,10 +52,12 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
         private val project = toolWindow.project
         private val browser = JBCefBrowser()
         private val openFileLinkQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
+        private val openCodeReferenceQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
         private val serverManager = SharedOpenCodeServerManager.getInstance()
         private val openProjectAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
         private var openProjectScriptScheduled = false
         private var fileLinkScriptScheduled = false
+        private var codeNavigationScriptScheduled = false
         private var compactLayoutScriptScheduled = false
         private val resourceRequestHandler = object : CefResourceRequestHandlerAdapter() {
             override fun onBeforeResourceLoad(browser: CefBrowser?, frame: CefFrame?, request: CefRequest?): Boolean {
@@ -117,6 +119,7 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
             override fun onLoadStart(browser: CefBrowser?, frame: CefFrame?, transitionType: CefRequest.TransitionType?) {
                 if (frame?.isMain == true) {
                     fileLinkScriptScheduled = false
+                    codeNavigationScriptScheduled = false
                     compactLayoutScriptScheduled = false
                     injectCompactLayoutEarly()
                 }
@@ -129,12 +132,19 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
 
                 scheduleOpenProjectScript()
                 scheduleFileLinkScript()
+                scheduleCodeNavigationScript()
             }
         }
         init {
             openFileLinkQuery.addHandler { href ->
                 if (OpenCodeSettingsState.getInstance().openFileLinksInIde) {
                     openFileLinkInIde(href)
+                }
+                null
+            }
+            openCodeReferenceQuery.addHandler { ref ->
+                if (OpenCodeSettingsState.getInstance().enableCodeNavigation) {
+                    openCodeReferenceInIde(ref)
                 }
                 null
             }
@@ -153,6 +163,10 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
 
                     override fun fileLinkNavigationChanged(enabled: Boolean) {
                         applyFileLinkNavigation(enabled)
+                    }
+
+                    override fun codeNavigationChanged(enabled: Boolean) {
+                        applyCodeNavigation(enabled)
                     }
 
                     override fun compactLayoutChanged(enabled: Boolean) {
@@ -314,6 +328,62 @@ class OpenCodeWebToolWindowFactory : ToolWindowFactory, DumbAware {
                 if (project.isDisposed) return@invokeLater
                 OpenFileDescriptor(project, virtualFile, target.line ?: -1, target.column ?: -1).navigate(true)
             }
+        }
+
+        private fun openCodeReferenceInIde(ref: String?) {
+            val text = ref?.trim()?.ifBlank { null } ?: return
+            val parsed = OpenCodeServerProtocol.parseCodeReference(text) ?: return
+            ApplicationManager.getApplication().invokeLater {
+                if (project.isDisposed) return@invokeLater
+                com.intellij.openapi.application.ReadAction.nonBlocking {
+                    val scope = com.intellij.psi.search.GlobalSearchScope.projectScope(project)
+                    val files = com.intellij.psi.search.FilenameIndex.getFilesByName(project, parsed.fileName, scope)
+                    val file = files.firstOrNull() ?: return@nonBlocking
+                    val virtualFile = file.virtualFile ?: return@nonBlocking
+                    com.intellij.openapi.fileEditor.OpenFileDescriptor(project, virtualFile, parsed.line ?: -1, -1).navigate(true)
+                }.coalesceBy(this@OpenCodeWebToolWindowContent)
+                    .submit(com.intellij.util.concurrency.AppExecutorUtil.getAppExecutorService())
+            }
+        }
+
+        private fun scheduleCodeNavigationScript() {
+            if (codeNavigationScriptScheduled) return
+            if (!OpenCodeSettingsState.getInstance().enableCodeNavigation) return
+
+            val serverUrl = serverManager.getServerUrl() ?: return
+            val script = OpenCodeServerProtocol.buildCodeNavigationScript(
+                enabled = true,
+                openCodeCallback = openCodeReferenceQuery.inject("ref"),
+            ) ?: return
+            val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
+            codeNavigationScriptScheduled = true
+
+            listOf(250, 750, 1500, 3000, 5000, 8000, 12000).forEach { delayMillis ->
+                openProjectAlarm.addRequest(
+                    {
+                        if (!project.isDisposed && OpenCodeSettingsState.getInstance().enableCodeNavigation) {
+                            browser.cefBrowser.executeJavaScript(script, rootUrl, 0)
+                        }
+                    },
+                    delayMillis,
+                )
+            }
+        }
+
+        private fun applyCodeNavigation(enabled: Boolean) {
+            val serverUrl = serverManager.getServerUrl() ?: return
+            if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)) return
+            codeNavigationScriptScheduled = false
+            if (!enabled) {
+                browser.cefBrowser.reload()
+                return
+            }
+            val script = OpenCodeServerProtocol.buildCodeNavigationScript(
+                enabled = true,
+                openCodeCallback = openCodeReferenceQuery.inject("ref"),
+            ) ?: return
+            browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
+            codeNavigationScriptScheduled = true
         }
 
         private fun applyFileLinkNavigation(enabled: Boolean) {

@@ -7,6 +7,8 @@ interface OpenCodeSettingsListener {
 
     fun fileLinkNavigationChanged(enabled: Boolean)
 
+    fun codeNavigationChanged(enabled: Boolean) {}
+
     fun compactLayoutChanged(enabled: Boolean) {}
 
     companion object {

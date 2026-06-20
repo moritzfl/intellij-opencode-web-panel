@@ -127,6 +127,48 @@ internal object OpenCodeServerProtocol {
         return buildFileLinkHandlerScript(projectBasePath, enabled = true)
     }
 
+    fun buildCodeNavigationScript(enabled: Boolean, openCodeCallback: String?): String? {
+        if (!enabled || openCodeCallback == null) return null
+        return """
+            (() => {
+              if (window.__opencodeIntellijCodeNavInstalled) return;
+              window.__opencodeIntellijCodeNavInstalled = true;
+              const hasExtension = /\.[a-zA-Z][a-zA-Z0-9]{0,3}$/;
+              const isPascalCase = /^[A-Z][a-zA-Z0-9_]*$/;
+              const isSnakeCase = /^[a-z][a-z0-9]*_[a-z0-9_]+$/;
+              const looksLikeCodeRef = (text) => {
+                const t = text.trim();
+                if (t.length < 2 || t.length > 128) return false;
+                if (t.includes(' ') || t.includes('\n')) return false;
+                if (hasExtension.test(t)) return true;
+                if (isPascalCase.test(t)) return true;
+                if (isSnakeCase.test(t) && /[A-Z]/.test(t)) return true;
+                return false;
+              };
+              const extractRef = (codeEl) => {
+                const text = (codeEl.textContent || '').trim();
+                if (!looksLikeCodeRef(text)) return '';
+                const parent = codeEl.parentElement;
+                if (!parent) return text;
+                const path = parent.getAttribute('data-path') || parent.getAttribute('data-file');
+                if (path) return path;
+                const lineMatch = text.match(/:(\d+)$/);
+                if (lineMatch) return text;
+                return text;
+              };
+              document.addEventListener('click', (event) => {
+                const code = event.target && event.target.closest ? event.target.closest('code') : null;
+                if (!code) return;
+                const ref = extractRef(code);
+                if (!ref) return;
+                event.preventDefault();
+                event.stopPropagation();
+                $openCodeCallback;
+              }, true);
+            })();
+        """.trimIndent()
+    }
+
     fun buildCompactLayoutScript(enabled: Boolean): String? {
         if (!enabled) return null
         return """
@@ -348,6 +390,26 @@ internal object OpenCodeServerProtocol {
         val directory = decodeDirectory(match.groupValues[1]) ?: return false
         return looksLikeAbsoluteFilesystemPath(directory)
     }
+
+    fun parseCodeReference(ref: String): ParsedCodeReference? {
+        val text = ref.trim().ifBlank { return null }
+        val lineMatch = Regex("^(.+):(\\d+)$").find(text)
+        val (pathPart, line) = if (lineMatch != null) {
+            lineMatch.groupValues[1] to (lineMatch.groupValues[2].toIntOrNull()?.minus(1))
+        } else {
+            text to null
+        }
+        val fileName = pathPart.substringAfterLast('/').ifBlank { return null }
+        val extension = fileName.substringAfterLast('.', "").ifBlank { null }
+        return ParsedCodeReference(fileName = fileName, extension = extension, line = line, hasPath = pathPart.contains('/'))
+    }
+
+    data class ParsedCodeReference(
+        val fileName: String,
+        val extension: String?,
+        val line: Int?,
+        val hasPath: Boolean,
+    )
 
     private fun looksLikeAbsoluteFilesystemPath(value: String): Boolean {
         return value.startsWith('/') || Regex("^[A-Za-z]:[\\\\/]").containsMatchIn(value)
