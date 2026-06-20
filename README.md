@@ -1,95 +1,115 @@
 # OpenCode Web Panel
 
-## Overview
+Use the official OpenCode web UI without leaving your JetBrains IDE.
 
-OpenCode Web Panel is a JetBrains IDE plugin for IntelliJ IDEA, PyCharm, WebStorm, and other JetBrains IDEs. It provides a convenient embedded Web UI integration for OpenCode.
+OpenCode Web Panel embeds OpenCode in a right-side tool window in IntelliJ IDEA, PyCharm, WebStorm, and other JetBrains IDEs. You get the familiar OpenCode experience next to your editor, plus a few IDE-native conveniences that make it easier to move between chat, files, and code.
 
 ![OpenCode Web Panel running inside a JetBrains IDE](docs/opencode-web-panel.png)
 
 <!-- Plugin description -->
 
-OpenCode Web Panel embeds the OpenCode web app directly inside JetBrains IDEs, keeping the panel focused on the IDE project where it was opened.
+OpenCode Web Panel brings the official OpenCode web UI into JetBrains IDEs. It opens OpenCode in a right-side tool window, keeps it focused on the project you are working on, and adds small IDE conveniences on top of the normal OpenCode experience.
 
-> **Note:** This is an unofficial plugin for OpenCode, maintained by the community and not affiliated with OpenCode.
+> **Note:** This is an unofficial community plugin for OpenCode and is not affiliated with OpenCode.
 
-### What it does
+### Why use it
 
-- **Embedded OpenCode UI** - Opens OpenCode in a right-side IDE tool window instead of a separate browser tab.
-- **Project-coupled startup** - Starts `opencode serve` on `127.0.0.1`, authenticates automatically, and opens the current IDE project.
-- **Secure local auth** - Generates and stores the server password in IntelliJ Password Safe.
-- **State persistence** - Preserves selected OpenCode UI state across IDE restarts and dynamic port changes.
-- **IDE navigation** - Opens local file links and clickable code references from chat directly in the IDE.
-- **Chat file drop** - Lets you drag files from the IDE or desktop into the embedded OpenCode chat.
-- **Panel-friendly layout** - Keeps the OpenCode UI in compact mode and suppresses cross-project approval prompts by default.
-- **Configurable safeguards** - Browser-side integrations can be disabled independently if an OpenCode update conflicts with them.
+- **OpenCode where you code** - Use OpenCode beside your editor instead of switching to the terminal, desktop app, or standalone web app.
+- **Official web UI** - The embedded panel loads OpenCode's own web app, so the core experience stays familiar.
+- **Project-aware sessions** - OpenCode starts on the directory configured for the current IDE project.
+- **IDE file navigation** - Click local file links and code references from chat to open them in the IDE.
+- **Chat file drop** - Drag files from the IDE or desktop into the embedded OpenCode chat.
+- **External links stay outside** - HTTP links open in your system browser instead of taking over the panel.
+- **IDE notifications** - OpenCode browser notifications can appear as JetBrains IDE notifications.
+- **Recovery controls** - Restart the local OpenCode server, view recent logs, or retry startup after a failure.
+- **Configurable safeguards** - Browser-side convenience features can be disabled if an OpenCode update conflicts with them.
 
-### Good for
-
-- Working with OpenCode without leaving IntelliJ IDEA, PyCharm, WebStorm, or other JetBrains IDEs.
-- Keeping OpenCode sessions aligned with the project currently open in the IDE.
-- Using OpenCode-generated file paths, code references, and attachments as IDE-native actions.
 <!-- Plugin description end -->
+
+## Requirements
+
+- A JetBrains IDE compatible with this plugin.
+- The OpenCode CLI installed on your machine.
+- The `opencode` command available on `PATH`, or configured manually in the plugin settings.
 
 ## Installation
 
 - Install from the IDE plugin marketplace:
 
-  <kbd>Settings/Preferences</kbd> > <kbd>Plugins</kbd> > <kbd>Marketplace</kbd> > <kbd>Search "OpenCode Web Panel"</kbd> >
-  <kbd>Install</kbd>
+  <kbd>Settings/Preferences</kbd> > <kbd>Plugins</kbd> > <kbd>Marketplace</kbd> > <kbd>Search "OpenCode Web Panel"</kbd> > <kbd>Install</kbd>
 
 - Install from JetBrains Marketplace:
 
   Visit the JetBrains Marketplace page for OpenCode Web Panel and install the plugin.
 
-  You can also download the latest version from JetBrains Marketplace and install it with
-  <kbd>Settings/Preferences</kbd> > <kbd>Plugins</kbd> > <kbd>Settings</kbd> > <kbd>Install Plugin from Disk...</kbd>
-
 - Install manually:
 
-  Download the [latest release](https://github.com/moritzfl/intellij-opencode-web-panel/releases/latest), then install it with
-  <kbd>Settings/Preferences</kbd> > <kbd>Plugins</kbd> > <kbd>Settings</kbd> > <kbd>Install Plugin from Disk...</kbd>
+  Download the [latest release](https://github.com/moritzfl/intellij-opencode-web-panel/releases/latest), then install it with <kbd>Settings/Preferences</kbd> > <kbd>Plugins</kbd> > <kbd>Settings</kbd> > <kbd>Install Plugin from Disk...</kbd>
 
-## Usage
+## Getting Started
 
-1. **Install the OpenCode CLI**  
-   The plugin must be able to find the `opencode` command in your system `PATH`. If OpenCode is not installed, install it from the official OpenCode documentation.
+1. Install the OpenCode CLI.
+2. Open a project in your JetBrains IDE.
+3. Click the **OpenCode Web Panel** tool window on the right sidebar.
+4. Start using OpenCode in the embedded panel.
 
-2. **Open the plugin tool window**  
-   Find the "OpenCode Web Panel" icon in the right IDE sidebar and click it.
+The plugin starts a local OpenCode server when needed, authenticates the embedded web UI automatically, and opens the configured project directory.
 
-3. **Start the service automatically**  
-   The plugin uses a password stored in IntelliJ Password Safe, generating one only when none exists, starts the OpenCode service, and lets OpenCode choose an available port:
-   ```
-   OPENCODE_SERVER_PASSWORD=<stored-password> \
-   opencode serve --hostname 127.0.0.1 --port 0 --print-logs
-   ```
+## Settings
 
-4. **Use the Web UI**  
-   After the service starts, the tool window authenticates automatically and opens the OpenCode Web UI directly on the current IDE project.
+Open <kbd>Settings/Preferences</kbd> > <kbd>Tools</kbd> > <kbd>OpenCode Web Panel</kbd>.
 
-## Configuration
+### OpenCode Server Setup
 
-The plugin uses the following defaults:
-- Host: `127.0.0.1`
-- Port: automatically selected by OpenCode
-- Password: generated when missing, stored in IntelliJ Password Safe, and reused until you edit or regenerate it in settings
+- Choose whether the plugin should auto-detect `opencode` or use a custom executable path.
+- Let OpenCode select a port automatically, or set a fixed port.
+- Edit, generate, show, or copy the local server password stored in IntelliJ Password Safe.
+- Restart the local OpenCode server.
+- View recent OpenCode server output in your system text viewer.
+
+### OpenCode UI Settings
+
+- Restore the most recent OpenCode conversation for the project on startup.
+- Open local file links in the IDE.
+- Open external HTTP links in the system browser.
+- Enable click-to-navigate for code references in chat.
+- Enable file drag and drop into chat.
+- Lock OpenCode to compact layout for panel-friendly use.
+- Sync OpenCode's system color scheme with the IDE theme.
+- Suppress project-switch prompts that are not useful inside the embedded panel.
+- Forward OpenCode browser notifications to the IDE.
+- Wait briefly for IntelliJ MCP server startup before launching OpenCode.
+
+### Project Settings
+
+Project-specific settings are stored with the IDE project.
+
+- Use **Auto detect** to open the IDE project root in OpenCode.
+- Use **Custom Directory** to point OpenCode at another directory, such as a monorepo root or a subproject.
+- Use **Detect** to fill the custom directory with the auto-detected project root.
 
 ## Troubleshooting
 
-**Problem: the plugin cannot find the `opencode` command**
+**OpenCode does not start**
 
-- Make sure the OpenCode CLI is installed correctly.
-- Make sure the `opencode` executable is available in your system `PATH`.
-- Run `opencode --version` in a terminal to verify the installation.
+- Check that the OpenCode CLI is installed.
+- Run `opencode --version` in a terminal.
+- Open the plugin settings and use **Detect** or set the OpenCode executable path manually.
+- Use **View Server Log** in settings to inspect recent startup output.
 
-**Problem: the service fails to start**
+**The panel shows a failed server state**
 
-- Check the IDE log for error details.
-- Run the startup command manually to diagnose the issue.
+- Click **Retry** in the tool-window status strip.
+- If it still fails, open settings and use **Restart Server**.
+- Verify the configured OpenCode project directory exists.
+
+**The embedded UI behaves unexpectedly after an OpenCode update**
+
+- Disable the affected convenience feature under **OpenCode UI Settings**.
+- Reload or reopen the tool window.
+- Report the issue with the OpenCode version and plugin version.
 
 ## Development
-
-This project is based on the [IntelliJ Platform Plugin Template](https://github.com/JetBrains/intellij-platform-plugin-template).
 
 Useful development commands:
 
@@ -99,9 +119,9 @@ Useful development commands:
 ./gradlew runIdeForUiTests
 ```
 
-- `test` runs deterministic JVM and IntelliJ Platform tests for the advertised server startup, authentication, monitoring, sidebar registration, project working directory, and cleanup behavior.
-- `runIde` launches a sandbox IDE with the plugin installed for manual testing.
-- `runIdeForUiTests` launches the sandbox IDE with the JetBrains Robot Server enabled on `http://127.0.0.1:8082` for UI investigation and future UI robot tests.
+- `test` runs JVM and IntelliJ Platform tests.
+- `runIde` launches a sandbox IDE with the plugin installed.
+- `runIdeForUiTests` launches the sandbox IDE with the JetBrains Robot Server enabled.
 
 ## License
 
