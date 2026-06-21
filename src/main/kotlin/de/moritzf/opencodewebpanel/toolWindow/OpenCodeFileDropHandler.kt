@@ -8,8 +8,6 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.ui.jcef.JBCefBrowser
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
-import java.awt.KeyboardFocusManager
-import java.awt.KeyEventDispatcher
 import java.awt.Toolkit
 import java.awt.datatransfer.DataFlavor
 import java.awt.datatransfer.Transferable
@@ -19,6 +17,11 @@ import java.nio.file.Files
 import java.util.Base64
 import javax.swing.JComponent
 import javax.swing.TransferHandler
+import org.cef.handler.CefKeyboardHandler.CefKeyEvent
+import org.cef.handler.CefKeyboardHandler.CefKeyEvent.EventType
+import org.cef.handler.CefKeyboardHandlerAdapter
+import org.cef.misc.BoolRef
+import org.cef.misc.EventFlags
 
 internal class OpenCodeFileDropHandler(
     private val project: Project,
@@ -28,9 +31,16 @@ internal class OpenCodeFileDropHandler(
     private val isDisposed: () -> Boolean,
     private val parentDisposable: Disposable,
 ) {
-    private companion object {
+    internal companion object {
         private const val MAX_DROPPED_FILE_BYTES = 5L * 1024L * 1024L
         private const val MAX_DROPPED_FILES_TOTAL_BYTES = 10L * 1024L * 1024L
+
+        fun isPasteShortcut(keyCode: Int, modifiers: Int): Boolean {
+            val hasCommand = modifiers and EventFlags.EVENTFLAG_COMMAND_DOWN != 0
+            val hasControl = modifiers and EventFlags.EVENTFLAG_CONTROL_DOWN != 0
+            val hasAlt = modifiers and EventFlags.EVENTFLAG_ALT_DOWN != 0
+            return keyCode == KeyEvent.VK_V && hasCommand != hasControl && !hasAlt
+        }
     }
 
     fun install() {
@@ -54,7 +64,7 @@ internal class OpenCodeFileDropHandler(
         }
         installTransferHandler(browser.component, handler)
         (browser.browserComponent as? JComponent)?.let { installTransferHandler(it, handler) }
-        installPasteDispatcher()
+        installPasteKeyboardHandler()
     }
 
     private fun installTransferHandler(component: JComponent, handler: TransferHandler) {
@@ -64,37 +74,37 @@ internal class OpenCodeFileDropHandler(
             .forEach { installTransferHandler(it, handler) }
     }
 
-    private fun installPasteDispatcher() {
-        val focusManager = KeyboardFocusManager.getCurrentKeyboardFocusManager()
-        val dispatcher = KeyEventDispatcher { event ->
-            if (event.id != KeyEvent.KEY_PRESSED) return@KeyEventDispatcher false
-            if (!isPasteShortcut(event)) return@KeyEventDispatcher false
-            if (isDisposed()) return@KeyEventDispatcher false
-            if (!OpenCodeSettingsState.getInstance().enableChatFileDrop) return@KeyEventDispatcher false
-            if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverManager.getServerUrl(), browser.cefBrowser.url)) return@KeyEventDispatcher false
-            if (!isFocusInsideBrowser()) return@KeyEventDispatcher false
-
-            val transferable = runCatching { Toolkit.getDefaultToolkit().systemClipboard.getContents(null) }
-                .getOrNull()
-                ?: return@KeyEventDispatcher false
-            val files = clipboardFiles(transferable)
-            val text = droppedTextPayload(transferable)
-            if (files.isEmpty() && text?.startsWith("file:") != true) return@KeyEventDispatcher false
-            dispatchDroppedData(files, text)
+    private fun installPasteKeyboardHandler() {
+        val handler = object : CefKeyboardHandlerAdapter() {
+            override fun onPreKeyEvent(
+                browser: org.cef.browser.CefBrowser?,
+                event: CefKeyEvent?,
+                isKeyboardShortcut: BoolRef?,
+            ): Boolean {
+                if (event?.type != EventType.KEYEVENT_RAWKEYDOWN) return false
+                if (!isPasteShortcut(event.windows_key_code, event.modifiers)) return false
+                if (isDisposed()) return false
+                if (!OpenCodeSettingsState.getInstance().enableChatFileDrop) return false
+                if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverManager.getServerUrl(), this@OpenCodeFileDropHandler.browser.cefBrowser.url)) {
+                    return false
+                }
+                return pasteClipboardFileData()
+            }
         }
-        focusManager.addKeyEventDispatcher(dispatcher)
+        browser.jbCefClient.addKeyboardHandler(handler, browser.cefBrowser)
         Disposer.register(parentDisposable) {
-            focusManager.removeKeyEventDispatcher(dispatcher)
+            browser.jbCefClient.removeKeyboardHandler(handler, browser.cefBrowser)
         }
     }
 
-    private fun isPasteShortcut(event: KeyEvent): Boolean {
-        return event.keyCode == KeyEvent.VK_V && (event.isMetaDown || event.isControlDown) && !event.isAltDown
-    }
-
-    private fun isFocusInsideBrowser(): Boolean {
-        val focusOwner = KeyboardFocusManager.getCurrentKeyboardFocusManager().focusOwner ?: return false
-        return browser.component == focusOwner || browser.component.isAncestorOf(focusOwner)
+    private fun pasteClipboardFileData(): Boolean {
+        val transferable = runCatching { Toolkit.getDefaultToolkit().systemClipboard.getContents(null) }
+            .getOrNull()
+            ?: return false
+        val files = clipboardFiles(transferable)
+        val text = droppedTextPayload(transferable)
+        if (files.isEmpty() && text?.startsWith("file:") != true) return false
+        return dispatchDroppedData(files, text)
     }
 
     private fun dispatchDroppedData(files: List<File>, textPlain: String?): Boolean {
