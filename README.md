@@ -1,5 +1,33 @@
 # OpenCode Web Panel
 
+<table align="center">
+  <tr>
+    <td align="center">
+      <a href="https://plugins.jetbrains.com/plugin/32384">
+        <img src="src/main/resources/META-INF/pluginIcon.svg" alt="OpenCode Web Panel on JetBrains Marketplace" width="96" />
+      </a>
+      <br />
+      <strong><a href="https://plugins.jetbrains.com/plugin/32384">OpenCode Web Panel on JetBrains Marketplace</a></strong>
+      <br />
+      Embed OpenCode inside JetBrains IDEs.
+      <br />
+      <br />
+      <a href="https://plugins.jetbrains.com/plugin/32384">
+        <img src="https://img.shields.io/jetbrains/plugin/v/32384" alt="JetBrains Marketplace version" />
+      </a>
+      <a href="https://plugins.jetbrains.com/plugin/32384">
+        <img src="https://img.shields.io/jetbrains/plugin/d/32384" alt="JetBrains Marketplace downloads" />
+      </a>
+      <a href="https://plugins.jetbrains.com/plugin/32384">
+        <img src="https://img.shields.io/jetbrains/plugin/r/rating/32384" alt="JetBrains Marketplace rating" />
+      </a>
+      <a href="https://github.com/moritzfl/intellij-opencode-web-panel/releases/latest">
+        <img src="https://img.shields.io/github/v/release/moritzfl/intellij-opencode-web-panel?sort=semver" alt="Latest GitHub release" />
+      </a>
+    </td>
+  </tr>
+</table>
+
 ![OpenCode Web Panel running inside a JetBrains IDE](docs/opencode-web-panel.png)
 
 <!-- Plugin description -->
@@ -36,7 +64,7 @@ OpenCode Web Panel brings the official OpenCode web UI into JetBrains IDEs. It o
 
 - Install from JetBrains Marketplace:
 
-  Visit the JetBrains Marketplace page for OpenCode Web Panel and install the plugin.
+  Visit [OpenCode Web Panel on JetBrains Marketplace](https://plugins.jetbrains.com/plugin/32384) and install the plugin.
 
 - Install manually:
 
@@ -118,6 +146,8 @@ Useful development commands:
 - `test` runs JVM and IntelliJ Platform tests.
 - `runIde` launches a sandbox IDE with the plugin installed.
 - `runIdeForUiTests` launches the sandbox IDE with the JetBrains Robot Server enabled.
+
+Repository: https://github.com/moritzfl/intellij-opencode-web-panel
 
 ## Acknowledgements
 
