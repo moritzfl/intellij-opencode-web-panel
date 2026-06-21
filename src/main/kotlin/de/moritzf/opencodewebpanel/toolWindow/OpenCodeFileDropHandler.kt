@@ -1,9 +1,11 @@
 package de.moritzf.opencodewebpanel.toolWindow
 
+import com.intellij.ide.dnd.FileCopyPasteUtil
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.ide.CopyPasteManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.ui.jcef.JBCefBrowser
@@ -36,10 +38,15 @@ internal class OpenCodeFileDropHandler(
         private const val MAX_DROPPED_FILES_TOTAL_BYTES = 10L * 1024L * 1024L
 
         fun isPasteShortcut(keyCode: Int, modifiers: Int): Boolean {
+            return isPasteShortcut(keyCode, modifiers, 0.toChar(), 0.toChar())
+        }
+
+        fun isPasteShortcut(keyCode: Int, modifiers: Int, character: Char, unmodifiedCharacter: Char): Boolean {
             val hasCommand = modifiers and EventFlags.EVENTFLAG_COMMAND_DOWN != 0
             val hasControl = modifiers and EventFlags.EVENTFLAG_CONTROL_DOWN != 0
             val hasAlt = modifiers and EventFlags.EVENTFLAG_ALT_DOWN != 0
-            return keyCode == KeyEvent.VK_V && hasCommand != hasControl && !hasAlt
+            val key = listOf(character, unmodifiedCharacter).any { it.lowercaseChar() == 'v' }
+            return (keyCode == KeyEvent.VK_V || key) && hasCommand != hasControl && !hasAlt
         }
     }
 
@@ -81,8 +88,8 @@ internal class OpenCodeFileDropHandler(
                 event: CefKeyEvent?,
                 isKeyboardShortcut: BoolRef?,
             ): Boolean {
-                if (event?.type != EventType.KEYEVENT_RAWKEYDOWN) return false
-                if (!isPasteShortcut(event.windows_key_code, event.modifiers)) return false
+                if (event?.type != EventType.KEYEVENT_RAWKEYDOWN && event?.type != EventType.KEYEVENT_KEYDOWN) return false
+                if (!isPasteShortcut(event.windows_key_code, event.modifiers, event.character, event.unmodified_character)) return false
                 if (isDisposed()) return false
                 if (!OpenCodeSettingsState.getInstance().enableChatFileDrop) return false
                 if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverManager.getServerUrl(), this@OpenCodeFileDropHandler.browser.cefBrowser.url)) {
@@ -98,7 +105,7 @@ internal class OpenCodeFileDropHandler(
     }
 
     private fun pasteClipboardFileReferences(): Boolean {
-        val transferable = runCatching { Toolkit.getDefaultToolkit().systemClipboard.getContents(null) }
+        val transferable = clipboardTransferable()
             .getOrNull()
             ?: return false
         val files = clipboardFiles(transferable)
@@ -163,11 +170,15 @@ internal class OpenCodeFileDropHandler(
     }
 
     private fun clipboardFiles(transferable: Transferable): List<File> {
-        if (!transferable.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) return emptyList()
+        return runCatching { FileCopyPasteUtil.getFileList(transferable).orEmpty() }
+            .getOrDefault(emptyList())
+    }
+
+    private fun clipboardTransferable(): Result<Transferable?> {
         return runCatching {
-            @Suppress("UNCHECKED_CAST")
-            transferable.getTransferData(DataFlavor.javaFileListFlavor) as? List<File>
-        }.getOrNull().orEmpty()
+            CopyPasteManager.getInstance().contents
+                ?: Toolkit.getDefaultToolkit().systemClipboard.getContents(null)
+        }
     }
 
     private fun selectDroppedFiles(files: List<File>): DroppedFileSelection {

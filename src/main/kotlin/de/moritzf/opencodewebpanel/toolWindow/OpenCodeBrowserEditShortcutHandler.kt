@@ -1,11 +1,16 @@
 package de.moritzf.opencodewebpanel.toolWindow
 
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.actionSystem.IdeActions
+import com.intellij.openapi.actionSystem.KeyboardShortcut
+import com.intellij.openapi.actionSystem.Shortcut
+import com.intellij.openapi.keymap.KeymapManager
 import com.intellij.openapi.util.Disposer
 import com.intellij.ui.jcef.JBCefBrowser
 import java.awt.KeyboardFocusManager
 import java.awt.KeyEventDispatcher
 import java.awt.event.KeyEvent
+import javax.swing.KeyStroke
 
 internal class OpenCodeBrowserEditShortcutHandler(
     private val browser: JBCefBrowser,
@@ -43,14 +48,32 @@ internal class OpenCodeBrowserEditShortcutHandler(
 
     internal companion object {
         fun shortcutAction(event: KeyEvent): EditShortcutAction? {
-            if (event.isAltDown) return null
-            if (event.isMetaDown == event.isControlDown) return null
-            val keyCode = event.keyCode
+            val keymap = KeymapManager.getInstance().activeKeymap
+            return shortcutAction(
+                event,
+                undoShortcuts = keymap.getShortcuts(IdeActions.ACTION_UNDO),
+                redoShortcuts = keymap.getShortcuts(IdeActions.ACTION_REDO),
+            )
+        }
+
+        fun shortcutAction(
+            event: KeyEvent,
+            undoShortcuts: Array<Shortcut>,
+            redoShortcuts: Array<Shortcut>,
+        ): EditShortcutAction? {
             return when {
-                keyCode == KeyEvent.VK_Z && !event.isShiftDown -> EditShortcutAction.UNDO
-                keyCode == KeyEvent.VK_Z && event.isShiftDown -> EditShortcutAction.REDO
-                keyCode == KeyEvent.VK_Y && !event.isShiftDown -> EditShortcutAction.REDO
+                undoShortcuts.matches(event) -> EditShortcutAction.UNDO
+                redoShortcuts.matches(event) -> EditShortcutAction.REDO
                 else -> null
+            }
+        }
+
+        private fun Array<Shortcut>.matches(event: KeyEvent): Boolean {
+            val keyStroke = KeyStroke.getKeyStrokeForEvent(event)
+            return any { shortcut ->
+                shortcut is KeyboardShortcut &&
+                    shortcut.firstKeyStroke == keyStroke &&
+                    shortcut.secondKeyStroke == null
             }
         }
     }

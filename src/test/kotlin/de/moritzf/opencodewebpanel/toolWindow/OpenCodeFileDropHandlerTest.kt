@@ -11,6 +11,7 @@ class OpenCodeFileDropHandlerTest {
     fun isPasteShortcutAcceptsCommandOrControlV() {
         assertTrue(OpenCodeFileDropHandler.isPasteShortcut(KeyEvent.VK_V, EventFlags.EVENTFLAG_COMMAND_DOWN))
         assertTrue(OpenCodeFileDropHandler.isPasteShortcut(KeyEvent.VK_V, EventFlags.EVENTFLAG_CONTROL_DOWN))
+        assertTrue(OpenCodeFileDropHandler.isPasteShortcut(0, EventFlags.EVENTFLAG_COMMAND_DOWN, 'v', 'v'))
     }
 
     @Test
