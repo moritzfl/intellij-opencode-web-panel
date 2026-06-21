@@ -654,11 +654,18 @@ internal object OpenCodeBrowserSnippets {
                 return bytes;
               };
               const dispatchDrop = (fill) => {
+                const previousActive = document.activeElement;
+                const target = previousActive instanceof HTMLElement && document.contains(previousActive) ? previousActive : document;
                 const transfer = new DataTransfer();
                 fill(transfer);
                 const options = { bubbles: true, cancelable: true, dataTransfer: transfer };
-                document.dispatchEvent(new DragEvent('dragover', options));
-                document.dispatchEvent(new DragEvent('drop', options));
+                target.dispatchEvent(new DragEvent('dragover', options));
+                target.dispatchEvent(new DragEvent('drop', options));
+                if (previousActive instanceof HTMLElement && previousActive.isContentEditable) {
+                  requestAnimationFrame(() => {
+                    if (document.contains(previousActive)) previousActive.focus();
+                  });
+                }
               };
               $textDrops
               $fileDrop

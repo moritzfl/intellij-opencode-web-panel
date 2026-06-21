@@ -618,7 +618,9 @@ class OpenCodeServerProtocolTest {
 
         assertTrue(script.contains("new DataTransfer()"))
         assertTrue(script.contains("new File([decode(entry.base64)], entry.name"))
-        assertTrue(script.contains("document.dispatchEvent(new DragEvent('drop'"))
+        assertTrue(script.contains("const previousActive = document.activeElement"))
+        assertTrue(script.contains("target.dispatchEvent(new DragEvent('drop'"))
+        assertTrue(script.contains("previousActive.isContentEditable"))
         assertTrue(script.contains("hello \\'world\\'.txt"))
         assertTrue(script.contains("aGVsbG8="))
     }
@@ -632,7 +634,7 @@ class OpenCodeServerProtocolTest {
         )!!
 
         assertTrue(script.contains("transfer.setData('text/plain', 'file:src/main/App.kt')"))
-        assertTrue(script.contains("document.dispatchEvent(new DragEvent('drop'"))
+        assertTrue(script.contains("target.dispatchEvent(new DragEvent('drop'"))
     }
 
     @Test
