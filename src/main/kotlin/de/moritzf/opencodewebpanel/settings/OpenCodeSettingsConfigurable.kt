@@ -210,7 +210,7 @@ class OpenCodeSettingsConfigurable : Configurable {
             }
             row {
                 cell(enableChatFileDropCheckBox)
-                    .comment("Insert project files as @relative/path references and attach files outside the project to the embedded OpenCode chat input.")
+                    .comment("Use OpenCode's native drop handling for project file references and file attachments.")
             }
             row {
                 cell(forceCompactLayoutCheckBox)

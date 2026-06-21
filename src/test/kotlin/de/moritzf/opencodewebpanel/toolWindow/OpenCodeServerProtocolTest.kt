@@ -624,8 +624,21 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun buildDispatchDroppedFilesScriptCanForwardTextPlainDropData() {
+        val script = OpenCodeServerProtocol.buildDispatchDroppedFilesScript(
+            emptyList(),
+            textPlain = "file:src/main/App.kt",
+            enabled = true,
+        )!!
+
+        assertTrue(script.contains("transfer.setData('text/plain', 'file:src/main/App.kt')"))
+        assertTrue(script.contains("document.dispatchEvent(new DragEvent('drop'"))
+    }
+
+    @Test
     fun buildDispatchDroppedFilesScriptIsMissingWithoutFiles() {
         assertNull(OpenCodeServerProtocol.buildDispatchDroppedFilesScript(emptyList()))
+        assertNull(OpenCodeServerProtocol.buildDispatchDroppedFilesScript(emptyList(), textPlain = null, enabled = true))
     }
 
     @Test
@@ -646,23 +659,7 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
-    fun buildInsertChatTextScriptInsertsReferencesIntoEditableField() {
-        val script = OpenCodeServerProtocol.buildInsertChatTextScript("@src/main/App.kt @README.md", enabled = true)!!
-
-        assertTrue(script.contains("const mentionText = '@src/main/App.kt @README.md'"))
-        assertTrue(script.contains("document.querySelectorAll('textarea"))
-        assertTrue(script.contains("input.dispatchEvent(new InputEvent('input'"))
-        assertTrue(script.contains("input.setSelectionRange(position, position)"))
-    }
-
-    @Test
-    fun buildInsertChatTextScriptIsMissingWhenDisabledOrBlank() {
-        assertNull(OpenCodeServerProtocol.buildInsertChatTextScript("@README.md", enabled = false))
-        assertNull(OpenCodeServerProtocol.buildInsertChatTextScript(" ", enabled = true))
-    }
-
-    @Test
-    fun localFileReferenceUsesProjectRelativePath() {
+    fun localFileDropTextUsesOpenCodeProjectRelativeConvention() {
         val projectRoot = Files.createTempDirectory("opencode-project")
         try {
             val file = projectRoot.resolve("src/main/App.kt")
@@ -670,8 +667,8 @@ class OpenCodeServerProtocolTest {
             Files.writeString(file, "fun main() {}")
 
             assertEquals(
-                "@src/main/App.kt",
-                OpenCodeServerProtocol.localFileReference(file.toFile(), projectRoot.toString()),
+                "file:src/main/App.kt",
+                OpenCodeServerProtocol.localFileDropText(file.toFile(), projectRoot.toString()),
             )
         } finally {
             projectRoot.toFile().deleteRecursively()
@@ -679,14 +676,14 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
-    fun localFileReferenceRejectsFilesOutsideProject() {
+    fun localFileDropTextRejectsFilesOutsideProject() {
         val projectRoot = Files.createTempDirectory("opencode-project")
         val outsideRoot = Files.createTempDirectory("opencode-outside")
         try {
             val file = outsideRoot.resolve("outside.txt")
             Files.writeString(file, "outside")
 
-            assertNull(OpenCodeServerProtocol.localFileReference(file.toFile(), projectRoot.toString()))
+            assertNull(OpenCodeServerProtocol.localFileDropText(file.toFile(), projectRoot.toString()))
         } finally {
             projectRoot.toFile().deleteRecursively()
             outsideRoot.toFile().deleteRecursively()

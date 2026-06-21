@@ -101,11 +101,11 @@ internal object OpenCodeServerProtocol {
         return OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(files, enabled)
     }
 
-    fun buildInsertChatTextScript(text: String, enabled: Boolean): String? {
-        return OpenCodeBrowserSnippets.buildInsertChatTextScript(text, enabled)
+    fun buildDispatchDroppedFilesScript(files: List<DroppedFilePayload>, textPlain: String?, enabled: Boolean): String? {
+        return OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(files, textPlain, enabled)
     }
 
-    fun localFileReference(file: File, projectBasePath: String?): String? {
+    fun localFileDropText(file: File, projectBasePath: String?): String? {
         val projectRoot = projectBasePath?.takeIf { it.isNotBlank() }?.let { Path.of(it).toAbsolutePath().normalize() }
             ?: return null
         val filePath = file.toPath().toAbsolutePath().normalize()
@@ -113,7 +113,7 @@ internal object OpenCodeServerProtocol {
         if (!Files.isRegularFile(filePath)) return null
         val relativePath = projectRoot.relativize(filePath).joinToString("/") { it.toString() }
         if (relativePath.isBlank() || relativePath.startsWith("..")) return null
-        return "@$relativePath"
+        return "file:$relativePath"
     }
 
     fun buildFileLinkHandlerScript(projectBasePath: String?, enabled: Boolean): String? {
