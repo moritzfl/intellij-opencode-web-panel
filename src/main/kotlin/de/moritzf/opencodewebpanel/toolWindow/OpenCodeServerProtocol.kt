@@ -109,15 +109,6 @@ internal object OpenCodeServerProtocol {
         return OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(files, textPlain, enabled)
     }
 
-    fun buildDispatchDroppedFilesScript(
-        files: List<DroppedFilePayload>,
-        textPlain: List<String>,
-        enabled: Boolean,
-        suppressNativeFilePaste: Boolean,
-    ): String? {
-        return OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(files, textPlain, enabled, suppressNativeFilePaste)
-    }
-
     fun buildFilePasteSuppressionScript(enabled: Boolean): String? {
         return OpenCodeBrowserSnippets.buildFilePasteSuppressionScript(enabled)
     }

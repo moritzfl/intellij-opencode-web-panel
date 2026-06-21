@@ -783,28 +783,16 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
-    fun buildFilePasteSuppressionScriptCancelsArmedFilePasteEvents() {
+    fun buildFilePasteSuppressionScriptCancelsFilePasteEvents() {
         val script = OpenCodeServerProtocol.buildFilePasteSuppressionScript(enabled = true)!!
 
         assertTrue(script.contains("window.__opencodeIntellijFilePasteSuppressionInstalled"))
         assertTrue(script.contains("document.addEventListener('paste'"))
+        assertFalse(script.contains("__opencodeIntellijSuppressNativeFilePasteUntil"))
         assertTrue(script.contains("item.kind === 'file'"))
         assertTrue(script.contains("includes('Files')"))
         assertTrue(script.contains("event.preventDefault()"))
         assertTrue(script.contains("event.stopImmediatePropagation()"))
-    }
-
-    @Test
-    fun buildDispatchDroppedFilesScriptCanArmNativePasteSuppression() {
-        val script = OpenCodeServerProtocol.buildDispatchDroppedFilesScript(
-            emptyList(),
-            textPlain = listOf("file:README.md"),
-            enabled = true,
-            suppressNativeFilePaste = true,
-        )!!
-
-        assertTrue(script.contains("window.__opencodeIntellijSuppressNativeFilePasteUntil = Date.now() + 1500"))
-        assertTrue(script.contains("transfer.setData('text/plain', 'file:README.md')"))
     }
 
     @Test
