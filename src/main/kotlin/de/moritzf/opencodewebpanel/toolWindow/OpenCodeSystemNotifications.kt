@@ -29,7 +29,7 @@ internal class OpenCodeSystemNotifications(
             val title = notificationText(openCodeNotification.title, 200)
             val body = notificationText(openCodeNotification.body, 1000)
             val ideNotification = group.createNotification(title, body, NotificationType.INFORMATION)
-            ideNotification.addAction(object : NotificationAction("Open in OpenCode") {
+            ideNotification.addAction(object : NotificationAction("Show in OpenCode") {
                 override fun actionPerformed(e: AnActionEvent, notification: Notification) {
                     notification.expire()
                     if (project.isDisposed) return
