@@ -120,7 +120,7 @@ internal class OpenCodeFileDropHandler(
             if (!OpenCodeSettingsState.getInstance().enableChatFileDrop) return@KeyEventDispatcher false
             if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverManager.getServerUrl(), browser.cefBrowser.url)) return@KeyEventDispatcher false
             if (!isFocusInsideBrowser()) return@KeyEventDispatcher false
-            if (!pasteClipboardFileReferences()) return@KeyEventDispatcher false
+            if (!pasteClipboardData()) return@KeyEventDispatcher false
 
             suppressNextBrowserPasteAtMillis = System.currentTimeMillis()
             event.consume()
@@ -147,37 +147,14 @@ internal class OpenCodeFileDropHandler(
         return suppress
     }
 
-    private fun pasteClipboardFileReferences(): Boolean {
-        val transferable = clipboardTransferable()
-            .getOrNull()
-            ?: return false
-        val files = clipboardFiles(transferable)
-        val text = droppedTextPayload(transferable)
-        val textDrops = clipboardFileReferenceDrops(files, text)
-        if (textDrops.isEmpty()) return false
-        return dispatchDroppedText(textDrops)
-    }
-
-    private fun clipboardFileReferenceDrops(files: List<File>, textPlain: String?): List<String> {
-        val projectDirectory = openCodeProjectDirectory()
-        val fileTextDrops = files.mapNotNull { file -> OpenCodeServerProtocol.localFileDropText(file, projectDirectory) }
-        return fileTextDrops.ifEmpty { droppedTextPlainItems(files, textPlain) }
-    }
-
-    private fun dispatchDroppedText(textDrops: List<String>): Boolean {
-        val script = OpenCodeServerProtocol.buildDispatchDroppedFilesScript(
-            emptyList(),
-            textPlain = textDrops,
-            enabled = OpenCodeSettingsState.getInstance().enableChatFileDrop,
-        ) ?: return false
-        val rootUrl = serverManager.getServerUrl()?.let { OpenCodeServerProtocol.buildServerRootUrl(it) }
-            ?: return false
-        ApplicationManager.getApplication().invokeLater {
-            if (!isDisposed() && OpenCodeSettingsState.getInstance().enableChatFileDrop) {
-                browser.cefBrowser.executeJavaScript(script, rootUrl, 0)
-            }
-        }
-        return true
+    private fun pasteClipboardData(): Boolean {
+        val transferables = clipboardTransferables()
+        val files = transferables
+            .flatMap { clipboardFiles(it) }
+            .distinctBy { it.toPath().toAbsolutePath().normalize() }
+        val text = transferables.firstNotNullOfOrNull { droppedTextPayload(it) }
+        if (files.isEmpty() && text?.startsWith("file:") != true) return false
+        return dispatchDroppedData(files, text)
     }
 
     private fun dispatchDroppedData(files: List<File>, textPlain: String?): Boolean {
@@ -217,11 +194,11 @@ internal class OpenCodeFileDropHandler(
             .getOrDefault(emptyList())
     }
 
-    private fun clipboardTransferable(): Result<Transferable?> {
-        return runCatching {
-            CopyPasteManager.getInstance().contents
-                ?: Toolkit.getDefaultToolkit().systemClipboard.getContents(null)
-        }
+    private fun clipboardTransferables(): List<Transferable> {
+        return listOfNotNull(
+            runCatching { CopyPasteManager.getInstance().contents }.getOrNull(),
+            runCatching { Toolkit.getDefaultToolkit().systemClipboard.getContents(null) }.getOrNull(),
+        ).distinctBy { System.identityHashCode(it) }
     }
 
     private fun selectDroppedFiles(files: List<File>): DroppedFileSelection {
