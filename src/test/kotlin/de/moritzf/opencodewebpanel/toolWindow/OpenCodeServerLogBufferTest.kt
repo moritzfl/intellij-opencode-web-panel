@@ -4,6 +4,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.attribute.FileTime
 import java.time.Duration
+import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -16,13 +17,21 @@ class OpenCodeServerLogBufferTest {
         val dir = Files.createTempDirectory("opencode-server-log-buffer")
         try {
             val buffer = OpenCodeServerLogBuffer(logDir = dir, maxLogFiles = 20, maxLogAge = Duration.ofDays(7), enabled = { true })
+            val startedAt = Instant.parse("2026-06-21T12:00:00Z")
 
-            val file = buffer.startNewFile()
+            val file = buffer.startNewFile(startedAt)
             buffer.append("first")
             buffer.append("second")
 
             assertEquals(file, buffer.currentOrLatestFile())
-            assertEquals(listOf("first", "second"), Files.readAllLines(file))
+            assertEquals(
+                listOf(
+                    "========== OpenCode server start/restart via OpenCode Web Panel at 2026-06-21T12:00:00Z ==========",
+                    "first",
+                    "second",
+                ),
+                Files.readAllLines(file),
+            )
         } finally {
             deleteRecursively(dir)
         }

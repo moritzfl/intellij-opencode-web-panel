@@ -22,7 +22,7 @@ internal class OpenCodeServerLogBuffer(
     private val fileLock = Any()
     private var currentLogFile: Path? = null
 
-    fun startNewFile(): Path? {
+    fun startNewFile(startedAt: Instant = Instant.now()): Path? {
         return synchronized(fileLock) {
             if (!enabled()) {
                 currentLogFile = null
@@ -30,6 +30,7 @@ internal class OpenCodeServerLogBuffer(
             }
             pruneOldLogs()
             currentLogFile = createLogFile()
+            currentLogFile?.let { writeStartMarker(it, startedAt) }
             currentLogFile
         }
     }
@@ -109,6 +110,14 @@ internal class OpenCodeServerLogBuffer(
         val file = synchronized(fileLock) {
             currentLogFile ?: createLogFile()?.also { currentLogFile = it }
         } ?: return
+        writeLine(file, line)
+    }
+
+    private fun writeStartMarker(file: Path, startedAt: Instant) {
+        writeLine(file, "========== OpenCode server start/restart via OpenCode Web Panel at $startedAt ==========")
+    }
+
+    private fun writeLine(file: Path, line: String) {
         try {
             Files.writeString(
                 file,
