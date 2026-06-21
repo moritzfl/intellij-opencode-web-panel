@@ -52,6 +52,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     private var fileLinkScriptScheduled = false
     private var externalLinkScriptScheduled = false
     private var codeNavigationScriptScheduled = false
+    private var filePasteSuppressionScriptScheduled = false
     private var compactLayoutScriptScheduled = false
     private var ideThemeSyncScriptScheduled = false
     private var projectSwitchPromptSuppressionScriptScheduled = false
@@ -65,6 +66,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                 fileLinkScriptScheduled = false
                 externalLinkScriptScheduled = false
                 codeNavigationScriptScheduled = false
+                filePasteSuppressionScriptScheduled = false
                 compactLayoutScriptScheduled = false
                 ideThemeSyncScriptScheduled = false
                 projectSwitchPromptSuppressionScriptScheduled = false
@@ -86,6 +88,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             scheduleFileLinkScript()
             scheduleExternalLinkScript()
             scheduleCodeNavigationScript()
+            scheduleFilePasteSuppressionScript()
             scheduleIdeThemeSyncScript()
             scheduleProjectSwitchPromptSuppressionScript()
             scheduleSystemNotificationBridgeScript()
@@ -160,6 +163,10 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
 
                 override fun codeNavigationChanged(enabled: Boolean) {
                     applyCodeNavigation(enabled)
+                }
+
+                override fun chatFileDropChanged(enabled: Boolean) {
+                    applyFilePasteSuppression(enabled)
                 }
 
                 override fun compactLayoutChanged(enabled: Boolean) {
@@ -254,6 +261,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         scheduleOpenProjectScript()
         scheduleFileLinkScript()
         scheduleExternalLinkScript()
+        scheduleFilePasteSuppressionScript()
         scheduleIdeThemeSyncScript()
         scheduleProjectSwitchPromptSuppressionScript()
         scheduleSystemNotificationBridgeScript()
@@ -341,6 +349,18 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         scriptScheduler.schedule(script, rootUrl) { OpenCodeSettingsState.getInstance().suppressProjectSwitchPrompts }
     }
 
+    private fun scheduleFilePasteSuppressionScript() {
+        if (filePasteSuppressionScriptScheduled) return
+        if (!OpenCodeSettingsState.getInstance().enableChatFileDrop) return
+
+        val serverUrl = serverManager.getServerUrl() ?: return
+        val script = OpenCodeServerProtocol.buildFilePasteSuppressionScript(enabled = true) ?: return
+        val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
+        filePasteSuppressionScriptScheduled = true
+
+        scriptScheduler.schedule(script, rootUrl) { OpenCodeSettingsState.getInstance().enableChatFileDrop }
+    }
+
     private fun scheduleIdeThemeSyncScript() {
         if (ideThemeSyncScriptScheduled) return
         if (!OpenCodeSettingsState.getInstance().syncThemeWithIde) return
@@ -386,6 +406,19 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         ) ?: return
         browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
         codeNavigationScriptScheduled = true
+    }
+
+    private fun applyFilePasteSuppression(enabled: Boolean) {
+        val serverUrl = serverManager.getServerUrl() ?: return
+        if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)) return
+        filePasteSuppressionScriptScheduled = false
+        if (!enabled) {
+            browser.cefBrowser.reload()
+            return
+        }
+        val script = OpenCodeServerProtocol.buildFilePasteSuppressionScript(enabled = true) ?: return
+        browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
+        filePasteSuppressionScriptScheduled = true
     }
 
     private fun applyProjectSwitchPromptSuppression(enabled: Boolean) {

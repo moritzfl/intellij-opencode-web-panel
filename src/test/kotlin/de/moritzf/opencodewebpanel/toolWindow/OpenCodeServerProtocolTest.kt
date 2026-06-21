@@ -778,6 +778,36 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun buildFilePasteSuppressionScriptIsMissingWhenDisabled() {
+        assertNull(OpenCodeServerProtocol.buildFilePasteSuppressionScript(enabled = false))
+    }
+
+    @Test
+    fun buildFilePasteSuppressionScriptCancelsArmedFilePasteEvents() {
+        val script = OpenCodeServerProtocol.buildFilePasteSuppressionScript(enabled = true)!!
+
+        assertTrue(script.contains("window.__opencodeIntellijFilePasteSuppressionInstalled"))
+        assertTrue(script.contains("document.addEventListener('paste'"))
+        assertTrue(script.contains("item.kind === 'file'"))
+        assertTrue(script.contains("includes('Files')"))
+        assertTrue(script.contains("event.preventDefault()"))
+        assertTrue(script.contains("event.stopImmediatePropagation()"))
+    }
+
+    @Test
+    fun buildDispatchDroppedFilesScriptCanArmNativePasteSuppression() {
+        val script = OpenCodeServerProtocol.buildDispatchDroppedFilesScript(
+            emptyList(),
+            textPlain = listOf("file:README.md"),
+            enabled = true,
+            suppressNativeFilePaste = true,
+        )!!
+
+        assertTrue(script.contains("window.__opencodeIntellijSuppressNativeFilePasteUntil = Date.now() + 1500"))
+        assertTrue(script.contains("transfer.setData('text/plain', 'file:README.md')"))
+    }
+
+    @Test
     fun buildCodeNavigationScriptIsMissingWhenDisabled() {
         assertNull(OpenCodeServerProtocol.buildCodeNavigationScript(enabled = false, openCodeCallback = "callback(ref)"))
     }

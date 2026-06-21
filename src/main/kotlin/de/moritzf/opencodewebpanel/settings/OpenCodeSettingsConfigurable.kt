@@ -276,6 +276,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         val oldOpenFileLinksInIde = settings.openFileLinksInIde
         val oldOpenExternalLinksInBrowser = settings.openExternalLinksInBrowser
         val oldEnableCodeNavigation = settings.enableCodeNavigation
+        val oldEnableChatFileDrop = settings.enableChatFileDrop
         val oldForceCompactLayout = settings.forceCompactLayout
         val oldSyncThemeWithIde = settings.syncThemeWithIde
         val oldSuppressProjectSwitchPrompts = settings.suppressProjectSwitchPrompts
@@ -339,6 +340,11 @@ class OpenCodeSettingsConfigurable : Configurable {
             ApplicationManager.getApplication().messageBus
                 .syncPublisher(OpenCodeSettingsListener.TOPIC)
                 .codeNavigationChanged(settings.enableCodeNavigation)
+        }
+        if (oldEnableChatFileDrop != settings.enableChatFileDrop) {
+            ApplicationManager.getApplication().messageBus
+                .syncPublisher(OpenCodeSettingsListener.TOPIC)
+                .chatFileDropChanged(settings.enableChatFileDrop)
         }
         if (oldForceCompactLayout != settings.forceCompactLayout) {
             ApplicationManager.getApplication().messageBus

@@ -607,6 +607,15 @@ internal object OpenCodeBrowserSnippets {
         textPlain: List<String>,
         enabled: Boolean,
     ): String? {
+        return buildDispatchDroppedFilesScript(files, textPlain, enabled, suppressNativeFilePaste = false)
+    }
+
+    fun buildDispatchDroppedFilesScript(
+        files: List<OpenCodeServerProtocol.DroppedFilePayload>,
+        textPlain: List<String>,
+        enabled: Boolean,
+        suppressNativeFilePaste: Boolean,
+    ): String? {
         val textEntries = textPlain.filter { it.isNotBlank() }
         if (!enabled || (files.isEmpty() && textEntries.isEmpty())) return null
         val fileEntries = files.joinToString(",\n") { file ->
@@ -638,6 +647,11 @@ internal object OpenCodeBrowserSnippets {
         } else {
             ""
         }
+        val suppressPaste = if (suppressNativeFilePaste) {
+            "window.__opencodeIntellijSuppressNativeFilePasteUntil = Date.now() + 1500;"
+        } else {
+            ""
+        }
         @Language("JavaScript")
         val script = """
             (() => {
@@ -645,6 +659,7 @@ internal object OpenCodeBrowserSnippets {
                   console.warn('OpenCode Web Panel could not dispatch dropped files: browser drag APIs unavailable');
                   return;
                 }
+              $suppressPaste
               const decode = (base64) => {
                 const binary = atob(base64);
                 const bytes = new Uint8Array(binary.length);
@@ -662,6 +677,29 @@ internal object OpenCodeBrowserSnippets {
               };
               $textDrops
               $fileDrop
+            })();
+        """
+        return script.trimIndent()
+    }
+
+    fun buildFilePasteSuppressionScript(enabled: Boolean): String? {
+        if (!enabled) return null
+        @Language("JavaScript")
+        val script = """
+            (() => {
+              if (window.__opencodeIntellijFilePasteSuppressionInstalled) return;
+              window.__opencodeIntellijFilePasteSuppressionInstalled = true;
+              window.__opencodeIntellijSuppressNativeFilePasteUntil = 0;
+              document.addEventListener('paste', (event) => {
+                if (Date.now() > window.__opencodeIntellijSuppressNativeFilePasteUntil) return;
+                const clipboard = event.clipboardData;
+                const hasFile = Array.from(clipboard?.items || []).some((item) => item.kind === 'file') ||
+                  Array.from(clipboard?.types || []).includes('Files');
+                if (!hasFile) return;
+                window.__opencodeIntellijSuppressNativeFilePasteUntil = 0;
+                event.preventDefault();
+                event.stopImmediatePropagation();
+              }, true);
             })();
         """
         return script.trimIndent()

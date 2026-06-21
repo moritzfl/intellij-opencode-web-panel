@@ -169,6 +169,7 @@ internal class OpenCodeFileDropHandler(
             emptyList(),
             textPlain = textDrops,
             enabled = OpenCodeSettingsState.getInstance().enableChatFileDrop,
+            suppressNativeFilePaste = true,
         ) ?: return false
         val rootUrl = serverManager.getServerUrl()?.let { OpenCodeServerProtocol.buildServerRootUrl(it) }
             ?: return false

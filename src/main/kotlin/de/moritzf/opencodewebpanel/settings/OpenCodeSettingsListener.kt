@@ -11,6 +11,8 @@ interface OpenCodeSettingsListener {
 
     fun codeNavigationChanged(enabled: Boolean) {}
 
+    fun chatFileDropChanged(enabled: Boolean) {}
+
     fun compactLayoutChanged(enabled: Boolean) {}
 
     fun ideThemeSyncChanged(enabled: Boolean) {}
