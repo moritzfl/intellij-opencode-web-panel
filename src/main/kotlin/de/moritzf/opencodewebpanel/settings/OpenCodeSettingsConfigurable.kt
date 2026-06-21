@@ -407,12 +407,27 @@ class OpenCodeSettingsConfigurable : Configurable {
     }
 
     private fun updateServerStatus() {
-        val state = SharedOpenCodeServerManager.getInstance().getLifecycleState()
-        serverStatusLabel.text = formatLifecycleStatusText(state)
+        val serverManager = SharedOpenCodeServerManager.getInstance()
+        val state = serverManager.getLifecycleState()
+        serverStatusLabel.text = formatLifecycleStatusText(state, serverManager.getServerUrl())
     }
 
-    private fun formatLifecycleStatusText(state: OpenCodeServerLifecycleState): String {
-        return "<html><span style=\"color: ${state.colorHex}\">&#9679;</span>&nbsp;Server: ${state.displayLabel}</html>"
+    private fun formatLifecycleStatusText(state: OpenCodeServerLifecycleState, serverUrl: String?): String {
+        val detail = if (state == OpenCodeServerLifecycleState.RUNNING && !serverUrl.isNullOrBlank()) {
+            ": ${escapeStatusHtml(serverUrl)}"
+        } else {
+            ""
+        }
+        return "<html><span style=\"color: ${state.colorHex}\">&#9679;</span>&nbsp;Server: ${state.displayLabel}$detail</html>"
+    }
+
+    private fun escapeStatusHtml(value: String): String {
+        return value
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace("\"", "&quot;")
+            .replace("'", "&#39;")
     }
 
     private fun password(): String? = String(passwordField.password).trim().ifBlank { null }
