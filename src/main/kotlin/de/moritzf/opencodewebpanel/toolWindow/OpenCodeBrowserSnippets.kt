@@ -599,18 +599,45 @@ internal object OpenCodeBrowserSnippets {
         textPlain: String?,
         enabled: Boolean,
     ): String? {
-        val text = textPlain?.takeIf { it.isNotBlank() }
-        if (!enabled || (files.isEmpty() && text == null)) return null
+        return buildDispatchDroppedFilesScript(files, listOfNotNull(textPlain?.takeIf { it.isNotBlank() }), enabled)
+    }
+
+    fun buildDispatchDroppedFilesScript(
+        files: List<OpenCodeServerProtocol.DroppedFilePayload>,
+        textPlain: List<String>,
+        enabled: Boolean,
+    ): String? {
+        val textEntries = textPlain.filter { it.isNotBlank() }
+        if (!enabled || (files.isEmpty() && textEntries.isEmpty())) return null
         val fileEntries = files.joinToString(",\n") { file ->
             @Language("JavaScript")
             val entry = "{ name: '${escapeJavaScript(file.name)}', mime: '${escapeJavaScript(file.mime)}', lastModified: ${file.lastModified}, base64: '${file.base64}' }"
             entry
         }
-        val setTextPlain = text?.let {
+        val textDrops = textEntries.joinToString("\n") {
             @Language("JavaScript")
-            val setData = "transfer.setData('text/plain', '${escapeJavaScript(it)}');"
-            setData
-        }.orEmpty()
+            val drop = "dispatchDrop((transfer) => transfer.setData('text/plain', '${escapeJavaScript(it)}'));"
+            drop
+        }
+        val fileDrop = if (files.isNotEmpty()) {
+            @Language("JavaScript")
+            val drop = """
+                dispatchDrop((transfer) => {
+                  const entries = [
+                    $fileEntries
+                  ];
+                  for (const entry of entries) {
+                    transfer.items.add(new File([decode(entry.base64)], entry.name, {
+                      type: entry.mime,
+                      lastModified: entry.lastModified,
+                    }));
+                  }
+                });
+            """
+            drop.trimIndent()
+        } else {
+            ""
+        }
         @Language("JavaScript")
         val script = """
             (() => {
@@ -618,11 +645,6 @@ internal object OpenCodeBrowserSnippets {
                   console.warn('OpenCode Web Panel could not dispatch dropped files: browser drag APIs unavailable');
                   return;
                 }
-              const transfer = new DataTransfer();
-              $setTextPlain
-              const entries = [
-                $fileEntries
-              ];
               const decode = (base64) => {
                 const binary = atob(base64);
                 const bytes = new Uint8Array(binary.length);
@@ -631,15 +653,15 @@ internal object OpenCodeBrowserSnippets {
                 }
                 return bytes;
               };
-              for (const entry of entries) {
-                transfer.items.add(new File([decode(entry.base64)], entry.name, {
-                  type: entry.mime,
-                  lastModified: entry.lastModified,
-                }));
-              }
-              const options = { bubbles: true, cancelable: true, dataTransfer: transfer };
-              document.dispatchEvent(new DragEvent('dragover', options));
-              document.dispatchEvent(new DragEvent('drop', options));
+              const dispatchDrop = (fill) => {
+                const transfer = new DataTransfer();
+                fill(transfer);
+                const options = { bubbles: true, cancelable: true, dataTransfer: transfer };
+                document.dispatchEvent(new DragEvent('dragover', options));
+                document.dispatchEvent(new DragEvent('drop', options));
+              };
+              $textDrops
+              $fileDrop
             })();
         """
         return script.trimIndent()

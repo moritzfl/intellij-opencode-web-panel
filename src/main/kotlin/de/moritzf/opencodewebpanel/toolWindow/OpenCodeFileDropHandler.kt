@@ -57,13 +57,15 @@ internal class OpenCodeFileDropHandler(
     }
 
     private fun dispatchDroppedData(files: List<File>, textPlain: String?): Boolean {
-        val effectiveTextPlain = textPlain?.takeIf { it.isNotBlank() }
-            ?: files.singleOrNull()?.let { OpenCodeServerProtocol.localFileDropText(it, openCodeProjectDirectory()) }
-        val selection = selectDroppedFiles(files, shouldForwardFiles = !effectiveTextPlain.isOpenCodeFileDropText())
+        val projectDirectory = openCodeProjectDirectory()
+        val fileTextDrops = files.mapNotNull { file -> OpenCodeServerProtocol.localFileDropText(file, projectDirectory) }
+        val textDrops = fileTextDrops.ifEmpty { droppedTextPlainItems(files, textPlain) }
+        val filesToForward = files.filter { file -> OpenCodeServerProtocol.localFileDropText(file, projectDirectory) == null }
+        val selection = selectDroppedFiles(filesToForward)
         if (selection.rejectionMessages.isNotEmpty()) {
             showFileDropWarning(selection.rejectionMessages)
         }
-        if (effectiveTextPlain.isNullOrBlank() && selection.acceptedFiles.isEmpty()) {
+        if (textDrops.isEmpty() && selection.acceptedFiles.isEmpty()) {
             return selection.rejectionMessages.isNotEmpty()
         }
 
@@ -72,7 +74,7 @@ internal class OpenCodeFileDropHandler(
             val payloads = selection.acceptedFiles.mapNotNull { droppedFilePayload(it) }
             val script = OpenCodeServerProtocol.buildDispatchDroppedFilesScript(
                 payloads,
-                textPlain = effectiveTextPlain,
+                textPlain = textDrops,
                 enabled = OpenCodeSettingsState.getInstance().enableChatFileDrop,
             ) ?: return@executeOnPooledThread
             val rootUrl = serverManager.getServerUrl()?.let { OpenCodeServerProtocol.buildServerRootUrl(it) }
@@ -86,8 +88,7 @@ internal class OpenCodeFileDropHandler(
         return true
     }
 
-    private fun selectDroppedFiles(files: List<File>, shouldForwardFiles: Boolean): DroppedFileSelection {
-        if (!shouldForwardFiles) return DroppedFileSelection(emptyList(), emptyList())
+    private fun selectDroppedFiles(files: List<File>): DroppedFileSelection {
         val acceptedFiles = mutableListOf<File>()
         val rejectionMessages = mutableListOf<String>()
         var totalBytes = 0L
@@ -116,6 +117,14 @@ internal class OpenCodeFileDropHandler(
         return DroppedFileSelection(acceptedFiles, rejectionMessages)
     }
 
+    private fun droppedTextPlainItems(files: List<File>, textPlain: String?): List<String> {
+        if (files.isNotEmpty()) return emptyList()
+        val text = textPlain?.takeIf { it.isNotBlank() } ?: return emptyList()
+        val lines = text.lineSequence().map { it.trim() }.filter { it.isNotBlank() }.toList()
+        if (lines.size > 1 && lines.all { it.isOpenCodeFileDropText() }) return lines
+        return listOf(text)
+    }
+
     private fun supportsText(transferable: Transferable): Boolean {
         return transferable.transferDataFlavors.any { it.isFlavorTextType }
     }
@@ -130,8 +139,8 @@ internal class OpenCodeFileDropHandler(
             }
     }
 
-    private fun String?.isOpenCodeFileDropText(): Boolean {
-        return this?.startsWith("file:") == true
+    private fun String.isOpenCodeFileDropText(): Boolean {
+        return startsWith("file:")
     }
 
     private fun showFileDropWarning(rejectionMessages: List<String>) {

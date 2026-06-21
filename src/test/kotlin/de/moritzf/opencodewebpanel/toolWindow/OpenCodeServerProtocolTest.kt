@@ -636,9 +636,22 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun buildDispatchDroppedFilesScriptDispatchesTextPlainDropsSeparately() {
+        val script = OpenCodeServerProtocol.buildDispatchDroppedFilesScript(
+            emptyList(),
+            textPlain = listOf("file:CHANGELOG.md", "file:gradle.properties"),
+            enabled = true,
+        )!!
+
+        assertTrue(script.contains("dispatchDrop((transfer) => transfer.setData('text/plain', 'file:CHANGELOG.md'))"))
+        assertTrue(script.contains("dispatchDrop((transfer) => transfer.setData('text/plain', 'file:gradle.properties'))"))
+    }
+
+    @Test
     fun buildDispatchDroppedFilesScriptIsMissingWithoutFiles() {
         assertNull(OpenCodeServerProtocol.buildDispatchDroppedFilesScript(emptyList()))
         assertNull(OpenCodeServerProtocol.buildDispatchDroppedFilesScript(emptyList(), textPlain = null, enabled = true))
+        assertNull(OpenCodeServerProtocol.buildDispatchDroppedFilesScript(emptyList(), textPlain = emptyList(), enabled = true))
     }
 
     @Test
