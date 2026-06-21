@@ -19,8 +19,6 @@ import java.util.concurrent.TimeUnit
 class SharedOpenCodeServerManager : Disposable {
 
     companion object {
-        private const val PROCESS_STOP_TIMEOUT_SECONDS = 5L
-
         fun getInstance(): SharedOpenCodeServerManager {
             return ApplicationManager.getApplication().getService(SharedOpenCodeServerManager::class.java)
         }
@@ -45,6 +43,7 @@ class SharedOpenCodeServerManager : Disposable {
     private var preferredBasePath: String? = null
     private var consecutiveStartFailures = 0
     private var nextStartAllowedAtMillis = 0L
+    private val processTerminator = OpenCodeProcessTerminator()
     private val scheduler = Executors.newSingleThreadScheduledExecutor { runnable ->
         Thread(runnable, "OpenCode-Server-Checker").apply { isDaemon = true }
     }
@@ -183,7 +182,7 @@ class SharedOpenCodeServerManager : Disposable {
 
             setLifecycleState(OpenCodeServerLifecycleState.STOPPED)
             futureToCancel?.cancel(true)
-            destroyProcess(processToDestroy)
+            processTerminator.destroy(processToDestroy)
             clearServerLog()
         } catch (e: Exception) {
             thisLogger().error("Error stopping OpenCode server: ${e.message}")
@@ -275,7 +274,7 @@ class SharedOpenCodeServerManager : Disposable {
             process = processBuilder.start()
 
             if (!setStartedProcess(startId, process, password)) {
-                destroyProcess(process)
+                processTerminator.destroy(process)
                 return
             }
 
@@ -324,7 +323,7 @@ class SharedOpenCodeServerManager : Disposable {
             }
 
             if (!isCurrentStart(startId)) {
-                destroyProcess(process)
+                processTerminator.destroy(process)
                 return
             }
 
@@ -346,7 +345,7 @@ class SharedOpenCodeServerManager : Disposable {
                 clearServerStateForStart(startId)
                 finishStart(startId, success = false)
             } else {
-                destroyProcess(process)
+                processTerminator.destroy(process)
             }
         }
     }
@@ -458,28 +457,7 @@ class SharedOpenCodeServerManager : Disposable {
         val process = synchronized(lock) {
             serverProcess.also { serverProcess = null }
         }
-        destroyProcess(process)
-    }
-
-    private fun destroyProcess(process: Process?) {
-        if (process?.isAlive != true) return
-
-        process.destroy()
-        try {
-            if (!process.waitFor(PROCESS_STOP_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
-                thisLogger().warn("OpenCode server did not stop gracefully, killing it")
-                process.destroyForcibly()
-                if (!process.waitFor(PROCESS_STOP_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
-                    thisLogger().warn("OpenCode server process is still alive after force kill")
-                }
-            }
-        } catch (e: InterruptedException) {
-            Thread.currentThread().interrupt()
-            if (process.isAlive) {
-                process.destroyForcibly()
-            }
-        }
-        thisLogger().info("OpenCode server stopped")
+        processTerminator.destroy(process)
     }
 
     private fun setStartedProcess(startId: Long, process: Process, password: String): Boolean {
