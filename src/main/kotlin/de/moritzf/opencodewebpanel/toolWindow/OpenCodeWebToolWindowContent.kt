@@ -1,6 +1,5 @@
 package de.moritzf.opencodewebpanel.toolWindow
 
-import com.intellij.icons.AllIcons
 import com.intellij.ide.ui.LafManager
 import com.intellij.ide.ui.LafManagerListener
 import com.intellij.openapi.Disposable
@@ -13,7 +12,6 @@ import com.intellij.ui.jcef.JBCefBrowser
 import com.intellij.ui.jcef.JBCefBrowserBase
 import com.intellij.ui.jcef.JBCefJSQuery
 import com.intellij.util.Alarm
-import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.components.BorderLayoutPanel
 import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsListener
 import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsState
@@ -23,27 +21,15 @@ import org.cef.browser.CefBrowser
 import org.cef.browser.CefFrame
 import org.cef.handler.CefLoadHandlerAdapter
 import org.cef.network.CefRequest
-import javax.swing.JButton
 
 class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposable {
 
         private val project = toolWindow.project
         private val browser = JBCefBrowser()
-        private val lifecycleStatusLabel = JBLabel()
-        private val retryServerButton = JButton("Retry", AllIcons.Actions.Restart).apply {
-            isVisible = false
-            toolTipText = "Retry starting the OpenCode server"
-            accessibleContext.accessibleName = "Retry starting OpenCode server"
-        }
-        private val lifecycleStatusPanel = BorderLayoutPanel().apply {
-            isOpaque = false
-            border = JBUI.Borders.empty(4, 8)
-            addToLeft(lifecycleStatusLabel)
-            addToRight(retryServerButton)
-        }
+        private val lifecycleStatusPanel = OpenCodeLifecycleStatusPanel(::retryOpenCodeServerStart)
         private val contentPanel = BorderLayoutPanel().apply {
             isOpaque = false
-            addToTop(lifecycleStatusPanel)
+            addToTop(lifecycleStatusPanel.component)
             addToCenter(browser.component)
         }
         private val openFileLinkQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
@@ -132,7 +118,6 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                 }
                 null
             }
-            retryServerButton.addActionListener { retryOpenCodeServerStart() }
             browser.jbCefClient.addRequestHandler(requestHandler, browser.cefBrowser)
             browser.jbCefClient.addLoadHandler(loadHandler, browser.cefBrowser)
             installFileDropTransferHandler()
@@ -215,18 +200,14 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         fun getContent() = contentPanel
 
         private fun updateLifecycleIndicator(state: OpenCodeServerLifecycleState) {
-            lifecycleStatusLabel.text = formatOpenCodeServerLifecycleStatusText(state)
-            lifecycleStatusLabel.toolTipText = "OpenCode server is ${state.displayLabel.lowercase()}"
-            retryServerButton.isVisible = isOpenCodeServerRetryVisible(state)
-            retryServerButton.isEnabled = state == OpenCodeServerLifecycleState.FAILED
-            lifecycleStatusPanel.isVisible = isOpenCodeServerLifecycleStatusVisible(state)
+            lifecycleStatusPanel.update(state)
             contentPanel.revalidate()
             contentPanel.repaint()
         }
 
         private fun retryOpenCodeServerStart() {
             if (isContentDisposed()) return
-            retryServerButton.isEnabled = false
+            lifecycleStatusPanel.setRetryEnabled(false)
             serverManager.stopServer()
             checkAndLoadContent()
         }
