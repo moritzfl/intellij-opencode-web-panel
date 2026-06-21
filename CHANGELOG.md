@@ -4,6 +4,20 @@
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-06-21
+
+### Added
+
+- Show the actual running OpenCode server URL in settings, which makes auto-selected ports visible.
+- Persist OpenCode server logs to disk and automatically prune old log files.
+- Add a setting to enable or disable writing server logs to disk; logging is enabled by default.
+- Add clear start/restart markers to server log files so separate OpenCode runs are easier to distinguish.
+
+### Changed
+
+- Place the server log viewer directly under the server log setting.
+- Show an error when no server log file exists instead of silently falling back to temporary in-memory output.
+
 ## [1.0.1] - 2026-06-21
 
 ### Fixed
@@ -24,6 +38,7 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.0.1...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.1.0...HEAD
+[1.1.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.0.1...1.1.0
 [1.0.1]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.0.0...1.0.1
 [1.0.0]: https://github.com/moritzfl/intellij-opencode-web-panel/commits/1.0.0
