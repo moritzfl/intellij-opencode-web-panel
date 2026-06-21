@@ -177,12 +177,14 @@ class OpenCodeSettingsConfigurable : Configurable {
                 cell(serverStatusLabel)
             }
             row {
-                cell(restartServerButton).gap(RightGap.SMALL)
-                cell(viewServerLogButton)
+                cell(restartServerButton)
             }
             row {
                 cell(enableServerLogsCheckBox)
                     .comment("Persist OpenCode server output in the IDE log directory and prune old log files automatically.")
+            }
+            row {
+                cell(viewServerLogButton)
             }
         }
         val uiSettingsPanel = panel {
@@ -558,7 +560,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         val serverManager = SharedOpenCodeServerManager.getInstance()
         val logFile = serverManager.getServerLogFile()
         if (logFile == null) {
-            Messages.showInfoMessage(panel ?: viewServerLogButton, "No server log available yet.", "Open Server Log")
+            Messages.showErrorDialog(panel ?: viewServerLogButton, "No server log available yet.", "Open Server Log")
             return
         }
         try {
