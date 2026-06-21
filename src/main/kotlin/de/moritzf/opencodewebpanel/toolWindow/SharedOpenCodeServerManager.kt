@@ -11,6 +11,7 @@ import de.moritzf.opencodewebpanel.settings.OpenCodePasswordStore
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import java.nio.file.Path
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledFuture
@@ -51,6 +52,10 @@ class SharedOpenCodeServerManager : Disposable {
 
     fun getServerLog(): String {
         return serverLogBuffer.text()
+    }
+
+    fun getServerLogFile(): Path? {
+        return serverLogBuffer.currentOrLatestFile()
     }
 
     fun clearServerLog() {
@@ -271,6 +276,7 @@ class SharedOpenCodeServerManager : Disposable {
             val port = settings.portArgument()
             val executable = settings.executablePath()
             val processBuilder = OpenCodeServerProtocol.createProcessBuilder(projectBasePath, password, port, executable)
+            serverLogBuffer.startNewFile()
             process = processBuilder.start()
 
             if (!setStartedProcess(startId, process, password)) {
