@@ -10,6 +10,8 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.ui.jcef.JBCefBrowser
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
+import java.awt.KeyboardFocusManager
+import java.awt.KeyEventDispatcher
 import java.awt.Toolkit
 import java.awt.datatransfer.DataFlavor
 import java.awt.datatransfer.Transferable
@@ -36,6 +38,7 @@ internal class OpenCodeFileDropHandler(
     internal companion object {
         private const val MAX_DROPPED_FILE_BYTES = 5L * 1024L * 1024L
         private const val MAX_DROPPED_FILES_TOTAL_BYTES = 10L * 1024L * 1024L
+        private const val BROWSER_PASTE_SUPPRESSION_MILLIS = 1_500L
 
         fun isPasteShortcut(keyCode: Int, modifiers: Int): Boolean {
             return isPasteShortcut(keyCode, modifiers, 0.toChar(), 0.toChar())
@@ -49,6 +52,9 @@ internal class OpenCodeFileDropHandler(
             return (keyCode == KeyEvent.VK_V || key) && hasCommand != hasControl && !hasAlt
         }
     }
+
+    @Volatile
+    private var suppressNextBrowserPasteAtMillis = 0L
 
     fun install() {
         val handler = object : TransferHandler() {
@@ -71,6 +77,7 @@ internal class OpenCodeFileDropHandler(
         }
         installTransferHandler(browser.component, handler)
         (browser.browserComponent as? JComponent)?.let { installTransferHandler(it, handler) }
+        installPasteDispatcher()
         installPasteKeyboardHandler()
     }
 
@@ -95,13 +102,49 @@ internal class OpenCodeFileDropHandler(
                 if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverManager.getServerUrl(), this@OpenCodeFileDropHandler.browser.cefBrowser.url)) {
                     return false
                 }
-                return pasteClipboardFileReferences()
+                return shouldSuppressBrowserPaste()
             }
         }
         browser.jbCefClient.addKeyboardHandler(handler, browser.cefBrowser)
         Disposer.register(parentDisposable) {
             browser.jbCefClient.removeKeyboardHandler(handler, browser.cefBrowser)
         }
+    }
+
+    private fun installPasteDispatcher() {
+        val focusManager = KeyboardFocusManager.getCurrentKeyboardFocusManager()
+        val dispatcher = KeyEventDispatcher { event ->
+            if (event.id != KeyEvent.KEY_PRESSED) return@KeyEventDispatcher false
+            if (!isPasteShortcut(event)) return@KeyEventDispatcher false
+            if (isDisposed()) return@KeyEventDispatcher false
+            if (!OpenCodeSettingsState.getInstance().enableChatFileDrop) return@KeyEventDispatcher false
+            if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverManager.getServerUrl(), browser.cefBrowser.url)) return@KeyEventDispatcher false
+            if (!isFocusInsideBrowser()) return@KeyEventDispatcher false
+            if (!pasteClipboardFileReferences()) return@KeyEventDispatcher false
+
+            suppressNextBrowserPasteAtMillis = System.currentTimeMillis()
+            event.consume()
+            true
+        }
+        focusManager.addKeyEventDispatcher(dispatcher)
+        Disposer.register(parentDisposable) {
+            focusManager.removeKeyEventDispatcher(dispatcher)
+        }
+    }
+
+    private fun isPasteShortcut(event: KeyEvent): Boolean {
+        return event.keyCode == KeyEvent.VK_V && (event.isMetaDown || event.isControlDown) && !event.isAltDown
+    }
+
+    private fun isFocusInsideBrowser(): Boolean {
+        val focusOwner = KeyboardFocusManager.getCurrentKeyboardFocusManager().focusOwner ?: return false
+        return browser.component == focusOwner || browser.component.isAncestorOf(focusOwner)
+    }
+
+    private fun shouldSuppressBrowserPaste(): Boolean {
+        val suppress = System.currentTimeMillis() - suppressNextBrowserPasteAtMillis <= BROWSER_PASTE_SUPPRESSION_MILLIS
+        if (suppress) suppressNextBrowserPasteAtMillis = 0L
+        return suppress
     }
 
     private fun pasteClipboardFileReferences(): Boolean {
