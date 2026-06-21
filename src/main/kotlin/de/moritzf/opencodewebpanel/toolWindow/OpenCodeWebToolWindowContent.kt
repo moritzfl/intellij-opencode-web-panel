@@ -201,7 +201,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     }
 
     private fun installFileDropTransferHandler() {
-        OpenCodeFileDropHandler(project, browser, serverManager, ::openCodeProjectDirectory, ::isContentDisposed).install()
+        OpenCodeFileDropHandler(project, browser, serverManager, ::openCodeProjectDirectory, ::isContentDisposed, this).install()
     }
 
     fun getContent() = contentPanel

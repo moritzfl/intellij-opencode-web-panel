@@ -2,12 +2,18 @@ package de.moritzf.opencodewebpanel.toolWindow
 
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
+import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.Disposer
 import com.intellij.ui.jcef.JBCefBrowser
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
+import java.awt.KeyboardFocusManager
+import java.awt.KeyEventDispatcher
+import java.awt.Toolkit
 import java.awt.datatransfer.DataFlavor
 import java.awt.datatransfer.Transferable
+import java.awt.event.KeyEvent
 import java.io.File
 import java.nio.file.Files
 import java.util.Base64
@@ -20,6 +26,7 @@ internal class OpenCodeFileDropHandler(
     private val serverManager: SharedOpenCodeServerManager,
     private val openCodeProjectDirectory: () -> String?,
     private val isDisposed: () -> Boolean,
+    private val parentDisposable: Disposable,
 ) {
     private companion object {
         private const val MAX_DROPPED_FILE_BYTES = 5L * 1024L * 1024L
@@ -47,6 +54,7 @@ internal class OpenCodeFileDropHandler(
         }
         installTransferHandler(browser.component, handler)
         (browser.browserComponent as? JComponent)?.let { installTransferHandler(it, handler) }
+        installPasteDispatcher()
     }
 
     private fun installTransferHandler(component: JComponent, handler: TransferHandler) {
@@ -54,6 +62,39 @@ internal class OpenCodeFileDropHandler(
         component.components
             .filterIsInstance<JComponent>()
             .forEach { installTransferHandler(it, handler) }
+    }
+
+    private fun installPasteDispatcher() {
+        val focusManager = KeyboardFocusManager.getCurrentKeyboardFocusManager()
+        val dispatcher = KeyEventDispatcher { event ->
+            if (event.id != KeyEvent.KEY_PRESSED) return@KeyEventDispatcher false
+            if (!isPasteShortcut(event)) return@KeyEventDispatcher false
+            if (isDisposed()) return@KeyEventDispatcher false
+            if (!OpenCodeSettingsState.getInstance().enableChatFileDrop) return@KeyEventDispatcher false
+            if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverManager.getServerUrl(), browser.cefBrowser.url)) return@KeyEventDispatcher false
+            if (!isFocusInsideBrowser()) return@KeyEventDispatcher false
+
+            val transferable = runCatching { Toolkit.getDefaultToolkit().systemClipboard.getContents(null) }
+                .getOrNull()
+                ?: return@KeyEventDispatcher false
+            val files = clipboardFiles(transferable)
+            val text = droppedTextPayload(transferable)
+            if (files.isEmpty() && text?.startsWith("file:") != true) return@KeyEventDispatcher false
+            dispatchDroppedData(files, text)
+        }
+        focusManager.addKeyEventDispatcher(dispatcher)
+        Disposer.register(parentDisposable) {
+            focusManager.removeKeyEventDispatcher(dispatcher)
+        }
+    }
+
+    private fun isPasteShortcut(event: KeyEvent): Boolean {
+        return event.keyCode == KeyEvent.VK_V && (event.isMetaDown || event.isControlDown) && !event.isAltDown
+    }
+
+    private fun isFocusInsideBrowser(): Boolean {
+        val focusOwner = KeyboardFocusManager.getCurrentKeyboardFocusManager().focusOwner ?: return false
+        return browser.component == focusOwner || browser.component.isAncestorOf(focusOwner)
     }
 
     private fun dispatchDroppedData(files: List<File>, textPlain: String?): Boolean {
@@ -86,6 +127,14 @@ internal class OpenCodeFileDropHandler(
             }
         }
         return true
+    }
+
+    private fun clipboardFiles(transferable: Transferable): List<File> {
+        if (!transferable.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) return emptyList()
+        return runCatching {
+            @Suppress("UNCHECKED_CAST")
+            transferable.getTransferData(DataFlavor.javaFileListFlavor) as? List<File>
+        }.getOrNull().orEmpty()
     }
 
     private fun selectDroppedFiles(files: List<File>): DroppedFileSelection {
