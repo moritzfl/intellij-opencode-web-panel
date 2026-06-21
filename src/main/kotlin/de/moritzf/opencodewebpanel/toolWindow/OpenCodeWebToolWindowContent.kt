@@ -1,7 +1,6 @@
 package de.moritzf.opencodewebpanel.toolWindow
 
 import com.intellij.icons.AllIcons
-import com.intellij.ide.BrowserUtil
 import com.intellij.ide.ui.LafManager
 import com.intellij.ide.ui.LafManagerListener
 import com.intellij.notification.Notification
@@ -12,10 +11,7 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.thisLogger
-import com.intellij.openapi.fileEditor.OpenFileDescriptor
-import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
-import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.jcef.JBCefBrowser
@@ -37,8 +33,6 @@ import org.cef.handler.CefLoadHandlerAdapter
 import org.cef.handler.CefRequestHandlerAdapter
 import org.cef.misc.BoolRef
 import org.cef.network.CefRequest
-import java.nio.file.Files
-import java.nio.file.Path
 import javax.swing.JButton
 
 class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposable {
@@ -68,6 +62,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         private val systemNotificationQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
         private val openExternalLinkQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
         private val serverManager = SharedOpenCodeServerManager.getInstance()
+        private val ideNavigation = OpenCodeIdeNavigation(project, browser, serverManager, ::openCodeProjectDirectory, this)
         private val openProjectAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
         private var openProjectScriptScheduled = false
         private var fileLinkScriptScheduled = false
@@ -102,7 +97,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                 val requestUrl = request?.url ?: return false
                 if (!OpenCodeServerProtocol.isOpenFileLinkRequest(requestUrl)) return false
                 if (OpenCodeSettingsState.getInstance().openFileLinksInIde) {
-                    openFileLinkInIde(OpenCodeServerProtocol.openFileLinkHref(requestUrl))
+                    ideNavigation.openFileLinkInIde(OpenCodeServerProtocol.openFileLinkHref(requestUrl))
                 }
                 return true
             }
@@ -173,19 +168,19 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         init {
             openFileLinkQuery.addHandler { href ->
                 if (OpenCodeSettingsState.getInstance().openFileLinksInIde) {
-                    openFileLinkInIde(href)
+                    ideNavigation.openFileLinkInIde(href)
                 }
                 null
             }
             openExternalLinkQuery.addHandler { href ->
                 if (OpenCodeSettingsState.getInstance().openExternalLinksInBrowser) {
-                    openExternalLinkInBrowser(href)
+                    ideNavigation.openExternalLinkInBrowser(href)
                 }
                 null
             }
             openCodeReferenceQuery.addHandler { ref ->
                 if (OpenCodeSettingsState.getInstance().enableCodeNavigation) {
-                    openCodeReferenceInIde(ref)
+                    ideNavigation.openCodeReferenceInIde(ref)
                 }
                 null
             }
@@ -415,24 +410,6 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             }
         }
 
-        private fun openFileLinkInIde(href: String?) {
-            val routeBasePath = OpenCodeServerProtocol.routeDirectoryFromUrl(browser.cefBrowser.url)
-            val target = OpenCodeServerProtocol.resolveFileLink(href, openCodeProjectDirectory(), routeBasePath) ?: return
-            val virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(target.path) ?: return
-            ApplicationManager.getApplication().invokeLater {
-                if (project.isDisposed) return@invokeLater
-                OpenFileDescriptor(project, virtualFile, target.line ?: -1, target.column ?: -1).navigate(true)
-            }
-        }
-
-        private fun openExternalLinkInBrowser(href: String?) {
-            val serverUrl = serverManager.getServerUrl() ?: return
-            val target = OpenCodeServerProtocol.externalHttpUrl(href, serverUrl) ?: return
-            ApplicationManager.getApplication().executeOnPooledThread {
-                BrowserUtil.browse(target)
-            }
-        }
-
         private fun restoreOpenCodeLocalStorage(frameUrl: String?) {
             val serverUrl = serverManager.getServerUrl() ?: return
             if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, frameUrl)) return
@@ -503,100 +480,6 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                 .replace(">", "&gt;")
                 .replace("\"", "&quot;")
                 .replace("'", "&#39;")
-        }
-
-        private fun openCodeReferenceInIde(ref: String?) {
-            val text = ref?.trim()?.ifBlank { null } ?: return
-            val parsed = OpenCodeServerProtocol.parseCodeReference(text) ?: return
-            val directVirtualFile = resolveCodeReferencePath(parsed)
-            if (directVirtualFile != null) {
-                ApplicationManager.getApplication().invokeLater {
-                    if (project.isDisposed) return@invokeLater
-                    OpenFileDescriptor(project, directVirtualFile, parsed.line ?: -1, -1).navigate(true)
-                }
-                return
-            }
-            com.intellij.openapi.application.ReadAction.nonBlocking<com.intellij.openapi.vfs.VirtualFile?> {
-                val scope = com.intellij.psi.search.GlobalSearchScope.projectScope(project)
-                resolveCodeReferenceClass(parsed, scope)
-                    ?: resolveCodeReferenceFileName(parsed, scope)
-            }.finishOnUiThread(com.intellij.openapi.application.ModalityState.defaultModalityState()) { virtualFile ->
-                if (project.isDisposed || virtualFile == null) return@finishOnUiThread
-                OpenFileDescriptor(project, virtualFile, parsed.line ?: -1, -1).navigate(true)
-            }.coalesceBy(this@OpenCodeWebToolWindowContent)
-                .submit(com.intellij.util.concurrency.AppExecutorUtil.getAppExecutorService())
-        }
-
-        private fun resolveCodeReferencePath(parsed: OpenCodeServerProtocol.ParsedCodeReference): com.intellij.openapi.vfs.VirtualFile? {
-            if (!parsed.hasPath) return null
-            val projectBasePath = openCodeProjectDirectory()?.takeIf { it.isNotBlank() }
-            val candidates = buildList {
-                runCatching { Path.of(parsed.path) }.getOrNull()?.let { path ->
-                    if (path.isAbsolute) add(path)
-                }
-                if (projectBasePath != null) {
-                    runCatching { Path.of(projectBasePath).resolve(parsed.path).normalize() }.getOrNull()?.let(::add)
-                }
-            }
-            val path = candidates.firstOrNull { Files.isRegularFile(it) } ?: return null
-            return LocalFileSystem.getInstance().refreshAndFindFileByNioFile(path)
-        }
-
-        private fun resolveCodeReferenceClass(
-            parsed: OpenCodeServerProtocol.ParsedCodeReference,
-            scope: com.intellij.psi.search.GlobalSearchScope,
-        ): com.intellij.openapi.vfs.VirtualFile? {
-            if (parsed.extension != null || parsed.hasPath) return null
-            val cacheClass = runCatching { Class.forName("com.intellij.psi.search.PsiShortNamesCache") }.getOrNull() ?: return null
-            val cache = runCatching { cacheClass.getMethod("getInstance", Project::class.java).invoke(null, project) }.getOrNull()
-                ?: return null
-            val classes = runCatching {
-                cacheClass.getMethod("getClassesByName", String::class.java, com.intellij.psi.search.GlobalSearchScope::class.java)
-                    .invoke(cache, parsed.fileName, scope) as? Array<*>
-            }.getOrNull() ?: return null
-            return classes.asSequence()
-                .filter { psiClass -> parsed.qualifiedName == null || psiClass.qualifiedName() == parsed.qualifiedName }
-                .mapNotNull { psiClass -> psiClass.containingVirtualFile() }
-                .firstOrNull()
-        }
-
-        private fun resolveCodeReferenceFileName(
-            parsed: OpenCodeServerProtocol.ParsedCodeReference,
-            scope: com.intellij.psi.search.GlobalSearchScope,
-        ): com.intellij.openapi.vfs.VirtualFile? {
-            val fileNames = if (parsed.extension == null && !parsed.hasPath) {
-                listOf(
-                    parsed.fileName,
-                    "${parsed.fileName}.kt",
-                    "${parsed.fileName}.kts",
-                    "${parsed.fileName}.java",
-                    "${parsed.fileName}.ts",
-                    "${parsed.fileName}.tsx",
-                    "${parsed.fileName}.js",
-                    "${parsed.fileName}.jsx",
-                )
-            } else {
-                listOf(parsed.fileName)
-            }
-            return fileNames.asSequence()
-                .flatMap { fileName -> com.intellij.psi.search.FilenameIndex.getVirtualFilesByName(fileName, scope).asSequence() }
-                .firstOrNull()
-        }
-
-        private fun Any?.qualifiedName(): String? {
-            return this?.javaClass?.methods
-                ?.firstOrNull { it.name == "getQualifiedName" && it.parameterCount == 0 }
-                ?.let { method -> runCatching { method.invoke(this) as? String }.getOrNull() }
-        }
-
-        private fun Any?.containingVirtualFile(): com.intellij.openapi.vfs.VirtualFile? {
-            val containingFile = this?.javaClass?.methods
-                ?.firstOrNull { it.name == "getContainingFile" && it.parameterCount == 0 }
-                ?.let { method -> runCatching { method.invoke(this) }.getOrNull() }
-                ?: return null
-            return containingFile.javaClass.methods
-                .firstOrNull { it.name == "getVirtualFile" && it.parameterCount == 0 }
-                ?.let { method -> runCatching { method.invoke(containingFile) as? com.intellij.openapi.vfs.VirtualFile }.getOrNull() }
         }
 
         private fun scheduleCodeNavigationScript() {
