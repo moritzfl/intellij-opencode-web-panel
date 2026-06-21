@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-06-21
+
+### Fixed
+
+- The changes panel “Open file” action now opens changed files in the IDE instead of only switching tabs inside the embedded OpenCode web app.
+
 ## [1.2.0] - 2026-06-21
 
 ### Changed
@@ -51,7 +57,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.2.0...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.2.1...HEAD
+[1.2.1]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.2.0...1.2.1
 [1.2.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.1.0...1.2.0
 [1.1.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.0.1...1.1.0
 [1.0.1]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.0.0...1.0.1
