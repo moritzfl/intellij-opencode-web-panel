@@ -124,6 +124,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         browser.jbCefClient.addRequestHandler(requestHandler, browser.cefBrowser)
         browser.jbCefClient.addLoadHandler(loadHandler, browser.cefBrowser)
         installFileDropTransferHandler()
+        installBrowserEditShortcutHandler()
         updateLifecycleIndicator(serverManager.getLifecycleState())
         ApplicationManager.getApplication().messageBus.connect(this).subscribe(
             OpenCodeServerLifecycleListener.TOPIC,
@@ -202,6 +203,10 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
 
     private fun installFileDropTransferHandler() {
         OpenCodeFileDropHandler(project, browser, serverManager, ::openCodeProjectDirectory, ::isContentDisposed, this).install()
+    }
+
+    private fun installBrowserEditShortcutHandler() {
+        OpenCodeBrowserEditShortcutHandler(browser, serverManager, ::isContentDisposed, this).install()
     }
 
     fun getContent() = contentPanel
