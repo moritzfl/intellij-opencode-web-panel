@@ -42,7 +42,7 @@ OpenCode Web Panel brings the official OpenCode web UI into JetBrains IDEs. It o
 - **Official web UI** - The embedded panel loads OpenCode's own web app, so the core experience stays familiar.
 - **Project-aware sessions** - OpenCode starts on the directory configured for the current IDE project.
 - **IDE file navigation** - Click local file links and code references from chat to open them in the IDE.
-- **Chat file drop** - Drag files from the IDE or desktop into the embedded OpenCode chat.
+- **Chat file drop** - Drag project files into chat as `@relative/path` references, or attach files from outside the project.
 - **External links stay outside** - HTTP links open in your system browser instead of taking over the panel.
 - **IDE notifications** - OpenCode browser notifications can appear as JetBrains IDE notifications.
 - **Recovery controls** - Restart the local OpenCode server, view recent logs, or retry startup after a failure.
@@ -97,7 +97,7 @@ Open <kbd>Settings/Preferences</kbd> > <kbd>Tools</kbd> > <kbd>OpenCode Web Pane
 - Open local file links in the IDE.
 - Open external HTTP links in the system browser.
 - Enable click-to-navigate for code references in chat.
-- Enable file drag and drop into chat.
+- Enable file drop into chat, using `@relative/path` for project files.
 - Lock OpenCode to compact layout for panel-friendly use.
 - Sync OpenCode's system color scheme with the IDE theme.
 - Suppress project-switch prompts that are not useful inside the embedded panel.

@@ -17,6 +17,7 @@ internal class OpenCodeFileDropHandler(
     private val project: Project,
     private val browser: JBCefBrowser,
     private val serverManager: SharedOpenCodeServerManager,
+    private val openCodeProjectDirectory: () -> String?,
     private val isDisposed: () -> Boolean,
 ) {
     private companion object {
@@ -55,19 +56,29 @@ internal class OpenCodeFileDropHandler(
     }
 
     private fun dispatchDroppedFiles(files: List<File>): Boolean {
-        val selection = selectDroppedFiles(files)
+        val selection = selectDroppedFiles(files, openCodeProjectDirectory = openCodeProjectDirectory())
         if (selection.rejectionMessages.isNotEmpty()) {
             showFileDropWarning(selection.rejectionMessages)
         }
-        if (selection.acceptedFiles.isEmpty()) return selection.rejectionMessages.isNotEmpty()
+        if (selection.localFileReferences.isEmpty() && selection.acceptedFiles.isEmpty()) {
+            return selection.rejectionMessages.isNotEmpty()
+        }
 
         ApplicationManager.getApplication().executeOnPooledThread {
             if (isDisposed()) return@executeOnPooledThread
             val payloads = selection.acceptedFiles.mapNotNull { droppedFilePayload(it) }
-            val script = OpenCodeServerProtocol.buildDispatchDroppedFilesScript(
+            val insertReferencesScript = OpenCodeServerProtocol.buildInsertChatTextScript(
+                selection.localFileReferences.joinToString(" "),
+                enabled = OpenCodeSettingsState.getInstance().enableChatFileDrop,
+            )
+            val dropFilesScript = OpenCodeServerProtocol.buildDispatchDroppedFilesScript(
                 payloads,
                 enabled = OpenCodeSettingsState.getInstance().enableChatFileDrop,
-            ) ?: return@executeOnPooledThread
+            )
+            val script = listOfNotNull(insertReferencesScript, dropFilesScript)
+                .takeIf { it.isNotEmpty() }
+                ?.joinToString("\n")
+                ?: return@executeOnPooledThread
             val rootUrl = serverManager.getServerUrl()?.let { OpenCodeServerProtocol.buildServerRootUrl(it) }
                 ?: return@executeOnPooledThread
             ApplicationManager.getApplication().invokeLater {
@@ -79,7 +90,8 @@ internal class OpenCodeFileDropHandler(
         return true
     }
 
-    private fun selectDroppedFiles(files: List<File>): DroppedFileSelection {
+    private fun selectDroppedFiles(files: List<File>, openCodeProjectDirectory: String?): DroppedFileSelection {
+        val localFileReferences = mutableListOf<String>()
         val acceptedFiles = mutableListOf<File>()
         val rejectionMessages = mutableListOf<String>()
         var totalBytes = 0L
@@ -87,6 +99,10 @@ internal class OpenCodeFileDropHandler(
             val path = file.toPath()
             if (!Files.isRegularFile(path)) {
                 rejectionMessages += "${file.name} is not a regular file."
+                return@forEach
+            }
+            OpenCodeServerProtocol.localFileReference(file, openCodeProjectDirectory)?.let { reference ->
+                localFileReferences += reference
                 return@forEach
             }
             val size = runCatching { Files.size(path) }.getOrNull()
@@ -105,7 +121,7 @@ internal class OpenCodeFileDropHandler(
             acceptedFiles += file
             totalBytes += size
         }
-        return DroppedFileSelection(acceptedFiles, rejectionMessages)
+        return DroppedFileSelection(localFileReferences, acceptedFiles, rejectionMessages)
     }
 
     private fun showFileDropWarning(rejectionMessages: List<String>) {
@@ -127,6 +143,7 @@ internal class OpenCodeFileDropHandler(
     }
 
     private data class DroppedFileSelection(
+        val localFileReferences: List<String>,
         val acceptedFiles: List<File>,
         val rejectionMessages: List<String>,
     )

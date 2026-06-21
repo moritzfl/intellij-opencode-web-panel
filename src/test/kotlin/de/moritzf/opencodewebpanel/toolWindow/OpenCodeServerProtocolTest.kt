@@ -646,6 +646,54 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun buildInsertChatTextScriptInsertsReferencesIntoEditableField() {
+        val script = OpenCodeServerProtocol.buildInsertChatTextScript("@src/main/App.kt @README.md", enabled = true)!!
+
+        assertTrue(script.contains("const mentionText = '@src/main/App.kt @README.md'"))
+        assertTrue(script.contains("document.querySelectorAll('textarea"))
+        assertTrue(script.contains("input.dispatchEvent(new InputEvent('input'"))
+        assertTrue(script.contains("input.setSelectionRange(position, position)"))
+    }
+
+    @Test
+    fun buildInsertChatTextScriptIsMissingWhenDisabledOrBlank() {
+        assertNull(OpenCodeServerProtocol.buildInsertChatTextScript("@README.md", enabled = false))
+        assertNull(OpenCodeServerProtocol.buildInsertChatTextScript(" ", enabled = true))
+    }
+
+    @Test
+    fun localFileReferenceUsesProjectRelativePath() {
+        val projectRoot = Files.createTempDirectory("opencode-project")
+        try {
+            val file = projectRoot.resolve("src/main/App.kt")
+            Files.createDirectories(file.parent)
+            Files.writeString(file, "fun main() {}")
+
+            assertEquals(
+                "@src/main/App.kt",
+                OpenCodeServerProtocol.localFileReference(file.toFile(), projectRoot.toString()),
+            )
+        } finally {
+            projectRoot.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun localFileReferenceRejectsFilesOutsideProject() {
+        val projectRoot = Files.createTempDirectory("opencode-project")
+        val outsideRoot = Files.createTempDirectory("opencode-outside")
+        try {
+            val file = outsideRoot.resolve("outside.txt")
+            Files.writeString(file, "outside")
+
+            assertNull(OpenCodeServerProtocol.localFileReference(file.toFile(), projectRoot.toString()))
+        } finally {
+            projectRoot.toFile().deleteRecursively()
+            outsideRoot.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
     fun buildCompactLayoutScriptIsMissingWhenDisabled() {
         assertNull(OpenCodeServerProtocol.buildCompactLayoutScript(enabled = false))
     }

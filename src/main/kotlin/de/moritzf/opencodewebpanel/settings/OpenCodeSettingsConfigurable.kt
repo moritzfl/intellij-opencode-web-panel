@@ -85,7 +85,7 @@ class OpenCodeSettingsConfigurable : Configurable {
     private val openFileLinksInIdeCheckBox = JBCheckBox("Open local file links in the IDE")
     private val openExternalLinksInBrowserCheckBox = JBCheckBox("Open external HTTP links in the system browser")
     private val enableCodeNavigationCheckBox = JBCheckBox("Enable click-to-navigate on code references in chat")
-    private val enableChatFileDropCheckBox = JBCheckBox("Enable file drag and drop into chat")
+    private val enableChatFileDropCheckBox = JBCheckBox("Enable file drop into chat")
     private val forceCompactLayoutCheckBox = JBCheckBox("Lock to compact view")
     private val syncThemeWithIdeCheckBox = JBCheckBox("Sync OpenCode color scheme with the IDE theme")
     private val suppressProjectSwitchPromptsCheckBox = JBCheckBox("Suppress project-switch prompts")
@@ -210,7 +210,7 @@ class OpenCodeSettingsConfigurable : Configurable {
             }
             row {
                 cell(enableChatFileDropCheckBox)
-                    .comment("Allow dropping images, PDFs, and text files into the embedded OpenCode chat input.")
+                    .comment("Insert project files as @relative/path references and attach files outside the project to the embedded OpenCode chat input.")
             }
             row {
                 cell(forceCompactLayoutCheckBox)

@@ -630,6 +630,81 @@ internal object OpenCodeBrowserSnippets {
         return script.trimIndent()
     }
 
+    fun buildInsertChatTextScript(text: String, enabled: Boolean): String? {
+        if (!enabled || text.isBlank()) return null
+        val escapedText = escapeJavaScript(text.trim())
+        @Language("JavaScript")
+        val script = """
+            (() => {
+              const mentionText = '$escapedText';
+              const isVisible = (element) => {
+                if (!element || typeof element.getBoundingClientRect !== 'function') return false;
+                const style = window.getComputedStyle(element);
+                if (style.visibility === 'hidden' || style.display === 'none') return false;
+                const rect = element.getBoundingClientRect();
+                return rect.width > 0 && rect.height > 0;
+              };
+              const isEditable = (element) => {
+                if (!element || element.disabled || element.readOnly) return false;
+                if (element.tagName === 'TEXTAREA') return true;
+                if (element.tagName === 'INPUT') return /^(text|search|url)?${'$'}/i.test(element.type || 'text');
+                return element.isContentEditable;
+              };
+              const candidate = () => {
+                if (isEditable(document.activeElement)) return document.activeElement;
+                const fields = Array.from(document.querySelectorAll('textarea, input[type="text"], input[type="search"], input:not([type]), [contenteditable="true"]'));
+                return fields.reverse().find((field) => isEditable(field) && isVisible(field));
+              };
+              const input = candidate();
+              if (!input) {
+                console.warn('OpenCode Web Panel could not insert file references: chat input not found');
+                return;
+              }
+              input.focus();
+              const dispatchInput = () => {
+                input.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: mentionText }));
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+              };
+              const spacer = (before, after) => {
+                const prefix = before && !/\s$/.test(before) ? ' ' : '';
+                const suffix = after && !/^\s/.test(after) ? ' ' : '';
+                return prefix + mentionText + suffix;
+              };
+              if (typeof input.selectionStart === 'number' && typeof input.selectionEnd === 'number' && 'value' in input) {
+                const start = input.selectionStart;
+                const end = input.selectionEnd;
+                const before = input.value.slice(0, start);
+                const after = input.value.slice(end);
+                const insertion = spacer(before, after);
+                input.value = before + insertion + after;
+                const position = before.length + insertion.length;
+                input.setSelectionRange(position, position);
+                dispatchInput();
+                return;
+              }
+              const selection = window.getSelection();
+              if (!selection) return;
+              if (selection.rangeCount === 0 || !input.contains(selection.anchorNode)) {
+                const range = document.createRange();
+                range.selectNodeContents(input);
+                range.collapse(false);
+                selection.removeAllRanges();
+                selection.addRange(range);
+              }
+              const range = selection.getRangeAt(0);
+              const before = input.textContent || '';
+              const insertion = spacer(before, '');
+              range.deleteContents();
+              range.insertNode(document.createTextNode(insertion));
+              range.collapse(false);
+              selection.removeAllRanges();
+              selection.addRange(range);
+              dispatchInput();
+            })();
+        """
+        return script.trimIndent()
+    }
+
     fun buildFileLinkHandlerScript(projectBasePath: String?, enabled: Boolean): String? {
         return buildFileLinkHandlerScript(projectBasePath, enabled, openFileCallback = null)
     }
