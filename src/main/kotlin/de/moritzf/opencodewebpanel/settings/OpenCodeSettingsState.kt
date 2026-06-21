@@ -25,6 +25,7 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
     var suppressProjectSwitchPrompts: Boolean = true
     var enableSystemNotifications: Boolean = true
     var waitForIntellijMcpServer: Boolean = true
+    var enableServerLogs: Boolean = true
     var openCodeLocalStorageSnapshot: String = "{}"
 
     override fun getState(): OpenCodeSettingsState = this
@@ -45,6 +46,7 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
         suppressProjectSwitchPrompts = state.suppressProjectSwitchPrompts
         enableSystemNotifications = state.enableSystemNotifications
         waitForIntellijMcpServer = state.waitForIntellijMcpServer
+        enableServerLogs = state.enableServerLogs
         openCodeLocalStorageSnapshot = sanitizeOpenCodeLocalStorageSnapshot(state.openCodeLocalStorageSnapshot)
     }
 

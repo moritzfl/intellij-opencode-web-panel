@@ -2,6 +2,7 @@ package de.moritzf.opencodewebpanel.toolWindow
 
 import com.intellij.openapi.application.PathManager
 import com.intellij.openapi.diagnostic.thisLogger
+import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
 import java.io.IOException
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
@@ -16,12 +17,17 @@ internal class OpenCodeServerLogBuffer(
     private val logDir: Path = defaultLogDir(),
     private val maxLogFiles: Int = 20,
     private val maxLogAge: Duration = Duration.ofDays(7),
+    private val enabled: () -> Boolean = { OpenCodeSettingsState.getInstance().enableServerLogs },
 ) {
     private val fileLock = Any()
     private var currentLogFile: Path? = null
 
     fun startNewFile(): Path? {
         return synchronized(fileLock) {
+            if (!enabled()) {
+                currentLogFile = null
+                return@synchronized null
+            }
             pruneOldLogs()
             currentLogFile = createLogFile()
             currentLogFile
@@ -47,6 +53,7 @@ internal class OpenCodeServerLogBuffer(
     }
 
     fun append(line: String) {
+        if (!enabled()) return
         appendToCurrentFile(line)
     }
 

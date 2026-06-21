@@ -15,7 +15,7 @@ class OpenCodeServerLogBufferTest {
     fun appendsToCurrentLogFile() {
         val dir = Files.createTempDirectory("opencode-server-log-buffer")
         try {
-            val buffer = OpenCodeServerLogBuffer(logDir = dir, maxLogFiles = 20, maxLogAge = Duration.ofDays(7))
+            val buffer = OpenCodeServerLogBuffer(logDir = dir, maxLogFiles = 20, maxLogAge = Duration.ofDays(7), enabled = { true })
 
             val file = buffer.startNewFile()
             buffer.append("first")
@@ -29,13 +29,29 @@ class OpenCodeServerLogBufferTest {
     }
 
     @Test
+    fun doesNotCreateOrAppendLogFileWhenDisabled() {
+        val dir = Files.createTempDirectory("opencode-server-log-disabled")
+        try {
+            val buffer = OpenCodeServerLogBuffer(logDir = dir, maxLogFiles = 20, maxLogAge = Duration.ofDays(7), enabled = { false })
+
+            assertEquals(null, buffer.startNewFile())
+            buffer.append("first")
+
+            assertEquals(null, buffer.currentOrLatestFile())
+            assertEquals(0L, Files.list(dir).use { stream -> stream.count() })
+        } finally {
+            deleteRecursively(dir)
+        }
+    }
+
+    @Test
     fun prunesLogsOlderThanRetentionWindow() {
         val dir = Files.createTempDirectory("opencode-server-log-age")
         try {
             val stale = writeLog(dir, "stale", daysAgo = 30)
             val fresh = writeLog(dir, "fresh", daysAgo = 1)
 
-            OpenCodeServerLogBuffer(logDir = dir, maxLogFiles = 20, maxLogAge = Duration.ofDays(7)).pruneOldLogs()
+            OpenCodeServerLogBuffer(logDir = dir, maxLogFiles = 20, maxLogAge = Duration.ofDays(7), enabled = { true }).pruneOldLogs()
 
             assertFalse("stale log should be pruned", Files.exists(stale))
             assertTrue("fresh log should be retained", Files.exists(fresh))
@@ -53,7 +69,7 @@ class OpenCodeServerLogBufferTest {
                 writeLog(dir, "entry-$index", daysAgo = 0, ageOffsetMillis = (total - index).toLong())
             }
 
-            OpenCodeServerLogBuffer(logDir = dir, maxLogFiles = 4, maxLogAge = Duration.ofDays(7)).pruneOldLogs()
+            OpenCodeServerLogBuffer(logDir = dir, maxLogFiles = 4, maxLogAge = Duration.ofDays(7), enabled = { true }).pruneOldLogs()
 
             val survivors = Files.list(dir).use { stream -> stream.count() }
             assertTrue("directory should be trimmed to the cap, was $survivors", survivors <= 4L)

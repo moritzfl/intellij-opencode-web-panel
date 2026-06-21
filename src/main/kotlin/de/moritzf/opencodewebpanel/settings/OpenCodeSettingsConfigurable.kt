@@ -77,6 +77,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         toolTipText = "Show recent OpenCode server output"
         accessibleContext.accessibleName = "View OpenCode server log"
     }
+    private val enableServerLogsCheckBox = JBCheckBox("Write server logs to disk")
     private val serverStatusLabel = JBLabel().apply {
         toolTipText = "Current OpenCode server status"
     }
@@ -179,6 +180,10 @@ class OpenCodeSettingsConfigurable : Configurable {
                 cell(restartServerButton).gap(RightGap.SMALL)
                 cell(viewServerLogButton)
             }
+            row {
+                cell(enableServerLogsCheckBox)
+                    .comment("Persist OpenCode server output in the IDE log directory and prune old log files automatically.")
+            }
         }
         val uiSettingsPanel = panel {
             row("Zoom:") {
@@ -243,6 +248,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         val fixedPortModified = fixedPortOrDefault() != OpenCodeSettingsState.sanitizePort(settings.fixedPort)
         val binaryModeModified = selectedBinaryMode() != settings.binaryModeValue()
         val binaryPathModified = binaryPath() != settings.binaryPath.trim()
+        val serverLogsModified = enableServerLogsCheckBox.isSelected != settings.enableServerLogs
         val uiSettingsModified = openMostRecentConversationCheckBox.isSelected != settings.openMostRecentConversationOnStartup ||
             openFileLinksInIdeCheckBox.isSelected != settings.openFileLinksInIde ||
             openExternalLinksInBrowserCheckBox.isSelected != settings.openExternalLinksInBrowser ||
@@ -254,7 +260,7 @@ class OpenCodeSettingsConfigurable : Configurable {
             enableSystemNotificationsCheckBox.isSelected != settings.enableSystemNotifications ||
             waitForIntellijMcpServerCheckBox.isSelected != settings.waitForIntellijMcpServer ||
             uiZoomPercent() != OpenCodeSettingsState.sanitizeUiZoomPercent(settings.uiZoomPercent)
-        return passwordModified || portModeModified || fixedPortModified || binaryModeModified || binaryPathModified || uiSettingsModified
+        return passwordModified || portModeModified || fixedPortModified || binaryModeModified || binaryPathModified || serverLogsModified || uiSettingsModified
     }
 
     override fun apply() {
@@ -299,6 +305,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         settings.suppressProjectSwitchPrompts = suppressProjectSwitchPromptsCheckBox.isSelected
         settings.enableSystemNotifications = enableSystemNotificationsCheckBox.isSelected
         settings.waitForIntellijMcpServer = waitForIntellijMcpServerCheckBox.isSelected
+        settings.enableServerLogs = enableServerLogsCheckBox.isSelected
         settings.uiZoomPercent = nextUiZoomPercent
         fixedPortField.text = nextFixedPort.toString()
         binaryPathField.text = nextBinaryPath
@@ -375,6 +382,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         suppressProjectSwitchPromptsCheckBox.isSelected = settings.suppressProjectSwitchPrompts
         enableSystemNotificationsCheckBox.isSelected = settings.enableSystemNotifications
         waitForIntellijMcpServerCheckBox.isSelected = settings.waitForIntellijMcpServer
+        enableServerLogsCheckBox.isSelected = settings.enableServerLogs
         uiZoomSpinner.value = OpenCodeSettingsState.sanitizeUiZoomPercent(settings.uiZoomPercent)
         loadPasswordField()
         updatePasswordHint()
