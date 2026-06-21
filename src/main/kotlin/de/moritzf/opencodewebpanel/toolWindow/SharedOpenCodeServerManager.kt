@@ -11,7 +11,6 @@ import de.moritzf.opencodewebpanel.settings.OpenCodePasswordStore
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
 import java.io.BufferedReader
 import java.io.InputStreamReader
-import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledFuture
@@ -21,7 +20,6 @@ class SharedOpenCodeServerManager : Disposable {
 
     companion object {
         private const val PROCESS_STOP_TIMEOUT_SECONDS = 5L
-        private const val MAX_LOG_LINES = 500
 
         fun getInstance(): SharedOpenCodeServerManager {
             return ApplicationManager.getApplication().getService(SharedOpenCodeServerManager::class.java)
@@ -50,27 +48,18 @@ class SharedOpenCodeServerManager : Disposable {
     private val scheduler = Executors.newSingleThreadScheduledExecutor { runnable ->
         Thread(runnable, "OpenCode-Server-Checker").apply { isDaemon = true }
     }
-    private val serverLogLines = Collections.synchronizedList(mutableListOf<String>())
+    private val serverLogBuffer = OpenCodeServerLogBuffer()
 
     fun getServerLog(): String {
-        return synchronized(serverLogLines) {
-            serverLogLines.joinToString("\n")
-        }
+        return serverLogBuffer.text()
     }
 
     fun clearServerLog() {
-        synchronized(serverLogLines) {
-            serverLogLines.clear()
-        }
+        serverLogBuffer.clear()
     }
 
     private fun appendServerLog(line: String) {
-        synchronized(serverLogLines) {
-            if (serverLogLines.size >= MAX_LOG_LINES) {
-                serverLogLines.removeAt(0)
-            }
-            serverLogLines.add(line)
-        }
+        serverLogBuffer.append(line)
     }
 
     fun ensureStarted(
