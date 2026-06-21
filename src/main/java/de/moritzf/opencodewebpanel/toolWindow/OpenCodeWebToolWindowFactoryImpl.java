@@ -12,8 +12,7 @@ import org.jetbrains.annotations.NotNull;
 public final class OpenCodeWebToolWindowFactoryImpl implements ToolWindowFactory, DumbAware {
     @Override
     public void createToolWindowContent(@NotNull Project project, @NotNull ToolWindow toolWindow) {
-        OpenCodeWebToolWindowFactory.OpenCodeWebToolWindowContent toolWindowContent =
-            new OpenCodeWebToolWindowFactory.OpenCodeWebToolWindowContent(toolWindow);
+        OpenCodeWebToolWindowContent toolWindowContent = new OpenCodeWebToolWindowContent(toolWindow);
         ApplicationManager.getApplication().invokeLater(() -> {
             Content content = ContentFactory.getInstance().createContent(toolWindowContent.getContent(), null, false);
             content.setDisposer(toolWindowContent);

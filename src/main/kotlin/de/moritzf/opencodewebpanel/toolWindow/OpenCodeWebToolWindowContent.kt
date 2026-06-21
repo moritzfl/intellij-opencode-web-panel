@@ -18,7 +18,6 @@ import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.ui.components.JBLabel
-import com.intellij.ui.content.ContentFactory
 import com.intellij.ui.jcef.JBCefBrowser
 import com.intellij.ui.jcef.JBCefBrowserBase
 import com.intellij.ui.jcef.JBCefJSQuery
@@ -47,9 +46,7 @@ import javax.swing.JButton
 import javax.swing.JComponent
 import javax.swing.TransferHandler
 
-class OpenCodeWebToolWindowFactory {
-
-    class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposable {
+class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposable {
 
         private companion object {
             private const val MAX_DROPPED_FILE_BYTES = 5L * 1024L * 1024L
@@ -998,5 +995,4 @@ class OpenCodeWebToolWindowFactory {
             openProjectAlarm.cancelAllRequests()
             Disposer.dispose(browser)
         }
-    }
 }
