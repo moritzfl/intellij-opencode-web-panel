@@ -58,6 +58,11 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         private val openExternalLinkQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
         private val serverManager = SharedOpenCodeServerManager.getInstance()
         private val ideNavigation = OpenCodeIdeNavigation(project, browser, serverManager, ::openCodeProjectDirectory, this)
+        private val localStorageBridge = OpenCodeLocalStorageBridge(
+            browser,
+            serverManager,
+            syncCallback = { openCodeLocalStorageQuery.inject("payload") },
+        )
         private val systemNotifications = OpenCodeSystemNotifications(project, toolWindow, browser, serverManager)
         private val openProjectAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
         private var openProjectScriptScheduled = false
@@ -139,8 +144,8 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                     ideThemeSyncScriptScheduled = false
                     projectSwitchPromptSuppressionScriptScheduled = false
                     systemNotificationBridgeScriptScheduled = false
-                    restoreOpenCodeLocalStorage(frame.url)
-                    installOpenCodeLocalStorageSync(frame.url)
+                    localStorageBridge.restore(frame.url)
+                    localStorageBridge.installSync(frame.url)
                     injectIdeThemeSyncEarly()
                     injectCompactLayoutEarly()
                 }
@@ -152,7 +157,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                 if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverManager.getServerUrl(), frame.url)) return
 
                 scheduleOpenProjectScript()
-                installOpenCodeLocalStorageSync(frame.url)
+                localStorageBridge.installSync(frame.url)
                 scheduleFileLinkScript()
                 scheduleExternalLinkScript()
                 scheduleCodeNavigationScript()
@@ -181,7 +186,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                 null
             }
             openCodeLocalStorageQuery.addHandler { snapshot ->
-                syncOpenCodeLocalStorage(snapshot)
+                localStorageBridge.sync(snapshot)
                 null
             }
             systemNotificationQuery.addHandler { payload ->
@@ -403,31 +408,6 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                     },
                     delayMillis,
                 )
-            }
-        }
-
-        private fun restoreOpenCodeLocalStorage(frameUrl: String?) {
-            val serverUrl = serverManager.getServerUrl() ?: return
-            if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, frameUrl)) return
-            val snapshot = OpenCodeSettingsState.getInstance().openCodeLocalStorageSnapshot
-            val script = OpenCodeServerProtocol.buildRestoreOpenCodeLocalStorageScript(snapshot) ?: return
-            browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
-        }
-
-        private fun installOpenCodeLocalStorageSync(frameUrl: String?) {
-            val serverUrl = serverManager.getServerUrl() ?: return
-            if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, frameUrl)) return
-            val script = OpenCodeServerProtocol.buildSyncOpenCodeLocalStorageScript(openCodeLocalStorageQuery.inject("payload")) ?: return
-            browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
-        }
-
-        private fun syncOpenCodeLocalStorage(snapshot: String?) {
-            val text = snapshot?.trim() ?: return
-            val sanitized = OpenCodeSettingsState.sanitizeOpenCodeLocalStorageSnapshot(text)
-            if (sanitized == "{}" && text != "{}") return
-            val settings = OpenCodeSettingsState.getInstance()
-            if (settings.openCodeLocalStorageSnapshot != sanitized) {
-                settings.openCodeLocalStorageSnapshot = sanitized
             }
         }
 
