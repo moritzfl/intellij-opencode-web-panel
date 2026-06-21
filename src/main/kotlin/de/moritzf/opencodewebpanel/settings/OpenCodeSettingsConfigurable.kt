@@ -549,21 +549,12 @@ class OpenCodeSettingsConfigurable : Configurable {
     private fun showServerLog() {
         val serverManager = SharedOpenCodeServerManager.getInstance()
         val logFile = serverManager.getServerLogFile()
-        if (logFile != null) {
-            try {
-                java.awt.Desktop.getDesktop().open(logFile.toFile())
-                return
-            } catch (_: Exception) {
-            }
+        if (logFile == null) {
+            Messages.showInfoMessage(panel ?: viewServerLogButton, "No server log available yet.", "Open Server Log")
+            return
         }
-
-        val log = serverManager.getServerLog()
-        val text = if (log.isBlank()) "No server log available yet." else log
         try {
-            val tempFile = java.io.File.createTempFile("opencode-server-log-", ".txt")
-            tempFile.deleteOnExit()
-            java.nio.file.Files.write(tempFile.toPath(), text.toByteArray(java.nio.charset.StandardCharsets.UTF_8))
-            java.awt.Desktop.getDesktop().open(tempFile)
+            java.awt.Desktop.getDesktop().open(logFile.toFile())
         } catch (e: Exception) {
             Messages.showErrorDialog(
                 panel ?: restartServerButton,

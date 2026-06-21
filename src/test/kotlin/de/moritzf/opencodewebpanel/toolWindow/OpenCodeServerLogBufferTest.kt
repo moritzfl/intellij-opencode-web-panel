@@ -12,7 +12,7 @@ import org.junit.Test
 class OpenCodeServerLogBufferTest {
 
     @Test
-    fun appendsToMemoryAndCurrentLogFile() {
+    fun appendsToCurrentLogFile() {
         val dir = Files.createTempDirectory("opencode-server-log-buffer")
         try {
             val buffer = OpenCodeServerLogBuffer(logDir = dir, maxLogFiles = 20, maxLogAge = Duration.ofDays(7))
@@ -21,7 +21,6 @@ class OpenCodeServerLogBufferTest {
             buffer.append("first")
             buffer.append("second")
 
-            assertEquals("first\nsecond", buffer.text())
             assertEquals(file, buffer.currentOrLatestFile())
             assertEquals(listOf("first", "second"), Files.readAllLines(file))
         } finally {

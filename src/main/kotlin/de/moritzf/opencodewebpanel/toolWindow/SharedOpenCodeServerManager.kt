@@ -50,16 +50,8 @@ class SharedOpenCodeServerManager : Disposable {
     }
     private val serverLogBuffer = OpenCodeServerLogBuffer()
 
-    fun getServerLog(): String {
-        return serverLogBuffer.text()
-    }
-
     fun getServerLogFile(): Path? {
         return serverLogBuffer.currentOrLatestFile()
-    }
-
-    fun clearServerLog() {
-        serverLogBuffer.clear()
     }
 
     private fun appendServerLog(line: String) {
@@ -188,7 +180,6 @@ class SharedOpenCodeServerManager : Disposable {
             setLifecycleState(OpenCodeServerLifecycleState.STOPPED)
             futureToCancel?.cancel(true)
             processTerminator.destroy(processToDestroy)
-            clearServerLog()
         } catch (e: Exception) {
             thisLogger().error("Error stopping OpenCode server: ${e.message}")
         }

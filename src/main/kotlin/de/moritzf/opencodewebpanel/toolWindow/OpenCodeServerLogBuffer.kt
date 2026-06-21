@@ -9,17 +9,14 @@ import java.nio.file.Path
 import java.nio.file.StandardOpenOption
 import java.time.Duration
 import java.time.Instant
-import java.util.Collections
 import java.util.Comparator
 import java.util.UUID
 
 internal class OpenCodeServerLogBuffer(
-    private val maxLines: Int = 500,
     private val logDir: Path = defaultLogDir(),
     private val maxLogFiles: Int = 20,
     private val maxLogAge: Duration = Duration.ofDays(7),
 ) {
-    private val lines = Collections.synchronizedList(mutableListOf<String>())
     private val fileLock = Any()
     private var currentLogFile: Path? = null
 
@@ -49,25 +46,7 @@ internal class OpenCodeServerLogBuffer(
         }
     }
 
-    fun text(): String {
-        return synchronized(lines) {
-            lines.joinToString("\n")
-        }
-    }
-
-    fun clear() {
-        synchronized(lines) {
-            lines.clear()
-        }
-    }
-
     fun append(line: String) {
-        synchronized(lines) {
-            if (lines.size >= maxLines) {
-                lines.removeAt(0)
-            }
-            lines.add(line)
-        }
         appendToCurrentFile(line)
     }
 
@@ -101,7 +80,10 @@ internal class OpenCodeServerLogBuffer(
     private fun createLogFile(): Path? {
         return try {
             Files.createDirectories(logDir)
-            val file = logDir.resolve("opencode-server-${Instant.now().toEpochMilli()}-${UUID.randomUUID()}$LOG_FILE_EXTENSION")
+            val timestamp = Instant.now().toEpochMilli()
+            val file = logDir.resolve(
+                "opencode-server-$timestamp-${UUID.randomUUID()}$LOG_FILE_EXTENSION"
+            )
             Files.writeString(
                 file,
                 "",
