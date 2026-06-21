@@ -296,7 +296,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         val script = OpenCodeServerProtocol.buildFileLinkHandlerScript(
             openCodeProjectDirectory(),
             enabled = true,
-            openFileCallback = openFileLinkQuery.inject("rawHref"),
+            openFileCallback = openFileLinkQuery.inject("rawHref + '\\n' + directory"),
         ) ?: return
         val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
         fileLinkScriptScheduled = true
@@ -472,7 +472,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         val script = OpenCodeServerProtocol.buildFileLinkHandlerScript(
             openCodeProjectDirectory(),
             enabled = true,
-            openFileCallback = openFileLinkQuery.inject("rawHref"),
+            openFileCallback = openFileLinkQuery.inject("rawHref + '\\n' + directory"),
         ) ?: return
         browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
         fileLinkScriptScheduled = true

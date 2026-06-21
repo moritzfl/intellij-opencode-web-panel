@@ -37,7 +37,10 @@ internal class OpenCodeBrowserRequestHandler(
         val requestUrl = request?.url ?: return false
         if (!OpenCodeServerProtocol.isOpenFileLinkRequest(requestUrl)) return false
         if (OpenCodeSettingsState.getInstance().openFileLinksInIde) {
-            ideNavigation.openFileLinkInIde(OpenCodeServerProtocol.openFileLinkHref(requestUrl))
+            ideNavigation.openFileLinkInIde(
+                OpenCodeServerProtocol.openFileLinkHref(requestUrl),
+                OpenCodeServerProtocol.openFileLinkBase(requestUrl),
+            )
         }
         return true
     }

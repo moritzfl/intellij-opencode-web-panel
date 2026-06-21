@@ -702,17 +702,37 @@ internal object OpenCodeBrowserSnippets {
         if (!enabled) return null
         if (projectBasePath.isNullOrBlank()) return null
         val directory = escapeJavaScript(projectBasePath)
+
+        @Language("JavaScript")
+        val openFileFallback =
+            "window.location.assign('${OpenCodeServerProtocol.OPEN_FILE_LINK_SCHEME}://${OpenCodeServerProtocol.OPEN_FILE_LINK_HOST}?href=' + encodeURIComponent(rawHref) + '&base=' + encodeURIComponent(directory))"
         val openFileAction = openFileCallback
-            ?: run {
+            ?.let { callback ->
                 @Language("JavaScript")
-                val action = "window.location.assign('${OpenCodeServerProtocol.OPEN_FILE_LINK_SCHEME}://${OpenCodeServerProtocol.OPEN_FILE_LINK_HOST}?href=' + encodeURIComponent(rawHref) + '&base=' + encodeURIComponent(directory))"
-                action
+                val action = """
+                    if (typeof window.cefQuery === 'function') {
+                      try {
+                        $callback;
+                        return;
+                      } catch (error) {
+                        if (window.console && window.console.warn) {
+                          window.console.warn('Failed to forward file link to IntelliJ', error);
+                        }
+                      }
+                    }
+                    $openFileFallback;
+                """
+                action.trimIndent()
             }
+            ?: openFileFallback
+
         @Language("JavaScript")
         val script = """
             (() => {
-              if (window.__opencodeIntellijFileLinksInstalled) return;
+              const FILE_LINKS_VERSION = 2;
+              if ((window.__opencodeIntellijFileLinksInstalledVersion || 0) >= FILE_LINKS_VERSION) return;
               window.__opencodeIntellijFileLinksInstalled = true;
+              window.__opencodeIntellijFileLinksInstalledVersion = FILE_LINKS_VERSION;
               const directory = '$directory';
               const unsupportedProtocol = /^(https?|mailto|tel|data|blob|javascript):/i;
               const absoluteFilePath = /^(\/|[A-Za-z]:[\\/])/;
@@ -765,6 +785,22 @@ internal object OpenCodeBrowserSnippets {
                 }
                 return '';
               };
+              let lastOpenedHref = '';
+              let lastOpenedAt = 0;
+              const cleanDisplayedPath = (value) => (value || '').replace(/[\u202A-\u202E]/g, '').trim();
+              const changedFileButtonLink = (target) => {
+                const button = target && target.closest ? target.closest('[data-slot="session-review-view-button"], button[aria-label="Open file"], button[aria-label="Datei öffnen"], button[title="Open file"], button[title="Datei öffnen"]') : null;
+                if (!button) return '';
+                const item = button.closest ? button.closest('[data-file], [data-path], [data-slot="session-review-accordion-item"]') : null;
+                const dataPath = item ? (item.getAttribute('data-file') || item.getAttribute('data-path') || '') : '';
+                if (dataPath) return dataPath;
+                const info = (button.closest && button.closest('[data-slot="session-review-file-info"]')) ||
+                  (item && item.querySelector ? item.querySelector('[data-slot="session-review-file-info"]') : null);
+                const directory = cleanDisplayedPath(info && info.querySelector ? info.querySelector('[data-slot="session-review-directory"]')?.textContent : '');
+                const fileName = cleanDisplayedPath(info && info.querySelector ? info.querySelector('[data-slot="session-review-filename"]')?.textContent : '');
+                if (!fileName) return '';
+                return directory ? directory.replace(/[\\/]?${'$'}/, '/') + fileName : fileName;
+              };
               const isLocalFileLink = (href) => {
                 if (!href || href.startsWith('#')) return false;
                 if (isOpenCodeAppRoute(href)) return false;
@@ -773,16 +809,27 @@ internal object OpenCodeBrowserSnippets {
                 if (/^[A-Za-z]:[\\/]/.test(href)) return true;
                 return !href.startsWith('//') && !href.includes('://');
               };
-              document.addEventListener('click', (event) => {
+              const openFileInIde = (rawHref) => {
+                const now = Date.now();
+                if (rawHref === lastOpenedHref && now - lastOpenedAt < 750) return;
+                lastOpenedHref = rawHref;
+                lastOpenedAt = now;
+                $openFileAction;
+              };
+              const handleFileOpenEvent = (event, changedButtonOnly) => {
                 if (event.defaultPrevented) return;
-                const link = event.target && event.target.closest ? event.target.closest('a') : null;
-                if (!link) return;
-                const rawHref = link.getAttribute('href') || inferredFileLink(link);
+                const changedFileHref = changedFileButtonLink(event.target);
+                if (changedButtonOnly && !changedFileHref) return;
+                const link = !changedFileHref && event.target && event.target.closest ? event.target.closest('a') : null;
+                const rawHref = changedFileHref || (link ? (link.getAttribute('href') || inferredFileLink(link)) : '');
                 if (!isLocalFileLink(rawHref)) return;
                 event.preventDefault();
                 event.stopImmediatePropagation();
-                $openFileAction;
-              }, true);
+                openFileInIde(rawHref);
+              };
+              document.addEventListener('pointerdown', (event) => handleFileOpenEvent(event, true), true);
+              document.addEventListener('mousedown', (event) => handleFileOpenEvent(event, true), true);
+              document.addEventListener('click', (event) => handleFileOpenEvent(event, false), true);
             })();
         """
         return script.trimIndent()

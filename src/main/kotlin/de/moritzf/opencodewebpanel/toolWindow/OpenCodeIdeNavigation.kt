@@ -22,9 +22,18 @@ internal class OpenCodeIdeNavigation(
     private val projectDirectory: () -> String?,
     private val coalesceKey: Any,
 ) {
-    fun openFileLinkInIde(href: String?) {
+    fun openFileLinkInIde(href: String?, basePath: String? = null) {
+        val payload = OpenCodeServerProtocol.parseOpenFileLinkPayload(href)
+        val targetHref = payload?.href ?: href
         val routeBasePath = OpenCodeServerProtocol.routeDirectoryFromUrl(browser.cefBrowser.url)
-        val target = OpenCodeServerProtocol.resolveFileLink(href, projectDirectory(), routeBasePath) ?: return
+        val projectBasePath = projectDirectory()
+        val target = listOfNotNull(basePath, payload?.basePath, routeBasePath)
+            .distinct()
+            .asSequence()
+            .mapNotNull { OpenCodeServerProtocol.resolveFileLink(targetHref, projectBasePath, it) }
+            .firstOrNull()
+            ?: OpenCodeServerProtocol.resolveFileLink(targetHref, projectBasePath)
+            ?: return
         val virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(target.path) ?: return
         ApplicationManager.getApplication().invokeLater {
             if (project.isDisposed) return@invokeLater

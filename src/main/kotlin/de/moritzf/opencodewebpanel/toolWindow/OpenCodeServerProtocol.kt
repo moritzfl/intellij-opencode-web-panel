@@ -162,9 +162,25 @@ internal object OpenCodeServerProtocol {
 
     fun openFileLinkHref(requestUrl: String?): String? {
         if (!isOpenFileLinkRequest(requestUrl)) return null
+        return openFileLinkQueryParameter(requestUrl, "href")
+    }
+
+    fun openFileLinkBase(requestUrl: String?): String? {
+        if (!isOpenFileLinkRequest(requestUrl)) return null
+        return openFileLinkQueryParameter(requestUrl, "base")
+    }
+
+    fun parseOpenFileLinkPayload(payload: String?): OpenFileLinkPayload? {
+        val text = payload?.takeIf { it.isNotBlank() } ?: return null
+        val parts = text.split('\n', limit = 2)
+        val href = parts.firstOrNull()?.takeIf { it.isNotBlank() } ?: return null
+        return OpenFileLinkPayload(href, parts.getOrNull(1)?.takeIf { it.isNotBlank() })
+    }
+
+    private fun openFileLinkQueryParameter(requestUrl: String?, name: String): String? {
         return URI(requestUrl).rawQuery
             ?.split('&')
-            ?.firstOrNull { it.substringBefore('=') == "href" }
+            ?.firstOrNull { it.substringBefore('=') == name }
             ?.substringAfter('=', "")
             ?.let { URLDecoder.decode(it, StandardCharsets.UTF_8) }
     }
@@ -353,6 +369,8 @@ internal object OpenCodeServerProtocol {
     }
 
     data class FileLinkTarget(val path: Path, val line: Int?, val column: Int?)
+
+    data class OpenFileLinkPayload(val href: String, val basePath: String?)
 
     data class DroppedFilePayload(
         val name: String,

@@ -306,8 +306,21 @@ class OpenCodeServerProtocolTest {
         val script = OpenCodeServerProtocol.buildFileLinkHandlerScript("/tmp/project")!!
 
         assertTrue(script.contains("window.__opencodeIntellijFileLinksInstalled"))
+        assertTrue(script.contains("FILE_LINKS_VERSION = 2"))
+        assertTrue(script.contains("window.__opencodeIntellijFileLinksInstalledVersion"))
         assertTrue(script.contains("event.target.closest('a')"))
         assertTrue(script.contains("inferredFileLink(link)"))
+        assertTrue(script.contains("changedFileButtonLink(event.target)"))
+        assertTrue(script.contains("session-review-view-button"))
+        assertTrue(script.contains("session-review-accordion-item"))
+        assertTrue(script.contains("getAttribute('data-file')"))
+        assertTrue(script.contains("button[aria-label=\"Open file\"]"))
+        assertTrue(script.contains("session-review-file-info"))
+        assertTrue(script.contains("session-review-directory"))
+        assertTrue(script.contains("session-review-filename"))
+        assertTrue(script.contains("document.addEventListener('pointerdown'"))
+        assertTrue(script.contains("document.addEventListener('mousedown'"))
+        assertTrue(script.contains("now - lastOpenedAt < 750"))
         assertTrue(script.contains("unsupportedProtocol"))
         assertTrue(script.contains("decodeRouteDirectory"))
         assertTrue(script.contains("isOpenCodeAppRoute(href)"))
@@ -326,10 +339,13 @@ class OpenCodeServerProtocolTest {
         val script = OpenCodeServerProtocol.buildFileLinkHandlerScript(
             "/tmp/project",
             enabled = true,
-            openFileCallback = "window.intellijOpenFile(rawHref)",
+            openFileCallback = "window.intellijOpenFile(rawHref + '\\n' + directory)",
         )!!
 
-        assertTrue(script.contains("window.intellijOpenFile(rawHref)"))
+        assertTrue(script.contains("window.intellijOpenFile(rawHref + '\\n' + directory)"))
+        assertTrue(script.contains("typeof window.cefQuery === 'function'"))
+        assertTrue(script.contains("Failed to forward file link to IntelliJ"))
+        assertTrue(script.contains("${OpenCodeServerProtocol.OPEN_FILE_LINK_SCHEME}://${OpenCodeServerProtocol.OPEN_FILE_LINK_HOST}"))
         assertFalse(script.contains("window.location.assign(target)"))
     }
 
@@ -958,11 +974,23 @@ class OpenCodeServerProtocolTest {
 
     @Test
     fun openFileLinkRequestParsesHref() {
-        val url = "${OpenCodeServerProtocol.OPEN_FILE_LINK_SCHEME}://${OpenCodeServerProtocol.OPEN_FILE_LINK_HOST}?href=src%2FMain.kt"
+        val url =
+            "${OpenCodeServerProtocol.OPEN_FILE_LINK_SCHEME}://${OpenCodeServerProtocol.OPEN_FILE_LINK_HOST}?href=src%2FMain.kt&base=%2Ftmp%2Fproject"
 
         assertTrue(OpenCodeServerProtocol.isOpenFileLinkRequest(url))
         assertEquals("src/Main.kt", OpenCodeServerProtocol.openFileLinkHref(url))
+        assertEquals("/tmp/project", OpenCodeServerProtocol.openFileLinkBase(url))
         assertFalse(OpenCodeServerProtocol.isOpenFileLinkRequest("https://example.com/src/Main.kt"))
+    }
+
+    @Test
+    fun openFileLinkPayloadCarriesHrefAndBasePath() {
+        val payload = OpenCodeServerProtocol.parseOpenFileLinkPayload("src/Main.kt\n/tmp/project")
+
+        assertNotNull(payload)
+        assertEquals("src/Main.kt", payload!!.href)
+        assertEquals("/tmp/project", payload.basePath)
+        assertNull(OpenCodeServerProtocol.parseOpenFileLinkPayload(""))
     }
 
     @Test
