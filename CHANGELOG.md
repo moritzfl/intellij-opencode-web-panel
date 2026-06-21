@@ -4,6 +4,19 @@
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-06-21
+
+### Changed
+
+- Dragging files from the active OpenCode project into chat now uses OpenCode's `@relative/path` file-reference behavior, making repository files easier to mention in prompts.
+- Pasting copied project files into chat now uses the same `@relative/path` file-reference behavior.
+- Dropped files can still be attached when OpenCode treats the drop as a file attachment.
+- OpenCode notification actions now say “Show in OpenCode” to better describe that they bring the related item into view.
+
+### Fixed
+
+- Undo and redo shortcuts now work in the embedded OpenCode editor when the browser has focus.
+
 ## [1.1.0] - 2026-06-21
 
 ### Added
@@ -38,7 +51,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.1.0...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.2.0...HEAD
+[1.2.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.1.0...1.2.0
 [1.1.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.0.1...1.1.0
 [1.0.1]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.0.0...1.0.1
 [1.0.0]: https://github.com/moritzfl/intellij-opencode-web-panel/commits/1.0.0
