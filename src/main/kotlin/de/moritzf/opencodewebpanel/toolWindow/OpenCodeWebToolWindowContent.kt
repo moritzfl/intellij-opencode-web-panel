@@ -1,9 +1,9 @@
 package de.moritzf.opencodewebpanel.toolWindow
 
+import com.intellij.ide.AppLifecycleListener
 import com.intellij.ide.ui.LafManager
 import com.intellij.ide.ui.LafManagerListener
 import com.intellij.openapi.Disposable
-import com.intellij.openapi.application.ex.ApplicationEx
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.util.Disposer
@@ -24,6 +24,11 @@ import org.cef.handler.CefLoadHandlerAdapter
 import org.cef.network.CefRequest
 
 class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposable {
+
+    private companion object {
+        @Volatile
+        private var applicationClosing = false
+    }
 
     private val project = toolWindow.project
     private val browser = JBCefBrowser()
@@ -132,6 +137,14 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         installFileDropTransferHandler()
         installBrowserEditShortcutHandler()
         updateLifecycleIndicator(serverManager.getLifecycleState())
+        ApplicationManager.getApplication().messageBus.connect(this).subscribe(
+            AppLifecycleListener.TOPIC,
+            object : AppLifecycleListener {
+                override fun appClosing() {
+                    applicationClosing = true
+                }
+            },
+        )
         ApplicationManager.getApplication().messageBus.connect(this).subscribe(
             OpenCodeServerLifecycleListener.TOPIC,
             object : OpenCodeServerLifecycleListener {
@@ -651,7 +664,6 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     }
 
     private fun isApplicationShutdownInProgress(): Boolean {
-        val application = ApplicationManager.getApplication() as? ApplicationEx ?: return false
-        return application.isExitInProgress || application.isDisposed
+        return applicationClosing || ApplicationManager.getApplication()?.isDisposed == true
     }
 }
