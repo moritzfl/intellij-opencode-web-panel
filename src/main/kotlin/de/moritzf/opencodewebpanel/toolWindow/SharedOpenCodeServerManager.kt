@@ -244,7 +244,7 @@ class SharedOpenCodeServerManager : Disposable {
 
     private fun startOpenCodeServer(project: Project?, projectBasePath: String?, startId: Long) {
         if (project != null) {
-            val task = object : Backgroundable(project, "Starting OpenCode Server", true) {
+            val task = object : Backgroundable(project, "Starting OpenCode server", true) {
                 override fun run(indicator: ProgressIndicator) {
                     runOpenCodeServerStart(projectBasePath, startId)
                 }

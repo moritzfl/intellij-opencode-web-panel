@@ -75,7 +75,7 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
         const val DEFAULT_UI_ZOOM_PERCENT = 100
         const val MIN_UI_ZOOM_PERCENT = 50
         const val MAX_UI_ZOOM_PERCENT = 200
-        const val MAX_OPEN_CODE_LOCAL_STORAGE_SNAPSHOT_CHARS = 2_000_000
+        private const val MAX_OPEN_CODE_LOCAL_STORAGE_SNAPSHOT_CHARS = 2_000_000
 
         fun getInstance(): OpenCodeSettingsState {
             return ApplicationManager.getApplication().getService(OpenCodeSettingsState::class.java)

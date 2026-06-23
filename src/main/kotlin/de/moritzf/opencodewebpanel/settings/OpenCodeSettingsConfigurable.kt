@@ -28,7 +28,6 @@ import java.util.concurrent.atomic.AtomicLong
 import javax.swing.ButtonGroup
 import javax.swing.JButton
 import javax.swing.JComponent
-import javax.swing.JPanel
 import javax.swing.JSpinner
 import javax.swing.JToggleButton
 import javax.swing.SpinnerNumberModel
@@ -114,11 +113,11 @@ class OpenCodeSettingsConfigurable : Configurable {
     override fun getDisplayName(): String = "OpenCode Web Panel"
 
     override fun createComponent(): JComponent {
-        val portGroup = ButtonGroup().apply {
+        ButtonGroup().apply {
             add(autoPortRadioButton)
             add(fixedPortRadioButton)
         }
-        val binaryGroup = ButtonGroup().apply {
+        ButtonGroup().apply {
             add(autoBinaryRadioButton)
             add(customBinaryRadioButton)
         }

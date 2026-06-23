@@ -8,7 +8,6 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.wm.ToolWindow
-import com.intellij.ui.components.JBLabel
 import com.intellij.ui.jcef.JBCefBrowser
 import com.intellij.ui.jcef.JBCefBrowserBase
 import com.intellij.ui.jcef.JBCefJSQuery
@@ -23,7 +22,7 @@ import org.cef.browser.CefFrame
 import org.cef.handler.CefLoadHandlerAdapter
 import org.cef.network.CefRequest
 
-class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposable {
+class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
 
     private companion object {
         @Volatile
@@ -194,7 +193,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                 }
 
                 override fun compactLayoutChanged(enabled: Boolean) {
-                    applyCompactLayout(enabled)
+                    applyCompactLayout()
                 }
 
                 override fun ideThemeSyncChanged(enabled: Boolean) {
@@ -212,11 +211,9 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         )
         ApplicationManager.getApplication().messageBus.connect(this).subscribe(
             LafManagerListener.TOPIC,
-            object : LafManagerListener {
-                override fun lookAndFeelChanged(source: LafManager) {
-                    if (OpenCodeSettingsState.getInstance().syncThemeWithIde) {
-                        applyIdeThemeSync(enabled = true)
-                    }
+            LafManagerListener {
+                if (OpenCodeSettingsState.getInstance().syncThemeWithIde) {
+                    applyIdeThemeSync(enabled = true)
                 }
             },
         )
@@ -386,7 +383,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
 
     private fun applyBrowserZoom(zoomPercent: Int = OpenCodeSettingsState.getInstance().uiZoomPercent) {
         val zoomPercent = OpenCodeSettingsState.sanitizeUiZoomPercent(zoomPercent)
-        browser.cefBrowser.setZoomLevel(OpenCodeServerProtocol.toCefZoomLevel(zoomPercent))
+        browser.cefBrowser.zoomLevel = OpenCodeServerProtocol.toCefZoomLevel(zoomPercent)
     }
 
     private fun scheduleOpenProjectScript() {
@@ -664,7 +661,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         return LafManager.getInstance().currentUIThemeLookAndFeel?.isDark == true
     }
 
-    private fun applyCompactLayout(enabled: Boolean) {
+    private fun applyCompactLayout() {
         // Toggling requires a page reload — early injection on next load start
         compactLayoutScriptScheduled = false
         val serverUrl = serverManager.getServerUrl() ?: return

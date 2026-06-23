@@ -19,7 +19,7 @@ import javax.swing.JComponent
 class OpenCodeProjectSettingsConfigurable(private val project: Project) : Configurable {
     private var panel: JComponent? = null
     private val autoProjectDirectoryRadioButton = JBRadioButton("Auto detect")
-    private val customProjectDirectoryRadioButton = JBRadioButton("Custom Directory")
+    private val customProjectDirectoryRadioButton = JBRadioButton("Custom directory")
     private val projectDirectoryField = TextFieldWithBrowseButton().apply {
         textField.columns = 40
         toolTipText = "Directory OpenCode should open for this IDE project"
@@ -33,7 +33,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
     override fun getDisplayName(): String = "OpenCode Web Panel"
 
     override fun createComponent(): JComponent {
-        val projectDirectoryGroup = ButtonGroup().apply {
+        ButtonGroup().apply {
             add(autoProjectDirectoryRadioButton)
             add(customProjectDirectoryRadioButton)
         }

@@ -13,7 +13,7 @@ class OpenCodePasswordStore {
     private val attributes = CredentialAttributes(SERVICE_NAME, USER_NAME)
     private val cachedPassword = AtomicReference<String?>()
 
-    fun loadBlocking(): String? {
+    private fun loadBlocking(): String? {
         cachedPassword.get()?.let { return it }
         val password = readPasswordSafe()
         cachedPassword.set(password)
@@ -33,7 +33,7 @@ class OpenCodePasswordStore {
         return regenerateBlocking()
     }
 
-    fun regenerateBlocking(): String {
+    private fun regenerateBlocking(): String {
         val password = generatePasswordForEditing()
         saveBlocking(password)
         return password

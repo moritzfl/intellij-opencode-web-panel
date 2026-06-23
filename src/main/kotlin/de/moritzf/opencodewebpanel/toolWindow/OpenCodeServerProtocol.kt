@@ -12,17 +12,16 @@ import java.util.Base64
 import kotlin.math.ln
 
 internal object OpenCodeServerProtocol {
-    const val HOST = "127.0.0.1"
+    private const val HOST = "127.0.0.1"
     const val DYNAMIC_PORT = "0"
     const val CHECK_INTERVAL_SECONDS = 30L
-    const val START_FAILURE_BACKOFF_BASE_MILLIS = 5_000L
-    const val START_FAILURE_BACKOFF_MAX_MILLIS = 60_000L
+    private const val START_FAILURE_BACKOFF_BASE_MILLIS = 5_000L
+    private const val START_FAILURE_BACKOFF_MAX_MILLIS = 60_000L
     const val HEALTH_PATH = "/api/health"
     const val BASIC_AUTH_USERNAME = "opencode"
     const val DEFAULT_EXECUTABLE = "opencode"
     const val OPEN_FILE_LINK_SCHEME = "opencode-web-panel"
     const val OPEN_FILE_LINK_HOST = "open-file"
-    const val OPEN_CODE_LOCAL_STORAGE_PREFIX = "opencode."
     const val OPEN_CODE_DEFAULT_SERVER_URL_STORAGE_KEY = "opencode.settings.dat:defaultServerUrl"
     const val OPEN_CODE_THEME_ID_STORAGE_KEY = "opencode-theme-id"
     const val OPEN_CODE_COLOR_SCHEME_STORAGE_KEY = "opencode-color-scheme"
@@ -174,7 +173,8 @@ internal object OpenCodeServerProtocol {
     }
 
     private fun openFileLinkQueryParameter(requestUrl: String?, name: String): String? {
-        return URI(requestUrl).rawQuery
+        val url = requestUrl ?: return null
+        return URI(url).rawQuery
             ?.split('&')
             ?.firstOrNull { it.substringBefore('=') == name }
             ?.substringAfter('=', "")
@@ -220,7 +220,7 @@ internal object OpenCodeServerProtocol {
             }
             else -> return false
         }
-        val match = Regex("^/([^/]+)/session(?:/|${'$'})")
+        val match = Regex("""^/([^/]+)/session(?:/|$)""")
             .find(routePath.substringBefore('?').substringBefore('#'))
             ?: return false
         val directory = decodeDirectory(match.groupValues[1]) ?: return false
@@ -256,11 +256,9 @@ internal object OpenCodeServerProtocol {
         } else {
             null
         }
-        val fileName = if (qualifiedName != null) {
-            qualifiedName.substringAfterLast('.')
-        } else {
-            pathPart.substringAfterLast('/').substringAfterLast('\\')
-        }.ifBlank { return null }
+        val fileName = (qualifiedName?.substringAfterLast('.')
+            ?: pathPart.substringAfterLast('/').substringAfterLast('\\'))
+            .ifBlank { return null }
         val extension = if (qualifiedName == null) fileName.substringAfterLast('.', "").ifBlank { null } else null
         return ParsedCodeReference(
             path = pathPart,
