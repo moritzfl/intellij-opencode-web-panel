@@ -15,6 +15,7 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
     var binaryMode: String = OpenCodeBinaryMode.AUTO.name
     var binaryPath: String = ""
     var openMostRecentConversationOnStartup: Boolean = true
+    var hideBrowserUntilProjectLoads: Boolean = true
     var uiZoomPercent: Int = DEFAULT_UI_ZOOM_PERCENT
     var openFileLinksInIde: Boolean = true
     var openExternalLinksInBrowser: Boolean = true
@@ -36,6 +37,7 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
         binaryMode = OpenCodeBinaryMode.fromStorageValue(state.binaryMode).name
         binaryPath = state.binaryPath.trim()
         openMostRecentConversationOnStartup = state.openMostRecentConversationOnStartup
+        hideBrowserUntilProjectLoads = state.hideBrowserUntilProjectLoads
         uiZoomPercent = sanitizeUiZoomPercent(state.uiZoomPercent)
         openFileLinksInIde = state.openFileLinksInIde
         openExternalLinksInBrowser = state.openExternalLinksInBrowser

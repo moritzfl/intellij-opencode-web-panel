@@ -82,6 +82,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         toolTipText = "Current OpenCode server status"
     }
     private val openMostRecentConversationCheckBox = JBCheckBox("Open the most recent conversation for the project on startup")
+    private val hideBrowserUntilProjectLoadsCheckBox = JBCheckBox("Hide browser until the OpenCode project page is ready")
     private val openFileLinksInIdeCheckBox = JBCheckBox("Open local file links in the IDE")
     private val openExternalLinksInBrowserCheckBox = JBCheckBox("Open external HTTP links in the system browser")
     private val enableCodeNavigationCheckBox = JBCheckBox("Enable click-to-navigate on code references in chat")
@@ -197,6 +198,10 @@ class OpenCodeSettingsConfigurable : Configurable {
                     .comment("When the tool window opens, restore the project's most recent OpenCode conversation instead of opening a new conversation.")
             }
             row {
+                cell(hideBrowserUntilProjectLoadsCheckBox)
+                    .comment("Keep the startup status visible while OpenCode navigates from the server root to the configured project route.")
+            }
+            row {
                 cell(openFileLinksInIdeCheckBox)
                     .comment("Open markdown links that point to workspace-relative, absolute, or file: paths in IntelliJ.")
             }
@@ -252,6 +257,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         val binaryPathModified = binaryPath() != settings.binaryPath.trim()
         val serverLogsModified = enableServerLogsCheckBox.isSelected != settings.enableServerLogs
         val uiSettingsModified = openMostRecentConversationCheckBox.isSelected != settings.openMostRecentConversationOnStartup ||
+            hideBrowserUntilProjectLoadsCheckBox.isSelected != settings.hideBrowserUntilProjectLoads ||
             openFileLinksInIdeCheckBox.isSelected != settings.openFileLinksInIde ||
             openExternalLinksInBrowserCheckBox.isSelected != settings.openExternalLinksInBrowser ||
             enableCodeNavigationCheckBox.isSelected != settings.enableCodeNavigation ||
@@ -281,6 +287,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         val oldSyncThemeWithIde = settings.syncThemeWithIde
         val oldSuppressProjectSwitchPrompts = settings.suppressProjectSwitchPrompts
         val oldEnableSystemNotifications = settings.enableSystemNotifications
+        val oldHideBrowserUntilProjectLoads = settings.hideBrowserUntilProjectLoads
         val oldPassword = savedPassword
 
         val nextPassword = passwordForApply ?: OpenCodePasswordStore.getInstance().generatePasswordForEditing()
@@ -299,6 +306,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         settings.binaryMode = nextBinaryMode.name
         settings.binaryPath = nextBinaryPath
         settings.openMostRecentConversationOnStartup = openMostRecentConversationCheckBox.isSelected
+        settings.hideBrowserUntilProjectLoads = hideBrowserUntilProjectLoadsCheckBox.isSelected
         settings.openFileLinksInIde = openFileLinksInIdeCheckBox.isSelected
         settings.openExternalLinksInBrowser = openExternalLinksInBrowserCheckBox.isSelected
         settings.enableCodeNavigation = enableCodeNavigationCheckBox.isSelected
@@ -325,6 +333,11 @@ class OpenCodeSettingsConfigurable : Configurable {
             ApplicationManager.getApplication().messageBus
                 .syncPublisher(OpenCodeSettingsListener.TOPIC)
                 .uiZoomChanged(nextUiZoomPercent)
+        }
+        if (oldHideBrowserUntilProjectLoads != settings.hideBrowserUntilProjectLoads) {
+            ApplicationManager.getApplication().messageBus
+                .syncPublisher(OpenCodeSettingsListener.TOPIC)
+                .hideBrowserUntilProjectLoadsChanged(settings.hideBrowserUntilProjectLoads)
         }
         if (oldOpenFileLinksInIde != settings.openFileLinksInIde) {
             ApplicationManager.getApplication().messageBus
@@ -381,6 +394,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         fixedPortField.text = OpenCodeSettingsState.sanitizePort(settings.fixedPort).toString()
         binaryPathField.text = settings.binaryPath.trim()
         openMostRecentConversationCheckBox.isSelected = settings.openMostRecentConversationOnStartup
+        hideBrowserUntilProjectLoadsCheckBox.isSelected = settings.hideBrowserUntilProjectLoads
         openFileLinksInIdeCheckBox.isSelected = settings.openFileLinksInIde
         openExternalLinksInBrowserCheckBox.isSelected = settings.openExternalLinksInBrowser
         enableCodeNavigationCheckBox.isSelected = settings.enableCodeNavigation

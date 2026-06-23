@@ -57,6 +57,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     private var ideThemeSyncScriptScheduled = false
     private var projectSwitchPromptSuppressionScriptScheduled = false
     private var systemNotificationBridgeScriptScheduled = false
+    private var hidingBrowserUntilProjectLoads = false
 
     @Volatile
     private var disposed = false
@@ -92,6 +93,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             scheduleIdeThemeSyncScript()
             scheduleProjectSwitchPromptSuppressionScript()
             scheduleSystemNotificationBridgeScript()
+            revealBrowserIfProjectReady(frame.url)
         }
     }
 
@@ -151,6 +153,10 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                     ) {
                         browser.cefBrowser.reload()
                     }
+                }
+
+                override fun hideBrowserUntilProjectLoadsChanged(enabled: Boolean) {
+                    applyHideBrowserUntilProjectLoads(enabled)
                 }
 
                 override fun fileLinkNavigationChanged(enabled: Boolean) {
@@ -219,6 +225,12 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     fun getContent() = contentPanel
 
     private fun updateLifecycleIndicator(state: OpenCodeServerLifecycleState) {
+        if (state == OpenCodeServerLifecycleState.RUNNING && hidingBrowserUntilProjectLoads) {
+            lifecycleStatusPanel.showProgress("Opening OpenCode project...")
+            contentPanel.revalidate()
+            contentPanel.repaint()
+            return
+        }
         lifecycleStatusPanel.update(state)
         contentPanel.revalidate()
         contentPanel.repaint()
@@ -257,6 +269,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         systemNotificationBridgeScriptScheduled = false
         openProjectAlarm.cancelAllRequests()
         applyBrowserZoom()
+        startHidingBrowserUntilProjectLoads()
         browser.loadURL(url)
         scheduleOpenProjectScript()
         scheduleFileLinkScript()
@@ -265,6 +278,64 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         scheduleIdeThemeSyncScript()
         scheduleProjectSwitchPromptSuppressionScript()
         scheduleSystemNotificationBridgeScript()
+    }
+
+    private fun startHidingBrowserUntilProjectLoads() {
+        if (!OpenCodeSettingsState.getInstance().hideBrowserUntilProjectLoads) {
+            hidingBrowserUntilProjectLoads = false
+            browser.component.isVisible = true
+            return
+        }
+        hidingBrowserUntilProjectLoads = true
+        browser.component.isVisible = false
+        lifecycleStatusPanel.showProgress("Opening OpenCode project...")
+        openProjectAlarm.addRequest(
+            {
+                if (hidingBrowserUntilProjectLoads && !isContentDisposed()) {
+                    hidingBrowserUntilProjectLoads = false
+                    browser.component.isVisible = true
+                    lifecycleStatusPanel.update(serverManager.getLifecycleState())
+                    contentPanel.revalidate()
+                    contentPanel.repaint()
+                }
+            },
+            15_000,
+        )
+        contentPanel.revalidate()
+        contentPanel.repaint()
+    }
+
+    private fun revealBrowserIfProjectReady(frameUrl: String?) {
+        if (!hidingBrowserUntilProjectLoads) return
+        if (!isOpenCodeProjectDestination(frameUrl)) return
+        hidingBrowserUntilProjectLoads = false
+        browser.component.isVisible = true
+        lifecycleStatusPanel.update(serverManager.getLifecycleState())
+        contentPanel.revalidate()
+        contentPanel.repaint()
+    }
+
+    private fun isOpenCodeProjectDestination(frameUrl: String?): Boolean {
+        val serverUrl = serverManager.getServerUrl() ?: return false
+        if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, frameUrl)) return false
+        val projectDirectory = openCodeProjectDirectory()?.takeIf { it.isNotBlank() } ?: return true
+        return OpenCodeServerProtocol.isSameFilesystemPath(OpenCodeServerProtocol.routeDirectoryFromUrl(frameUrl), projectDirectory)
+    }
+
+    private fun applyHideBrowserUntilProjectLoads(enabled: Boolean) {
+        if (!enabled) {
+            hidingBrowserUntilProjectLoads = false
+            browser.component.isVisible = true
+            lifecycleStatusPanel.update(serverManager.getLifecycleState())
+            contentPanel.revalidate()
+            contentPanel.repaint()
+            return
+        }
+        if (OpenCodeServerProtocol.isOpenCodeServerPage(serverManager.getServerUrl(), browser.cefBrowser.url) &&
+            !isOpenCodeProjectDestination(browser.cefBrowser.url)
+        ) {
+            startHidingBrowserUntilProjectLoads()
+        }
     }
 
     private fun applyBrowserZoom(zoomPercent: Int = OpenCodeSettingsState.getInstance().uiZoomPercent) {
@@ -285,7 +356,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
         openProjectScriptScheduled = true
 
-        scriptScheduler.schedule(script, rootUrl)
+        scriptScheduler.schedule(script, rootUrl) { !isOpenCodeProjectDestination(browser.cefBrowser.url) }
     }
 
     private fun scheduleFileLinkScript() {
@@ -558,6 +629,8 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
 
     private fun showErrorInBrowser() {
         if (isContentDisposed()) return
+        hidingBrowserUntilProjectLoads = false
+        browser.component.isVisible = true
         browser.loadHTML(
             OpenCodeServerProtocol.buildStartupErrorPageHtml(
                 OpenCodeSettingsState.getInstance().executablePath()
