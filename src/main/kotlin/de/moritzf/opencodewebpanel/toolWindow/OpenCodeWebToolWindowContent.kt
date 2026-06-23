@@ -50,7 +50,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         serverManager,
         syncCallback = { openCodeLocalStorageQuery.inject("payload") },
     )
-    private val systemNotifications = OpenCodeSystemNotifications(project, toolWindow, browser, serverManager)
+    private val systemNotifications = OpenCodeSystemNotifications(project, toolWindow, browser, serverManager, ::openCodeProjectDirectory)
     private val requestHandler = OpenCodeBrowserRequestHandler(serverManager, ideNavigation)
     private val openProjectAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
     private val scriptScheduler = OpenCodeBrowserScriptScheduler(project, browser, openProjectAlarm)
@@ -692,6 +692,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     override fun dispose() {
         disposed = true
         openProjectAlarm.cancelAllRequests()
+        systemNotifications.dispose()
         if (isApplicationShutdownInProgress()) return
         Disposer.dispose(browser)
     }

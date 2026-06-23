@@ -885,40 +885,32 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
-    fun buildSystemNotificationBridgeScriptPatchesBrowserNotificationApi() {
+    fun buildSystemNotificationBridgeScriptListensToOpenCodeEventStream() {
         val script = OpenCodeServerProtocol.buildSystemNotificationBridgeScript(
             enabled = true,
             notificationCallback = "window.intellijNotify(payload)",
         )!!
 
         assertTrue(script.contains("window.__opencodeIntellijNotificationBridgeInstalled"))
-        assertTrue(script.contains("window.__opencodeIntellijNativeNotification = window.Notification"))
-        assertTrue(script.contains("class IntellijNotification"))
-        assertTrue(script.contains("Object.defineProperty(IntellijNotification, 'permission'"))
-        assertTrue(script.contains("get: () => 'granted'"))
-        assertTrue(script.contains("static requestPermission(callback)"))
-        assertTrue(script.contains("window.__opencodeIntellijNotificationClick"))
-        assertTrue(script.contains("Object.defineProperty(window, 'Notification'"))
+        assertTrue(script.contains("fetch('/global/event'"))
+        assertTrue(script.contains("Accept: 'text/event-stream'"))
+        assertTrue(script.contains("type !== 'session.idle'"))
+        assertTrue(script.contains("type !== 'permission.asked'"))
+        assertTrue(script.contains("notification.directory"))
+        assertTrue(script.contains("notification.route"))
         assertTrue(script.contains("window.intellijNotify(payload)"))
     }
 
     @Test
-    fun buildSystemNotificationClickScriptInvokesStoredBrowserNotification() {
-        val script = OpenCodeServerProtocol.buildSystemNotificationClickScript("id '1")
-
-        assertTrue(script.contains("window.focus"))
-        assertTrue(script.contains("window.__opencodeIntellijNotificationClick"))
-        assertTrue(script.contains("click('id \\'1')"))
-    }
-
-    @Test
     fun parseSystemNotificationPayloadDecodesEncodedFields() {
-        val payload = "id%201\nAgent%20done\nLine%201%0ALine%202"
+        val payload = "id%201\n%2Ftmp%2Fproject\n%2Fencoded%2Fsession%2Fses_1\nAgent%20done\nLine%201%0ALine%202"
 
         val notification = OpenCodeServerProtocol.parseSystemNotificationPayload(payload)
 
         assertNotNull(notification)
         assertEquals("id 1", notification!!.id)
+        assertEquals("/tmp/project", notification.directory)
+        assertEquals("/encoded/session/ses_1", notification.route)
         assertEquals("Agent done", notification.title)
         assertEquals("Line 1\nLine 2", notification.body)
     }
@@ -927,8 +919,10 @@ class OpenCodeServerProtocolTest {
     fun parseSystemNotificationPayloadRejectsMissingIdentity() {
         assertNull(OpenCodeServerProtocol.parseSystemNotificationPayload(null))
         assertNull(OpenCodeServerProtocol.parseSystemNotificationPayload("id-only"))
-        assertNull(OpenCodeServerProtocol.parseSystemNotificationPayload("%20\nTitle"))
-        assertNull(OpenCodeServerProtocol.parseSystemNotificationPayload("id\n%20"))
+        assertNull(OpenCodeServerProtocol.parseSystemNotificationPayload("%20\n%2Ftmp%2Fproject\n%2Fencoded\nTitle\nBody"))
+        assertNull(OpenCodeServerProtocol.parseSystemNotificationPayload("id\n%20\n%2Fencoded\nTitle\nBody"))
+        assertNull(OpenCodeServerProtocol.parseSystemNotificationPayload("id\n%2Ftmp%2Fproject\nencoded\nTitle\nBody"))
+        assertNull(OpenCodeServerProtocol.parseSystemNotificationPayload("id\n%2Ftmp%2Fproject\n%2Fencoded\n%20\nBody"))
     }
 
     @Test

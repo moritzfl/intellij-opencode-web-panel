@@ -77,10 +77,6 @@ internal object OpenCodeServerProtocol {
         return OpenCodeBrowserSnippets.buildSystemNotificationBridgeScript(enabled, notificationCallback)
     }
 
-    fun buildSystemNotificationClickScript(notificationId: String): String {
-        return OpenCodeBrowserSnippets.buildSystemNotificationClickScript(notificationId)
-    }
-
     fun buildProjectSwitchPromptSuppressionScript(enabled: Boolean): String? {
         return OpenCodeBrowserSnippets.buildProjectSwitchPromptSuppressionScript(enabled)
     }
@@ -286,17 +282,21 @@ internal object OpenCodeServerProtocol {
     )
 
     fun parseSystemNotificationPayload(payload: String?): SystemNotificationPayload? {
-        val parts = payload?.split('\n', limit = 3) ?: return null
-        if (parts.size < 2) return null
+        val parts = payload?.split('\n', limit = 5) ?: return null
+        if (parts.size < 5) return null
         val id = decodeUrlParameter(parts[0])?.trim().orEmpty()
-        val title = decodeUrlParameter(parts[1])?.trim().orEmpty()
-        val body = parts.getOrNull(2)?.let(::decodeUrlParameter)?.trim().orEmpty()
-        if (id.isBlank() || title.isBlank()) return null
-        return SystemNotificationPayload(id = id, title = title, body = body)
+        val directory = decodeUrlParameter(parts[1])?.trim().orEmpty()
+        val route = decodeUrlParameter(parts[2])?.trim().orEmpty()
+        val title = decodeUrlParameter(parts[3])?.trim().orEmpty()
+        val body = decodeUrlParameter(parts[4])?.trim().orEmpty()
+        if (id.isBlank() || directory.isBlank() || !route.startsWith('/') || title.isBlank()) return null
+        return SystemNotificationPayload(id = id, directory = directory, route = route, title = title, body = body)
     }
 
     data class SystemNotificationPayload(
         val id: String,
+        val directory: String,
+        val route: String,
         val title: String,
         val body: String,
     )

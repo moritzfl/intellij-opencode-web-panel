@@ -334,17 +334,54 @@ internal object OpenCodeBrowserSnippets {
             (() => {
               if (window.__opencodeIntellijNotificationBridgeInstalled) return;
               window.__opencodeIntellijNotificationBridgeInstalled = true;
-              window.__opencodeIntellijNativeNotification = window.Notification;
-              const notifications = new Map();
-              let nextNotificationId = 1;
               const encode = (value) => encodeURIComponent(String(value == null ? '' : value));
+              const controller = new AbortController();
+              const seen = new Set();
+              const sleep = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
+              const focused = () => document.visibilityState === 'visible' && document.hasFocus();
+              const projectName = (directory) => String(directory || '')
+                .replace(/[\\/]+${'$'}/, '')
+                .split(/[\\/]/)
+                .pop() || String(directory || '');
+              const encodeDirectory = (directory) => {
+                const bytes = new TextEncoder().encode(String(directory));
+                let binary = '';
+                for (const byte of bytes) binary += String.fromCharCode(byte);
+                return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+${'$'}/, '');
+              };
+              const routeFor = (directory, sessionID) => {
+                const root = '/' + encodeDirectory(directory);
+                return sessionID ? root + '/session/' + encodeURIComponent(sessionID) : root;
+              };
+              const sessionCache = new Map();
+              const fetchSession = async (directory, sessionID) => {
+                if (!sessionID) return null;
+                const cacheKey = directory + '\n' + sessionID;
+                if (sessionCache.has(cacheKey)) return sessionCache.get(cacheKey);
+                try {
+                  const response = await fetch(
+                    '/session/' + encodeURIComponent(sessionID) + '?directory=' + encodeURIComponent(directory),
+                    { credentials: 'same-origin', signal: controller.signal },
+                  );
+                  if (!response.ok) return null;
+                  const value = await response.json();
+                  const session = value && value.data ? value.data : value;
+                  sessionCache.set(cacheKey, session);
+                  return session;
+                } catch (_) {
+                  return null;
+                }
+              };
               const sendToIde = (notification) => {
-                const payload = [
-                  notification.__opencodeIntellijNotificationId,
+                const encodedPayload = [
+                  notification.id,
+                  notification.directory,
+                  notification.route,
                   notification.title,
                   notification.body,
                 ].map(encode).join('\n');
                 try {
+                  const payload = encodedPayload;
                   $notificationCallback;
                 } catch (error) {
                   if (window.console && window.console.warn) {
@@ -352,86 +389,98 @@ internal object OpenCodeBrowserSnippets {
                   }
                 }
               };
-              const createEvent = (type, notification) => ({
-                type,
-                target: notification,
-                currentTarget: notification,
-                defaultPrevented: false,
-                preventDefault() { this.defaultPrevented = true; },
-                stopPropagation() {},
-              });
-              class IntellijNotification {
-                constructor(title, options = {}) {
-                  this.__opencodeIntellijNotificationId = String(nextNotificationId++);
-                  this.title = String(title == null ? '' : title);
-                  this.body = String(options && options.body != null ? options.body : '');
-                  this.icon = String(options && options.icon != null ? options.icon : '');
-                  this.tag = String(options && options.tag != null ? options.tag : '');
-                  this.data = options && 'data' in options ? options.data : null;
-                  this.onclick = null;
-                  this.onclose = null;
-                  this.onerror = null;
-                  this.onshow = null;
-                  this.__listeners = new Map();
-                  notifications.set(this.__opencodeIntellijNotificationId, this);
-                  window.setTimeout(() => {
-                    sendToIde(this);
-                    this.dispatchEvent(createEvent('show', this));
-                  }, 0);
-                }
-                close() {
-                  notifications.delete(this.__opencodeIntellijNotificationId);
-                  this.dispatchEvent(createEvent('close', this));
-                }
-                addEventListener(type, listener) {
-                  if (typeof listener !== 'function') return;
-                  const listeners = this.__listeners.get(type) || [];
-                  listeners.push(listener);
-                  this.__listeners.set(type, listeners);
-                }
-                removeEventListener(type, listener) {
-                  const listeners = this.__listeners.get(type) || [];
-                  this.__listeners.set(type, listeners.filter((candidate) => candidate !== listener));
-                }
-                dispatchEvent(event) {
-                  const handler = this['on' + event.type];
-                  if (typeof handler === 'function') handler.call(this, event);
-                  for (const listener of this.__listeners.get(event.type) || []) {
-                    listener.call(this, event);
-                  }
-                  return !event.defaultPrevented;
-                }
-                static requestPermission(callback) {
-                  const promise = Promise.resolve('granted');
-                  if (typeof callback === 'function') promise.then(callback);
-                  return promise;
-                }
-              }
-              Object.defineProperty(IntellijNotification, 'permission', { configurable: true, enumerable: true, get: () => 'granted' });
-              Object.defineProperty(IntellijNotification, 'maxActions', { configurable: true, enumerable: true, get: () => 0 });
-              window.__opencodeIntellijNotificationClick = (notificationId) => {
-                const notification = notifications.get(String(notificationId));
-                if (!notification) return;
-                notification.dispatchEvent(createEvent('click', notification));
-              };
-              try {
-                Object.defineProperty(window, 'Notification', { configurable: true, writable: true, value: IntellijNotification });
-              } catch (_) {
-                window.Notification = IntellijNotification;
-              }
-            })();
-        """
-        return script.trimIndent()
-    }
+              const handleEvent = async (event) => {
+                const record = event && event.payload;
+                const directory = event && typeof event.directory === 'string' ? event.directory : '';
+                if (!directory || !record || typeof record.type !== 'string') return;
+                if (focused()) return;
+                const properties = record.properties || {};
+                const type = record.type;
+                if (
+                  type !== 'session.idle' &&
+                  type !== 'session.error' &&
+                  type !== 'permission.asked' &&
+                  type !== 'question.asked'
+                ) return;
 
-    fun buildSystemNotificationClickScript(notificationId: String): String {
-        val id = escapeJavaScript(notificationId)
-        @Language("JavaScript")
-        val script = """
-            (() => {
-              if (typeof window.focus === 'function') window.focus();
-              const click = window.__opencodeIntellijNotificationClick;
-              if (typeof click === 'function') click('$id');
+                const sessionID = typeof properties.sessionID === 'string' ? properties.sessionID : '';
+                const session = await fetchSession(directory, sessionID);
+                if (type === 'session.idle' && (!session || session.parentID)) return;
+                if (type === 'session.error' && session && session.parentID) return;
+
+                let title = '';
+                let body = '';
+                if (type === 'session.idle') {
+                  title = 'Response ready';
+                  body = session.title || sessionID;
+                } else if (type === 'session.error') {
+                  title = 'Session error';
+                  body = (session && session.title) || (typeof properties.error === 'string' ? properties.error : 'An error occurred');
+                } else if (type === 'permission.asked') {
+                  title = 'Permission required';
+                  body = ((session && session.title) || 'New session') + ' in ' + projectName(directory) + ' needs permission';
+                } else if (type === 'question.asked') {
+                  title = 'Question';
+                  body = ((session && session.title) || 'New session') + ' in ' + projectName(directory) + ' has a question';
+                }
+                if (!title || !body) return;
+
+                const id = String(record.id || [type, directory, sessionID, body].join('|'));
+                if (seen.has(id)) return;
+                seen.add(id);
+                window.setTimeout(() => seen.delete(id), 30000);
+                sendToIde({ id, directory, route: routeFor(directory, sessionID), title, body });
+              };
+              const processSseBlock = (block) => {
+                const data = block
+                  .split('\n')
+                  .filter((line) => line.startsWith('data:'))
+                  .map((line) => line.slice(5).trimStart())
+                  .join('\n')
+                  .trim();
+                if (!data) return;
+                try {
+                  handleEvent(JSON.parse(data));
+                } catch (error) {
+                  if (window.console && window.console.warn) {
+                    window.console.warn('Failed to parse OpenCode notification event', error);
+                  }
+                }
+              };
+              const listen = async () => {
+                while (!controller.signal.aborted) {
+                  try {
+                    const response = await fetch('/global/event', {
+                      headers: { Accept: 'text/event-stream' },
+                      credentials: 'same-origin',
+                      signal: controller.signal,
+                    });
+                    if (!response.ok || !response.body) throw new Error('OpenCode event stream unavailable');
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder();
+                    let buffer = '';
+                    while (!controller.signal.aborted) {
+                      const result = await reader.read();
+                      if (result.done) break;
+                      buffer += decoder.decode(result.value, { stream: true });
+                      let separator = buffer.indexOf('\n\n');
+                      while (separator >= 0) {
+                        processSseBlock(buffer.slice(0, separator));
+                        buffer = buffer.slice(separator + 2);
+                        separator = buffer.indexOf('\n\n');
+                      }
+                    }
+                  } catch (error) {
+                    if (controller.signal.aborted) return;
+                    if (window.console && window.console.warn) {
+                      window.console.warn('OpenCode notification bridge disconnected', error);
+                    }
+                    await sleep(2000);
+                  }
+                }
+              };
+              window.addEventListener('pagehide', () => controller.abort(), { once: true });
+              listen();
             })();
         """
         return script.trimIndent()

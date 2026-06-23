@@ -7,22 +7,35 @@ import com.intellij.notification.NotificationType
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.wm.ToolWindow
+import com.intellij.openapi.wm.WindowManager
 import com.intellij.ui.jcef.JBCefBrowser
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
+import java.awt.Frame
+import java.nio.file.Path
 
 internal class OpenCodeSystemNotifications(
     private val project: Project,
     private val toolWindow: ToolWindow,
     private val browser: JBCefBrowser,
     private val serverManager: SharedOpenCodeServerManager,
+    private val projectDirectory: () -> String?,
 ) {
+    init {
+        synchronized(targets) {
+            targets.add(this)
+        }
+    }
+
     fun show(payload: String?) {
         val openCodeNotification = OpenCodeServerProtocol.parseSystemNotificationPayload(payload) ?: return
         ApplicationManager.getApplication().invokeLater {
-            if (project.isDisposed || !OpenCodeSettingsState.getInstance().enableSystemNotifications) return@invokeLater
-            val serverUrl = serverManager.getServerUrl() ?: return@invokeLater
-            if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)) return@invokeLater
+            if (!OpenCodeSettingsState.getInstance().enableSystemNotifications) return@invokeLater
+            val target = targetFor(openCodeNotification.directory) ?: return@invokeLater
+            val serverUrl = target.serverManager.getServerUrl() ?: return@invokeLater
+            if (!target.canShowNotification(serverUrl)) return@invokeLater
+            if (!markRecent(openCodeNotification.id)) return@invokeLater
             val group = NotificationGroupManager.getInstance()
                 .getNotificationGroup(OpenCodeServerProtocol.NOTIFICATION_GROUP_ID)
                 ?: return@invokeLater
@@ -32,24 +45,42 @@ internal class OpenCodeSystemNotifications(
             ideNotification.addAction(object : NotificationAction("Show in OpenCode") {
                 override fun actionPerformed(e: AnActionEvent, notification: Notification) {
                     notification.expire()
-                    if (project.isDisposed) return
-                    toolWindow.activate({
-                        if (!project.isDisposed) {
-                            browser.component.requestFocusInWindow()
-                            triggerSystemNotificationClick(openCodeNotification.id)
-                        }
-                    }, true)
+                    target.openRoute(openCodeNotification.route)
                 }
             })
-            ideNotification.notify(project)
+            ideNotification.notify(target.project)
         }
     }
 
-    private fun triggerSystemNotificationClick(notificationId: String) {
+    fun dispose() {
+        synchronized(targets) {
+            targets.remove(this)
+        }
+    }
+
+    private fun canShowNotification(serverUrl: String): Boolean {
+        return !project.isDisposed &&
+            ProjectManager.getInstance().openProjects.contains(project) &&
+            OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)
+    }
+
+    private fun openRoute(route: String) {
         val serverUrl = serverManager.getServerUrl() ?: return
+        if (project.isDisposed || !ProjectManager.getInstance().openProjects.contains(project)) return
         if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)) return
-        val script = OpenCodeServerProtocol.buildSystemNotificationClickScript(notificationId)
-        browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
+        val frame = WindowManager.getInstance().getFrame(project)
+        if (frame != null) {
+            if (frame.extendedState and Frame.ICONIFIED != 0) {
+                frame.extendedState = frame.extendedState and Frame.ICONIFIED.inv()
+            }
+            frame.toFront()
+            frame.requestFocus()
+        }
+        toolWindow.activate({
+            if (project.isDisposed) return@activate
+            browser.loadURL(OpenCodeServerProtocol.buildServerRootUrl(serverUrl) + route)
+            browser.component.requestFocusInWindow()
+        }, true)
     }
 
     private fun notificationText(value: String, maxLength: Int): String {
@@ -62,5 +93,42 @@ internal class OpenCodeSystemNotifications(
             .replace(">", "&gt;")
             .replace("\"", "&quot;")
             .replace("'", "&#39;")
+    }
+
+    companion object {
+        private const val RECENT_NOTIFICATION_MILLIS = 30_000L
+        private val targets = mutableSetOf<OpenCodeSystemNotifications>()
+        private val recentNotificationIds = linkedMapOf<String, Long>()
+
+        private fun targetFor(directory: String): OpenCodeSystemNotifications? {
+            val normalizedDirectory = normalizeDirectory(directory) ?: return null
+            val openProjects = ProjectManager.getInstance().openProjects.toSet()
+            return synchronized(targets) {
+                targets.firstOrNull { target ->
+                    !target.project.isDisposed &&
+                        openProjects.contains(target.project) &&
+                        normalizeDirectory(target.projectDirectory()) == normalizedDirectory
+                }
+            }
+        }
+
+        private fun markRecent(id: String): Boolean {
+            val now = System.currentTimeMillis()
+            return synchronized(recentNotificationIds) {
+                recentNotificationIds.entries.removeIf { now - it.value > RECENT_NOTIFICATION_MILLIS }
+                if (recentNotificationIds.containsKey(id)) {
+                    false
+                } else {
+                    recentNotificationIds[id] = now
+                    true
+                }
+            }
+        }
+
+        private fun normalizeDirectory(directory: String?): String? {
+            val text = directory?.trim()?.takeIf { it.isNotBlank() } ?: return null
+            return runCatching { Path.of(text).toAbsolutePath().normalize().toString() }
+                .getOrElse { text.trimEnd('/', '\\') }
+        }
     }
 }
