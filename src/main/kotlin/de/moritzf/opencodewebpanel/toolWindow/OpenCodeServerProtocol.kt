@@ -231,6 +231,21 @@ internal object OpenCodeServerProtocol {
         return looksLikeAbsoluteFilesystemPath(directory)
     }
 
+    fun isSameFilesystemPath(first: String?, second: String?): Boolean {
+        val left = normalizeFilesystemPathForComparison(first) ?: return false
+        val right = normalizeFilesystemPathForComparison(second) ?: return false
+        return left == right
+    }
+
+    private fun normalizeFilesystemPathForComparison(path: String?): String? {
+        val text = path?.trim()?.replace('\\', '/')?.trimEnd('/')?.takeIf { it.isNotBlank() } ?: return null
+        return if (Regex("^[A-Za-z]:/").containsMatchIn(text)) {
+            text.replaceFirstChar { it.lowercase() }
+        } else {
+            text
+        }
+    }
+
     fun parseCodeReference(ref: String): ParsedCodeReference? {
         val text = ref.trim().ifBlank { return null }
         val lineMatch = Regex("^(.+):(\\d+)$").find(text)
@@ -513,6 +528,7 @@ internal object OpenCodeServerProtocol {
         executable: String = DEFAULT_EXECUTABLE,
         path: String = resolvePath(),
         pathSeparator: String = File.pathSeparator,
+        osName: String = System.getProperty("os.name").orEmpty(),
     ): String? {
         val command = executable.trim().takeIf { it.isNotBlank() } ?: return null
         val commandFile = File(command)
@@ -523,7 +539,7 @@ internal object OpenCodeServerProtocol {
         return path.split(pathSeparator)
             .asSequence()
             .filter { it.isNotBlank() }
-            .flatMap { directory -> candidateExecutableNames(command).asSequence().map { File(directory, it) } }
+            .flatMap { directory -> candidateExecutableNames(command, osName).asSequence().map { File(directory, it) } }
             .firstOrNull { it.isRunnableCommand() }
             ?.absolutePath
     }
@@ -559,6 +575,7 @@ internal object OpenCodeServerProtocol {
             "C:\\Program Files\\nodejs",
             "C:\\Program Files (x86)\\nodejs",
             appData?.windowsChild("npm"),
+            userProfile?.windowsChild("AppData\\Roaming\\npm"),
             localAppData?.windowsChild("pnpm"),
             localAppData?.windowsChild("Microsoft\\WindowsApps"),
             localAppData?.windowsChild("Programs\\opencode"),
@@ -581,10 +598,13 @@ internal object OpenCodeServerProtocol {
 
     private fun String.unixChild(child: String): String = trimEnd('/') + "/" + child
 
-    private fun candidateExecutableNames(executable: String): List<String> {
+    private fun candidateExecutableNames(executable: String, osName: String): List<String> {
         val lower = executable.lowercase()
         val windowsExtensions = listOf(".cmd", ".exe", ".bat", ".ps1")
-        return (listOf(executable) + windowsExtensions.filterNot { lower.endsWith(it) }.map { executable + it }).distinct()
+        if (!osName.startsWith("Windows", ignoreCase = true)) {
+            return (listOf(executable) + windowsExtensions.filterNot { lower.endsWith(it) }.map { executable + it }).distinct()
+        }
+        return (windowsExtensions.filterNot { lower.endsWith(it) }.map { executable + it } + executable).distinct()
     }
 
     private fun File.isRunnableCommand(): Boolean {

@@ -38,6 +38,29 @@ internal object OpenCodeBrowserSnippets {
                 bytes.forEach((byte) => binary += String.fromCharCode(byte));
                 return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+${'$'}/g, '');
               };
+              const decodeRouteDirectory = (value) => {
+                try {
+                  const base64 = value.replace(/-/g, '+').replace(/_/g, '/');
+                  const padded = base64 + '='.repeat((4 - base64.length % 4) % 4);
+                  const binary = atob(padded);
+                  const bytes = new Uint8Array(binary.length);
+                  for (let index = 0; index < binary.length; index += 1) {
+                    bytes[index] = binary.charCodeAt(index);
+                  }
+                  return new TextDecoder().decode(bytes);
+                } catch (_) {
+                  return '';
+                }
+              };
+              const comparableDirectory = (value) => {
+                const normalized = String(value || '').trim().replace(/\\/g, '/').replace(/\/+${'$'}/, '');
+                return /^[A-Za-z]:\//.test(normalized) ? normalized[0].toLowerCase() + normalized.slice(1) : normalized;
+              };
+              const currentRouteDirectory = () => {
+                const match = /^\/([^/?#]+)\/session(?:[/?#]|${'$'})/.exec(window.location.pathname);
+                return match ? decodeRouteDirectory(match[1]) : '';
+              };
+              const onSameProjectRoute = () => comparableDirectory(currentRouteDirectory()) === comparableDirectory(directory);
               if (openMostRecentConversation) {
                 try {
                   const rawLayout = window.localStorage.getItem(layoutStorageKey);
@@ -100,6 +123,10 @@ internal object OpenCodeBrowserSnippets {
               const onProjectSessionRoute = window.location.pathname === projectPath || window.location.pathname.startsWith(projectSessionPrefix);
               const keepWaitingForRecentSession = shouldKeepWaitingForRecentSession();
               if (getNavigationState() === path && !keepWaitingForRecentSession) return;
+              if (onSameProjectRoute() && !keepWaitingForRecentSession && !foundRecentSession) {
+                setNavigationState(window.location.pathname);
+                return;
+              }
               if (window.location.pathname === path) {
                 if (!keepWaitingForRecentSession) setNavigationState(path);
                 return;

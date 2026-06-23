@@ -183,6 +183,27 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun detectExecutablePathPrefersWindowsCommandShimOverExtensionlessNpmShellShim() {
+        val executableDirectory = Files.createTempDirectory("opencode-bin")
+        val shellShim = executableDirectory.resolve("opencode").toFile()
+        val commandShim = executableDirectory.resolve("opencode.cmd").toFile()
+        try {
+            shellShim.writeText("#!/bin/sh\n")
+            shellShim.setExecutable(true)
+            commandShim.writeText("")
+
+            assertEquals(
+                commandShim.absolutePath,
+                OpenCodeServerProtocol.detectExecutablePath(path = executableDirectory.toString(), osName = "Windows 11"),
+            )
+        } finally {
+            shellShim.delete()
+            commandShim.delete()
+            executableDirectory.toFile().delete()
+        }
+    }
+
+    @Test
     fun detectExecutablePathReturnsNullWhenExecutableIsMissing() {
         val executableDirectory = Files.createTempDirectory("opencode-bin")
         try {
@@ -261,6 +282,9 @@ class OpenCodeServerProtocolTest {
         assertFalse(script.contains("window.location.reload()"))
         assertTrue(script.contains("const projectPath = '/L3RtcC9teSAncHJvamVjdCc/session'"))
         assertTrue(script.contains("const directory = '/tmp/my \\'project\\''"))
+        assertTrue(script.contains("onSameProjectRoute"))
+        assertTrue(script.contains("decodeRouteDirectory"))
+        assertTrue(script.contains("comparableDirectory"))
     }
 
     @Test
@@ -999,6 +1023,12 @@ class OpenCodeServerProtocolTest {
         val url = "http://127.0.0.1:57099/${OpenCodeServerProtocol.encodeDirectory(directory)}/session/license.md"
 
         assertEquals(directory, OpenCodeServerProtocol.routeDirectoryFromUrl(url))
+    }
+
+    @Test
+    fun isSameFilesystemPathTreatsWindowsSeparatorsAndDriveCaseAsEquivalent() {
+        assertTrue(OpenCodeServerProtocol.isSameFilesystemPath("C:\\Source\\Project", "c:/Source/Project/"))
+        assertFalse(OpenCodeServerProtocol.isSameFilesystemPath("C:\\Source\\Project", "C:/Source/Other"))
     }
 
     @Test
