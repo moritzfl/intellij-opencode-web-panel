@@ -3,6 +3,7 @@ package de.moritzf.opencodewebpanel.toolWindow
 import com.intellij.ide.ui.LafManager
 import com.intellij.ide.ui.LafManagerListener
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.application.ex.ApplicationEx
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.util.Disposer
@@ -645,6 +646,12 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     override fun dispose() {
         disposed = true
         openProjectAlarm.cancelAllRequests()
+        if (isApplicationShutdownInProgress()) return
         Disposer.dispose(browser)
+    }
+
+    private fun isApplicationShutdownInProgress(): Boolean {
+        val application = ApplicationManager.getApplication() as? ApplicationEx ?: return false
+        return application.isExitInProgress || application.isDisposed
     }
 }
