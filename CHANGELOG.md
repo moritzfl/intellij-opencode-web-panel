@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-06-23
+
+### Fixed
+
+- Improve OpenCode binary auto-detection on Windows by preferring runnable command shims such as `opencode.cmd`.
+- Reduce startup flicker while the embedded OpenCode UI navigates to the current project, with a setting to disable the startup hiding behavior.
+- Avoid JCEF browser disposal work during IDE shutdown to prevent late network access warnings.
+
 ## [1.2.1] - 2026-06-21
 
 ### Fixed
@@ -57,7 +65,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.2.1...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.2.2...HEAD
+[1.2.2]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.2.1...1.2.2
 [1.2.1]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.2.0...1.2.1
 [1.2.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.1.0...1.2.0
 [1.1.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.0.1...1.1.0
