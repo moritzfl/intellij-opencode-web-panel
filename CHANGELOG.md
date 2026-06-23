@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+## [1.2.4] - 2026-06-23
+
+### Fixed
+
+- Avoid stale OpenCode authentication prompts after stopping or restarting the embedded server.
+- Route OpenCode notifications to the IDE window for the matching open project, and suppress notifications when the project is not open.
+
 ## [1.2.3] - 2026-06-23
 
 ### Fixed
@@ -71,7 +78,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.2.3...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.2.4...HEAD
+[1.2.4]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.2.3...1.2.4
 [1.2.3]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.2.2...1.2.3
 [1.2.2]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.2.1...1.2.2
 [1.2.1]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.2.0...1.2.1
