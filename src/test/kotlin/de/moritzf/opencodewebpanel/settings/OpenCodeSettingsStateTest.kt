@@ -141,6 +141,22 @@ class OpenCodeSettingsStateTest {
     }
 
     @Test
+    fun codeNavigationIsEffectiveOnlyWhenIdeNavigationIsEnabled() {
+        val settings = OpenCodeSettingsState().apply {
+            openFileLinksInIde = false
+            enableCodeNavigation = true
+        }
+
+        assertEquals(false, settings.effectiveCodeNavigationEnabled())
+
+        settings.openFileLinksInIde = true
+        assertEquals(true, settings.effectiveCodeNavigationEnabled())
+
+        settings.enableCodeNavigation = false
+        assertEquals(false, settings.effectiveCodeNavigationEnabled())
+    }
+
+    @Test
     fun suppressProjectSwitchPromptsIsEnabledByDefault() {
         assertEquals(true, OpenCodeSettingsState().suppressProjectSwitchPrompts)
     }

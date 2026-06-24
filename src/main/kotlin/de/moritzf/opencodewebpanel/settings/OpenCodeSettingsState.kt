@@ -70,6 +70,10 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
         }
     }
 
+    fun effectiveCodeNavigationEnabled(): Boolean {
+        return openFileLinksInIde && enableCodeNavigation
+    }
+
     companion object {
         const val DEFAULT_FIXED_PORT = 4096
         const val DEFAULT_UI_ZOOM_PERCENT = 100

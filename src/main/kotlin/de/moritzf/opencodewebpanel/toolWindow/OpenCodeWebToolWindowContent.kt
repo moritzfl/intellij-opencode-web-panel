@@ -117,7 +117,7 @@ class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
             null
         }
         openCodeReferenceQuery.addHandler { ref ->
-            if (OpenCodeSettingsState.getInstance().enableCodeNavigation) {
+            if (OpenCodeSettingsState.getInstance().effectiveCodeNavigationEnabled()) {
                 ideNavigation.openCodeReferenceInIde(ref)
             }
             null
@@ -438,7 +438,7 @@ class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
 
     private fun scheduleCodeNavigationScript() {
         if (codeNavigationScriptScheduled) return
-        if (!OpenCodeSettingsState.getInstance().enableCodeNavigation) return
+        if (!OpenCodeSettingsState.getInstance().effectiveCodeNavigationEnabled()) return
 
         val serverUrl = serverManager.getServerUrl() ?: return
         val script = OpenCodeServerProtocol.buildCodeNavigationScript(
@@ -448,7 +448,7 @@ class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
         val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
         codeNavigationScriptScheduled = true
 
-        scriptScheduler.schedule(script, rootUrl) { OpenCodeSettingsState.getInstance().enableCodeNavigation }
+        scriptScheduler.schedule(script, rootUrl) { OpenCodeSettingsState.getInstance().effectiveCodeNavigationEnabled() }
     }
 
     private fun scheduleProjectSwitchPromptSuppressionScript() {
@@ -510,7 +510,7 @@ class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
         val serverUrl = serverManager.getServerUrl() ?: return
         if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)) return
         codeNavigationScriptScheduled = false
-        if (!enabled) {
+        if (!enabled || !OpenCodeSettingsState.getInstance().openFileLinksInIde) {
             browser.cefBrowser.reload()
             return
         }
@@ -579,6 +579,7 @@ class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
         val serverUrl = serverManager.getServerUrl() ?: return
         if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)) return
         fileLinkScriptScheduled = false
+        codeNavigationScriptScheduled = false
         if (!enabled) {
             browser.cefBrowser.reload()
             return
@@ -590,6 +591,7 @@ class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
         ) ?: return
         browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
         fileLinkScriptScheduled = true
+        if (OpenCodeSettingsState.getInstance().enableCodeNavigation) applyCodeNavigation(enabled = true)
     }
 
     private fun applyOpenCodeProjectDirectoryChange() {

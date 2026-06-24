@@ -82,9 +82,9 @@ class OpenCodeSettingsConfigurable : Configurable {
     }
     private val openMostRecentConversationCheckBox = JBCheckBox("Open the most recent conversation for the project on startup")
     private val hideBrowserUntilProjectLoadsCheckBox = JBCheckBox("Hide browser until the OpenCode project page is ready")
-    private val openFileLinksInIdeCheckBox = JBCheckBox("Open local file links in the IDE")
+    private val openFileLinksInIdeCheckBox = JBCheckBox("Enable IDE navigation from OpenCode")
     private val openExternalLinksInBrowserCheckBox = JBCheckBox("Open external HTTP links in the system browser")
-    private val enableCodeNavigationCheckBox = JBCheckBox("Enable click-to-navigate on code references in chat")
+    private val enableCodeNavigationCheckBox = JBCheckBox("Also navigate code references in chat")
     private val enableChatFileDropCheckBox = JBCheckBox("Enable file drop and paste into chat")
     private val forceCompactLayoutCheckBox = JBCheckBox("Lock to compact view")
     private val syncThemeWithIdeCheckBox = JBCheckBox("Sync OpenCode color scheme with the IDE theme")
@@ -110,6 +110,27 @@ class OpenCodeSettingsConfigurable : Configurable {
     private var passwordLoadError: String? = null
     private var lifecycleConnection: com.intellij.util.messages.MessageBusConnection? = null
 
+    private data class CheckBoxSettingBinding(
+        val checkBox: JBCheckBox,
+        val read: OpenCodeSettingsState.() -> Boolean,
+        val write: OpenCodeSettingsState.(Boolean) -> Unit,
+    )
+
+    private val checkBoxSettingBindings = listOf(
+        CheckBoxSettingBinding(openMostRecentConversationCheckBox, { openMostRecentConversationOnStartup }, { value -> openMostRecentConversationOnStartup = value }),
+        CheckBoxSettingBinding(hideBrowserUntilProjectLoadsCheckBox, { hideBrowserUntilProjectLoads }, { value -> hideBrowserUntilProjectLoads = value }),
+        CheckBoxSettingBinding(openFileLinksInIdeCheckBox, { openFileLinksInIde }, { value -> openFileLinksInIde = value }),
+        CheckBoxSettingBinding(openExternalLinksInBrowserCheckBox, { openExternalLinksInBrowser }, { value -> openExternalLinksInBrowser = value }),
+        CheckBoxSettingBinding(enableCodeNavigationCheckBox, { enableCodeNavigation }, { value -> enableCodeNavigation = value }),
+        CheckBoxSettingBinding(enableChatFileDropCheckBox, { enableChatFileDrop }, { value -> enableChatFileDrop = value }),
+        CheckBoxSettingBinding(forceCompactLayoutCheckBox, { forceCompactLayout }, { value -> forceCompactLayout = value }),
+        CheckBoxSettingBinding(syncThemeWithIdeCheckBox, { syncThemeWithIde }, { value -> syncThemeWithIde = value }),
+        CheckBoxSettingBinding(suppressProjectSwitchPromptsCheckBox, { suppressProjectSwitchPrompts }, { value -> suppressProjectSwitchPrompts = value }),
+        CheckBoxSettingBinding(enableSystemNotificationsCheckBox, { enableSystemNotifications }, { value -> enableSystemNotifications = value }),
+        CheckBoxSettingBinding(waitForIntellijMcpServerCheckBox, { waitForIntellijMcpServer }, { value -> waitForIntellijMcpServer = value }),
+        CheckBoxSettingBinding(enableServerLogsCheckBox, { enableServerLogs }, { value -> enableServerLogs = value }),
+    )
+
     override fun getDisplayName(): String = "OpenCode Web Panel"
 
     override fun createComponent(): JComponent {
@@ -134,9 +155,11 @@ class OpenCodeSettingsConfigurable : Configurable {
         detectBinaryButton.addActionListener { detectBinaryPath() }
         restartServerButton.addActionListener { restartServer() }
         viewServerLogButton.addActionListener { showServerLog() }
+        enableServerLogsCheckBox.addItemListener { updateServerLogControls() }
+        openFileLinksInIdeCheckBox.addItemListener { updateUiDependencyControls() }
 
         val serverSetupPanel = panel {
-            buttonsGroup("Binary:") {
+            buttonsGroup("OpenCode executable:") {
                 row {
                     cell(autoBinaryRadioButton)
                         .comment("Find opencode from PATH plus common install locations, including Homebrew, system paths, and npm locations on Windows.")
@@ -150,7 +173,7 @@ class OpenCodeSettingsConfigurable : Configurable {
                     cell(detectBinaryButton)
                 }
             }
-            buttonsGroup("Port:") {
+            buttonsGroup("Server port:") {
                 row {
                     cell(autoPortRadioButton)
                         .comment("Let OpenCode choose an available loopback port. This is the default.")
@@ -161,80 +184,103 @@ class OpenCodeSettingsConfigurable : Configurable {
                         .comment("Use a fixed port on 127.0.0.1. Default: ${OpenCodeSettingsState.DEFAULT_FIXED_PORT}.")
                 }
             }
-            row("Password:") {
-                cell(passwordField)
-                    .resizableColumn()
-                    .align(AlignX.FILL)
-                    .gap(RightGap.SMALL)
-                cell(showPasswordButton).gap(RightGap.SMALL)
-                cell(copyPasswordButton).gap(RightGap.SMALL)
-                cell(generatePasswordButton)
+            group("Authentication") {
+                row("Password:") {
+                    cell(passwordField)
+                        .resizableColumn()
+                        .align(AlignX.FILL)
+                        .gap(RightGap.SMALL)
+                    cell(showPasswordButton).gap(RightGap.SMALL)
+                    cell(copyPasswordButton).gap(RightGap.SMALL)
+                    cell(generatePasswordButton)
+                }
+                row {
+                    cell(hintLabel)
+                }
             }
-            row {
-                cell(hintLabel)
+            group("Server Lifecycle") {
+                row {
+                    cell(serverStatusLabel)
+                }
+                row {
+                    cell(restartServerButton)
+                }
+                row {
+                    cell(waitForIntellijMcpServerCheckBox)
+                        .comment("If IntelliJ's MCP server is enabled, wait briefly for it to report that it is running before launching OpenCode.")
+                }
             }
-            row {
-                cell(serverStatusLabel)
-            }
-            row {
-                cell(restartServerButton)
-            }
-            row {
-                cell(enableServerLogsCheckBox)
-                    .comment("Persist OpenCode server output in the IDE log directory and prune old log files automatically.")
-            }
-            row {
-                cell(viewServerLogButton)
+            group("Server Logs") {
+                row {
+                    cell(enableServerLogsCheckBox)
+                        .comment("Persist OpenCode server output in the IDE log directory and prune old log files automatically.")
+                }
+                indent {
+                    row {
+                        cell(viewServerLogButton)
+                            .comment("Show recent OpenCode server output.")
+                    }
+                }
             }
         }
         val uiSettingsPanel = panel {
-            row("Zoom:") {
-                cell(uiZoomSpinner)
-                    .comment("Scale the embedded OpenCode UI. Default: ${OpenCodeSettingsState.DEFAULT_UI_ZOOM_PERCENT}%.")
+            group("Project Startup") {
+                row {
+                    cell(openMostRecentConversationCheckBox)
+                        .comment("When the tool window opens, restore the project's most recent OpenCode conversation instead of opening a new conversation.")
+                }
+                row {
+                    cell(hideBrowserUntilProjectLoadsCheckBox)
+                        .comment("Keep the startup status visible while OpenCode navigates from the server root to the configured project route.")
+                }
             }
-            row {
-                cell(openMostRecentConversationCheckBox)
-                    .comment("When the tool window opens, restore the project's most recent OpenCode conversation instead of opening a new conversation.")
+            group("Browser Appearance") {
+                row("Zoom:") {
+                    cell(uiZoomSpinner)
+                        .comment("Scale the embedded OpenCode UI. Default: ${OpenCodeSettingsState.DEFAULT_UI_ZOOM_PERCENT}%.")
+                }
+                row {
+                    cell(forceCompactLayoutCheckBox)
+                        .comment("Prevent the OpenCode UI from switching to a wide desktop layout when the panel is enlarged.")
+                }
+                row {
+                    cell(syncThemeWithIdeCheckBox)
+                        .comment("Patches the browser's prefers-color-scheme media query to match the IntelliJ theme. Only affects OpenCode when its color scheme is set to System.")
+                }
             }
-            row {
-                cell(hideBrowserUntilProjectLoadsCheckBox)
-                    .comment("Keep the startup status visible while OpenCode navigates from the server root to the configured project route.")
+            group("IDE Navigation") {
+                row {
+                    cell(openFileLinksInIdeCheckBox)
+                        .comment("Open local file links and changed-file buttons in IntelliJ.")
+                }
+                indent {
+                    row {
+                        cell(enableCodeNavigationCheckBox)
+                            .comment("Open file names, class names, and code references from chat.")
+                    }
+                }
             }
-            row {
-                cell(openFileLinksInIdeCheckBox)
-                    .comment("Open markdown links that point to workspace-relative, absolute, or file: paths in IntelliJ.")
+            group("Link Handling") {
+                row {
+                    cell(openExternalLinksInBrowserCheckBox)
+                        .comment("Open external HTTP and HTTPS links in the system browser instead of navigating the embedded panel.")
+                }
             }
-            row {
-                cell(enableCodeNavigationCheckBox)
-                    .comment("Click on file names, class names, or code references in chat messages to open them in IntelliJ.")
+            group("Chat File Input") {
+                row {
+                    cell(enableChatFileDropCheckBox)
+                        .comment("Use OpenCode's native handling for project file references and file attachments.")
+                }
             }
-            row {
-                cell(openExternalLinksInBrowserCheckBox)
-                    .comment("Open http:// and https:// links outside the local OpenCode app in the system browser instead of navigating the embedded panel.")
-            }
-            row {
-                cell(enableChatFileDropCheckBox)
-                    .comment("Use OpenCode's native handling for project file references and file attachments.")
-            }
-            row {
-                cell(forceCompactLayoutCheckBox)
-                    .comment("Prevent the OpenCode UI from switching to a wide desktop layout when the panel is enlarged.")
-            }
-            row {
-                cell(syncThemeWithIdeCheckBox)
-                    .comment("Patches the browser's prefers-color-scheme media query to match the IntelliJ theme. Only affects OpenCode when its color scheme is set to System.")
-            }
-            row {
-                cell(suppressProjectSwitchPromptsCheckBox)
-                    .comment("Hide OpenCode notifications that ask this panel to switch to another session or project for approval.")
-            }
-            row {
-                cell(enableSystemNotificationsCheckBox)
-                    .comment("Show OpenCode browser notifications as IntelliJ notifications and route notification clicks back to OpenCode.")
-            }
-            row {
-                cell(waitForIntellijMcpServerCheckBox)
-                    .comment("If IntelliJ's MCP server is enabled, wait briefly for it to report that it is running before launching OpenCode.")
+            group("OpenCode Notifications") {
+                row {
+                    cell(enableSystemNotificationsCheckBox)
+                        .comment("Show OpenCode browser notifications as IntelliJ notifications and route notification clicks back to OpenCode.")
+                }
+                row {
+                    cell(suppressProjectSwitchPromptsCheckBox)
+                        .comment("Hide OpenCode in-app prompts that ask this panel to switch to another session or project for approval.")
+                }
             }
         }
         panel = JBTabbedPane().apply {
@@ -254,20 +300,10 @@ class OpenCodeSettingsConfigurable : Configurable {
         val fixedPortModified = fixedPortOrDefault() != OpenCodeSettingsState.sanitizePort(settings.fixedPort)
         val binaryModeModified = selectedBinaryMode() != settings.binaryModeValue()
         val binaryPathModified = binaryPath() != settings.binaryPath.trim()
-        val serverLogsModified = enableServerLogsCheckBox.isSelected != settings.enableServerLogs
-        val uiSettingsModified = openMostRecentConversationCheckBox.isSelected != settings.openMostRecentConversationOnStartup ||
-            hideBrowserUntilProjectLoadsCheckBox.isSelected != settings.hideBrowserUntilProjectLoads ||
-            openFileLinksInIdeCheckBox.isSelected != settings.openFileLinksInIde ||
-            openExternalLinksInBrowserCheckBox.isSelected != settings.openExternalLinksInBrowser ||
-            enableCodeNavigationCheckBox.isSelected != settings.enableCodeNavigation ||
-            enableChatFileDropCheckBox.isSelected != settings.enableChatFileDrop ||
-            forceCompactLayoutCheckBox.isSelected != settings.forceCompactLayout ||
-            syncThemeWithIdeCheckBox.isSelected != settings.syncThemeWithIde ||
-            suppressProjectSwitchPromptsCheckBox.isSelected != settings.suppressProjectSwitchPrompts ||
-            enableSystemNotificationsCheckBox.isSelected != settings.enableSystemNotifications ||
-            waitForIntellijMcpServerCheckBox.isSelected != settings.waitForIntellijMcpServer ||
-            uiZoomPercent() != OpenCodeSettingsState.sanitizeUiZoomPercent(settings.uiZoomPercent)
-        return passwordModified || portModeModified || fixedPortModified || binaryModeModified || binaryPathModified || serverLogsModified || uiSettingsModified
+        val checkBoxSettingsModified = checkBoxSettingBindings.any { it.checkBox.isSelected != it.read(settings) }
+        val uiZoomModified = uiZoomPercent() != OpenCodeSettingsState.sanitizeUiZoomPercent(settings.uiZoomPercent)
+        return passwordModified || portModeModified || fixedPortModified || binaryModeModified || binaryPathModified ||
+            checkBoxSettingsModified || uiZoomModified
     }
 
     override fun apply() {
@@ -304,24 +340,15 @@ class OpenCodeSettingsConfigurable : Configurable {
         settings.fixedPort = nextFixedPort
         settings.binaryMode = nextBinaryMode.name
         settings.binaryPath = nextBinaryPath
-        settings.openMostRecentConversationOnStartup = openMostRecentConversationCheckBox.isSelected
-        settings.hideBrowserUntilProjectLoads = hideBrowserUntilProjectLoadsCheckBox.isSelected
-        settings.openFileLinksInIde = openFileLinksInIdeCheckBox.isSelected
-        settings.openExternalLinksInBrowser = openExternalLinksInBrowserCheckBox.isSelected
-        settings.enableCodeNavigation = enableCodeNavigationCheckBox.isSelected
-        settings.enableChatFileDrop = enableChatFileDropCheckBox.isSelected
-        settings.forceCompactLayout = forceCompactLayoutCheckBox.isSelected
-        settings.syncThemeWithIde = syncThemeWithIdeCheckBox.isSelected
-        settings.suppressProjectSwitchPrompts = suppressProjectSwitchPromptsCheckBox.isSelected
-        settings.enableSystemNotifications = enableSystemNotificationsCheckBox.isSelected
-        settings.waitForIntellijMcpServer = waitForIntellijMcpServerCheckBox.isSelected
-        settings.enableServerLogs = enableServerLogsCheckBox.isSelected
+        checkBoxSettingBindings.forEach { it.write(settings, it.checkBox.isSelected) }
         settings.uiZoomPercent = nextUiZoomPercent
         fixedPortField.text = nextFixedPort.toString()
         binaryPathField.text = nextBinaryPath
         updatePasswordHint()
         updatePortControls()
         updateBinaryControls()
+        updateServerLogControls()
+        updateUiDependencyControls()
 
         if (oldPassword != nextPassword || oldPortMode != nextPortMode || oldFixedPort != nextFixedPort ||
             oldBinaryMode != nextBinaryMode || oldBinaryPath != nextBinaryPath
@@ -392,23 +419,14 @@ class OpenCodeSettingsConfigurable : Configurable {
         }
         fixedPortField.text = OpenCodeSettingsState.sanitizePort(settings.fixedPort).toString()
         binaryPathField.text = settings.binaryPath.trim()
-        openMostRecentConversationCheckBox.isSelected = settings.openMostRecentConversationOnStartup
-        hideBrowserUntilProjectLoadsCheckBox.isSelected = settings.hideBrowserUntilProjectLoads
-        openFileLinksInIdeCheckBox.isSelected = settings.openFileLinksInIde
-        openExternalLinksInBrowserCheckBox.isSelected = settings.openExternalLinksInBrowser
-        enableCodeNavigationCheckBox.isSelected = settings.enableCodeNavigation
-        enableChatFileDropCheckBox.isSelected = settings.enableChatFileDrop
-        forceCompactLayoutCheckBox.isSelected = settings.forceCompactLayout
-        syncThemeWithIdeCheckBox.isSelected = settings.syncThemeWithIde
-        suppressProjectSwitchPromptsCheckBox.isSelected = settings.suppressProjectSwitchPrompts
-        enableSystemNotificationsCheckBox.isSelected = settings.enableSystemNotifications
-        waitForIntellijMcpServerCheckBox.isSelected = settings.waitForIntellijMcpServer
-        enableServerLogsCheckBox.isSelected = settings.enableServerLogs
+        checkBoxSettingBindings.forEach { it.checkBox.isSelected = it.read(settings) }
         uiZoomSpinner.value = OpenCodeSettingsState.sanitizeUiZoomPercent(settings.uiZoomPercent)
         loadPasswordField()
         updatePasswordHint()
         updatePortControls()
         updateBinaryControls()
+        updateServerLogControls()
+        updateUiDependencyControls()
         updateServerStatus()
     }
 
@@ -620,5 +638,13 @@ class OpenCodeSettingsConfigurable : Configurable {
     private fun updateBinaryControls() {
         binaryPathField.isEnabled = customBinaryRadioButton.isSelected
         detectBinaryButton.isEnabled = customBinaryRadioButton.isSelected
+    }
+
+    private fun updateServerLogControls() {
+        viewServerLogButton.isEnabled = enableServerLogsCheckBox.isSelected
+    }
+
+    private fun updateUiDependencyControls() {
+        enableCodeNavigationCheckBox.isEnabled = openFileLinksInIdeCheckBox.isSelected
     }
 }
