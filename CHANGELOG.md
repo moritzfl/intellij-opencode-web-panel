@@ -4,6 +4,16 @@
 
 ## [Unreleased]
 
+## [1.2.6] - 2026-06-24
+
+### Changed
+
+- Group settings by related behavior and indent dependent controls to make option relationships clearer.
+
+### Fixed
+
+- Restarting the OpenCode server from settings now starts it again and reloads the tool window.
+
 ## [1.2.5] - 2026-06-23
 
 ### Fixed
@@ -84,7 +94,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.2.5...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.2.6...HEAD
+[1.2.6]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.2.5...1.2.6
 [1.2.5]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.2.4...1.2.5
 [1.2.4]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.2.3...1.2.4
 [1.2.3]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.2.2...1.2.3
