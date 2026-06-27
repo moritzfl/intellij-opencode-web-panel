@@ -4,6 +4,16 @@
 
 ## [Unreleased]
 
+## [1.2.7] - 2026-06-27
+
+### Fixed
+
+- Pasting a screenshot or other image from the clipboard now attaches it to chat instead of doing nothing.
+- Dropping an image from another app now attaches it to chat when it cannot be added as a project file reference.
+- Keep the existing OpenCode server password when the system keychain is briefly unavailable, instead of replacing it and breaking authentication.
+- Avoid a short UI freeze when applying settings while the saved password is read from secure storage.
+- Handle file names with unusual characters more reliably when dragging or pasting files into chat.
+
 ## [1.2.6] - 2026-06-24
 
 ### Changed
@@ -94,7 +104,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.2.6...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.2.7...HEAD
+[1.2.7]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.2.6...1.2.7
 [1.2.6]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.2.5...1.2.6
 [1.2.5]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.2.4...1.2.5
 [1.2.4]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.2.3...1.2.4
