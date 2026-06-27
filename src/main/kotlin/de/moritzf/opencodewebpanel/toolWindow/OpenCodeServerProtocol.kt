@@ -10,6 +10,7 @@ import java.nio.file.Path
 import java.security.SecureRandom
 import java.util.Base64
 import kotlin.math.ln
+import org.jetbrains.annotations.TestOnly
 
 internal object OpenCodeServerProtocol {
     private const val HOST = "127.0.0.1"
@@ -52,6 +53,7 @@ internal object OpenCodeServerProtocol {
         )
     }
 
+    @TestOnly
     fun buildFileLinkHandlerScript(projectBasePath: String?): String? {
         return buildFileLinkHandlerScript(projectBasePath, enabled = true)
     }
@@ -88,14 +90,17 @@ internal object OpenCodeServerProtocol {
         return OpenCodeBrowserSnippets.buildIdeThemeSyncScript(enabled, dark)
     }
 
+    @TestOnly
     fun buildDispatchDroppedFilesScript(files: List<DroppedFilePayload>): String? {
         return OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(files)
     }
 
+    @TestOnly
     fun buildDispatchDroppedFilesScript(files: List<DroppedFilePayload>, enabled: Boolean): String? {
         return OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(files, enabled)
     }
 
+    @TestOnly
     fun buildDispatchDroppedFilesScript(files: List<DroppedFilePayload>, textPlain: String?, enabled: Boolean): String? {
         return OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(files, textPlain, enabled)
     }
@@ -119,6 +124,7 @@ internal object OpenCodeServerProtocol {
         return "file:$relativePath"
     }
 
+    @TestOnly
     fun buildFileLinkHandlerScript(projectBasePath: String?, enabled: Boolean): String? {
         return OpenCodeBrowserSnippets.buildFileLinkHandlerScript(projectBasePath, enabled)
     }

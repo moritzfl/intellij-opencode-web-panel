@@ -9,6 +9,7 @@ import com.intellij.openapi.progress.Task.Backgroundable
 import com.intellij.openapi.project.Project
 import de.moritzf.opencodewebpanel.settings.OpenCodePasswordStore
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
+import org.jetbrains.annotations.TestOnly
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.nio.file.Path
@@ -124,6 +125,7 @@ class SharedOpenCodeServerManager : Disposable {
 
     fun getLifecycleState(): OpenCodeServerLifecycleState = synchronized(lock) { lifecycleState }
 
+    @TestOnly
     fun setServerRunning(running: Boolean) {
         synchronized(lock) {
             serverRunning = running
@@ -133,6 +135,7 @@ class SharedOpenCodeServerManager : Disposable {
 
     fun getServerProcess(): Process? = synchronized(lock) { serverProcess }
 
+    @TestOnly
     fun setServerProcess(process: Process?) {
         synchronized(lock) {
             serverProcess = process
@@ -141,6 +144,7 @@ class SharedOpenCodeServerManager : Disposable {
 
     fun getServerUrl(): String? = synchronized(lock) { serverUrl }
 
+    @TestOnly
     fun setServerUrl(url: String?) {
         synchronized(lock) {
             serverUrl = url
@@ -149,6 +153,7 @@ class SharedOpenCodeServerManager : Disposable {
 
     fun getServerPassword(): String? = synchronized(lock) { serverPassword }
 
+    @TestOnly
     fun setServerPassword(password: String?) {
         synchronized(lock) {
             serverPassword = password
@@ -157,6 +162,7 @@ class SharedOpenCodeServerManager : Disposable {
 
     fun getCheckScheduledFuture(): ScheduledFuture<*>? = synchronized(lock) { checkScheduledFuture }
 
+    @TestOnly
     fun setCheckScheduledFuture(future: ScheduledFuture<*>?) {
         synchronized(lock) {
             checkScheduledFuture = future
