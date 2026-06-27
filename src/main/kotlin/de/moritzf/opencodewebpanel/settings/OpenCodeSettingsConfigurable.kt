@@ -445,7 +445,11 @@ class OpenCodeSettingsConfigurable : Configurable {
             passwordLoadError = null
             return currentPassword
         }
-        val result = runCatching { OpenCodePasswordStore.getInstance().loadFreshBlocking() }
+        val store = OpenCodePasswordStore.getInstance()
+        // Prefer the already-loaded value to avoid a blocking secure-storage read on the EDT;
+        // only fall back to a fresh read when nothing has been cached yet.
+        val result = store.cachedPassword()?.let { Result.success(it) }
+            ?: runCatching { store.loadFreshBlocking() }
         val loadedPassword = result.getOrElse { error ->
             passwordLoadError = "Could not load password from secure storage: ${error.message ?: error::class.java.simpleName}"
             updatePasswordHint()
