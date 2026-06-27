@@ -6,7 +6,6 @@ import de.moritzf.opencodewebpanel.toolWindow.SharedOpenCodeServerManager
 import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsConfigurable
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable
 import com.intellij.openapi.project.DumbAware
-import com.intellij.testFramework.TestDataPath
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -15,7 +14,6 @@ import java.io.OutputStream
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 
-@TestDataPath("\$CONTENT_ROOT/src/test/testData")
 class OpenCodePluginTest : BasePlatformTestCase() {
 
     fun testToolWindowFactoryIsAvailableDuringIndexing() {
@@ -112,8 +110,6 @@ class OpenCodePluginTest : BasePlatformTestCase() {
             super.tearDown()
         }
     }
-
-    override fun getTestDataPath() = "src/test/testData/rename"
 
     private class RecordingProcess : Process() {
         var destroyed = false
