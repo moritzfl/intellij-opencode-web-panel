@@ -10,15 +10,19 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.ui.jcef.JBCefBrowser
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
+import java.awt.Image
 import java.awt.KeyboardFocusManager
 import java.awt.KeyEventDispatcher
 import java.awt.Toolkit
 import java.awt.datatransfer.DataFlavor
 import java.awt.datatransfer.Transferable
 import java.awt.event.KeyEvent
+import java.awt.image.BufferedImage
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.file.Files
 import java.util.Base64
+import javax.imageio.ImageIO
 import javax.swing.JComponent
 import javax.swing.TransferHandler
 import org.cef.handler.CefKeyboardHandler.CefKeyEvent
@@ -50,6 +54,32 @@ internal class OpenCodeFileDropHandler(
             val hasAlt = modifiers and EventFlags.EVENTFLAG_ALT_DOWN != 0
             val key = listOf(character, unmodifiedCharacter).any { it.lowercaseChar() == 'v' }
             return (keyCode == KeyEvent.VK_V || key) && hasCommand != hasControl && !hasAlt
+        }
+
+        internal fun encodeImageToPng(image: Image): ByteArray? {
+            val bufferedImage = (image as? BufferedImage) ?: toBufferedImage(image) ?: return null
+            return runCatching {
+                ByteArrayOutputStream().use { stream ->
+                    if (ImageIO.write(bufferedImage, "png", stream)) stream.toByteArray() else null
+                }
+            }.getOrNull()?.takeIf { it.isNotEmpty() }
+        }
+
+        private fun toBufferedImage(image: Image): BufferedImage? {
+            val width = image.getWidth(null)
+            val height = image.getHeight(null)
+            if (width <= 0 || height <= 0) return null
+            // Off-screen buffer used only to encode the clipboard image to PNG bytes; it must match the
+            // source pixel dimensions exactly, so UIUtil.createImage()'s HiDPI scaling is intentionally avoided.
+            @Suppress("UndesirableClassUsage")
+            val buffered = BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB)
+            val graphics = buffered.createGraphics()
+            try {
+                graphics.drawImage(image, 0, 0, null)
+            } finally {
+                graphics.dispose()
+            }
+            return buffered
         }
     }
 
@@ -152,12 +182,20 @@ internal class OpenCodeFileDropHandler(
         val files = transferables
             .flatMap { clipboardFiles(it) }
             .distinctBy { it.toPath().toAbsolutePath().normalize() }
+        val imagePayloads = if (files.isEmpty()) clipboardImagePayloads(transferables) else emptyList()
         val text = transferables.firstNotNullOfOrNull { droppedTextPayload(it) }
-        if (files.isEmpty() && text?.startsWith("file:") != true) return false
-        return dispatchDroppedData(files, text)
+        val fileReferenceText = text?.takeIf { it.startsWith("file:") }
+        if (files.isEmpty() && imagePayloads.isEmpty() && fileReferenceText == null) return false
+        // When a pasted image is forwarded, ignore any incidental text flavor that is not a file reference.
+        val textToDispatch = if (imagePayloads.isNotEmpty()) fileReferenceText else text
+        return dispatchDroppedData(files, textToDispatch, imagePayloads)
     }
 
-    private fun dispatchDroppedData(files: List<File>, textPlain: String?): Boolean {
+    private fun dispatchDroppedData(
+        files: List<File>,
+        textPlain: String?,
+        extraPayloads: List<OpenCodeServerProtocol.DroppedFilePayload> = emptyList(),
+    ): Boolean {
         val projectDirectory = openCodeProjectDirectory()
         val fileTextDrops = files.mapNotNull { file -> OpenCodeServerProtocol.localFileDropText(file, projectDirectory) }
         val textDrops = fileTextDrops.ifEmpty { droppedTextPlainItems(files, textPlain) }
@@ -166,13 +204,13 @@ internal class OpenCodeFileDropHandler(
         if (selection.rejectionMessages.isNotEmpty()) {
             showFileDropWarning(selection.rejectionMessages)
         }
-        if (textDrops.isEmpty() && selection.acceptedFiles.isEmpty()) {
+        if (textDrops.isEmpty() && selection.acceptedFiles.isEmpty() && extraPayloads.isEmpty()) {
             return selection.rejectionMessages.isNotEmpty()
         }
 
         ApplicationManager.getApplication().executeOnPooledThread {
             if (isDisposed()) return@executeOnPooledThread
-            val payloads = selection.acceptedFiles.mapNotNull { droppedFilePayload(it) }
+            val payloads = selection.acceptedFiles.mapNotNull { droppedFilePayload(it) } + extraPayloads
             val script = OpenCodeServerProtocol.buildDispatchDroppedFilesScript(
                 payloads,
                 textPlain = textDrops,
@@ -187,6 +225,29 @@ internal class OpenCodeFileDropHandler(
             }
         }
         return true
+    }
+
+    private fun clipboardImagePayloads(transferables: List<Transferable>): List<OpenCodeServerProtocol.DroppedFilePayload> {
+        val bytes = transferables.firstNotNullOfOrNull { clipboardImagePng(it) } ?: return emptyList()
+        if (bytes.size > MAX_DROPPED_FILE_BYTES) {
+            showFileDropWarning(listOf("The pasted image is larger than ${formatFileSize(MAX_DROPPED_FILE_BYTES)}."))
+            return emptyList()
+        }
+        val timestamp = System.currentTimeMillis()
+        return listOf(
+            OpenCodeServerProtocol.DroppedFilePayload(
+                name = "pasted-image-$timestamp.png",
+                mime = "image/png",
+                lastModified = timestamp,
+                base64 = Base64.getEncoder().encodeToString(bytes),
+            ),
+        )
+    }
+
+    private fun clipboardImagePng(transferable: Transferable): ByteArray? {
+        if (!transferable.isDataFlavorSupported(DataFlavor.imageFlavor)) return null
+        val image = runCatching { transferable.getTransferData(DataFlavor.imageFlavor) as? Image }.getOrNull() ?: return null
+        return encodeImageToPng(image)
     }
 
     private fun clipboardFiles(transferable: Transferable): List<File> {

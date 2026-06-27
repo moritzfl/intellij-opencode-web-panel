@@ -1,10 +1,17 @@
 package de.moritzf.opencodewebpanel.toolWindow
 
 import org.cef.misc.EventFlags
+import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.awt.Color
 import java.awt.event.KeyEvent
+import java.awt.image.BufferedImage
+import java.io.ByteArrayInputStream
+import javax.imageio.ImageIO
 
 class OpenCodeFileDropHandlerTest {
     @Test
@@ -25,5 +32,25 @@ class OpenCodeFileDropHandlerTest {
                 EventFlags.EVENTFLAG_COMMAND_DOWN or EventFlags.EVENTFLAG_CONTROL_DOWN,
             ),
         )
+    }
+
+    @Test
+    fun encodeImageToPngProducesDecodablePngBytes() {
+        val image = BufferedImage(4, 3, BufferedImage.TYPE_INT_ARGB)
+        val graphics = image.createGraphics()
+        graphics.color = Color.RED
+        graphics.fillRect(0, 0, 4, 3)
+        graphics.dispose()
+
+        val bytes = OpenCodeFileDropHandler.encodeImageToPng(image)
+
+        assertNotNull(bytes)
+        val pngSignature = byteArrayOf(
+            0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+        )
+        assertArrayEquals(pngSignature, bytes!!.copyOfRange(0, pngSignature.size))
+        val decoded = ImageIO.read(ByteArrayInputStream(bytes))
+        assertEquals(4, decoded.width)
+        assertEquals(3, decoded.height)
     }
 }
