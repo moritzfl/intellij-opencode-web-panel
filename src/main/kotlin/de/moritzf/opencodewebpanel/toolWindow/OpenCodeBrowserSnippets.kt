@@ -687,7 +687,7 @@ internal object OpenCodeBrowserSnippets {
         if (!enabled || (files.isEmpty() && textEntries.isEmpty())) return null
         val fileEntries = files.joinToString(",\n") { file ->
             @Language("JavaScript")
-            val entry = "{ name: '${escapeJavaScript(file.name)}', mime: '${escapeJavaScript(file.mime)}', lastModified: ${file.lastModified}, base64: '${file.base64}' }"
+            val entry = "{ name: '${escapeJavaScript(file.name)}', mime: '${escapeJavaScript(file.mime)}', lastModified: ${file.lastModified}, base64: '${escapeJavaScript(file.base64)}' }"
             entry
         }
         val textDrops = textEntries.joinToString("\n") {
@@ -912,11 +912,29 @@ internal object OpenCodeBrowserSnippets {
     }
 
     private fun escapeJavaScript(value: String): String {
-        return value
-            .replace("\\", "\\\\")
-            .replace("'", "\\'")
-            .replace("\n", "\\n")
-            .replace("\r", "\\r")
+        val builder = StringBuilder(value.length + 8)
+        for (char in value) {
+            when (char) {
+                '\\' -> builder.append("\\\\")
+                '\'' -> builder.append("\\'")
+                '\n' -> builder.append("\\n")
+                '\r' -> builder.append("\\r")
+                '\t' -> builder.append("\\t")
+                '\b' -> builder.append("\\b")
+                '\u000C' -> builder.append("\\f")
+                // Escape '<' so an interpolated value can never break out of an inline <script> context.
+                '<' -> builder.append("\\u003C")
+                // U+2028/U+2029 are valid line terminators inside JS string literals and must be escaped.
+                '\u2028' -> builder.append("\\u2028")
+                '\u2029' -> builder.append("\\u2029")
+                else -> if (char.code < 0x20) {
+                    builder.append("\\u").append(char.code.toString(16).padStart(4, '0'))
+                } else {
+                    builder.append(char)
+                }
+            }
+        }
+        return builder.toString()
     }
 
     private fun escapeHtml(value: String): String {

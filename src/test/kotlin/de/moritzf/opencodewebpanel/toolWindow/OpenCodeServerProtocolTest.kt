@@ -666,6 +666,25 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun buildDispatchDroppedFilesScriptEscapesUnsafeCharactersInFileNames() {
+        val script = OpenCodeServerProtocol.buildDispatchDroppedFilesScript(
+            listOf(
+                OpenCodeServerProtocol.DroppedFilePayload(
+                    name = "a<b\u2028c\u2029d\u0000e",
+                    mime = "text/plain",
+                    lastModified = 1,
+                    base64 = "aGVsbG8=",
+                ),
+            ),
+        )!!
+
+        assertTrue(script.contains("a\\u003Cb\\u2028c\\u2029d\\u0000e"))
+        assertFalse(script.contains("a<b"))
+        assertFalse(script.contains("\u2028"))
+        assertFalse(script.contains("\u0000"))
+    }
+
+    @Test
     fun buildDispatchDroppedFilesScriptCanForwardTextPlainDropData() {
         val script = OpenCodeServerProtocol.buildDispatchDroppedFilesScript(
             emptyList(),
