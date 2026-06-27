@@ -114,19 +114,20 @@ class OpenCodeSettingsConfigurable : Configurable {
         val checkBox: JBCheckBox,
         val read: OpenCodeSettingsState.() -> Boolean,
         val write: OpenCodeSettingsState.(Boolean) -> Unit,
+        val broadcast: ((OpenCodeSettingsListener, Boolean) -> Unit)? = null,
     )
 
     private val checkBoxSettingBindings = listOf(
         CheckBoxSettingBinding(openMostRecentConversationCheckBox, { openMostRecentConversationOnStartup }, { value -> openMostRecentConversationOnStartup = value }),
-        CheckBoxSettingBinding(hideBrowserUntilProjectLoadsCheckBox, { hideBrowserUntilProjectLoads }, { value -> hideBrowserUntilProjectLoads = value }),
-        CheckBoxSettingBinding(openFileLinksInIdeCheckBox, { openFileLinksInIde }, { value -> openFileLinksInIde = value }),
-        CheckBoxSettingBinding(openExternalLinksInBrowserCheckBox, { openExternalLinksInBrowser }, { value -> openExternalLinksInBrowser = value }),
-        CheckBoxSettingBinding(enableCodeNavigationCheckBox, { enableCodeNavigation }, { value -> enableCodeNavigation = value }),
-        CheckBoxSettingBinding(enableChatFileDropCheckBox, { enableChatFileDrop }, { value -> enableChatFileDrop = value }),
-        CheckBoxSettingBinding(forceCompactLayoutCheckBox, { forceCompactLayout }, { value -> forceCompactLayout = value }),
-        CheckBoxSettingBinding(syncThemeWithIdeCheckBox, { syncThemeWithIde }, { value -> syncThemeWithIde = value }),
-        CheckBoxSettingBinding(suppressProjectSwitchPromptsCheckBox, { suppressProjectSwitchPrompts }, { value -> suppressProjectSwitchPrompts = value }),
-        CheckBoxSettingBinding(enableSystemNotificationsCheckBox, { enableSystemNotifications }, { value -> enableSystemNotifications = value }),
+        CheckBoxSettingBinding(hideBrowserUntilProjectLoadsCheckBox, { hideBrowserUntilProjectLoads }, { value -> hideBrowserUntilProjectLoads = value }, { listener, value -> listener.hideBrowserUntilProjectLoadsChanged(value) }),
+        CheckBoxSettingBinding(openFileLinksInIdeCheckBox, { openFileLinksInIde }, { value -> openFileLinksInIde = value }, { listener, value -> listener.fileLinkNavigationChanged(value) }),
+        CheckBoxSettingBinding(openExternalLinksInBrowserCheckBox, { openExternalLinksInBrowser }, { value -> openExternalLinksInBrowser = value }, { listener, value -> listener.externalLinkNavigationChanged(value) }),
+        CheckBoxSettingBinding(enableCodeNavigationCheckBox, { enableCodeNavigation }, { value -> enableCodeNavigation = value }, { listener, value -> listener.codeNavigationChanged(value) }),
+        CheckBoxSettingBinding(enableChatFileDropCheckBox, { enableChatFileDrop }, { value -> enableChatFileDrop = value }, { listener, value -> listener.chatFileDropChanged(value) }),
+        CheckBoxSettingBinding(forceCompactLayoutCheckBox, { forceCompactLayout }, { value -> forceCompactLayout = value }, { listener, value -> listener.compactLayoutChanged(value) }),
+        CheckBoxSettingBinding(syncThemeWithIdeCheckBox, { syncThemeWithIde }, { value -> syncThemeWithIde = value }, { listener, value -> listener.ideThemeSyncChanged(value) }),
+        CheckBoxSettingBinding(suppressProjectSwitchPromptsCheckBox, { suppressProjectSwitchPrompts }, { value -> suppressProjectSwitchPrompts = value }, { listener, value -> listener.projectSwitchPromptSuppressionChanged(value) }),
+        CheckBoxSettingBinding(enableSystemNotificationsCheckBox, { enableSystemNotifications }, { value -> enableSystemNotifications = value }, { listener, value -> listener.systemNotificationsChanged(value) }),
         CheckBoxSettingBinding(waitForIntellijMcpServerCheckBox, { waitForIntellijMcpServer }, { value -> waitForIntellijMcpServer = value }),
         CheckBoxSettingBinding(enableServerLogsCheckBox, { enableServerLogs }, { value -> enableServerLogs = value }),
     )
@@ -314,16 +315,13 @@ class OpenCodeSettingsConfigurable : Configurable {
         val oldBinaryMode = settings.binaryModeValue()
         val oldBinaryPath = settings.binaryPath.trim()
         val oldUiZoomPercent = OpenCodeSettingsState.sanitizeUiZoomPercent(settings.uiZoomPercent)
-        val oldOpenFileLinksInIde = settings.openFileLinksInIde
-        val oldOpenExternalLinksInBrowser = settings.openExternalLinksInBrowser
-        val oldEnableCodeNavigation = settings.enableCodeNavigation
-        val oldEnableChatFileDrop = settings.enableChatFileDrop
-        val oldForceCompactLayout = settings.forceCompactLayout
-        val oldSyncThemeWithIde = settings.syncThemeWithIde
-        val oldSuppressProjectSwitchPrompts = settings.suppressProjectSwitchPrompts
-        val oldEnableSystemNotifications = settings.enableSystemNotifications
-        val oldHideBrowserUntilProjectLoads = settings.hideBrowserUntilProjectLoads
         val oldPassword = savedPassword
+        val pendingBroadcasts = checkBoxSettingBindings.mapNotNull { binding ->
+            val broadcast = binding.broadcast ?: return@mapNotNull null
+            val newValue = binding.checkBox.isSelected
+            if (binding.read(settings) == newValue) return@mapNotNull null
+            { listener: OpenCodeSettingsListener -> broadcast(listener, newValue) }
+        }
 
         val nextPassword = passwordForApply ?: OpenCodePasswordStore.getInstance().generatePasswordForEditing()
         OpenCodePasswordStore.getInstance().saveBlocking(nextPassword)
@@ -360,50 +358,10 @@ class OpenCodeSettingsConfigurable : Configurable {
                 .syncPublisher(OpenCodeSettingsListener.TOPIC)
                 .uiZoomChanged(nextUiZoomPercent)
         }
-        if (oldHideBrowserUntilProjectLoads != settings.hideBrowserUntilProjectLoads) {
-            ApplicationManager.getApplication().messageBus
+        if (pendingBroadcasts.isNotEmpty()) {
+            val publisher = ApplicationManager.getApplication().messageBus
                 .syncPublisher(OpenCodeSettingsListener.TOPIC)
-                .hideBrowserUntilProjectLoadsChanged(settings.hideBrowserUntilProjectLoads)
-        }
-        if (oldOpenFileLinksInIde != settings.openFileLinksInIde) {
-            ApplicationManager.getApplication().messageBus
-                .syncPublisher(OpenCodeSettingsListener.TOPIC)
-                .fileLinkNavigationChanged(settings.openFileLinksInIde)
-        }
-        if (oldOpenExternalLinksInBrowser != settings.openExternalLinksInBrowser) {
-            ApplicationManager.getApplication().messageBus
-                .syncPublisher(OpenCodeSettingsListener.TOPIC)
-                .externalLinkNavigationChanged(settings.openExternalLinksInBrowser)
-        }
-        if (oldEnableCodeNavigation != settings.enableCodeNavigation) {
-            ApplicationManager.getApplication().messageBus
-                .syncPublisher(OpenCodeSettingsListener.TOPIC)
-                .codeNavigationChanged(settings.enableCodeNavigation)
-        }
-        if (oldEnableChatFileDrop != settings.enableChatFileDrop) {
-            ApplicationManager.getApplication().messageBus
-                .syncPublisher(OpenCodeSettingsListener.TOPIC)
-                .chatFileDropChanged(settings.enableChatFileDrop)
-        }
-        if (oldForceCompactLayout != settings.forceCompactLayout) {
-            ApplicationManager.getApplication().messageBus
-                .syncPublisher(OpenCodeSettingsListener.TOPIC)
-                .compactLayoutChanged(settings.forceCompactLayout)
-        }
-        if (oldSyncThemeWithIde != settings.syncThemeWithIde) {
-            ApplicationManager.getApplication().messageBus
-                .syncPublisher(OpenCodeSettingsListener.TOPIC)
-                .ideThemeSyncChanged(settings.syncThemeWithIde)
-        }
-        if (oldSuppressProjectSwitchPrompts != settings.suppressProjectSwitchPrompts) {
-            ApplicationManager.getApplication().messageBus
-                .syncPublisher(OpenCodeSettingsListener.TOPIC)
-                .projectSwitchPromptSuppressionChanged(settings.suppressProjectSwitchPrompts)
-        }
-        if (oldEnableSystemNotifications != settings.enableSystemNotifications) {
-            ApplicationManager.getApplication().messageBus
-                .syncPublisher(OpenCodeSettingsListener.TOPIC)
-                .systemNotificationsChanged(settings.enableSystemNotifications)
+            pendingBroadcasts.forEach { broadcast -> broadcast(publisher) }
         }
     }
 
