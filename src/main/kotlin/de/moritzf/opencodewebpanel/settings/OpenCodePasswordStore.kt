@@ -49,12 +49,16 @@ class OpenCodePasswordStore {
         cachedPassword.set(sanitized)
     }
 
+    /**
+     * Reads the stored password, returning null only when no credential is present.
+     *
+     * Exceptions from secure storage (e.g. a locked or unavailable keychain) are intentionally
+     * propagated rather than swallowed: a transient read failure must not be mistaken for an absent
+     * password, which would cause callers such as [ensurePasswordBlocking] to silently regenerate and
+     * overwrite the server password.
+     */
     private fun readPasswordSafe(): String? {
-        return try {
-            PasswordSafe.instance.get(attributes)?.getPasswordAsString()?.ifBlank { null }
-        } catch (_: Exception) {
-            null
-        }
+        return PasswordSafe.instance.get(attributes)?.getPasswordAsString()?.ifBlank { null }
     }
 
     companion object {
