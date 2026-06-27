@@ -23,6 +23,8 @@ interface OpenCodeSettingsListener {
 
     fun systemNotificationsChanged(enabled: Boolean) {}
 
+    fun serverRestartRequested() {}
+
     companion object {
         val TOPIC: Topic<OpenCodeSettingsListener> = Topic.create(
             "OpenCode Web Panel settings",

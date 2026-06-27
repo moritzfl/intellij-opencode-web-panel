@@ -590,7 +590,9 @@ class OpenCodeSettingsConfigurable : Configurable {
     }
 
     private fun restartServer() {
-        SharedOpenCodeServerManager.getInstance().stopServer()
+        ApplicationManager.getApplication().messageBus
+            .syncPublisher(OpenCodeSettingsListener.TOPIC)
+            .serverRestartRequested()
     }
 
     private fun showServerLog() {

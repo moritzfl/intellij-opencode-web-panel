@@ -31,6 +31,11 @@ class SharedOpenCodeServerManager : Disposable {
         val onFailed: () -> Unit,
     )
 
+    private data class ServerResourcesToStop(
+        val future: ScheduledFuture<*>?,
+        val process: Process?,
+    )
+
     private val lock = Any()
     private val pendingStarts = mutableListOf<StartCallback>()
     private var startSequence = 0L
@@ -160,29 +165,58 @@ class SharedOpenCodeServerManager : Disposable {
 
     fun stopServer() {
         try {
-            val futureToCancel: ScheduledFuture<*>?
-            val processToDestroy: Process?
-            synchronized(lock) {
+            val resources = synchronized(lock) {
                 startSequence++
                 starting = false
                 pendingStarts.clear()
-                futureToCancel = checkScheduledFuture
-                checkScheduledFuture = null
-                processToDestroy = serverProcess
-                serverProcess = null
-                serverRunning = false
-                serverUrl = null
-                serverPassword = null
-                consecutiveStartFailures = 0
-                nextStartAllowedAtMillis = 0L
+                detachServerResources()
             }
 
             setLifecycleState(OpenCodeServerLifecycleState.STOPPED)
-            futureToCancel?.cancel(true)
-            processTerminator.destroy(processToDestroy)
+            stopResources(resources)
         } catch (e: Exception) {
             thisLogger().error("Error stopping OpenCode server: ${e.message}")
         }
+    }
+
+    fun restartServer(
+        project: Project,
+        projectBasePath: String?,
+        callbackActive: () -> Boolean = { true },
+        onStarted: () -> Unit,
+        onFailed: () -> Unit,
+    ) {
+        val basePath = rememberBasePath(projectBasePath)
+        val callback = StartCallback(callbackActive, onStarted, onFailed)
+        val resources: ServerResourcesToStop
+        val startId = synchronized(lock) {
+            pendingStarts.add(callback)
+            if (starting) return
+            starting = true
+            resources = detachServerResources()
+            ++startSequence
+        }
+
+        setLifecycleState(OpenCodeServerLifecycleState.RESTARTING)
+        stopResources(resources)
+        startOpenCodeServer(project, basePath, startId)
+    }
+
+    private fun detachServerResources(): ServerResourcesToStop {
+        val resources = ServerResourcesToStop(checkScheduledFuture, serverProcess)
+        checkScheduledFuture = null
+        serverProcess = null
+        serverRunning = false
+        serverUrl = null
+        serverPassword = null
+        consecutiveStartFailures = 0
+        nextStartAllowedAtMillis = 0L
+        return resources
+    }
+
+    private fun stopResources(resources: ServerResourcesToStop) {
+        resources.future?.cancel(true)
+        processTerminator.destroy(resources.process)
     }
 
     override fun dispose() {

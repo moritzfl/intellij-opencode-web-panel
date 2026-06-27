@@ -207,6 +207,10 @@ class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
                 override fun systemNotificationsChanged(enabled: Boolean) {
                     applySystemNotifications(enabled)
                 }
+
+                override fun serverRestartRequested() {
+                    restartOpenCodeServer()
+                }
             },
         )
         ApplicationManager.getApplication().messageBus.connect(this).subscribe(
@@ -259,10 +263,19 @@ class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
     }
 
     private fun retryOpenCodeServerStart() {
+        restartOpenCodeServer()
+    }
+
+    private fun restartOpenCodeServer() {
         if (isContentDisposed()) return
         lifecycleStatusPanel.setRetryEnabled(false)
-        serverManager.stopServer()
-        checkAndLoadContent()
+        serverManager.restartServer(
+            project,
+            openCodeProjectDirectory(),
+            callbackActive = { !isContentDisposed() },
+            onStarted = { loadProjectPage() },
+            onFailed = { showErrorInBrowser() },
+        )
     }
 
     fun checkAndLoadContent() {
