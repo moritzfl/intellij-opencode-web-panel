@@ -56,6 +56,12 @@ internal class OpenCodeFileDropHandler(
             return (keyCode == KeyEvent.VK_V || key) && hasCommand != hasControl && !hasAlt
         }
 
+        internal fun shouldUseDroppedImageFlavor(droppedFiles: List<File>, projectDirectory: String?): Boolean {
+            if (droppedFiles.isEmpty()) return true
+            if (droppedFiles.any { OpenCodeServerProtocol.localFileDropText(it, projectDirectory) != null }) return false
+            return droppedFiles.none { Files.isRegularFile(it.toPath()) }
+        }
+
         internal fun encodeImageToPng(image: Image): ByteArray? {
             val bufferedImage = (image as? BufferedImage) ?: toBufferedImage(image) ?: return null
             return runCatching {
@@ -91,7 +97,12 @@ internal class OpenCodeFileDropHandler(
             override fun canImport(support: TransferSupport): Boolean {
                 if (!OpenCodeSettingsState.getInstance().enableChatFileDrop) return false
                 if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverManager.getServerUrl(), browser.cefBrowser.url)) return false
-                if (!support.isDataFlavorSupported(DataFlavor.javaFileListFlavor) && !supportsText(support.transferable)) return false
+                if (!support.isDataFlavorSupported(DataFlavor.javaFileListFlavor) &&
+                    !supportsText(support.transferable) &&
+                    !supportsImageDrop(support)
+                ) {
+                    return false
+                }
                 if (support.isDrop) support.dropAction = COPY
                 return true
             }
@@ -102,7 +113,11 @@ internal class OpenCodeFileDropHandler(
                     @Suppress("UNCHECKED_CAST")
                     support.transferable.getTransferData(DataFlavor.javaFileListFlavor) as? List<File>
                 }.getOrNull().orEmpty()
-                return dispatchDroppedData(droppedFiles, droppedTextPayload(support.transferable))
+                val imagePayloads = droppedImagePayloads(support.transferable, droppedFiles)
+                val text = droppedTextPayload(support.transferable)
+                val fileReferenceText = text?.takeIf { it.startsWith("file:") }
+                val textToDispatch = if (imagePayloads.isNotEmpty()) fileReferenceText else text
+                return dispatchDroppedData(droppedFiles, textToDispatch, imagePayloads)
             }
         }
         installTransferHandler(browser.component, handler)
@@ -228,15 +243,32 @@ internal class OpenCodeFileDropHandler(
     }
 
     private fun clipboardImagePayloads(transferables: List<Transferable>): List<OpenCodeServerProtocol.DroppedFilePayload> {
-        val bytes = transferables.firstNotNullOfOrNull { clipboardImagePng(it) } ?: return emptyList()
+        return imagePayloads(transferables, fileNamePrefix = "pasted-image", warningDescription = "pasted image")
+    }
+
+    private fun droppedImagePayloads(
+        transferable: Transferable,
+        droppedFiles: List<File>,
+    ): List<OpenCodeServerProtocol.DroppedFilePayload> {
+        if (!transferable.isDataFlavorSupported(DataFlavor.imageFlavor)) return emptyList()
+        if (!shouldUseDroppedImageFlavor(droppedFiles, openCodeProjectDirectory())) return emptyList()
+        return imagePayloads(listOf(transferable), fileNamePrefix = "dropped-image", warningDescription = "dropped image")
+    }
+
+    private fun imagePayloads(
+        transferables: List<Transferable>,
+        fileNamePrefix: String,
+        warningDescription: String,
+    ): List<OpenCodeServerProtocol.DroppedFilePayload> {
+        val bytes = transferables.firstNotNullOfOrNull { imagePng(it) } ?: return emptyList()
         if (bytes.size > MAX_DROPPED_FILE_BYTES) {
-            showFileDropWarning(listOf("The pasted image is larger than ${formatFileSize(MAX_DROPPED_FILE_BYTES)}."))
+            showFileDropWarning(listOf("The $warningDescription is larger than ${formatFileSize(MAX_DROPPED_FILE_BYTES)}."))
             return emptyList()
         }
         val timestamp = System.currentTimeMillis()
         return listOf(
             OpenCodeServerProtocol.DroppedFilePayload(
-                name = "pasted-image-$timestamp.png",
+                name = "$fileNamePrefix-$timestamp.png",
                 mime = "image/png",
                 lastModified = timestamp,
                 base64 = Base64.getEncoder().encodeToString(bytes),
@@ -244,7 +276,7 @@ internal class OpenCodeFileDropHandler(
         )
     }
 
-    private fun clipboardImagePng(transferable: Transferable): ByteArray? {
+    private fun imagePng(transferable: Transferable): ByteArray? {
         if (!transferable.isDataFlavorSupported(DataFlavor.imageFlavor)) return null
         val image = runCatching { transferable.getTransferData(DataFlavor.imageFlavor) as? Image }.getOrNull() ?: return null
         return encodeImageToPng(image)
@@ -301,6 +333,10 @@ internal class OpenCodeFileDropHandler(
 
     private fun supportsText(transferable: Transferable): Boolean {
         return transferable.transferDataFlavors.any { it.isFlavorTextType }
+    }
+
+    private fun supportsImageDrop(support: TransferHandler.TransferSupport): Boolean {
+        return support.isDrop && support.isDataFlavorSupported(DataFlavor.imageFlavor)
     }
 
     private fun droppedTextPayload(transferable: Transferable): String? {

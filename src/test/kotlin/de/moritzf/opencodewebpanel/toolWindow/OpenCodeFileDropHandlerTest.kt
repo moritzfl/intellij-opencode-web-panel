@@ -11,6 +11,7 @@ import java.awt.Color
 import java.awt.event.KeyEvent
 import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
+import java.nio.file.Files
 import javax.imageio.ImageIO
 
 class OpenCodeFileDropHandlerTest {
@@ -52,5 +53,46 @@ class OpenCodeFileDropHandlerTest {
         val decoded = ImageIO.read(ByteArrayInputStream(bytes))
         assertEquals(4, decoded.width)
         assertEquals(3, decoded.height)
+    }
+
+    @Test
+    fun shouldUseDroppedImageFlavorWhenDropHasNoFiles() {
+        assertTrue(OpenCodeFileDropHandler.shouldUseDroppedImageFlavor(emptyList(), null))
+    }
+
+    @Test
+    fun shouldUseDroppedImageFlavorForNonFileDropWithoutProjectReference() {
+        val directory = Files.createTempDirectory("opencode-drop-test")
+        try {
+            assertTrue(OpenCodeFileDropHandler.shouldUseDroppedImageFlavor(listOf(directory.toFile()), null))
+        } finally {
+            Files.deleteIfExists(directory)
+        }
+    }
+
+    @Test
+    fun shouldNotUseDroppedImageFlavorWhenDropHasProjectFileReference() {
+        val projectRoot = Files.createTempDirectory("opencode-project")
+        try {
+            val file = projectRoot.resolve("src/App.kt")
+            Files.createDirectories(file.parent)
+            Files.writeString(file, "fun main() {}")
+
+            assertFalse(OpenCodeFileDropHandler.shouldUseDroppedImageFlavor(listOf(file.toFile()), projectRoot.toString()))
+        } finally {
+            projectRoot.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun shouldNotUseDroppedImageFlavorWhenDropHasAttachableFile() {
+        val file = Files.createTempFile("opencode-image", ".png")
+        try {
+            Files.write(file, byteArrayOf(1, 2, 3))
+
+            assertFalse(OpenCodeFileDropHandler.shouldUseDroppedImageFlavor(listOf(file.toFile()), null))
+        } finally {
+            Files.deleteIfExists(file)
+        }
     }
 }
