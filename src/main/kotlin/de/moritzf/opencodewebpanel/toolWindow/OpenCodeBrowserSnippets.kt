@@ -159,10 +159,12 @@ internal object OpenCodeBrowserSnippets {
                 '${OpenCodeServerProtocol.OPEN_CODE_COLOR_SCHEME_STORAGE_KEY}',
                 'opencode-theme-css-light',
                 'opencode-theme-css-dark',
+                'settings.v3',
               ]);
               const globalKeys = /^opencode\.global\.dat:(language|model|layout|layout\.page|permission|notification|tabs|open\.app|go-upsell)${'$'}/;
               const workspaceKeys = /^opencode\.workspace\.[^:]+:workspace:(model-selection|terminal|project|icon|vcs)${'$'}/;
-              const shouldPersistKey = (key) => typeof key === 'string' && (exactKeys.has(key) || globalKeys.test(key) || workspaceKeys.test(key));
+              const windowKeys = /^opencode\.window\.browser\.dat:tabs(\.recent)?${'$'}/;
+              const shouldPersistKey = (key) => typeof key === 'string' && (exactKeys.has(key) || globalKeys.test(key) || workspaceKeys.test(key) || windowKeys.test(key));
               try {
                 const snapshot = JSON.parse(raw);
                 if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return;
@@ -192,10 +194,12 @@ internal object OpenCodeBrowserSnippets {
                 '${OpenCodeServerProtocol.OPEN_CODE_COLOR_SCHEME_STORAGE_KEY}',
                 'opencode-theme-css-light',
                 'opencode-theme-css-dark',
+                'settings.v3',
               ]);
               const globalKeys = /^opencode\.global\.dat:(language|model|layout|layout\.page|permission|notification|tabs|open\.app|go-upsell)${'$'}/;
               const workspaceKeys = /^opencode\.workspace\.[^:]+:workspace:(model-selection|terminal|project|icon|vcs)${'$'}/;
-              const shouldPersistKey = (key) => typeof key === 'string' && (exactKeys.has(key) || globalKeys.test(key) || workspaceKeys.test(key));
+              const windowKeys = /^opencode\.window\.browser\.dat:tabs(\.recent)?${'$'}/;
+              const shouldPersistKey = (key) => typeof key === 'string' && (exactKeys.has(key) || globalKeys.test(key) || workspaceKeys.test(key) || windowKeys.test(key));
               const snapshot = () => {
                 const entries = {};
                 for (let index = 0; index < window.localStorage.length; index += 1) {
@@ -320,6 +324,7 @@ internal object OpenCodeBrowserSnippets {
               const encode = (value) => encodeURIComponent(String(value == null ? '' : value));
               const controller = new AbortController();
               const seen = new Set();
+              const recentIdle = new Map();
               const sleep = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
               const focused = () => document.visibilityState === 'visible' && document.hasFocus();
               const projectName = (directory) => String(directory || '')
@@ -378,7 +383,14 @@ internal object OpenCodeBrowserSnippets {
                 if (!directory || !record || typeof record.type !== 'string') return;
                 if (focused()) return;
                 const properties = record.properties || {};
-                const type = record.type;
+                let type = record.type;
+                // session.status is the successor of the deprecated session.idle event; current
+                // servers emit both for the same state change.
+                if (type === 'session.status') {
+                  const status = properties.status;
+                  if (!status || status.type !== 'idle') return;
+                  type = 'session.idle';
+                }
                 if (
                   type !== 'session.idle' &&
                   type !== 'session.error' &&
@@ -387,6 +399,15 @@ internal object OpenCodeBrowserSnippets {
                 ) return;
 
                 const sessionID = typeof properties.sessionID === 'string' ? properties.sessionID : '';
+                if (type === 'session.idle') {
+                  // Merge the paired session.idle/session.status events without suppressing a
+                  // genuine re-idle shortly after.
+                  const idleKey = directory + '\n' + sessionID;
+                  const now = Date.now();
+                  if (now - (recentIdle.get(idleKey) || 0) < 5000) return;
+                  recentIdle.set(idleKey, now);
+                  window.setTimeout(() => { if (recentIdle.get(idleKey) === now) recentIdle.delete(idleKey); }, 5000);
+                }
                 const session = await fetchSession(directory, sessionID);
                 if (type === 'session.idle' && (!session || session.parentID)) return;
                 if (type === 'session.error' && session && session.parentID) return;
@@ -525,27 +546,34 @@ internal object OpenCodeBrowserSnippets {
             (() => {
               if (window.__opencodeIntellijCompactInstalled) return;
               window.__opencodeIntellijCompactInstalled = true;
-              const QUERY = '(min-width: 768px)';
+              // OpenCode checks both the wide query and its inverse (titlebar, settings), so both
+              // must be patched for a consistent compact layout.
+              const WIDE_QUERY = '(min-width: 768px)';
+              const NARROW_QUERY = '(max-width: 767px)';
               const orig = window.matchMedia.bind(window);
               window.__opencodeIntellijOrigMatchMedia = orig;
+              const stub = (media, matches) => ({ matches, media, onchange: null, addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false });
               window.matchMedia = (q) => {
-                if (q !== QUERY) return orig(q);
-                return { matches: false, media: QUERY, onchange: null, addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false };
+                if (q === WIDE_QUERY) return stub(WIDE_QUERY, false);
+                if (q === NARROW_QUERY) return stub(NARROW_QUERY, true);
+                return orig(q);
               };
               const style = document.createElement('style');
               style.id = 'opencode-intellij-compact-layout';
               style.textContent = '@media (min-width: 768px) {\n  .md\\:flex-row { flex-direction: column !important; }\n  .md\\:flex-none { flex: 1 1 0% !important; }\n  .hidden.md\\:flex { display: none !important; }\n  .hidden.md\\:block { display: none !important; }\n}';
+              // At the earliest injection point document.documentElement can still be null; retry
+              // until a parent exists and re-attach if the SPA replaces the head content.
               const ensureStyle = () => {
-                if (!document.getElementById('opencode-intellij-compact-layout')) {
-                  (document.head || document.documentElement).appendChild(style);
-                }
+                const parent = document.head || document.documentElement;
+                if (!parent) return false;
+                if (!style.isConnected) parent.appendChild(style);
+                return true;
               };
-              if (document.head) {
-                ensureStyle();
-              } else {
-                const observer = new MutationObserver(() => { ensureStyle(); if (document.getElementById('opencode-intellij-compact-layout')) observer.disconnect(); });
-                observer.observe(document.documentElement, { childList: true, subtree: true });
+              if (!ensureStyle()) {
+                const observer = new MutationObserver(() => { if (ensureStyle()) observer.disconnect(); });
+                observer.observe(document, { childList: true, subtree: true });
               }
+              document.addEventListener('DOMContentLoaded', ensureStyle, { once: true });
             })();
         """
         return script.trimIndent()
