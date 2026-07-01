@@ -26,7 +26,8 @@ internal class OpenCodeLifecycleStatusPanel(onRetry: () -> Unit) {
         lifecycleStatusLabel.text = formatOpenCodeServerLifecycleStatusText(state)
         lifecycleStatusLabel.toolTipText = "OpenCode server is ${state.displayLabel.lowercase()}"
         retryServerButton.isVisible = isOpenCodeServerRetryVisible(state)
-        retryServerButton.isEnabled = state == OpenCodeServerLifecycleState.FAILED
+        retryServerButton.isEnabled = isOpenCodeServerRetryVisible(state)
+        retryServerButton.text = openCodeServerRetryLabel(state)
         component.isVisible = isOpenCodeServerLifecycleStatusVisible(state)
     }
 

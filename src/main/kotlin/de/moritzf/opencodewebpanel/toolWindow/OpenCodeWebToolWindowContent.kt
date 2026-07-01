@@ -64,6 +64,7 @@ class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
     private var systemNotificationBridgeScriptScheduled = false
     private var hidingBrowserUntilProjectLoads = false
     private var loadedServerRootUrl: String? = null
+    private var pendingServerStartRequest = false
 
     @Volatile
     private var disposed = false
@@ -136,7 +137,6 @@ class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
         browser.jbCefClient.addLoadHandler(loadHandler, browser.cefBrowser)
         installFileDropTransferHandler()
         installBrowserEditShortcutHandler()
-        updateLifecycleIndicator(serverManager.getLifecycleState())
         ApplicationManager.getApplication().messageBus.connect(this).subscribe(
             AppLifecycleListener.TOPIC,
             object : AppLifecycleListener {
@@ -153,11 +153,13 @@ class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
                         if (!isContentDisposed()) {
                             clearStaleBrowserPage(state)
                             updateLifecycleIndicator(state)
+                            reloadContentAfterRecovery(state)
                         }
                     }
                 }
             },
         )
+        updateLifecycleIndicator(serverManager.getLifecycleState())
         ApplicationManager.getApplication().messageBus.connect(this).subscribe(
             OpenCodeSettingsListener.TOPIC,
             object : OpenCodeSettingsListener {
@@ -269,24 +271,50 @@ class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
     private fun restartOpenCodeServer() {
         if (isContentDisposed()) return
         lifecycleStatusPanel.setRetryEnabled(false)
+        pendingServerStartRequest = true
         serverManager.restartServer(
             project,
             openCodeProjectDirectory(),
             callbackActive = { !isContentDisposed() },
-            onStarted = { loadProjectPage() },
-            onFailed = { showErrorInBrowser() },
+            onStarted = {
+                pendingServerStartRequest = false
+                loadProjectPage()
+            },
+            onFailed = {
+                pendingServerStartRequest = false
+                showErrorInBrowser()
+            },
         )
     }
 
     fun checkAndLoadContent() {
         if (isContentDisposed()) return
+        pendingServerStartRequest = true
         serverManager.ensureStarted(
             project,
             openCodeProjectDirectory(),
             callbackActive = { !isContentDisposed() },
-            onStarted = { loadProjectPage() },
-            onFailed = { showErrorInBrowser() },
+            onStarted = {
+                pendingServerStartRequest = false
+                loadProjectPage()
+            },
+            onFailed = {
+                pendingServerStartRequest = false
+                showErrorInBrowser()
+            },
         )
+    }
+
+    /**
+     * Reloads the OpenCode page after the shared server recovered without this panel's involvement,
+     * e.g. an automatic health-check restart or a restart initiated from another project window.
+     * Without this, the panel would stay on the blank page installed by [clearStaleBrowserPage].
+     */
+    private fun reloadContentAfterRecovery(state: OpenCodeServerLifecycleState) {
+        if (state != OpenCodeServerLifecycleState.RUNNING) return
+        if (pendingServerStartRequest) return
+        if (loadedServerRootUrl != null) return
+        checkAndLoadContent()
     }
 
     private fun loadProjectPage() {

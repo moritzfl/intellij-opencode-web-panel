@@ -352,6 +352,11 @@ class OpenCodeSettingsConfigurable : Configurable {
             oldBinaryMode != nextBinaryMode || oldBinaryPath != nextBinaryPath
         ) {
             SharedOpenCodeServerManager.getInstance().stopServer()
+            // Restart open panels right away; a stopped server would otherwise stay stopped until a
+            // new tool-window content is created, leaving existing panels blank.
+            ApplicationManager.getApplication().messageBus
+                .syncPublisher(OpenCodeSettingsListener.TOPIC)
+                .serverRestartRequested()
         }
         if (oldUiZoomPercent != nextUiZoomPercent) {
             ApplicationManager.getApplication().messageBus

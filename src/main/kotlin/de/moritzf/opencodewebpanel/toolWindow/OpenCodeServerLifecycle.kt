@@ -34,7 +34,11 @@ internal fun isOpenCodeServerLifecycleStatusVisible(state: OpenCodeServerLifecyc
 }
 
 internal fun isOpenCodeServerRetryVisible(state: OpenCodeServerLifecycleState): Boolean {
-    return state == OpenCodeServerLifecycleState.FAILED
+    return state == OpenCodeServerLifecycleState.FAILED || state == OpenCodeServerLifecycleState.STOPPED
+}
+
+internal fun openCodeServerRetryLabel(state: OpenCodeServerLifecycleState): String {
+    return if (state == OpenCodeServerLifecycleState.STOPPED) "Start" else "Retry"
 }
 
 private fun escapeLifecycleStatusHtml(value: String): String {

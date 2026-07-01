@@ -171,14 +171,17 @@ class SharedOpenCodeServerManager : Disposable {
 
     fun stopServer() {
         try {
+            val callbacks: List<StartCallback>
             val resources = synchronized(lock) {
                 startSequence++
                 starting = false
+                callbacks = pendingStarts.toList()
                 pendingStarts.clear()
                 detachServerResources()
             }
 
             setLifecycleState(OpenCodeServerLifecycleState.STOPPED)
+            notifyStartCallbacks(callbacks, success = false)
             stopResources(resources)
         } catch (e: Exception) {
             thisLogger().error("Error stopping OpenCode server: ${e.message}")
@@ -434,6 +437,11 @@ class SharedOpenCodeServerManager : Disposable {
             recordStartFailure()
         }
 
+        notifyStartCallbacks(callbacks, success)
+    }
+
+    private fun notifyStartCallbacks(callbacks: List<StartCallback>, success: Boolean) {
+        if (callbacks.isEmpty()) return
         ApplicationManager.getApplication().invokeLater {
             callbacks.forEach { callback ->
                 if (!callback.isActive()) return@forEach
