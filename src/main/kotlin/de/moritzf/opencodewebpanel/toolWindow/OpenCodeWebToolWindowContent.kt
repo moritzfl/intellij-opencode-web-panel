@@ -32,6 +32,10 @@ class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
         private const val ERROR_CARD = "error"
         private const val BROWSER_RECOVERY_THROTTLE_MILLIS = 10_000L
 
+        // Delay after a project-page load before flushing queued chat input, so the SPA's own
+        // drop handlers are installed when the synthetic drop is dispatched.
+        private const val PENDING_CHAT_INPUT_FLUSH_DELAY_MILLIS = 1_500
+
         @Volatile
         private var applicationClosing = false
     }
@@ -121,6 +125,7 @@ class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
             scheduleProjectSwitchPromptSuppressionScript()
             scheduleSystemNotificationBridgeScript()
             revealBrowserIfProjectReady(frame.url)
+            scheduleFlushPendingChatInput()
         }
 
         override fun onLoadError(
@@ -175,6 +180,7 @@ class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
         browser.jbCefClient.addLoadHandler(loadHandler, browser.cefBrowser)
         installFileDropTransferHandler()
         installBrowserEditShortcutHandler()
+        OpenCodeChatInputService.getInstance(project).setDispatcher(::dispatchChatTexts)
         ApplicationManager.getApplication().messageBus.connect(this).subscribe(
             AppLifecycleListener.TOPIC,
             object : AppLifecycleListener {
@@ -277,6 +283,37 @@ class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
             ::isContentDisposed,
             this
         ).install()
+    }
+
+    /**
+     * Sends IDE-initiated texts (file references, code snippets) into the chat through the same
+     * drop mechanism used for drag-and-drop and paste. Returns false when the page is not ready,
+     * in which case the texts stay queued in [OpenCodeChatInputService].
+     */
+    private fun dispatchChatTexts(texts: List<String>): Boolean {
+        if (isContentDisposed()) return false
+        if (!OpenCodeSettingsState.getInstance().enableChatFileDrop) return false
+        val serverUrl = serverManager.getServerUrl() ?: return false
+        if (!isBrowserOnOpenCodeServerPage(serverUrl)) return false
+        val script = OpenCodeServerProtocol.buildDispatchDroppedFilesScript(emptyList(), texts, enabled = true) ?: return false
+        browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
+        return true
+    }
+
+    private fun scheduleFlushPendingChatInput() {
+        val service = OpenCodeChatInputService.getInstance(project)
+        if (!service.hasPending()) return
+        openProjectAlarm.addRequest(
+            {
+                if (isContentDisposed()) return@addRequest
+                val texts = service.takePending()
+                if (texts.isNotEmpty() && !dispatchChatTexts(texts)) {
+                    // Page changed in the meantime; requeue for the next successful load.
+                    service.send(texts)
+                }
+            },
+            PENDING_CHAT_INPUT_FLUSH_DELAY_MILLIS,
+        )
     }
 
     private fun installBrowserEditShortcutHandler() {
@@ -820,6 +857,9 @@ class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
 
     override fun dispose() {
         disposed = true
+        if (!project.isDisposed) {
+            OpenCodeChatInputService.getInstance(project).setDispatcher(null)
+        }
         openProjectAlarm.cancelAllRequests()
         systemNotifications.dispose()
         if (isApplicationShutdownInProgress()) return
