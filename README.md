@@ -43,8 +43,10 @@ OpenCode Web Panel brings the official OpenCode web UI into JetBrains IDEs. It o
 - **Project-aware sessions** - OpenCode starts on the directory configured for the current IDE project.
 - **IDE file navigation** - Click local file links and code references from chat to open them in the IDE.
 - **Chat file drop and paste** - Drag or paste project files into chat as `@relative/path` references, or attach dropped files.
+- **Send code to chat** - Add files or the current selection to the OpenCode chat from the editor and project view context menus.
 - **External links stay outside** - HTTP links open in your system browser instead of taking over the panel.
-- **IDE notifications** - OpenCode browser notifications can appear as JetBrains IDE notifications.
+- **IDE notifications** - OpenCode browser notifications can appear as JetBrains IDE notifications, including Allow/Deny actions for agent permission requests.
+- **Agent status at a glance** - The tool window icon shows when the agent is working or waiting for your input.
 - **Panel controls in the title bar** - Zoom the panel and restart the OpenCode server directly from the tool window.
 - **Recovery built in** - Failed or crashed servers surface a clear error panel with recent logs, retry, and settings shortcuts, and the panel recovers automatically where possible.
 - **Configurable safeguards** - Browser-side convenience features can be disabled if an OpenCode update conflicts with them.
@@ -84,9 +86,16 @@ The plugin starts a local OpenCode server when needed, authenticates the embedde
 
 The tool window title bar offers quick controls (also available in the tool window's gear menu on narrow panels):
 
-- **Zoom out / Zoom in** - Scale the embedded OpenCode UI in 10% steps without reloading.
+- **Zoom out / Zoom in** - Scale the embedded OpenCode UI in 10% steps without reloading. Cmd/Ctrl with <kbd>+</kbd>, <kbd>-</kbd>, and <kbd>0</kbd> work inside the panel too.
 - **Restart Server** - Stop and restart the shared OpenCode server. Asks for confirmation while the server is running, since a restart interrupts OpenCode work in all open projects.
 - The gear menu additionally offers **Reset Zoom**, **View Server Log**, and **OpenCode Web Panel Settings**.
+
+### Context Menu Actions
+
+- **Add to OpenCode Chat** (project view, editor tabs) - Insert `@path` references for the selected project files into the chat.
+- **Add Selection to OpenCode Chat** (editor) - Insert the file reference plus the selected lines as a code snippet.
+
+Both actions open the panel and deliver the input once OpenCode has finished loading. They follow the **Enable file drop and paste into chat** setting.
 
 ## Settings
 
@@ -110,7 +119,8 @@ Open <kbd>Settings/Preferences</kbd> > <kbd>Tools</kbd> > <kbd>OpenCode Web Pane
 - Lock OpenCode to compact layout for panel-friendly use.
 - Sync OpenCode's system color scheme with the IDE theme.
 - Suppress project-switch prompts that are not useful inside the embedded panel.
-- Forward OpenCode browser notifications to the IDE.
+- Forward OpenCode browser notifications to the IDE, optionally with Allow/Deny actions for permission requests.
+- Show agent status on the tool window icon.
 - Wait briefly for IntelliJ MCP server readiness before launching OpenCode.
 
 ### Project Settings
@@ -134,6 +144,7 @@ Project-specific settings are stored with the IDE project.
 
 - Click **Retry** in the tool-window status strip or on the error view.
 - If it still fails, review the server output shown on the error view.
+- With a fixed port, the error view detects port conflicts and offers **Use Automatic Port**.
 - Verify the configured OpenCode project directory exists.
 
 **The embedded UI behaves unexpectedly after an OpenCode update**

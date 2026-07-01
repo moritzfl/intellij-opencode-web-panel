@@ -4,6 +4,15 @@
 
 ## [Unreleased]
 
+### Added
+
+- Context-menu actions to add project files or the current editor selection to the OpenCode chat, using the same references as drag-and-drop; queued input is delivered once the panel finishes loading.
+- Allow and Deny actions on OpenCode permission notifications, answering the agent without switching to the panel (own safeguard toggle).
+- Agent status on the tool window icon: a live indicator while the agent works and a warning overlay while it awaits input, scoped to the panel's project (own safeguard toggle).
+- The settings server status shows the OpenCode version reported by the running server.
+- The startup error panel detects fixed-port conflicts and offers a one-click switch to automatic port selection.
+- Browser-style keyboard zoom inside the panel (Cmd/Ctrl with plus, minus, and zero).
+
 ## [1.3.0] - 2026-07-01
 
 ### Added
