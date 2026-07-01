@@ -22,6 +22,7 @@ import de.moritzf.opencodewebpanel.toolWindow.OpenCodeServerLifecycleState
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodeServerLifecycleListener
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.toolWindow.SharedOpenCodeServerManager
+import de.moritzf.opencodewebpanel.toolWindow.confirmOpenCodeServerRestart
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 import java.util.concurrent.atomic.AtomicLong
@@ -557,6 +558,7 @@ class OpenCodeSettingsConfigurable : Configurable {
     }
 
     private fun restartServer() {
+        if (!confirmOpenCodeServerRestart(null)) return
         ApplicationManager.getApplication().messageBus
             .syncPublisher(OpenCodeSettingsListener.TOPIC)
             .serverRestartRequested()

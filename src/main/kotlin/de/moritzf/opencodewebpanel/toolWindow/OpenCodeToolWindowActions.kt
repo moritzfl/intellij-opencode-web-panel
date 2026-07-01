@@ -9,6 +9,8 @@ import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.ui.MessageDialogBuilder
+import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.vfs.LocalFileSystem
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsListener
@@ -89,6 +91,7 @@ internal class OpenCodeRestartServerAction : DumbAwareAction(
     AllIcons.Actions.Restart,
 ) {
     override fun actionPerformed(e: AnActionEvent) {
+        if (!confirmOpenCodeServerRestart(e.project)) return
         ApplicationManager.getApplication().messageBus
             .syncPublisher(OpenCodeSettingsListener.TOPIC)
             .serverRestartRequested()
@@ -102,6 +105,28 @@ internal class OpenCodeRestartServerAction : DumbAwareAction(
     }
 
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+}
+
+/**
+ * Restarting interrupts everything in progress in every project sharing the server, so a running
+ * server requires explicit confirmation. Restarting a stopped or failed server loses nothing and
+ * proceeds without a prompt.
+ */
+internal fun shouldConfirmOpenCodeServerRestart(state: OpenCodeServerLifecycleState): Boolean {
+    return state == OpenCodeServerLifecycleState.RUNNING
+}
+
+internal fun confirmOpenCodeServerRestart(project: Project?): Boolean {
+    if (!shouldConfirmOpenCodeServerRestart(SharedOpenCodeServerManager.getInstance().getLifecycleState())) return true
+    return MessageDialogBuilder.yesNo(
+        "Restart OpenCode Server",
+        "The OpenCode server is shared by all open projects. " +
+            "Restarting interrupts everything currently in progress in every OpenCode panel.",
+    )
+        .yesText("Restart")
+        .noText("Cancel")
+        .icon(Messages.getWarningIcon())
+        .ask(project)
 }
 
 internal class OpenCodeViewServerLogAction : DumbAwareAction(

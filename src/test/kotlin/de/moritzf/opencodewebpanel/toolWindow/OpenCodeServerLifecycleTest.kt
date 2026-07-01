@@ -22,4 +22,13 @@ class OpenCodeServerLifecycleTest {
         assertEquals("Retry", openCodeServerRetryLabel(OpenCodeServerLifecycleState.FAILED))
         assertEquals("Retry", openCodeServerRetryLabel(OpenCodeServerLifecycleState.RUNNING))
     }
+
+    @Test
+    fun restartConfirmationIsOnlyRequiredWhileRunning() {
+        assertTrue(shouldConfirmOpenCodeServerRestart(OpenCodeServerLifecycleState.RUNNING))
+        assertFalse(shouldConfirmOpenCodeServerRestart(OpenCodeServerLifecycleState.STOPPED))
+        assertFalse(shouldConfirmOpenCodeServerRestart(OpenCodeServerLifecycleState.FAILED))
+        assertFalse(shouldConfirmOpenCodeServerRestart(OpenCodeServerLifecycleState.STARTING))
+        assertFalse(shouldConfirmOpenCodeServerRestart(OpenCodeServerLifecycleState.RESTARTING))
+    }
 }
