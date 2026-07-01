@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-07-02
+
+### Fixed
+
+- Panels no longer stall with endlessly loading model and session selectors when several project windows are open: the plugin's event bridges now share a single event-stream connection per IDE instead of exhausting the browser's per-host connection limit.
+- The Add to OpenCode Chat context-menu icon renders at the normal menu size instead of oversized.
+
 ## [1.4.0] - 2026-07-02
 
 ### Added
@@ -139,7 +146,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.0...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.1...HEAD
+[1.4.1]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.0...1.4.1
 [1.4.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.3.0...1.4.0
 [1.3.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.2.7...1.3.0
 [1.2.7]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.2.6...1.2.7
