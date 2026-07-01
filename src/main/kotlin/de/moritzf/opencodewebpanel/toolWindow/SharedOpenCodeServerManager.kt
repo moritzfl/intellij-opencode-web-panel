@@ -123,6 +123,28 @@ class SharedOpenCodeServerManager : Disposable {
 
     fun isServerRunning(): Boolean = synchronized(lock) { serverRunning }
 
+    /**
+     * Verifies right now that the server responds. If it does, [onHealthy] runs on the EDT so the
+     * caller can reload its page; otherwise the regular health-check recovery (restart with
+     * backoff) is triggered immediately instead of waiting for the next periodic check.
+     */
+    fun verifyServerNow(callbackActive: () -> Boolean = { true }, onHealthy: () -> Unit) {
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val url = getServerUrl()
+            if (url != null && checkServerResponding(url)) {
+                ApplicationManager.getApplication().invokeLater {
+                    if (callbackActive()) onHealthy()
+                }
+                return@executeOnPooledThread
+            }
+            try {
+                checkServerHealth()
+            } catch (e: Exception) {
+                thisLogger().warn("OpenCode health check after browser failure failed: ${e.message}")
+            }
+        }
+    }
+
     fun getLifecycleState(): OpenCodeServerLifecycleState = synchronized(lock) { lifecycleState }
 
     @TestOnly

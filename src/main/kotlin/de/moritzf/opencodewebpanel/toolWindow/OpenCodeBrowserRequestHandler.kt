@@ -4,6 +4,7 @@ import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
 import org.cef.browser.CefBrowser
 import org.cef.browser.CefFrame
 import org.cef.callback.CefAuthCallback
+import org.cef.handler.CefRequestHandler.TerminationStatus
 import org.cef.handler.CefResourceRequestHandler
 import org.cef.handler.CefResourceRequestHandlerAdapter
 import org.cef.handler.CefRequestHandlerAdapter
@@ -13,6 +14,7 @@ import org.cef.network.CefRequest
 internal class OpenCodeBrowserRequestHandler(
     private val serverManager: SharedOpenCodeServerManager,
     private val ideNavigation: OpenCodeIdeNavigation,
+    private val onRenderProcessCrash: () -> Unit = {},
 ) : CefRequestHandlerAdapter() {
     private val resourceRequestHandler = object : CefResourceRequestHandlerAdapter() {
         override fun onBeforeResourceLoad(browser: CefBrowser?, frame: CefFrame?, request: CefRequest?): Boolean {
@@ -74,5 +76,9 @@ internal class OpenCodeBrowserRequestHandler(
         }
         callback?.Continue(OpenCodeServerProtocol.BASIC_AUTH_USERNAME, password)
         return callback != null
+    }
+
+    override fun onRenderProcessTerminated(browser: CefBrowser?, status: TerminationStatus?) {
+        onRenderProcessCrash()
     }
 }

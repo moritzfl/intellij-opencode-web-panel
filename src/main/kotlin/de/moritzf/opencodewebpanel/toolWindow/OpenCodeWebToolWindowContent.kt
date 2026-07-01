@@ -19,12 +19,15 @@ import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsListener
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
 import org.cef.browser.CefBrowser
 import org.cef.browser.CefFrame
+import org.cef.handler.CefLoadHandler
 import org.cef.handler.CefLoadHandlerAdapter
 import org.cef.network.CefRequest
 
 class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
 
     private companion object {
+        private const val BROWSER_RECOVERY_THROTTLE_MILLIS = 10_000L
+
         @Volatile
         private var applicationClosing = false
     }
@@ -50,7 +53,7 @@ class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
         syncCallback = { openCodeLocalStorageQuery.inject("payload") },
     )
     private val systemNotifications = OpenCodeSystemNotifications(project, toolWindow, browser, serverManager, ::openCodeProjectDirectory)
-    private val requestHandler = OpenCodeBrowserRequestHandler(serverManager, ideNavigation)
+    private val requestHandler = OpenCodeBrowserRequestHandler(serverManager, ideNavigation, ::recoverFromRendererCrash)
     private val openProjectAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
     private val scriptScheduler = OpenCodeBrowserScriptScheduler(project, browser, openProjectAlarm)
     private var openProjectScriptScheduled = false
@@ -65,6 +68,7 @@ class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
     private var hidingBrowserUntilProjectLoads = false
     private var loadedServerRootUrl: String? = null
     private var pendingServerStartRequest = false
+    private var lastBrowserRecoveryAttemptAtMillis = 0L
 
     @Volatile
     private var disposed = false
@@ -101,6 +105,24 @@ class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
             scheduleProjectSwitchPromptSuppressionScript()
             scheduleSystemNotificationBridgeScript()
             revealBrowserIfProjectReady(frame.url)
+        }
+
+        override fun onLoadError(
+            browser: CefBrowser?,
+            frame: CefFrame?,
+            errorCode: CefLoadHandler.ErrorCode?,
+            errorText: String?,
+            failedUrl: String?,
+        ) {
+            if (frame?.isMain != true) return
+            // ERR_ABORTED fires for ordinary cancelled navigations and must never trigger recovery.
+            if (errorCode == CefLoadHandler.ErrorCode.ERR_ABORTED) return
+            if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverManager.getServerUrl(), failedUrl)) return
+            ApplicationManager.getApplication().invokeLater {
+                if (!isContentDisposed()) {
+                    recoverFromLoadError("${errorCode?.name}: $errorText")
+                }
+            }
         }
     }
 
@@ -315,6 +337,40 @@ class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
         if (pendingServerStartRequest) return
         if (loadedServerRootUrl != null) return
         checkAndLoadContent()
+    }
+
+    /**
+     * Handles a failed main-frame load of the OpenCode page (e.g. the server died between health
+     * checks and the browser shows a connection error). Verifies the server immediately: reloads
+     * on a transient failure, or triggers the regular restart recovery right away.
+     */
+    private fun recoverFromLoadError(reason: String) {
+        if (!markBrowserRecoveryAttempt()) return
+        thisLogger().warn("OpenCode page failed to load ($reason); verifying server health")
+        serverManager.verifyServerNow(
+            callbackActive = { !isContentDisposed() },
+            onHealthy = { browser.cefBrowser.reload() },
+        )
+    }
+
+    /**
+     * Reloads the page after the JCEF renderer process crashed, which otherwise leaves a
+     * permanently blank panel. Throttled to avoid reload loops on repeated crashes.
+     */
+    private fun recoverFromRendererCrash() {
+        ApplicationManager.getApplication().invokeLater {
+            if (isContentDisposed()) return@invokeLater
+            if (!markBrowserRecoveryAttempt()) return@invokeLater
+            thisLogger().warn("OpenCode panel renderer process terminated; reloading page")
+            browser.cefBrowser.reload()
+        }
+    }
+
+    private fun markBrowserRecoveryAttempt(): Boolean {
+        val now = System.currentTimeMillis()
+        if (now - lastBrowserRecoveryAttemptAtMillis < BROWSER_RECOVERY_THROTTLE_MILLIS) return false
+        lastBrowserRecoveryAttemptAtMillis = now
+        return true
     }
 
     private fun loadProjectPage() {
