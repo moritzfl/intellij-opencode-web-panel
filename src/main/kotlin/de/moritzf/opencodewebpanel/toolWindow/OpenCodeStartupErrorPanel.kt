@@ -2,11 +2,8 @@ package de.moritzf.opencodewebpanel.toolWindow
 
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.diagnostic.thisLogger
-import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTextArea
@@ -95,7 +92,7 @@ internal class OpenCodeStartupErrorPanel(
     }
 
     init {
-        viewLogButton.addActionListener { openLogInEditor() }
+        viewLogButton.addActionListener { openOpenCodeServerLogInEditor(project) }
     }
 
     /**
@@ -126,16 +123,6 @@ internal class OpenCodeStartupErrorPanel(
                 component.revalidate()
                 component.repaint()
             }
-        }
-    }
-
-    private fun openLogInEditor() {
-        val file = logFile ?: return
-        runCatching {
-            val virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(file) ?: return
-            OpenFileDescriptor(project, virtualFile).navigate(true)
-        }.onFailure { error ->
-            thisLogger().warn("Could not open OpenCode server log: ${error.message}")
         }
     }
 }

@@ -27,6 +27,7 @@ Project-specific guidance for future implementation work.
 - Put command construction, auth helpers, URL helpers, path detection, and route encoding in `OpenCodeServerProtocol`.
 - Keep OpenCode process lifecycle in `SharedOpenCodeServerManager`.
 - Keep JCEF/tool-window integration in `OpenCodeWebToolWindowFactory`.
+- Tool-window title-bar actions and gear-menu actions live in `OpenCodeToolWindowActions` and are wired in the factory. Title actions must stay few and icon-only because IntelliJ clips them on narrow panels; the gear menu must duplicate every title action.
 - Keep settings state, secure password storage, and settings UI in the `settings` package.
 - Store secrets only in IntelliJ `PasswordSafe`; do not persist passwords in XML or project files.
 
