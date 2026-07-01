@@ -197,6 +197,19 @@ internal object OpenCodeServerProtocol {
         }
     }
 
+    /**
+     * Session routes of OpenCode's new layout (`/server/<key>/session/...`, `/new-session`) do not
+     * encode the project directory, so a directory match cannot be verified for them. Callers use
+     * this to treat such routes as valid destinations instead of waiting for a timeout.
+     */
+    fun isDirectorylessSessionRouteUrl(frameUrl: String?): Boolean {
+        if (frameUrl.isNullOrBlank()) return false
+        val path = runCatching { URI(frameUrl).path }.getOrNull() ?: return false
+        return Regex("^/server/[^/]+/session(?:/|$)").containsMatchIn(path) ||
+            path == "/new-session" ||
+            path.startsWith("/new-session/")
+    }
+
     fun resolveFileLink(href: String?, projectBasePath: String?): FileLinkTarget? {
         return resolveFileLink(href, projectBasePath, routeBasePath = null)
     }

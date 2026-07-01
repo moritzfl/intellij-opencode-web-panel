@@ -450,8 +450,21 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("opencode\\.workspace\\."))
         assertTrue(script.contains("opencode\\.window\\.browser\\.dat:tabs"))
         assertTrue(script.contains("'settings.v3'"))
+        assertTrue(script.contains("MAX_VALUE_CHARS"))
         assertFalse(script.contains(OpenCodeServerProtocol.OPEN_CODE_DEFAULT_SERVER_URL_STORAGE_KEY))
         assertTrue(script.contains("window.intellijStore(payload)"))
+    }
+
+    @Test
+    fun directorylessSessionRoutesAreRecognized() {
+        assertTrue(OpenCodeServerProtocol.isDirectorylessSessionRouteUrl("http://127.0.0.1:4096/server/abc123/session/ses_1"))
+        assertTrue(OpenCodeServerProtocol.isDirectorylessSessionRouteUrl("http://127.0.0.1:4096/server/abc123/session"))
+        assertTrue(OpenCodeServerProtocol.isDirectorylessSessionRouteUrl("http://127.0.0.1:4096/new-session"))
+        assertTrue(OpenCodeServerProtocol.isDirectorylessSessionRouteUrl("http://127.0.0.1:4096/new-session?draftId=d1"))
+        assertFalse(OpenCodeServerProtocol.isDirectorylessSessionRouteUrl("http://127.0.0.1:4096/"))
+        assertFalse(OpenCodeServerProtocol.isDirectorylessSessionRouteUrl("http://127.0.0.1:4096/L1VzZXJz/session"))
+        assertFalse(OpenCodeServerProtocol.isDirectorylessSessionRouteUrl("http://127.0.0.1:4096/server"))
+        assertFalse(OpenCodeServerProtocol.isDirectorylessSessionRouteUrl(null))
     }
 
     @Test

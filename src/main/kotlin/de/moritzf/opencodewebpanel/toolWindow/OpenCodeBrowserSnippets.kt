@@ -200,13 +200,16 @@ internal object OpenCodeBrowserSnippets {
               const workspaceKeys = /^opencode\.workspace\.[^:]+:workspace:(model-selection|terminal|project|icon|vcs)${'$'}/;
               const windowKeys = /^opencode\.window\.browser\.dat:tabs(\.recent)?${'$'}/;
               const shouldPersistKey = (key) => typeof key === 'string' && (exactKeys.has(key) || globalKeys.test(key) || workspaceKeys.test(key) || windowKeys.test(key));
+              // Bound each mirrored value so a single oversized entry (e.g. a huge cached theme
+              // CSS) cannot bloat the IDE-side settings store.
+              const MAX_VALUE_CHARS = 131072;
               const snapshot = () => {
                 const entries = {};
                 for (let index = 0; index < window.localStorage.length; index += 1) {
                   const key = window.localStorage.key(index);
                   if (!shouldPersistKey(key)) continue;
                   const value = window.localStorage.getItem(key);
-                  if (typeof value === 'string') entries[key] = value;
+                  if (typeof value === 'string' && value.length <= MAX_VALUE_CHARS) entries[key] = value;
                 }
                 return entries;
               };

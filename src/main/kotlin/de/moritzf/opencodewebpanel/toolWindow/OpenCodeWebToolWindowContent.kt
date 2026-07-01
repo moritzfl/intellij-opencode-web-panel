@@ -95,6 +95,9 @@ class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
                 projectSwitchPromptSuppressionScriptScheduled = false
                 systemNotificationBridgeScriptScheduled = false
                 if (OpenCodeServerProtocol.isOpenCodeServerPage(serverManager.getServerUrl(), frame.url)) {
+                    // Also reset the open-project flag: if the initial HTML load outlived all retry
+                    // delays scheduled by loadProjectPage, onLoadEnd must be able to reschedule it.
+                    openProjectScriptScheduled = false
                     localStorageBridge.restore(frame.url)
                     localStorageBridge.installSync(frame.url)
                     injectIdeThemeSyncEarly()
@@ -465,6 +468,7 @@ class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
         val serverUrl = serverManager.getServerUrl() ?: return false
         if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, frameUrl)) return false
         val projectDirectory = openCodeProjectDirectory()?.takeIf { it.isNotBlank() } ?: return true
+        if (OpenCodeServerProtocol.isDirectorylessSessionRouteUrl(frameUrl)) return true
         return OpenCodeServerProtocol.isSameFilesystemPath(
             OpenCodeServerProtocol.routeDirectoryFromUrl(frameUrl),
             projectDirectory
