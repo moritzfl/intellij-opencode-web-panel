@@ -4,6 +4,28 @@
 
 ## [Unreleased]
 
+### Added
+
+- Tool-window title-bar controls for zooming the panel and restarting the OpenCode server, with a gear menu that also offers reset zoom, view server log, and settings.
+- Native startup error panel with recent server output and direct Retry, Open Settings, and View Full Log actions, replacing the previous static error page.
+- Confirmation prompt before manually restarting a running OpenCode server, since a restart interrupts OpenCode work in all open projects.
+
+### Changed
+
+- Zoom changes apply to the live page immediately instead of reloading the panel and losing the chat draft and scroll position.
+- Starting the server during the failure backoff window now waits and starts automatically instead of failing immediately.
+
+### Fixed
+
+- Panels reload automatically after the shared server recovers from a crash or is restarted from another project window, instead of staying blank.
+- Applying server-affecting settings restarts the server and reloads open panels instead of leaving them on a stopped server.
+- Connection errors and browser renderer crashes now trigger immediate recovery instead of showing a stale error page until the next periodic health check.
+- Opening a panel while the server is already running no longer flashes a brief "Starting" status in every open panel.
+- Compact layout enforcement could silently skip its CSS depending on injection timing, and now also covers OpenCode views that use the inverse desktop media query.
+- Mirrored OpenCode web-session state follows current OpenCode storage keys (tab state, app settings) and caps oversized entries instead of discarding the whole snapshot.
+- OpenCode idle notifications follow the current OpenCode event format without duplicating notifications on servers that emit both old and new events.
+- The configured project now opens even when the initial page load is very slow, and panel scripts never run against pages outside the embedded OpenCode app.
+
 ## [1.2.7] - 2026-06-27
 
 ### Fixed

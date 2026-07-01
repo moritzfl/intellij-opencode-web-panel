@@ -45,7 +45,8 @@ OpenCode Web Panel brings the official OpenCode web UI into JetBrains IDEs. It o
 - **Chat file drop and paste** - Drag or paste project files into chat as `@relative/path` references, or attach dropped files.
 - **External links stay outside** - HTTP links open in your system browser instead of taking over the panel.
 - **IDE notifications** - OpenCode browser notifications can appear as JetBrains IDE notifications.
-- **Recovery controls** - Restart the local OpenCode server, view recent logs, or retry startup after a failure.
+- **Panel controls in the title bar** - Zoom the panel and restart the OpenCode server directly from the tool window.
+- **Recovery built in** - Failed or crashed servers surface a clear error panel with recent logs, retry, and settings shortcuts, and the panel recovers automatically where possible.
 - **Configurable safeguards** - Browser-side convenience features can be disabled if an OpenCode update conflicts with them.
 
 <!-- Plugin description end -->
@@ -78,6 +79,14 @@ OpenCode Web Panel brings the official OpenCode web UI into JetBrains IDEs. It o
 4. Start using OpenCode in the embedded panel.
 
 The plugin starts a local OpenCode server when needed, authenticates the embedded web UI automatically, and opens the configured project directory.
+
+## Tool Window Controls
+
+The tool window title bar offers quick controls (also available in the tool window's gear menu on narrow panels):
+
+- **Zoom out / Zoom in** - Scale the embedded OpenCode UI in 10% steps without reloading.
+- **Restart Server** - Stop and restart the shared OpenCode server. Asks for confirmation while the server is running, since a restart interrupts OpenCode work in all open projects.
+- The gear menu additionally offers **Reset Zoom**, **View Server Log**, and **OpenCode Web Panel Settings**.
 
 ## Settings
 
@@ -118,13 +127,13 @@ Project-specific settings are stored with the IDE project.
 
 - Check that the OpenCode CLI is installed.
 - Run `opencode --version` in a terminal.
+- The panel shows an error view with recent server output plus **Retry**, **Open Settings**, and **View Full Log** actions.
 - Open the plugin settings and use **Detect** or set the OpenCode executable path manually.
-- Use **View Server Log** in settings to inspect recent startup output.
 
 **The panel shows a failed server state**
 
-- Click **Retry** in the tool-window status strip.
-- If it still fails, open settings and use **Restart Server**.
+- Click **Retry** in the tool-window status strip or on the error view.
+- If it still fails, review the server output shown on the error view.
 - Verify the configured OpenCode project directory exists.
 
 **The embedded UI behaves unexpectedly after an OpenCode update**
