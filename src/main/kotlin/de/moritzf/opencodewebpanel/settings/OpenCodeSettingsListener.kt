@@ -23,6 +23,8 @@ interface OpenCodeSettingsListener {
 
     fun systemNotificationsChanged(enabled: Boolean) {}
 
+    fun agentStatusBadgeChanged(enabled: Boolean) {}
+
     fun serverRestartRequested() {}
 
     companion object {

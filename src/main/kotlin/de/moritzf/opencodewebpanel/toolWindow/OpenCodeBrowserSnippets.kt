@@ -498,6 +498,132 @@ internal object OpenCodeBrowserSnippets {
         return script.trimIndent()
     }
 
+    fun buildAgentStatusBridgeScript(projectBasePath: String?, enabled: Boolean, statusCallback: String?): String? {
+        if (!enabled || statusCallback == null) return null
+        if (projectBasePath.isNullOrBlank()) return null
+        val directory = escapeJavaScript(projectBasePath)
+        @Language("JavaScript")
+        val script = """
+            (() => {
+              if (window.__opencodeIntellijAgentStatusInstalled) return;
+              window.__opencodeIntellijAgentStatusInstalled = true;
+              const directory = '$directory';
+              const controller = new AbortController();
+              const comparableDirectory = (value) => {
+                const normalized = String(value || '').trim().replace(/\\/g, '/').replace(/\/+${'$'}/, '');
+                return /^[A-Za-z]:\//.test(normalized) ? normalized[0].toLowerCase() + normalized.slice(1) : normalized;
+              };
+              const targetDirectory = comparableDirectory(directory);
+              const busySessions = new Set();
+              const attentionRequests = new Set();
+              let lastState = '';
+              const send = () => {
+                const state = attentionRequests.size > 0 ? 'attention' : (busySessions.size > 0 ? 'busy' : 'idle');
+                if (state === lastState) return;
+                lastState = state;
+                try {
+                  $statusCallback;
+                } catch (_) {}
+              };
+              const seed = async () => {
+                try {
+                  const response = await fetch('/session/status?directory=' + encodeURIComponent(directory), { credentials: 'same-origin', signal: controller.signal });
+                  if (response.ok) {
+                    const statuses = await response.json();
+                    busySessions.clear();
+                    if (statuses && typeof statuses === 'object' && !Array.isArray(statuses)) {
+                      for (const [sessionID, status] of Object.entries(statuses)) {
+                        if (status && (status.type === 'busy' || status.type === 'retry')) busySessions.add(sessionID);
+                      }
+                    }
+                  }
+                } catch (_) {}
+                for (const path of ['/permission', '/question']) {
+                  try {
+                    const response = await fetch(path + '?directory=' + encodeURIComponent(directory), { credentials: 'same-origin', signal: controller.signal });
+                    if (!response.ok) continue;
+                    const requests = await response.json();
+                    if (Array.isArray(requests)) {
+                      for (const request of requests) {
+                        if (request && typeof request.id === 'string') attentionRequests.add(request.id);
+                      }
+                    }
+                  } catch (_) {}
+                }
+                send();
+              };
+              const handleEvent = (event) => {
+                const record = event && event.payload;
+                if (!record || typeof record.type !== 'string') return;
+                if (comparableDirectory(event.directory) !== targetDirectory) return;
+                const properties = record.properties || {};
+                const type = record.type;
+                if (type === 'session.status') {
+                  const sessionID = String(properties.sessionID || '');
+                  const status = properties.status;
+                  if (!sessionID || !status) return;
+                  if (status.type === 'busy' || status.type === 'retry') busySessions.add(sessionID); else busySessions.delete(sessionID);
+                } else if (type === 'session.idle') {
+                  busySessions.delete(String(properties.sessionID || ''));
+                } else if (type === 'permission.asked' || type === 'question.asked') {
+                  if (typeof properties.id === 'string') attentionRequests.add(properties.id);
+                } else if (type === 'permission.replied' || type === 'question.replied' || type === 'question.rejected') {
+                  if (typeof properties.requestID === 'string') attentionRequests.delete(properties.requestID);
+                } else {
+                  return;
+                }
+                send();
+              };
+              const processSseBlock = (block) => {
+                const data = block
+                  .split('\n')
+                  .filter((line) => line.startsWith('data:'))
+                  .map((line) => line.slice(5).trimStart())
+                  .join('\n')
+                  .trim();
+                if (!data) return;
+                try {
+                  handleEvent(JSON.parse(data));
+                } catch (_) {}
+              };
+              const sleep = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
+              const listen = async () => {
+                while (!controller.signal.aborted) {
+                  try {
+                    const response = await fetch('/global/event', {
+                      headers: { Accept: 'text/event-stream' },
+                      credentials: 'same-origin',
+                      signal: controller.signal,
+                    });
+                    if (!response.ok || !response.body) throw new Error('OpenCode event stream unavailable');
+                    await seed();
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder();
+                    let buffer = '';
+                    while (!controller.signal.aborted) {
+                      const result = await reader.read();
+                      if (result.done) break;
+                      buffer += decoder.decode(result.value, { stream: true });
+                      let separator = buffer.indexOf('\n\n');
+                      while (separator >= 0) {
+                        processSseBlock(buffer.slice(0, separator));
+                        buffer = buffer.slice(separator + 2);
+                        separator = buffer.indexOf('\n\n');
+                      }
+                    }
+                  } catch (_) {
+                    if (controller.signal.aborted) return;
+                    await sleep(2000);
+                  }
+                }
+              };
+              window.addEventListener('pagehide', () => controller.abort(), { once: true });
+              listen();
+            })();
+        """
+        return script.trimIndent()
+    }
+
     fun buildCodeNavigationScript(enabled: Boolean, openCodeCallback: String?): String? {
         if (!enabled || openCodeCallback == null) return null
         @Language("JavaScript")

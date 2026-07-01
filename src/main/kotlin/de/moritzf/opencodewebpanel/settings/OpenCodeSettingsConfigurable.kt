@@ -92,6 +92,7 @@ class OpenCodeSettingsConfigurable : Configurable {
     private val suppressProjectSwitchPromptsCheckBox = JBCheckBox("Suppress project-switch prompts")
     private val enableSystemNotificationsCheckBox = JBCheckBox("Forward OpenCode system notifications to the IDE")
     private val enablePermissionNotificationActionsCheckBox = JBCheckBox("Offer Allow/Deny actions on permission notifications")
+    private val showAgentStatusBadgeCheckBox = JBCheckBox("Show agent status on the tool window icon")
     private val waitForIntellijMcpServerCheckBox = JBCheckBox("Wait for IntelliJ MCP server before starting OpenCode")
     private val uiZoomSpinner = JSpinner(
         SpinnerNumberModel(
@@ -131,6 +132,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         CheckBoxSettingBinding(suppressProjectSwitchPromptsCheckBox, { suppressProjectSwitchPrompts }, { value -> suppressProjectSwitchPrompts = value }, { listener, value -> listener.projectSwitchPromptSuppressionChanged(value) }),
         CheckBoxSettingBinding(enableSystemNotificationsCheckBox, { enableSystemNotifications }, { value -> enableSystemNotifications = value }, { listener, value -> listener.systemNotificationsChanged(value) }),
         CheckBoxSettingBinding(enablePermissionNotificationActionsCheckBox, { enablePermissionNotificationActions }, { value -> enablePermissionNotificationActions = value }),
+        CheckBoxSettingBinding(showAgentStatusBadgeCheckBox, { showAgentStatusBadge }, { value -> showAgentStatusBadge = value }, { listener, value -> listener.agentStatusBadgeChanged(value) }),
         CheckBoxSettingBinding(waitForIntellijMcpServerCheckBox, { waitForIntellijMcpServer }, { value -> waitForIntellijMcpServer = value }),
         CheckBoxSettingBinding(enableServerLogsCheckBox, { enableServerLogs }, { value -> enableServerLogs = value }),
     )
@@ -291,6 +293,10 @@ class OpenCodeSettingsConfigurable : Configurable {
                 row {
                     cell(suppressProjectSwitchPromptsCheckBox)
                         .comment("Hide OpenCode in-app prompts that ask this panel to switch to another session or project for approval.")
+                }
+                row {
+                    cell(showAgentStatusBadgeCheckBox)
+                        .comment("Overlay the tool window icon with a live indicator while the agent works and a warning while it awaits your input.")
                 }
             }
         }

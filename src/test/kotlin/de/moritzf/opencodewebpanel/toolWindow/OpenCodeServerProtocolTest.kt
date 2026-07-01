@@ -934,6 +934,34 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun buildAgentStatusBridgeScriptIsMissingWhenDisabledOrIncomplete() {
+        assertNull(OpenCodeServerProtocol.buildAgentStatusBridgeScript("/tmp/project", enabled = false, statusCallback = "cb(state)"))
+        assertNull(OpenCodeServerProtocol.buildAgentStatusBridgeScript("/tmp/project", enabled = true, statusCallback = null))
+        assertNull(OpenCodeServerProtocol.buildAgentStatusBridgeScript(null, enabled = true, statusCallback = "cb(state)"))
+        assertNull(OpenCodeServerProtocol.buildAgentStatusBridgeScript(" ", enabled = true, statusCallback = "cb(state)"))
+    }
+
+    @Test
+    fun buildAgentStatusBridgeScriptTracksBusyAndAttentionState() {
+        val script = OpenCodeServerProtocol.buildAgentStatusBridgeScript(
+            "/tmp/project",
+            enabled = true,
+            statusCallback = "window.intellijStatus(state)",
+        )!!
+
+        assertTrue(script.contains("window.__opencodeIntellijAgentStatusInstalled"))
+        assertTrue(script.contains("fetch('/global/event'"))
+        assertTrue(script.contains("'/session/status?directory='"))
+        assertTrue(script.contains("['/permission', '/question']"))
+        assertTrue(script.contains("'session.status'"))
+        assertTrue(script.contains("'permission.asked' || type === 'question.asked'"))
+        assertTrue(script.contains("'permission.replied' || type === 'question.replied' || type === 'question.rejected'"))
+        assertTrue(script.contains("'attention'"))
+        assertTrue(script.contains("'busy'"))
+        assertTrue(script.contains("window.intellijStatus(state)"))
+    }
+
+    @Test
     fun parseSystemNotificationPayloadReadsPermissionFields() {
         val payload = listOf(
             "id1", "%2Ftmp%2Fproject", "%2Froute", "Permission%20required", "Body",

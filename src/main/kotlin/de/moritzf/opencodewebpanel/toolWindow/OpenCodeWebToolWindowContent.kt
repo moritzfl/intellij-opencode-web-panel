@@ -7,7 +7,9 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.util.Disposer
+import com.intellij.openapi.util.IconLoader
 import com.intellij.openapi.wm.ToolWindow
+import com.intellij.ui.BadgeIconSupplier
 import com.intellij.ui.jcef.JBCefBrowser
 import com.intellij.ui.jcef.JBCefBrowserBase
 import com.intellij.ui.jcef.JBCefJSQuery
@@ -25,7 +27,7 @@ import org.cef.network.CefRequest
 import java.awt.CardLayout
 import javax.swing.JPanel
 
-class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
+class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposable {
 
     private companion object {
         private const val BROWSER_CARD = "browser"
@@ -59,6 +61,7 @@ class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
     private val openCodeReferenceQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
     private val openCodeLocalStorageQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
     private val systemNotificationQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
+    private val agentStatusQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
     private val openExternalLinkQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
     private val serverManager = SharedOpenCodeServerManager.getInstance()
     private val ideNavigation = OpenCodeIdeNavigation(project, browser, serverManager, ::openCodeProjectDirectory, this)
@@ -80,10 +83,14 @@ class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
     private var ideThemeSyncScriptScheduled = false
     private var projectSwitchPromptSuppressionScriptScheduled = false
     private var systemNotificationBridgeScriptScheduled = false
+    private var agentStatusBridgeScriptScheduled = false
     private var hidingBrowserUntilProjectLoads = false
     private var loadedServerRootUrl: String? = null
     private var pendingServerStartRequest = false
     private var lastBrowserRecoveryAttemptAtMillis = 0L
+    private val toolWindowIconSupplier by lazy {
+        BadgeIconSupplier(IconLoader.getIcon("/icons/opencode.svg", OpenCodeWebToolWindowContent::class.java))
+    }
 
     @Volatile
     private var disposed = false
@@ -98,6 +105,7 @@ class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
                 ideThemeSyncScriptScheduled = false
                 projectSwitchPromptSuppressionScriptScheduled = false
                 systemNotificationBridgeScriptScheduled = false
+                agentStatusBridgeScriptScheduled = false
                 if (OpenCodeServerProtocol.isOpenCodeServerPage(serverManager.getServerUrl(), frame.url)) {
                     // Also reset the open-project flag: if the initial HTML load outlived all retry
                     // delays scheduled by loadProjectPage, onLoadEnd must be able to reschedule it.
@@ -124,6 +132,7 @@ class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
             scheduleIdeThemeSyncScript()
             scheduleProjectSwitchPromptSuppressionScript()
             scheduleSystemNotificationBridgeScript()
+            scheduleAgentStatusBridgeScript()
             revealBrowserIfProjectReady(frame.url)
             scheduleFlushPendingChatInput()
         }
@@ -174,6 +183,10 @@ class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
             if (OpenCodeSettingsState.getInstance().enableSystemNotifications) {
                 systemNotifications.show(payload)
             }
+            null
+        }
+        agentStatusQuery.addHandler { state ->
+            updateAgentStatusBadge(state.orEmpty())
             null
         }
         browser.jbCefClient.addRequestHandler(requestHandler, browser.cefBrowser)
@@ -247,6 +260,10 @@ class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
 
                 override fun systemNotificationsChanged(enabled: Boolean) {
                     applySystemNotifications(enabled)
+                }
+
+                override fun agentStatusBadgeChanged(enabled: Boolean) {
+                    applyAgentStatusBadge(enabled)
                 }
 
                 override fun serverRestartRequested() {
@@ -323,6 +340,9 @@ class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
     fun getContent() = contentPanel
 
     private fun updateLifecycleIndicator(state: OpenCodeServerLifecycleState) {
+        if (state != OpenCodeServerLifecycleState.RUNNING) {
+            resetAgentStatusBadge()
+        }
         if (state == OpenCodeServerLifecycleState.RUNNING && hidingBrowserUntilProjectLoads) {
             lifecycleStatusPanel.showProgress("Opening OpenCode project...")
             contentPanel.revalidate()
@@ -659,6 +679,65 @@ class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
         scriptScheduler.schedule(script, rootUrl) {
             OpenCodeSettingsState.getInstance().enableSystemNotifications && isBrowserOnOpenCodeServerPage(serverUrl)
         }
+    }
+
+    private fun scheduleAgentStatusBridgeScript() {
+        if (agentStatusBridgeScriptScheduled) return
+        if (!OpenCodeSettingsState.getInstance().showAgentStatusBadge) return
+
+        val serverUrl = serverManager.getServerUrl() ?: return
+        val script = OpenCodeServerProtocol.buildAgentStatusBridgeScript(
+            openCodeProjectDirectory(),
+            enabled = true,
+            statusCallback = agentStatusQuery.inject("state"),
+        ) ?: return
+        val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
+        agentStatusBridgeScriptScheduled = true
+
+        scriptScheduler.schedule(script, rootUrl) {
+            OpenCodeSettingsState.getInstance().showAgentStatusBadge && isBrowserOnOpenCodeServerPage(serverUrl)
+        }
+    }
+
+    /**
+     * Overlays the tool window icon with a live indicator while the agent works and a warning
+     * while it awaits input, so the panel is glanceable even when collapsed.
+     */
+    private fun updateAgentStatusBadge(state: String) {
+        ApplicationManager.getApplication().invokeLater {
+            if (isContentDisposed()) return@invokeLater
+            if (!OpenCodeSettingsState.getInstance().showAgentStatusBadge) return@invokeLater
+            toolWindow.setIcon(
+                when (state) {
+                    "attention" -> toolWindowIconSupplier.warningIcon
+                    "busy" -> toolWindowIconSupplier.liveIndicatorIcon
+                    else -> toolWindowIconSupplier.originalIcon
+                },
+            )
+        }
+    }
+
+    private fun resetAgentStatusBadge() {
+        if (isContentDisposed()) return
+        toolWindow.setIcon(toolWindowIconSupplier.originalIcon)
+    }
+
+    private fun applyAgentStatusBadge(enabled: Boolean) {
+        agentStatusBridgeScriptScheduled = false
+        resetAgentStatusBadge()
+        val serverUrl = serverManager.getServerUrl() ?: return
+        if (!isBrowserOnOpenCodeServerPage(serverUrl)) return
+        if (!enabled) {
+            browser.cefBrowser.reload()
+            return
+        }
+        val script = OpenCodeServerProtocol.buildAgentStatusBridgeScript(
+            openCodeProjectDirectory(),
+            enabled = true,
+            statusCallback = agentStatusQuery.inject("state"),
+        ) ?: return
+        browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
+        agentStatusBridgeScriptScheduled = true
     }
 
     private fun isBrowserOnOpenCodeServerPage(serverUrl: String): Boolean {
