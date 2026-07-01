@@ -923,6 +923,7 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("window.__opencodeIntellijNotificationBridgeInstalled"))
         assertTrue(script.contains("fetch('/global/event'"))
         assertTrue(script.contains("Accept: 'text/event-stream'"))
+        assertTrue(script.contains("window.__opencodeIntellijEventHub.subscribe"))
         assertTrue(script.contains("type !== 'session.idle'"))
         assertTrue(script.contains("type !== 'permission.asked'"))
         assertTrue(script.contains("type === 'session.status'"))
@@ -951,6 +952,7 @@ class OpenCodeServerProtocolTest {
 
         assertTrue(script.contains("window.__opencodeIntellijAgentStatusInstalled"))
         assertTrue(script.contains("fetch('/global/event'"))
+        assertTrue(script.contains("window.__opencodeIntellijEventHub.subscribe"))
         assertTrue(script.contains("'/session/status?directory='"))
         assertTrue(script.contains("['/permission', '/question']"))
         assertTrue(script.contains("'session.status'"))
@@ -959,6 +961,30 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("'attention'"))
         assertTrue(script.contains("'busy'"))
         assertTrue(script.contains("window.intellijStatus(state)"))
+    }
+
+    @Test
+    fun eventBridgeScriptsShareSingleEventStreamConnection() {
+        // Chromium allows only six concurrent HTTP/1.1 connections per host across all JCEF
+        // browsers, and each panel's SPA already holds one /global/event stream. Both bridges
+        // must share a single hub reader (with cross-page leader election) instead of opening
+        // one stream each, or two open projects stall every further request in all panels.
+        val notificationScript = OpenCodeServerProtocol.buildSystemNotificationBridgeScript(
+            enabled = true,
+            notificationCallback = "cb(payload)",
+        )!!
+        val agentScript = OpenCodeServerProtocol.buildAgentStatusBridgeScript(
+            "/tmp/project",
+            enabled = true,
+            statusCallback = "cb(state)",
+        )!!
+
+        for (script in listOf(notificationScript, agentScript)) {
+            assertEquals(1, Regex("fetch\\('/global/event'").findAll(script).count())
+            assertTrue(script.contains("if (window.__opencodeIntellijEventHub) return"))
+            assertTrue(script.contains("navigator.locks"))
+            assertTrue(script.contains("BroadcastChannel('opencode-intellij-event-hub')"))
+        }
     }
 
     @Test

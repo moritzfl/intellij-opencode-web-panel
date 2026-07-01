@@ -41,6 +41,12 @@ Project-specific guidance for future implementation work.
 - If settings that affect the process change, stop the running server and let the next tool-window load restart it.
 - OpenCode uses a `(min-width: 768px)` `matchMedia` query to switch between compact (mobile) and wide (desktop) layouts. To force compact layout, `window.matchMedia` must be patched **before** the SPA bundle loads (`onLoadStart`), so `createMediaQuery` initializes with `matches: false` and never subscribes to real resize events.
 
+## Browser Connection Budget
+
+- Chromium allows only **six concurrent HTTP/1.1 connections per host**, shared across **all** JCEF browsers in the IDE. The local OpenCode server is plain HTTP, so this limit applies, and every open project window's panel draws from the same pool.
+- Each embedded OpenCode SPA already holds one persistent `/global/event` stream. When the pool is exhausted, further requests (model lists, session data) queue forever with **no errors**: the page loads, chat input works, but selectors never finish loading.
+- Injected scripts must therefore never open per-feature event streams. All plugin event consumers share the single event hub in `OpenCodeBrowserSnippets` (`EVENT_HUB_BOOTSTRAP`): pages elect a leader via the Web Locks API, the leader owns the only plugin `fetch('/global/event')` reader, and events fan out to all pages through a `BroadcastChannel`. Subscribe new consumers to the hub instead of adding readers.
+
 ## Settings
 
 - Settings path: `Settings > Tools > OpenCode Web Panel`.

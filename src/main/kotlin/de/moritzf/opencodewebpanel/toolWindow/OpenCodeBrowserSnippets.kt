@@ -317,6 +317,143 @@ internal object OpenCodeBrowserSnippets {
         return script.trimIndent()
     }
 
+    /**
+     * Shared single-connection reader for the OpenCode `/global/event` stream.
+     *
+     * Chromium allows at most six concurrent HTTP/1.1 connections per host, shared across
+     * every JCEF browser in the IDE, and each embedded OpenCode SPA already holds one
+     * `/global/event` stream of its own. When the notification and agent-status bridges each
+     * opened their own reader, two open projects were enough to exhaust the pool and stall
+     * every further request (model lists, session data) in all panels.
+     *
+     * The hub keeps the plugin at a single stream per IDE application: pages elect a leader
+     * via the Web Locks API, the leader owns the only `fetch('/global/event')` reader and
+     * re-broadcasts parsed events to all pages through a BroadcastChannel. When the leader
+     * page goes away, the lock is released and the next page takes over. If Web Locks or
+     * BroadcastChannel are unavailable, each page falls back to one local reader, which is
+     * still only half of the previous footprint.
+     *
+     * Both bridge scripts embed this bootstrap; the first one to run installs the hub.
+     */
+    @Language("JavaScript")
+    private val EVENT_HUB_BOOTSTRAP = """
+        (() => {
+          if (window.__opencodeIntellijEventHub) return;
+          const hub = {
+            listeners: new Set(),
+            connected: false,
+            started: false,
+            subscribe(listener) {
+              this.listeners.add(listener);
+              if (this.connected && listener.onConnect) {
+                try { listener.onConnect(); } catch (_) {}
+              }
+              start();
+            },
+          };
+          const controller = new AbortController();
+          const sleep = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
+          const dispatch = (event) => {
+            for (const listener of hub.listeners) {
+              try {
+                const result = listener.onEvent && listener.onEvent(event);
+                if (result && typeof result.catch === 'function') result.catch(() => {});
+              } catch (_) {}
+            }
+          };
+          const notifyConnect = () => {
+            hub.connected = true;
+            for (const listener of hub.listeners) {
+              if (!listener.onConnect) continue;
+              try { listener.onConnect(); } catch (_) {}
+            }
+          };
+          let channel = null;
+          let leader = false;
+          try {
+            channel = new BroadcastChannel('opencode-intellij-event-hub');
+            channel.onmessage = (message) => {
+              const data = message && message.data;
+              if (!data) return;
+              if (data.kind === 'event') dispatch(data.event);
+              else if (data.kind === 'connected') notifyConnect();
+              else if (data.kind === 'hello' && leader && hub.connected) channel.postMessage({ kind: 'connected' });
+            };
+          } catch (_) {}
+          const broadcast = (message) => {
+            if (!channel) return;
+            try { channel.postMessage(message); } catch (_) {}
+          };
+          const processSseBlock = (block) => {
+            const data = block
+              .split('\n')
+              .filter((line) => line.startsWith('data:'))
+              .map((line) => line.slice(5).trimStart())
+              .join('\n')
+              .trim();
+            if (!data) return;
+            try {
+              const event = JSON.parse(data);
+              dispatch(event);
+              broadcast({ kind: 'event', event });
+            } catch (error) {
+              if (window.console && window.console.warn) {
+                window.console.warn('Failed to parse OpenCode event', error);
+              }
+            }
+          };
+          const listen = async () => {
+            leader = true;
+            while (!controller.signal.aborted) {
+              try {
+                const response = await fetch('/global/event', {
+                  headers: { Accept: 'text/event-stream' },
+                  credentials: 'same-origin',
+                  signal: controller.signal,
+                });
+                if (!response.ok || !response.body) throw new Error('OpenCode event stream unavailable');
+                notifyConnect();
+                broadcast({ kind: 'connected' });
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                while (!controller.signal.aborted) {
+                  const result = await reader.read();
+                  if (result.done) break;
+                  buffer += decoder.decode(result.value, { stream: true });
+                  let separator = buffer.indexOf('\n\n');
+                  while (separator >= 0) {
+                    processSseBlock(buffer.slice(0, separator));
+                    buffer = buffer.slice(separator + 2);
+                    separator = buffer.indexOf('\n\n');
+                  }
+                }
+                hub.connected = false;
+              } catch (error) {
+                hub.connected = false;
+                if (controller.signal.aborted) return;
+                if (window.console && window.console.warn) {
+                  window.console.warn('OpenCode event stream disconnected', error);
+                }
+                await sleep(2000);
+              }
+            }
+          };
+          const start = () => {
+            if (hub.started) return;
+            hub.started = true;
+            window.addEventListener('pagehide', () => controller.abort(), { once: true });
+            if (channel && window.navigator && window.navigator.locks) {
+              broadcast({ kind: 'hello' });
+              window.navigator.locks.request('opencode-intellij-event-hub', listen).catch(() => { listen(); });
+            } else {
+              listen();
+            }
+          };
+          window.__opencodeIntellijEventHub = hub;
+        })();
+    """.trimIndent()
+
     fun buildSystemNotificationBridgeScript(enabled: Boolean, notificationCallback: String?): String? {
         if (!enabled || notificationCallback == null) return null
         @Language("JavaScript")
@@ -325,10 +462,8 @@ internal object OpenCodeBrowserSnippets {
               if (window.__opencodeIntellijNotificationBridgeInstalled) return;
               window.__opencodeIntellijNotificationBridgeInstalled = true;
               const encode = (value) => encodeURIComponent(String(value == null ? '' : value));
-              const controller = new AbortController();
               const seen = new Set();
               const recentIdle = new Map();
-              const sleep = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
               const focused = () => document.visibilityState === 'visible' && document.hasFocus();
               const projectName = (directory) => String(directory || '')
                 .replace(/[\\/]+${'$'}/, '')
@@ -352,7 +487,7 @@ internal object OpenCodeBrowserSnippets {
                 try {
                   const response = await fetch(
                     '/session/' + encodeURIComponent(sessionID) + '?directory=' + encodeURIComponent(directory),
-                    { credentials: 'same-origin', signal: controller.signal },
+                    { credentials: 'same-origin' },
                   );
                   if (!response.ok) return null;
                   const value = await response.json();
@@ -443,59 +578,10 @@ internal object OpenCodeBrowserSnippets {
                 window.setTimeout(() => seen.delete(id), 30000);
                 sendToIde({ id, directory, route: routeFor(directory, sessionID), title, body, kind, sessionID, requestID });
               };
-              const processSseBlock = (block) => {
-                const data = block
-                  .split('\n')
-                  .filter((line) => line.startsWith('data:'))
-                  .map((line) => line.slice(5).trimStart())
-                  .join('\n')
-                  .trim();
-                if (!data) return;
-                try {
-                  handleEvent(JSON.parse(data));
-                } catch (error) {
-                  if (window.console && window.console.warn) {
-                    window.console.warn('Failed to parse OpenCode notification event', error);
-                  }
-                }
-              };
-              const listen = async () => {
-                while (!controller.signal.aborted) {
-                  try {
-                    const response = await fetch('/global/event', {
-                      headers: { Accept: 'text/event-stream' },
-                      credentials: 'same-origin',
-                      signal: controller.signal,
-                    });
-                    if (!response.ok || !response.body) throw new Error('OpenCode event stream unavailable');
-                    const reader = response.body.getReader();
-                    const decoder = new TextDecoder();
-                    let buffer = '';
-                    while (!controller.signal.aborted) {
-                      const result = await reader.read();
-                      if (result.done) break;
-                      buffer += decoder.decode(result.value, { stream: true });
-                      let separator = buffer.indexOf('\n\n');
-                      while (separator >= 0) {
-                        processSseBlock(buffer.slice(0, separator));
-                        buffer = buffer.slice(separator + 2);
-                        separator = buffer.indexOf('\n\n');
-                      }
-                    }
-                  } catch (error) {
-                    if (controller.signal.aborted) return;
-                    if (window.console && window.console.warn) {
-                      window.console.warn('OpenCode notification bridge disconnected', error);
-                    }
-                    await sleep(2000);
-                  }
-                }
-              };
-              window.addEventListener('pagehide', () => controller.abort(), { once: true });
-              listen();
+              window.__opencodeIntellijEventHub.subscribe({ onEvent: handleEvent });
             })();
         """
-        return script.trimIndent()
+        return EVENT_HUB_BOOTSTRAP + "\n" + script.trimIndent()
     }
 
     fun buildAgentStatusBridgeScript(projectBasePath: String?, enabled: Boolean, statusCallback: String?): String? {
@@ -508,7 +594,6 @@ internal object OpenCodeBrowserSnippets {
               if (window.__opencodeIntellijAgentStatusInstalled) return;
               window.__opencodeIntellijAgentStatusInstalled = true;
               const directory = '$directory';
-              const controller = new AbortController();
               const comparableDirectory = (value) => {
                 const normalized = String(value || '').trim().replace(/\\/g, '/').replace(/\/+${'$'}/, '');
                 return /^[A-Za-z]:\//.test(normalized) ? normalized[0].toLowerCase() + normalized.slice(1) : normalized;
@@ -527,7 +612,7 @@ internal object OpenCodeBrowserSnippets {
               };
               const seed = async () => {
                 try {
-                  const response = await fetch('/session/status?directory=' + encodeURIComponent(directory), { credentials: 'same-origin', signal: controller.signal });
+                  const response = await fetch('/session/status?directory=' + encodeURIComponent(directory), { credentials: 'same-origin' });
                   if (response.ok) {
                     const statuses = await response.json();
                     busySessions.clear();
@@ -540,7 +625,7 @@ internal object OpenCodeBrowserSnippets {
                 } catch (_) {}
                 for (const path of ['/permission', '/question']) {
                   try {
-                    const response = await fetch(path + '?directory=' + encodeURIComponent(directory), { credentials: 'same-origin', signal: controller.signal });
+                    const response = await fetch(path + '?directory=' + encodeURIComponent(directory), { credentials: 'same-origin' });
                     if (!response.ok) continue;
                     const requests = await response.json();
                     if (Array.isArray(requests)) {
@@ -574,54 +659,13 @@ internal object OpenCodeBrowserSnippets {
                 }
                 send();
               };
-              const processSseBlock = (block) => {
-                const data = block
-                  .split('\n')
-                  .filter((line) => line.startsWith('data:'))
-                  .map((line) => line.slice(5).trimStart())
-                  .join('\n')
-                  .trim();
-                if (!data) return;
-                try {
-                  handleEvent(JSON.parse(data));
-                } catch (_) {}
-              };
-              const sleep = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
-              const listen = async () => {
-                while (!controller.signal.aborted) {
-                  try {
-                    const response = await fetch('/global/event', {
-                      headers: { Accept: 'text/event-stream' },
-                      credentials: 'same-origin',
-                      signal: controller.signal,
-                    });
-                    if (!response.ok || !response.body) throw new Error('OpenCode event stream unavailable');
-                    await seed();
-                    const reader = response.body.getReader();
-                    const decoder = new TextDecoder();
-                    let buffer = '';
-                    while (!controller.signal.aborted) {
-                      const result = await reader.read();
-                      if (result.done) break;
-                      buffer += decoder.decode(result.value, { stream: true });
-                      let separator = buffer.indexOf('\n\n');
-                      while (separator >= 0) {
-                        processSseBlock(buffer.slice(0, separator));
-                        buffer = buffer.slice(separator + 2);
-                        separator = buffer.indexOf('\n\n');
-                      }
-                    }
-                  } catch (_) {
-                    if (controller.signal.aborted) return;
-                    await sleep(2000);
-                  }
-                }
-              };
-              window.addEventListener('pagehide', () => controller.abort(), { once: true });
-              listen();
+              window.__opencodeIntellijEventHub.subscribe({
+                onConnect: () => { seed().catch(() => {}); },
+                onEvent: handleEvent,
+              });
             })();
         """
-        return script.trimIndent()
+        return EVENT_HUB_BOOTSTRAP + "\n" + script.trimIndent()
     }
 
     fun buildCodeNavigationScript(enabled: Boolean, openCodeCallback: String?): String? {
