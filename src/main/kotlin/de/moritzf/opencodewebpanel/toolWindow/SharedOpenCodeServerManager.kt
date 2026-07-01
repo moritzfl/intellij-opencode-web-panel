@@ -82,18 +82,14 @@ class SharedOpenCodeServerManager : Disposable {
                 starting = true
                 ++startSequence
             }
-            setLifecycleState(OpenCodeServerLifecycleState.STARTING)
+            // Keep RUNNING while merely validating a healthy server; flipping to STARTING here
+            // would flash the status strip in every open panel on each tool-window load.
+            if (getLifecycleState() != OpenCodeServerLifecycleState.RUNNING) {
+                setLifecycleState(OpenCodeServerLifecycleState.STARTING)
+            }
             ApplicationManager.getApplication().executeOnPooledThread {
                 validateExistingServerOrStart(project, basePath, url, validationId)
             }
-            return
-        }
-
-        val backoffMillis = remainingStartBackoffMillis()
-        if (backoffMillis > 0) {
-            thisLogger().warn("Delaying OpenCode server start after recent failure for ${backoffMillis}ms")
-            setLifecycleState(OpenCodeServerLifecycleState.FAILED)
-            ApplicationManager.getApplication().invokeLater(onFailed)
             return
         }
 
@@ -106,6 +102,21 @@ class SharedOpenCodeServerManager : Disposable {
 
         setLifecycleState(OpenCodeServerLifecycleState.STARTING)
         destroyCurrentProcess()
+
+        val backoffMillis = remainingStartBackoffMillis()
+        if (backoffMillis > 0) {
+            thisLogger().warn("Delaying OpenCode server start after recent failure by ${backoffMillis}ms")
+            scheduler.schedule(
+                {
+                    if (isCurrentStart(startId)) {
+                        startOpenCodeServer(project.takeUnless { it.isDisposed }, basePath, startId)
+                    }
+                },
+                backoffMillis,
+                TimeUnit.MILLISECONDS,
+            )
+            return
+        }
         startOpenCodeServer(project, basePath, startId)
     }
 
@@ -117,6 +128,7 @@ class SharedOpenCodeServerManager : Disposable {
             return
         }
         if (!isCurrentStart(startId)) return
+        setLifecycleState(OpenCodeServerLifecycleState.RESTARTING)
         destroyCurrentProcess()
         startOpenCodeServer(project, projectBasePath, startId)
     }

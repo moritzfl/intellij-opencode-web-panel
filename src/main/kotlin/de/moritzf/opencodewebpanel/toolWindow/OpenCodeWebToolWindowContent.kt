@@ -186,14 +186,9 @@ class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
             OpenCodeSettingsListener.TOPIC,
             object : OpenCodeSettingsListener {
                 override fun uiZoomChanged(zoomPercent: Int) {
+                    // CEF applies zoom-level changes to the live page; reloading would drop the
+                    // user's chat draft and scroll position.
                     applyBrowserZoom(zoomPercent)
-                    if (OpenCodeServerProtocol.isOpenCodeServerPage(
-                            serverManager.getServerUrl(),
-                            browser.cefBrowser.url
-                        )
-                    ) {
-                        browser.cefBrowser.reload()
-                    }
                 }
 
                 override fun hideBrowserUntilProjectLoadsChanged(enabled: Boolean) {
