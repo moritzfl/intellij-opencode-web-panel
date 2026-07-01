@@ -456,6 +456,15 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun logIndicatesPortConflictMatchesKnownFailurePatterns() {
+        assertTrue(OpenCodeServerProtocol.logIndicatesPortConflict(listOf("Error: listen EADDRINUSE: address already in use 127.0.0.1:4096")))
+        assertTrue(OpenCodeServerProtocol.logIndicatesPortConflict(listOf("error: Failed to start server. Is port 4096 in use?")))
+        assertTrue(OpenCodeServerProtocol.logIndicatesPortConflict(listOf("Error: Unexpected error", "ServeError")))
+        assertFalse(OpenCodeServerProtocol.logIndicatesPortConflict(listOf("opencode server listening on http://127.0.0.1:4096")))
+        assertFalse(OpenCodeServerProtocol.logIndicatesPortConflict(emptyList()))
+    }
+
+    @Test
     fun directorylessSessionRoutesAreRecognized() {
         assertTrue(OpenCodeServerProtocol.isDirectorylessSessionRouteUrl("http://127.0.0.1:4096/server/abc123/session/ses_1"))
         assertTrue(OpenCodeServerProtocol.isDirectorylessSessionRouteUrl("http://127.0.0.1:4096/server/abc123/session"))

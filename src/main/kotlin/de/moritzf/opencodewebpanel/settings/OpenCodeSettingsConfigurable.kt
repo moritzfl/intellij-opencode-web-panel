@@ -420,12 +420,13 @@ class OpenCodeSettingsConfigurable : Configurable {
     private fun updateServerStatus() {
         val serverManager = SharedOpenCodeServerManager.getInstance()
         val state = serverManager.getLifecycleState()
-        serverStatusLabel.text = formatLifecycleStatusText(state, serverManager.getServerUrl())
+        serverStatusLabel.text = formatLifecycleStatusText(state, serverManager.getServerUrl(), serverManager.getServerVersion())
     }
 
-    private fun formatLifecycleStatusText(state: OpenCodeServerLifecycleState, serverUrl: String?): String {
+    private fun formatLifecycleStatusText(state: OpenCodeServerLifecycleState, serverUrl: String?, serverVersion: String?): String {
         val detail = if (state == OpenCodeServerLifecycleState.RUNNING && !serverUrl.isNullOrBlank()) {
-            ": ${escapeStatusHtml(serverUrl)}"
+            val version = serverVersion?.takeIf { it.isNotBlank() }?.let { " (OpenCode ${escapeStatusHtml(it)})" }.orEmpty()
+            ": ${escapeStatusHtml(serverUrl)}$version"
         } else {
             ""
         }

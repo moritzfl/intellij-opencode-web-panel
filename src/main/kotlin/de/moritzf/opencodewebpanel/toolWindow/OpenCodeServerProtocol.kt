@@ -19,6 +19,7 @@ internal object OpenCodeServerProtocol {
     private const val START_FAILURE_BACKOFF_BASE_MILLIS = 5_000L
     private const val START_FAILURE_BACKOFF_MAX_MILLIS = 60_000L
     const val HEALTH_PATH = "/api/health"
+    const val GLOBAL_HEALTH_PATH = "/global/health"
     const val BASIC_AUTH_USERNAME = "opencode"
     const val DEFAULT_EXECUTABLE = "opencode"
     const val OPEN_FILE_LINK_SCHEME = "opencode-web-panel"
@@ -512,6 +513,47 @@ internal object OpenCodeServerProtocol {
 
     fun shouldRestartServer(serverUrl: String?, serverResponding: Boolean): Boolean {
         return serverUrl != null && !serverResponding
+    }
+
+    /**
+     * Reads the OpenCode version from `/global/health` (`{"healthy":true,"version":"..."}`).
+     * Returns null when the endpoint is unavailable; the version is informational only.
+     */
+    fun fetchServerVersion(
+        serverUrl: String,
+        basicAuthHeader: String?,
+        connectTimeoutMillis: Int = 2000,
+        readTimeoutMillis: Int = 2000,
+    ): String? {
+        return try {
+            val connection = URI(buildServerRootUrl(serverUrl) + GLOBAL_HEALTH_PATH).toURL().openConnection() as HttpURLConnection
+            try {
+                connection.connectTimeout = connectTimeoutMillis
+                connection.readTimeout = readTimeoutMillis
+                connection.requestMethod = "GET"
+                if (!basicAuthHeader.isNullOrBlank()) {
+                    connection.setRequestProperty("Authorization", basicAuthHeader)
+                }
+                if (connection.responseCode != HttpURLConnection.HTTP_OK) return null
+                val body = connection.inputStream.bufferedReader().use { it.readText() }
+                Regex("\"version\"\\s*:\\s*\"([^\"]+)\"").find(body)?.groupValues?.get(1)
+            } finally {
+                connection.disconnect()
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /**
+     * Heuristic: does the server log tail look like a failed attempt to bind the port?
+     * `ServeError` is the generic listen-failure marker of current OpenCode releases; the other
+     * patterns cover classic bind errors. Callers should only act on this in fixed-port mode,
+     * where switching to automatic port selection is a safe suggestion.
+     */
+    fun logIndicatesPortConflict(logLines: List<String>): Boolean {
+        val pattern = Regex("EADDRINUSE|address already in use|is port .{0,16} in use|ServeError", RegexOption.IGNORE_CASE)
+        return logLines.any { pattern.containsMatchIn(it) }
     }
 
     fun shouldDelayServerStart(nextStartAllowedAtMillis: Long, nowMillis: Long = System.currentTimeMillis()): Boolean {

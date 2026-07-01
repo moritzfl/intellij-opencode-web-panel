@@ -46,6 +46,7 @@ class SharedOpenCodeServerManager : Disposable {
     private var serverProcess: Process? = null
     private var serverUrl: String? = null
     private var serverPassword: String? = null
+    private var serverVersion: String? = null
     private var checkScheduledFuture: ScheduledFuture<*>? = null
     private var preferredBasePath: String? = null
     private var consecutiveStartFailures = 0
@@ -123,6 +124,7 @@ class SharedOpenCodeServerManager : Disposable {
     private fun validateExistingServerOrStart(project: Project, projectBasePath: String?, url: String, startId: Long) {
         if (!isCurrentStart(startId)) return
         if (checkServerResponding(url)) {
+            if (getServerVersion() == null) refreshServerVersion()
             setServerRunningForStart(startId)
             finishStart(startId, success = true)
             return
@@ -186,6 +188,18 @@ class SharedOpenCodeServerManager : Disposable {
     }
 
     fun getServerPassword(): String? = synchronized(lock) { serverPassword }
+
+    fun getServerVersion(): String? = synchronized(lock) { serverVersion }
+
+    /** Best-effort, informational only: refreshes the reported OpenCode version off the EDT. */
+    private fun refreshServerVersion() {
+        val url = getServerUrl() ?: return
+        val password = getServerPassword() ?: return
+        val version = OpenCodeServerProtocol.fetchServerVersion(url, OpenCodeServerProtocol.buildBasicAuthHeader(password))
+        synchronized(lock) {
+            if (serverUrl == url) serverVersion = version
+        }
+    }
 
     @TestOnly
     fun setServerPassword(password: String?) {
@@ -252,6 +266,7 @@ class SharedOpenCodeServerManager : Disposable {
         serverRunning = false
         serverUrl = null
         serverPassword = null
+        serverVersion = null
         consecutiveStartFailures = 0
         nextStartAllowedAtMillis = 0L
         return resources
@@ -404,6 +419,7 @@ class SharedOpenCodeServerManager : Disposable {
             val url = getServerUrl()
             if (url != null && checkServerResponding(url)) {
                 thisLogger().info("OpenCode server started successfully at $url")
+                refreshServerVersion()
                 setServerRunningForStart(startId)
                 finishStart(startId, success = true)
             } else {
@@ -575,6 +591,7 @@ class SharedOpenCodeServerManager : Disposable {
             serverRunning = false
             serverUrl = null
             serverPassword = null
+            serverVersion = null
         }
     }
 

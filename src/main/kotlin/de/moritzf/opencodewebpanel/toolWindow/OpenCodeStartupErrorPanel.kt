@@ -10,7 +10,10 @@ import com.intellij.ui.components.JBTextArea
 import com.intellij.util.ui.JBFont
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.components.BorderLayoutPanel
+import de.moritzf.opencodewebpanel.settings.OpenCodePortMode
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable
+import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsListener
+import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
 import java.awt.Font
 import java.nio.file.Path
 import javax.swing.Box
@@ -48,6 +51,16 @@ internal class OpenCodeStartupErrorPanel(
         toolTipText = "Open the OpenCode server log in the editor"
         isEnabled = false
     }
+    private val useAutoPortButton = JButton("Use Automatic Port").apply {
+        toolTipText = "Switch the server to automatic port selection and restart"
+        isVisible = false
+        addActionListener {
+            OpenCodeSettingsState.getInstance().portMode = OpenCodePortMode.AUTO.name
+            ApplicationManager.getApplication().messageBus
+                .syncPublisher(OpenCodeSettingsListener.TOPIC)
+                .serverRestartRequested()
+        }
+    }
     private val logArea = JBTextArea().apply {
         isEditable = false
         lineWrap = false
@@ -79,6 +92,8 @@ internal class OpenCodeStartupErrorPanel(
                         alignmentX = 0f
                         add(retryButton)
                         add(Box.createHorizontalStrut(JBUI.scale(8)))
+                        add(useAutoPortButton)
+                        add(Box.createHorizontalStrut(JBUI.scale(8)))
                         add(openSettingsButton)
                         add(Box.createHorizontalStrut(JBUI.scale(8)))
                         add(viewLogButton)
@@ -107,13 +122,24 @@ internal class OpenCodeStartupErrorPanel(
             val executableFound = runCatching { OpenCodeServerProtocol.detectExecutablePath(executable) != null }
                 .getOrDefault(true)
             val logTail = OpenCodeServerLogBuffer.tailLines(serverLogFile)
+            val settings = OpenCodeSettingsState.getInstance()
+            val fixedPort = if (settings.portModeValue() == OpenCodePortMode.FIXED) {
+                OpenCodeSettingsState.sanitizePort(settings.fixedPort)
+            } else {
+                null
+            }
+            val portConflict = executableFound && fixedPort != null && OpenCodeServerProtocol.logIndicatesPortConflict(logTail)
             ApplicationManager.getApplication().invokeLater {
-                messageLabel.text = if (executableFound) {
-                    "OpenCode was started as \u201C$executable\u201D but the server did not become available."
-                } else {
-                    "The OpenCode executable \u201C$executable\u201D was not found. " +
-                        "Configure its location in the settings or install OpenCode."
+                messageLabel.text = when {
+                    !executableFound ->
+                        "The OpenCode executable \u201C$executable\u201D was not found. " +
+                            "Configure its location in the settings or install OpenCode."
+                    portConflict ->
+                        "OpenCode could not start on the fixed port $fixedPort. " +
+                            "The port appears to be in use by another application."
+                    else -> "OpenCode was started as \u201C$executable\u201D but the server did not become available."
                 }
+                useAutoPortButton.isVisible = portConflict
                 viewLogButton.isEnabled = serverLogFile != null
                 val hasLog = logTail.isNotEmpty()
                 logTitleLabel.isVisible = hasLog
