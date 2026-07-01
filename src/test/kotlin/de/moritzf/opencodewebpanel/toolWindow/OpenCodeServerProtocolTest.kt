@@ -934,6 +934,33 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun parseSystemNotificationPayloadReadsPermissionFields() {
+        val payload = listOf(
+            "id1", "%2Ftmp%2Fproject", "%2Froute", "Permission%20required", "Body",
+            "permission", "ses_abc123", "per_xyz789",
+        ).joinToString("\n")
+
+        val notification = OpenCodeServerProtocol.parseSystemNotificationPayload(payload)!!
+
+        assertEquals("permission", notification.kind)
+        assertEquals("ses_abc123", notification.sessionID)
+        assertEquals("per_xyz789", notification.requestID)
+        assertTrue(OpenCodeServerProtocol.isPermissionNotification(notification))
+    }
+
+    @Test
+    fun permissionNotificationRequiresSafeRecordIds() {
+        val base = OpenCodeServerProtocol.SystemNotificationPayload(
+            id = "id", directory = "/tmp", route = "/r", title = "t", body = "b",
+            kind = "permission", sessionID = "ses_1", requestID = "per_1",
+        )
+        assertTrue(OpenCodeServerProtocol.isPermissionNotification(base))
+        assertFalse(OpenCodeServerProtocol.isPermissionNotification(base.copy(kind = "session")))
+        assertFalse(OpenCodeServerProtocol.isPermissionNotification(base.copy(requestID = "")))
+        assertFalse(OpenCodeServerProtocol.isPermissionNotification(base.copy(sessionID = "ses/../evil")))
+    }
+
+    @Test
     fun parseSystemNotificationPayloadDecodesEncodedFields() {
         val payload = "id%201\n%2Ftmp%2Fproject\n%2Fencoded%2Fsession%2Fses_1\nAgent%20done\nLine%201%0ALine%202"
 

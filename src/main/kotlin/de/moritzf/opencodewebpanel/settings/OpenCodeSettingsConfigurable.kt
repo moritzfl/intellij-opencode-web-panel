@@ -91,6 +91,7 @@ class OpenCodeSettingsConfigurable : Configurable {
     private val syncThemeWithIdeCheckBox = JBCheckBox("Sync OpenCode color scheme with the IDE theme")
     private val suppressProjectSwitchPromptsCheckBox = JBCheckBox("Suppress project-switch prompts")
     private val enableSystemNotificationsCheckBox = JBCheckBox("Forward OpenCode system notifications to the IDE")
+    private val enablePermissionNotificationActionsCheckBox = JBCheckBox("Offer Allow/Deny actions on permission notifications")
     private val waitForIntellijMcpServerCheckBox = JBCheckBox("Wait for IntelliJ MCP server before starting OpenCode")
     private val uiZoomSpinner = JSpinner(
         SpinnerNumberModel(
@@ -129,6 +130,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         CheckBoxSettingBinding(syncThemeWithIdeCheckBox, { syncThemeWithIde }, { value -> syncThemeWithIde = value }, { listener, value -> listener.ideThemeSyncChanged(value) }),
         CheckBoxSettingBinding(suppressProjectSwitchPromptsCheckBox, { suppressProjectSwitchPrompts }, { value -> suppressProjectSwitchPrompts = value }, { listener, value -> listener.projectSwitchPromptSuppressionChanged(value) }),
         CheckBoxSettingBinding(enableSystemNotificationsCheckBox, { enableSystemNotifications }, { value -> enableSystemNotifications = value }, { listener, value -> listener.systemNotificationsChanged(value) }),
+        CheckBoxSettingBinding(enablePermissionNotificationActionsCheckBox, { enablePermissionNotificationActions }, { value -> enablePermissionNotificationActions = value }),
         CheckBoxSettingBinding(waitForIntellijMcpServerCheckBox, { waitForIntellijMcpServer }, { value -> waitForIntellijMcpServer = value }),
         CheckBoxSettingBinding(enableServerLogsCheckBox, { enableServerLogs }, { value -> enableServerLogs = value }),
     )
@@ -159,6 +161,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         viewServerLogButton.addActionListener { showServerLog() }
         enableServerLogsCheckBox.addItemListener { updateServerLogControls() }
         openFileLinksInIdeCheckBox.addItemListener { updateUiDependencyControls() }
+        enableSystemNotificationsCheckBox.addItemListener { updateUiDependencyControls() }
 
         val serverSetupPanel = panel {
             buttonsGroup("OpenCode executable:") {
@@ -278,6 +281,12 @@ class OpenCodeSettingsConfigurable : Configurable {
                 row {
                     cell(enableSystemNotificationsCheckBox)
                         .comment("Show OpenCode browser notifications as IntelliJ notifications and route notification clicks back to OpenCode.")
+                }
+                indent {
+                    row {
+                        cell(enablePermissionNotificationActionsCheckBox)
+                            .comment("Answer agent permission requests directly from the IDE notification without switching to the panel.")
+                    }
                 }
                 row {
                     cell(suppressProjectSwitchPromptsCheckBox)
@@ -618,5 +627,6 @@ class OpenCodeSettingsConfigurable : Configurable {
 
     private fun updateUiDependencyControls() {
         enableCodeNavigationCheckBox.isEnabled = openFileLinksInIdeCheckBox.isSelected
+        enablePermissionNotificationActionsCheckBox.isEnabled = enableSystemNotificationsCheckBox.isSelected
     }
 }

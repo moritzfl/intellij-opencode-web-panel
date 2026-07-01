@@ -370,6 +370,9 @@ internal object OpenCodeBrowserSnippets {
                   notification.route,
                   notification.title,
                   notification.body,
+                  notification.kind,
+                  notification.sessionID,
+                  notification.requestID,
                 ].map(encode).join('\n');
                 try {
                   const payload = encodedPayload;
@@ -432,11 +435,13 @@ internal object OpenCodeBrowserSnippets {
                 }
                 if (!title || !body) return;
 
+                const kind = type === 'permission.asked' ? 'permission' : (type === 'question.asked' ? 'question' : 'session');
+                const requestID = (type === 'permission.asked' || type === 'question.asked') ? String(properties.id || '') : '';
                 const id = String(record.id || [type, directory, sessionID, body].join('|'));
                 if (seen.has(id)) return;
                 seen.add(id);
                 window.setTimeout(() => seen.delete(id), 30000);
-                sendToIde({ id, directory, route: routeFor(directory, sessionID), title, body });
+                sendToIde({ id, directory, route: routeFor(directory, sessionID), title, body, kind, sessionID, requestID });
               };
               const processSseBlock = (block) => {
                 const data = block

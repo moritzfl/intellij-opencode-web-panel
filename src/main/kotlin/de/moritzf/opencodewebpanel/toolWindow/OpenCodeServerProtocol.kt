@@ -296,15 +296,27 @@ internal object OpenCodeServerProtocol {
     )
 
     fun parseSystemNotificationPayload(payload: String?): SystemNotificationPayload? {
-        val parts = payload?.split('\n', limit = 5) ?: return null
+        val parts = payload?.split('\n', limit = 8) ?: return null
         if (parts.size < 5) return null
         val id = decodeUrlParameter(parts[0])?.trim().orEmpty()
         val directory = decodeUrlParameter(parts[1])?.trim().orEmpty()
         val route = decodeUrlParameter(parts[2])?.trim().orEmpty()
         val title = decodeUrlParameter(parts[3])?.trim().orEmpty()
         val body = decodeUrlParameter(parts[4])?.trim().orEmpty()
+        val kind = parts.getOrNull(5)?.let(::decodeUrlParameter)?.trim().orEmpty()
+        val sessionID = parts.getOrNull(6)?.let(::decodeUrlParameter)?.trim().orEmpty()
+        val requestID = parts.getOrNull(7)?.let(::decodeUrlParameter)?.trim().orEmpty()
         if (id.isBlank() || directory.isBlank() || !route.startsWith('/') || title.isBlank()) return null
-        return SystemNotificationPayload(id = id, directory = directory, route = route, title = title, body = body)
+        return SystemNotificationPayload(
+            id = id,
+            directory = directory,
+            route = route,
+            title = title,
+            body = body,
+            kind = kind,
+            sessionID = sessionID,
+            requestID = requestID,
+        )
     }
 
     data class SystemNotificationPayload(
@@ -313,7 +325,60 @@ internal object OpenCodeServerProtocol {
         val route: String,
         val title: String,
         val body: String,
+        val kind: String = "",
+        val sessionID: String = "",
+        val requestID: String = "",
     )
+
+    fun isPermissionNotification(payload: SystemNotificationPayload): Boolean {
+        return payload.kind == "permission" &&
+            isOpenCodeRecordId(payload.sessionID) &&
+            isOpenCodeRecordId(payload.requestID)
+    }
+
+    /**
+     * Answers a pending permission request via the long-standing endpoint the OpenCode web app
+     * itself uses: `POST /session/{sessionID}/permissions/{permissionID}?directory=...` with
+     * `{"response":"once"|"always"|"reject"}`. Returns true when the server accepted the reply.
+     */
+    fun replyToPermission(
+        serverUrl: String,
+        basicAuthHeader: String,
+        directory: String,
+        sessionID: String,
+        permissionID: String,
+        allow: Boolean,
+        connectTimeoutMillis: Int = 5000,
+        readTimeoutMillis: Int = 5000,
+    ): Boolean {
+        if (!isOpenCodeRecordId(sessionID) || !isOpenCodeRecordId(permissionID)) return false
+        return try {
+            val url = buildServerRootUrl(serverUrl) +
+                "/session/$sessionID/permissions/$permissionID" +
+                "?directory=" + java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
+            val connection = URI(url).toURL().openConnection() as HttpURLConnection
+            try {
+                connection.connectTimeout = connectTimeoutMillis
+                connection.readTimeout = readTimeoutMillis
+                connection.requestMethod = "POST"
+                connection.doOutput = true
+                connection.setRequestProperty("Authorization", basicAuthHeader)
+                connection.setRequestProperty("Content-Type", "application/json")
+                val body = "{\"response\":\"${if (allow) "once" else "reject"}\"}"
+                connection.outputStream.use { it.write(body.toByteArray(StandardCharsets.UTF_8)) }
+                connection.responseCode in 200..299
+            } finally {
+                connection.disconnect()
+            }
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    /** OpenCode record IDs (`ses_...`, `per_...`) are URL-safe by construction; reject anything else. */
+    private fun isOpenCodeRecordId(value: String): Boolean {
+        return value.isNotBlank() && Regex("^[A-Za-z0-9_-]+$").matches(value)
+    }
 
     private fun looksLikeAbsoluteFilesystemPath(value: String): Boolean {
         return value.startsWith('/') || Regex("^[A-Za-z]:[\\\\/]").containsMatchIn(value)

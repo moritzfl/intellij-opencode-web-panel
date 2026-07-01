@@ -42,6 +42,12 @@ internal class OpenCodeSystemNotifications(
             val title = notificationText(openCodeNotification.title, 200)
             val body = notificationText(openCodeNotification.body, 1000)
             val ideNotification = group.createNotification(title, body, NotificationType.INFORMATION)
+            if (OpenCodeServerProtocol.isPermissionNotification(openCodeNotification) &&
+                OpenCodeSettingsState.getInstance().enablePermissionNotificationActions
+            ) {
+                ideNotification.addAction(target.permissionReplyAction("Allow", openCodeNotification, allow = true))
+                ideNotification.addAction(target.permissionReplyAction("Deny", openCodeNotification, allow = false))
+            }
             ideNotification.addAction(object : NotificationAction("Show in OpenCode") {
                 override fun actionPerformed(e: AnActionEvent, notification: Notification) {
                     notification.expire()
@@ -49,6 +55,46 @@ internal class OpenCodeSystemNotifications(
                 }
             })
             ideNotification.notify(target.project)
+        }
+    }
+
+    private fun permissionReplyAction(
+        title: String,
+        openCodeNotification: OpenCodeServerProtocol.SystemNotificationPayload,
+        allow: Boolean,
+    ): NotificationAction {
+        return object : NotificationAction(title) {
+            override fun actionPerformed(e: AnActionEvent, notification: Notification) {
+                notification.expire()
+                replyToPermission(openCodeNotification, allow)
+            }
+        }
+    }
+
+    private fun replyToPermission(openCodeNotification: OpenCodeServerProtocol.SystemNotificationPayload, allow: Boolean) {
+        val serverUrl = serverManager.getServerUrl() ?: return
+        val password = serverManager.getServerPassword() ?: return
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val accepted = OpenCodeServerProtocol.replyToPermission(
+                serverUrl,
+                OpenCodeServerProtocol.buildBasicAuthHeader(password),
+                openCodeNotification.directory,
+                openCodeNotification.sessionID,
+                openCodeNotification.requestID,
+                allow,
+            )
+            if (accepted) return@executeOnPooledThread
+            ApplicationManager.getApplication().invokeLater {
+                if (project.isDisposed) return@invokeLater
+                NotificationGroupManager.getInstance()
+                    .getNotificationGroup(OpenCodeServerProtocol.NOTIFICATION_GROUP_ID)
+                    ?.createNotification(
+                        "Could not send the permission response",
+                        "The request may already have been answered in OpenCode.",
+                        NotificationType.WARNING,
+                    )
+                    ?.notify(project)
+            }
         }
     }
 
