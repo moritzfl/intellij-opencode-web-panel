@@ -94,10 +94,12 @@ class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
                 ideThemeSyncScriptScheduled = false
                 projectSwitchPromptSuppressionScriptScheduled = false
                 systemNotificationBridgeScriptScheduled = false
-                localStorageBridge.restore(frame.url)
-                localStorageBridge.installSync(frame.url)
-                injectIdeThemeSyncEarly()
-                injectCompactLayoutEarly()
+                if (OpenCodeServerProtocol.isOpenCodeServerPage(serverManager.getServerUrl(), frame.url)) {
+                    localStorageBridge.restore(frame.url)
+                    localStorageBridge.installSync(frame.url)
+                    injectIdeThemeSyncEarly()
+                    injectCompactLayoutEarly()
+                }
             }
         }
 
@@ -503,7 +505,9 @@ class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
         val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
         openProjectScriptScheduled = true
 
-        scriptScheduler.schedule(script, rootUrl) { !isOpenCodeProjectDestination(browser.cefBrowser.url) }
+        scriptScheduler.schedule(script, rootUrl) {
+            isBrowserOnOpenCodeServerPage(serverUrl) && !isOpenCodeProjectDestination(browser.cefBrowser.url)
+        }
     }
 
     private fun scheduleFileLinkScript() {
@@ -519,7 +523,9 @@ class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
         val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
         fileLinkScriptScheduled = true
 
-        scriptScheduler.schedule(script, rootUrl) { OpenCodeSettingsState.getInstance().openFileLinksInIde }
+        scriptScheduler.schedule(script, rootUrl) {
+            OpenCodeSettingsState.getInstance().openFileLinksInIde && isBrowserOnOpenCodeServerPage(serverUrl)
+        }
     }
 
     private fun scheduleExternalLinkScript() {
@@ -535,8 +541,7 @@ class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
         externalLinkScriptScheduled = true
 
         scriptScheduler.schedule(script, rootUrl) {
-            OpenCodeSettingsState.getInstance().openExternalLinksInBrowser &&
-                    OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)
+            OpenCodeSettingsState.getInstance().openExternalLinksInBrowser && isBrowserOnOpenCodeServerPage(serverUrl)
         }
     }
 
@@ -552,7 +557,9 @@ class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
         val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
         codeNavigationScriptScheduled = true
 
-        scriptScheduler.schedule(script, rootUrl) { OpenCodeSettingsState.getInstance().effectiveCodeNavigationEnabled() }
+        scriptScheduler.schedule(script, rootUrl) {
+            OpenCodeSettingsState.getInstance().effectiveCodeNavigationEnabled() && isBrowserOnOpenCodeServerPage(serverUrl)
+        }
     }
 
     private fun scheduleProjectSwitchPromptSuppressionScript() {
@@ -564,7 +571,9 @@ class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
         val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
         projectSwitchPromptSuppressionScriptScheduled = true
 
-        scriptScheduler.schedule(script, rootUrl) { OpenCodeSettingsState.getInstance().suppressProjectSwitchPrompts }
+        scriptScheduler.schedule(script, rootUrl) {
+            OpenCodeSettingsState.getInstance().suppressProjectSwitchPrompts && isBrowserOnOpenCodeServerPage(serverUrl)
+        }
     }
 
     private fun scheduleFilePasteSuppressionScript() {
@@ -576,7 +585,9 @@ class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
         val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
         filePasteSuppressionScriptScheduled = true
 
-        scriptScheduler.schedule(script, rootUrl) { OpenCodeSettingsState.getInstance().enableChatFileDrop }
+        scriptScheduler.schedule(script, rootUrl) {
+            OpenCodeSettingsState.getInstance().enableChatFileDrop && isBrowserOnOpenCodeServerPage(serverUrl)
+        }
     }
 
     private fun scheduleIdeThemeSyncScript() {
@@ -587,7 +598,7 @@ class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
         ideThemeSyncScriptScheduled = true
 
         scriptScheduler.scheduleAction(
-            shouldRun = { OpenCodeSettingsState.getInstance().syncThemeWithIde },
+            shouldRun = { OpenCodeSettingsState.getInstance().syncThemeWithIde && isBrowserOnOpenCodeServerPage(serverUrl) },
             action = { executeIdeThemeSyncScript(serverUrl) },
         )
     }
@@ -605,9 +616,12 @@ class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
         systemNotificationBridgeScriptScheduled = true
 
         scriptScheduler.schedule(script, rootUrl) {
-            OpenCodeSettingsState.getInstance().enableSystemNotifications &&
-                    OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)
+            OpenCodeSettingsState.getInstance().enableSystemNotifications && isBrowserOnOpenCodeServerPage(serverUrl)
         }
+    }
+
+    private fun isBrowserOnOpenCodeServerPage(serverUrl: String): Boolean {
+        return OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)
     }
 
     private fun applyCodeNavigation(enabled: Boolean) {
@@ -737,7 +751,9 @@ class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
         // Inject immediately (onLoadStart — before SPA bundle executes)
         browser.cefBrowser.executeJavaScript(script, rootUrl, 0)
         // Re-inject on delays in case the early injection ran before JS context was ready
-        scriptScheduler.scheduleEarly(script, rootUrl) { OpenCodeSettingsState.getInstance().forceCompactLayout }
+        scriptScheduler.scheduleEarly(script, rootUrl) {
+            OpenCodeSettingsState.getInstance().forceCompactLayout && isBrowserOnOpenCodeServerPage(serverUrl)
+        }
     }
 
     private fun injectIdeThemeSyncEarly() {
@@ -749,7 +765,7 @@ class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
 
         executeIdeThemeSyncScript(serverUrl)
         scriptScheduler.scheduleEarlyAction(
-            shouldRun = { OpenCodeSettingsState.getInstance().syncThemeWithIde },
+            shouldRun = { OpenCodeSettingsState.getInstance().syncThemeWithIde && isBrowserOnOpenCodeServerPage(serverUrl) },
             action = { executeIdeThemeSyncScript(serverUrl) },
         )
     }
