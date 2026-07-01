@@ -22,10 +22,14 @@ import org.cef.browser.CefFrame
 import org.cef.handler.CefLoadHandler
 import org.cef.handler.CefLoadHandlerAdapter
 import org.cef.network.CefRequest
+import java.awt.CardLayout
+import javax.swing.JPanel
 
 class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
 
     private companion object {
+        private const val BROWSER_CARD = "browser"
+        private const val ERROR_CARD = "error"
         private const val BROWSER_RECOVERY_THROTTLE_MILLIS = 10_000L
 
         @Volatile
@@ -35,10 +39,17 @@ class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
     private val project = toolWindow.project
     private val browser = JBCefBrowser()
     private val lifecycleStatusPanel = OpenCodeLifecycleStatusPanel(::retryOpenCodeServerStart)
+    private val startupErrorPanel = OpenCodeStartupErrorPanel(project, ::retryOpenCodeServerStart)
+    private val centerCardLayout = CardLayout()
+    private val centerCardPanel = JPanel(centerCardLayout).apply {
+        isOpaque = false
+        add(browser.component, BROWSER_CARD)
+        add(startupErrorPanel.component, ERROR_CARD)
+    }
     private val contentPanel = BorderLayoutPanel().apply {
         isOpaque = false
         addToTop(lifecycleStatusPanel.component)
-        addToCenter(browser.component)
+        addToCenter(centerCardPanel)
     }
     private val openFileLinkQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
     private val openCodeReferenceQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
@@ -374,6 +385,7 @@ class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
         val url = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
 
         thisLogger().info("Loading OpenCode project page")
+        showCenterCard(BROWSER_CARD)
         loadedServerRootUrl = url
         openProjectScriptScheduled = false
         fileLinkScriptScheduled = false
@@ -769,11 +781,17 @@ class OpenCodeWebToolWindowContent(toolWindow: ToolWindow) : Disposable {
         loadedServerRootUrl = null
         hidingBrowserUntilProjectLoads = false
         browser.component.isVisible = true
-        browser.loadHTML(
-            OpenCodeServerProtocol.buildStartupErrorPageHtml(
-                OpenCodeSettingsState.getInstance().executablePath()
-            )
+        startupErrorPanel.showFailure(
+            OpenCodeSettingsState.getInstance().executablePath(),
+            serverManager.getServerLogFile(),
         )
+        showCenterCard(ERROR_CARD)
+    }
+
+    private fun showCenterCard(card: String) {
+        centerCardLayout.show(centerCardPanel, card)
+        centerCardPanel.revalidate()
+        centerCardPanel.repaint()
     }
 
     private fun isContentDisposed(): Boolean {

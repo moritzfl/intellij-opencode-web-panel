@@ -156,9 +156,37 @@ internal class OpenCodeServerLogBuffer(
 
     companion object {
         private const val LOG_FILE_EXTENSION = ".log"
+        private const val TAIL_MAX_BYTES = 64 * 1024
 
         private fun defaultLogDir(): Path {
             return Path.of(PathManager.getLogPath(), "opencode-web-panel", "server")
+        }
+
+        /**
+         * Best-effort read of the last [maxLines] lines of [file], limited to the trailing
+         * [TAIL_MAX_BYTES] so huge logs never stall the caller. Returns an empty list on any error.
+         */
+        fun tailLines(file: Path?, maxLines: Int = 30): List<String> {
+            if (file == null || !Files.isRegularFile(file)) return emptyList()
+            return try {
+                val size = Files.size(file)
+                val text = if (size <= TAIL_MAX_BYTES) {
+                    Files.readString(file, StandardCharsets.UTF_8)
+                } else {
+                    Files.newByteChannel(file).use { channel ->
+                        channel.position(size - TAIL_MAX_BYTES)
+                        val buffer = java.nio.ByteBuffer.allocate(TAIL_MAX_BYTES)
+                        while (buffer.hasRemaining() && channel.read(buffer) >= 0) {
+                            // keep reading until the tail window is full or EOF
+                        }
+                        buffer.flip()
+                        String(buffer.array(), 0, buffer.limit(), StandardCharsets.UTF_8)
+                    }
+                }
+                text.lines().filter { it.isNotBlank() }.takeLast(maxLines)
+            } catch (_: Exception) {
+                emptyList()
+            }
         }
     }
 }

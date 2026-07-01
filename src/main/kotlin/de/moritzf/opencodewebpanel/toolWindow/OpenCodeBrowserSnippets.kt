@@ -257,23 +257,6 @@ internal object OpenCodeBrowserSnippets {
         return script.trimIndent()
     }
 
-    fun buildStartupErrorPageHtml(executable: String): String {
-        val path = escapeHtml(executable.ifBlank { OpenCodeServerProtocol.DEFAULT_EXECUTABLE })
-        @Language("HTML")
-        val html = """
-            <html>
-            <body style="background-color: #2B2B2B; color: #A9B7C6; font-family: sans-serif; padding: 20px;">
-                <h2>Failed to start OpenCode server</h2>
-                <p>OpenCode Web Panel tried to start <code>$path</code>, but the server did not become available.</p>
-                <p>Check <strong>Settings &gt; Tools &gt; OpenCode Web Panel &gt; OpenCode Server Setup</strong> to configure the OpenCode executable path, use auto-detection, or adjust the port.</p>
-                <p>You can also verify the executable manually:</p>
-                <pre style="background: #3C3F41; padding: 10px; border-radius: 4px;">opencode serve --hostname 127.0.0.1 --port 0 --print-logs</pre>
-            </body>
-            </html>
-        """
-        return html.trimIndent()
-    }
-
     fun buildExternalLinkHandlerScript(enabled: Boolean, openExternalCallback: String?): String? {
         if (!enabled || openExternalCallback == null) return null
         @Language("JavaScript")

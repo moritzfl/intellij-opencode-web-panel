@@ -66,10 +66,6 @@ internal object OpenCodeServerProtocol {
         return OpenCodeBrowserSnippets.buildSyncOpenCodeLocalStorageScript(openStorageCallback)
     }
 
-    fun buildStartupErrorPageHtml(executable: String): String {
-        return OpenCodeBrowserSnippets.buildStartupErrorPageHtml(executable)
-    }
-
     fun buildCodeNavigationScript(enabled: Boolean, openCodeCallback: String?): String? {
         return OpenCodeBrowserSnippets.buildCodeNavigationScript(enabled, openCodeCallback)
     }

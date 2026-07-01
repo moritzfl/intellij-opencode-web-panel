@@ -89,6 +89,36 @@ class OpenCodeServerLogBufferTest {
         }
     }
 
+    @Test
+    fun tailLinesReturnsLastNonBlankLines() {
+        val dir = Files.createTempDirectory("opencode-server-log-tail")
+        try {
+            val file = dir.resolve("server.log")
+            Files.writeString(file, (1..50).joinToString("\n") { "line-$it" } + "\n\n")
+
+            assertEquals(listOf("line-48", "line-49", "line-50"), OpenCodeServerLogBuffer.tailLines(file, maxLines = 3))
+        } finally {
+            deleteRecursively(dir)
+        }
+    }
+
+    @Test
+    fun tailLinesHandlesMissingFilesAndHugeLogs() {
+        val dir = Files.createTempDirectory("opencode-server-log-tail-huge")
+        try {
+            assertEquals(emptyList<String>(), OpenCodeServerLogBuffer.tailLines(null))
+            assertEquals(emptyList<String>(), OpenCodeServerLogBuffer.tailLines(dir.resolve("missing.log")))
+
+            val huge = dir.resolve("huge.log")
+            Files.writeString(huge, (1..20_000).joinToString("\n") { "entry-$it-padding-padding-padding" })
+
+            val tail = OpenCodeServerLogBuffer.tailLines(huge, maxLines = 2)
+            assertEquals(listOf("entry-19999-padding-padding-padding", "entry-20000-padding-padding-padding"), tail)
+        } finally {
+            deleteRecursively(dir)
+        }
+    }
+
     private fun writeLog(dir: Path, name: String, daysAgo: Long, ageOffsetMillis: Long = 0): Path {
         val file = dir.resolve("$name.log")
         Files.writeString(file, "{}")

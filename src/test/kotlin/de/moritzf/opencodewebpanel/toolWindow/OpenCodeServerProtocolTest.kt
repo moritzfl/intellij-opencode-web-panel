@@ -451,15 +451,6 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
-    fun buildStartupErrorPageHtmlPointsToSettings() {
-        val html = OpenCodeServerProtocol.buildStartupErrorPageHtml("/custom/bin/opencode")
-
-        assertTrue(html.contains("/custom/bin/opencode"))
-        assertTrue(html.contains("Settings &gt; Tools &gt; OpenCode Web Panel &gt; OpenCode Server Setup"))
-        assertTrue(html.contains("configure the OpenCode executable path"))
-    }
-
-    @Test
     fun lifecycleStatusTextUsesCircleStatusStyle() {
         val html = formatOpenCodeServerLifecycleStatusText(OpenCodeServerLifecycleState.STARTING)
 
