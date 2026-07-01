@@ -60,6 +60,23 @@ Project-specific guidance for future implementation work.
 - Add unit tests verifying that disabled builders return `null` and that toggling triggers a reload, not a "disable" injection.
 - Before integrating or claiming fixes for browser-side JS/CSS injection, validate the planned script in a real OpenCode page with Playwright. Start `opencode serve --hostname 127.0.0.1 --port <port> --print-logs` with test auth if needed, navigate to the served app, inject the planned script there, and exercise representative DOM/user interactions. Do not rely only on `about:blank`, synthetic pages, or unit tests for injection behavior.
 
+## Playwright Validation Against a Real OpenCode Server
+
+Follow this recipe exactly; getting auth wrong has repeatedly cost debugging loops.
+
+1. Start the server with a known password and a fixed port:
+   `OPENCODE_SERVER_PASSWORD=testpw123 opencode serve --hostname 127.0.0.1 --port <port> --print-logs`
+2. **Basic auth covers everything**, including the SPA's static assets (`/assets/*.js`, `/assets/*.css`) and all API routes. Only `/site.webmanifest` and the web-app-manifest PNGs are public.
+3. Do **not** rely on the `?auth_token=<base64(user:pass)>` query parameter. It authenticates only the initial HTML document request; the subsequent asset requests carry no credentials, so in headless Playwright (no auth prompt) they hang forever. Symptoms: navigation times out, page title is `OpenCode` but `#root` stays empty, zero console errors, and the JS/CSS requests show no response status. This looks like a broken SPA but is purely an auth problem.
+4. The fix is to send the `Authorization` header on **every** request — exactly what the plugin itself does natively via `onBeforeResourceLoad`:
+   `await page.setExtraHTTPHeaders({ Authorization: 'Basic ' + btoa('opencode:testpw123') })`
+   (or create the context with `httpCredentials: { username: 'opencode', password: 'testpw123' }`). Set the headers **before** the first `page.goto(...)`.
+5. Username is always `opencode`. For `opencode:testpw123` the header value is `Basic b3BlbmNvZGU6dGVzdHB3MTIz`.
+6. To validate early-injection scripts (e.g. compact layout), use `page.addInitScript(script)` before `goto` — this mirrors the plugin's `onLoadStart` injection. For post-load scripts, `page.evaluate(script)` after the app mounted mirrors `onLoadEnd`.
+7. Session routes use base64url-encoded directories: `/<base64url(dir)>/session`. Encode with `printf '%s' "<dir>" | base64 | tr '+/' '-_' | tr -d '='`.
+8. A healthy server answers `curl -u opencode:testpw123 http://127.0.0.1:<port>/api/health` with `{"healthy":true}`. Use curl with `-u` first when the page misbehaves to separate auth issues from app issues.
+9. The served UI is localized (e.g. German button labels on a German system); do not assert English-only UI strings when exercising the DOM.
+
 ## Verification
 
 - Primary command: `./gradlew check`.
