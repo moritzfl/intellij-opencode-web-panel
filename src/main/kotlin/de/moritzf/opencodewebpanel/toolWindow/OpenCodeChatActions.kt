@@ -80,6 +80,10 @@ internal class OpenCodeAddSelectionToChatAction : DumbAwareAction() {
         val displayedPath = reference?.removePrefix("file:") ?: file?.name ?: "selection"
         val fenceLanguage = file?.extension.orEmpty()
         val snippet = buildString {
+            if (reference != null) {
+                append(reference)
+                append('\n')
+            }
             append(displayedPath)
             append(" lines ")
             append(startLine)
@@ -93,7 +97,7 @@ internal class OpenCodeAddSelectionToChatAction : DumbAwareAction() {
             append(selectedText)
             append("\n```")
         }
-        return listOfNotNull(reference, snippet)
+        return listOf(snippet)
     }
 }
 
