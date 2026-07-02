@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [1.4.7] - 2026-07-02
+
+### Fixed
+
+- The Show in OpenCode notification action now skips browser navigation when the conversation route is already open, avoiding unnecessary screen refreshes.
+
 ## [1.4.6] - 2026-07-02
 
 ### Fixed
@@ -185,7 +191,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.6...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.7...HEAD
+[1.4.7]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.6...1.4.7
 [1.4.6]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.5...1.4.6
 [1.4.5]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.4...1.4.5
 [1.4.4]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.3...1.4.4
