@@ -45,8 +45,9 @@ internal class OpenCodeSystemNotifications(
             if (OpenCodeServerProtocol.isPermissionNotification(openCodeNotification) &&
                 OpenCodeSettingsState.getInstance().enablePermissionNotificationActions
             ) {
-                ideNotification.addAction(target.permissionReplyAction("Allow", openCodeNotification, allow = true))
-                ideNotification.addAction(target.permissionReplyAction("Deny", openCodeNotification, allow = false))
+                ideNotification.addAction(target.permissionReplyAction("Allow", openCodeNotification, OpenCodeServerProtocol.PermissionResponse.ONCE))
+                ideNotification.addAction(target.permissionReplyAction("Always Allow", openCodeNotification, OpenCodeServerProtocol.PermissionResponse.ALWAYS))
+                ideNotification.addAction(target.permissionReplyAction("Deny", openCodeNotification, OpenCodeServerProtocol.PermissionResponse.REJECT))
             }
             ideNotification.addAction(object : NotificationAction("Show in OpenCode") {
                 override fun actionPerformed(e: AnActionEvent, notification: Notification) {
@@ -61,17 +62,17 @@ internal class OpenCodeSystemNotifications(
     private fun permissionReplyAction(
         title: String,
         openCodeNotification: OpenCodeServerProtocol.SystemNotificationPayload,
-        allow: Boolean,
+        response: OpenCodeServerProtocol.PermissionResponse,
     ): NotificationAction {
         return object : NotificationAction(title) {
             override fun actionPerformed(e: AnActionEvent, notification: Notification) {
                 notification.expire()
-                replyToPermission(openCodeNotification, allow)
+                replyToPermission(openCodeNotification, response)
             }
         }
     }
 
-    private fun replyToPermission(openCodeNotification: OpenCodeServerProtocol.SystemNotificationPayload, allow: Boolean) {
+    private fun replyToPermission(openCodeNotification: OpenCodeServerProtocol.SystemNotificationPayload, response: OpenCodeServerProtocol.PermissionResponse) {
         val serverUrl = serverManager.getServerUrl() ?: return
         val password = serverManager.getServerPassword() ?: return
         ApplicationManager.getApplication().executeOnPooledThread {
@@ -81,7 +82,7 @@ internal class OpenCodeSystemNotifications(
                 openCodeNotification.directory,
                 openCodeNotification.sessionID,
                 openCodeNotification.requestID,
-                allow,
+                response,
             )
             if (accepted) return@executeOnPooledThread
             ApplicationManager.getApplication().invokeLater {

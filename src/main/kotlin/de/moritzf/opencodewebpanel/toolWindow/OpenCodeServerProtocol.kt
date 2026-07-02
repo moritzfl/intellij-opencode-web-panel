@@ -345,6 +345,10 @@ internal object OpenCodeServerProtocol {
      * itself uses: `POST /session/{sessionID}/permissions/{permissionID}?directory=...` with
      * `{"response":"once"|"always"|"reject"}`. Returns true when the server accepted the reply.
      */
+    enum class PermissionResponse(val jsonValue: String) {
+        ONCE("once"), ALWAYS("always"), REJECT("reject")
+    }
+
     fun replyToPermission(
         serverUrl: String,
         basicAuthHeader: String,
@@ -352,6 +356,21 @@ internal object OpenCodeServerProtocol {
         sessionID: String,
         permissionID: String,
         allow: Boolean,
+        connectTimeoutMillis: Int = 5000,
+        readTimeoutMillis: Int = 5000,
+    ): Boolean = replyToPermission(
+        serverUrl, basicAuthHeader, directory, sessionID, permissionID,
+        if (allow) PermissionResponse.ONCE else PermissionResponse.REJECT,
+        connectTimeoutMillis, readTimeoutMillis,
+    )
+
+    fun replyToPermission(
+        serverUrl: String,
+        basicAuthHeader: String,
+        directory: String,
+        sessionID: String,
+        permissionID: String,
+        response: PermissionResponse,
         connectTimeoutMillis: Int = 5000,
         readTimeoutMillis: Int = 5000,
     ): Boolean {
@@ -368,7 +387,7 @@ internal object OpenCodeServerProtocol {
                 connection.doOutput = true
                 connection.setRequestProperty("Authorization", basicAuthHeader)
                 connection.setRequestProperty("Content-Type", "application/json")
-                val body = "{\"response\":\"${if (allow) "once" else "reject"}\"}"
+                val body = "{\"response\":\"${response.jsonValue}\"}"
                 connection.outputStream.use { it.write(body.toByteArray(StandardCharsets.UTF_8)) }
                 connection.responseCode in 200..299
             } finally {
