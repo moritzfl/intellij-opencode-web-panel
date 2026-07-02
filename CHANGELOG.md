@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [1.4.8] - 2026-07-02
+
+### Added
+
+- "Add to OpenCode Chat" now also appears in the editor context menu when no text is selected, complementing "Add Selection to OpenCode Chat" which shows when a selection exists.
+
 ## [1.4.7] - 2026-07-02
 
 ### Fixed
@@ -191,7 +197,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.7...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.8...HEAD
+[1.4.8]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.7...1.4.8
 [1.4.7]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.6...1.4.7
 [1.4.6]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.5...1.4.6
 [1.4.5]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.4...1.4.5
