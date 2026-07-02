@@ -125,7 +125,9 @@ internal class OpenCodeSystemNotifications(
         }
         toolWindow.activate({
             if (project.isDisposed) return@activate
-            browser.loadURL(OpenCodeServerProtocol.buildServerRootUrl(serverUrl) + route)
+            if (!OpenCodeServerProtocol.isOpenCodeRouteAlreadyOpen(serverUrl, browser.cefBrowser.url, route)) {
+                browser.loadURL(OpenCodeServerProtocol.buildServerRootUrl(serverUrl) + route)
+            }
             browser.component.requestFocusInWindow()
         }, true)
     }

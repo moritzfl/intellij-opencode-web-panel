@@ -189,6 +189,20 @@ internal object OpenCodeServerProtocol {
             ?.let { URLDecoder.decode(it, StandardCharsets.UTF_8) }
     }
 
+    private fun URI.rawPathWithQuery(): String {
+        val path = rawPath?.takeIf { it.isNotBlank() } ?: "/"
+        val query = rawQuery?.takeIf { it.isNotBlank() }?.let { "?$it" }.orEmpty()
+        return path + query
+    }
+
+    private fun normalizedRoute(route: String?): String? {
+        val text = route?.trim()?.takeIf { it.startsWith('/') } ?: return null
+        return runCatching {
+            val uri = URI(text)
+            uri.rawPathWithQuery().trimEnd('/').ifBlank { "/" }
+        }.getOrNull()
+    }
+
     fun routeDirectoryFromUrl(frameUrl: String?): String? {
         if (frameUrl.isNullOrBlank()) return null
         return try {
@@ -201,6 +215,13 @@ internal object OpenCodeServerProtocol {
         } catch (_: Exception) {
             null
         }
+    }
+
+    fun isOpenCodeRouteAlreadyOpen(serverUrl: String?, currentUrl: String?, route: String?): Boolean {
+        if (!isOpenCodeServerPage(serverUrl, currentUrl)) return false
+        val targetRoute = normalizedRoute(route) ?: return false
+        val currentRoute = normalizedRoute(runCatching { URI(currentUrl).rawPathWithQuery() }.getOrNull()) ?: return false
+        return currentRoute == targetRoute
     }
 
     /**

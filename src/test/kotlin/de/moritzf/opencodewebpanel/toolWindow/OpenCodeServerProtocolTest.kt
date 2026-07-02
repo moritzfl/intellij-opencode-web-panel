@@ -1248,6 +1248,53 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun isOpenCodeRouteAlreadyOpenMatchesCurrentRoute() {
+        assertTrue(
+            OpenCodeServerProtocol.isOpenCodeRouteAlreadyOpen(
+                "http://127.0.0.1:60482",
+                "http://127.0.0.1:60482/L3RtcC9wcm9qZWN0/session/ses_123",
+                "/L3RtcC9wcm9qZWN0/session/ses_123",
+            ),
+        )
+    }
+
+    @Test
+    fun isOpenCodeRouteAlreadyOpenRejectsDifferentRouteOrServer() {
+        assertFalse(
+            OpenCodeServerProtocol.isOpenCodeRouteAlreadyOpen(
+                "http://127.0.0.1:60482",
+                "http://127.0.0.1:60482/L3RtcC9wcm9qZWN0/session/ses_123",
+                "/L3RtcC9wcm9qZWN0/session/ses_456",
+            ),
+        )
+        assertFalse(
+            OpenCodeServerProtocol.isOpenCodeRouteAlreadyOpen(
+                "http://127.0.0.1:60482",
+                "http://127.0.0.1:60483/L3RtcC9wcm9qZWN0/session/ses_123",
+                "/L3RtcC9wcm9qZWN0/session/ses_123",
+            ),
+        )
+    }
+
+    @Test
+    fun isOpenCodeRouteAlreadyOpenIncludesQueryButIgnoresTrailingSlash() {
+        assertTrue(
+            OpenCodeServerProtocol.isOpenCodeRouteAlreadyOpen(
+                "http://127.0.0.1:60482",
+                "http://127.0.0.1:60482/server/abc/session/ses_123?tab=ask/",
+                "/server/abc/session/ses_123?tab=ask",
+            ),
+        )
+        assertFalse(
+            OpenCodeServerProtocol.isOpenCodeRouteAlreadyOpen(
+                "http://127.0.0.1:60482",
+                "http://127.0.0.1:60482/server/abc/session/ses_123?tab=ask",
+                "/server/abc/session/ses_123?tab=review",
+            ),
+        )
+    }
+
+    @Test
     fun encodeDirectoryMatchesOpenCodeUrlSafeBase64Format() {
         assertEquals("L3RtcC9wcm9qZWN0", OpenCodeServerProtocol.encodeDirectory("/tmp/project"))
         assertFalse(OpenCodeServerProtocol.encodeDirectory("/tmp/project").contains("="))
