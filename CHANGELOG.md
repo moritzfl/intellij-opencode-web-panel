@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [1.4.2] - 2026-07-02
+
+### Fixed
+
+- The Add Selection to OpenCode Chat context-menu action now sends the selected code lines instead of adding the entire file, combining the file reference and the snippet into a single chat input.
+
 ## [1.4.1] - 2026-07-02
 
 ### Fixed
@@ -146,7 +152,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.1...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.2...HEAD
+[1.4.2]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.1...1.4.2
 [1.4.1]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.0...1.4.1
 [1.4.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.3.0...1.4.0
 [1.3.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.2.7...1.3.0
