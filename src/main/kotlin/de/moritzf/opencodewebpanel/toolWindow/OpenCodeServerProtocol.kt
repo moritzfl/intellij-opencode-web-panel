@@ -28,6 +28,7 @@ internal object OpenCodeServerProtocol {
     const val OPEN_CODE_THEME_ID_STORAGE_KEY = "opencode-theme-id"
     const val OPEN_CODE_COLOR_SCHEME_STORAGE_KEY = "opencode-color-scheme"
     const val NOTIFICATION_GROUP_ID = "OpenCode Web Panel"
+    const val RECENT_SESSION_WINDOW_MILLIS = 5 * 60 * 1000L
 
     private val secureRandom = SecureRandom()
     fun buildServerRootUrl(serverUrl: String): String {
@@ -796,5 +797,167 @@ internal object OpenCodeServerProtocol {
 
     private fun effectivePort(uri: URI): Int {
         return if (uri.port >= 0) uri.port else defaultPort(uri.scheme)
+    }
+
+    // ─── Interrupted-session recovery ───────────────────────────────────────────
+
+    data class SessionSummary(val id: String, val updatedMillis: Long)
+
+    /**
+     * Fetches recent sessions for a project directory from the v2 API
+     * (`GET /api/session?directory=...&order=desc&limit=N`). Returns session IDs with their
+     * `time.updated` timestamp, filtered to those updated within [maxAgeMillis] of [nowMillis].
+     */
+    fun fetchRecentSessions(
+        serverUrl: String,
+        basicAuthHeader: String,
+        directory: String,
+        maxAgeMillis: Long = RECENT_SESSION_WINDOW_MILLIS,
+        nowMillis: Long = System.currentTimeMillis(),
+        limit: Int = 20,
+        connectTimeoutMillis: Int = 3000,
+        readTimeoutMillis: Int = 3000,
+    ): List<SessionSummary> {
+        val url = buildServerRootUrl(serverUrl) +
+            "/api/session?order=desc&limit=$limit&directory=" +
+            java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
+        val body = httpGet(url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis) ?: return emptyList()
+        return parseSessionList(body, maxAgeMillis, nowMillis)
+    }
+
+    @TestOnly
+    fun parseSessionList(json: String, maxAgeMillis: Long, nowMillis: Long): List<SessionSummary> {
+        // Extract each session ID and its time.updated timestamp from the data array.
+        // The session objects contain nested objects (time, tokens, etc.), so we scan for
+        // id fields and nearby updated fields rather than trying to match whole objects.
+        val idRegex = Regex("\"id\"\\s*:\\s*\"(ses_[A-Za-z0-9_-]+)\"")
+        val updatedRegex = Regex("\"updated\"\\s*:\\s*(\\d+)")
+        val results = mutableListOf<SessionSummary>()
+        val idMatches = idRegex.findAll(json).toList()
+        for (idMatch in idMatches) {
+            val id = idMatch.groupValues[1]
+            // Find the next "updated" field after this id match, within the same object.
+            val searchStart = idMatch.range.last + 1
+            val updatedMatch = updatedRegex.find(json, searchStart) ?: continue
+            val updated = updatedMatch.groupValues[1].toLongOrNull() ?: continue
+            if (nowMillis - updated <= maxAgeMillis) {
+                results.add(SessionSummary(id, updated))
+            }
+        }
+        return results.distinctBy { it.id }
+    }
+
+    /**
+     * Fetches the last projected message for a session from the v2 API
+     * (`GET /api/session/{sessionID}/message?order=desc&limit=1`). Returns the raw JSON
+     * object string for [isInterruptedAssistantMessage] to inspect, or null on any error.
+     */
+    fun fetchLastMessageJson(
+        serverUrl: String,
+        basicAuthHeader: String,
+        sessionID: String,
+        connectTimeoutMillis: Int = 3000,
+        readTimeoutMillis: Int = 3000,
+    ): String? {
+        if (!isOpenCodeRecordId(sessionID)) return null
+        val url = buildServerRootUrl(serverUrl) +
+            "/api/session/$sessionID/message?order=desc&limit=1"
+        val body = httpGet(url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis) ?: return null
+        // Expect {"data":[{...}]}
+        val dataMatch = Regex("\"data\"\\s*:\\s*\\[").find(body) ?: return null
+        // Extract the first object from the data array.
+        val arrayStart = dataMatch.range.last + 1
+        val objStart = body.indexOf('{', arrayStart)
+        if (objStart < 0) return null
+        var depth = 0
+        for (i in objStart until body.length) {
+            when (body[i]) {
+                '{' -> depth++
+                '}' -> { depth--; if (depth == 0) return body.substring(objStart, i + 1) }
+            }
+        }
+        return null
+    }
+
+    /**
+     * Inspects a projected assistant message JSON object for signs that the agent turn was
+     * interrupted by a crash or kill (not by a user-initiated stop):
+     * - `time.completed` is missing (the turn never finished)
+     * - Any tool in the content has state `pending` or `running` (never settled)
+     *
+     * A user-initiated stop sets the `error` field and marks tools with `error` status
+     * gracefully, so it is intentionally not treated as a crash here.
+     */
+    fun isInterruptedAssistantMessage(messageJson: String): Boolean {
+        if (messageJson.isBlank()) return false
+        // Must be an assistant message.
+        if (!Regex("\"type\"\\s*:\\s*\"assistant\"").containsMatchIn(messageJson)) return false
+        // A user-initiated stop sets the error field and settles tools with error status
+        // gracefully — that is an intentional stop, not a crash. Skip it.
+        if (Regex("\"error\"\\s*:\\s*\\{").containsMatchIn(messageJson)) return false
+        // time.completed missing → turn never finished (process died mid-turn).
+        val hasCompleted = Regex("\"completed\"\\s*:\\s*\\d").containsMatchIn(messageJson)
+        val hasTime = Regex("\"time\"\\s*:\\s*\\{").containsMatchIn(messageJson)
+        if (hasTime && !hasCompleted) return true
+        // Any tool with pending/running state → unsettled work.
+        if (Regex("\"status\"\\s*:\\s*\"(?:pending|running)\"").containsMatchIn(messageJson)) return true
+        return false
+    }
+
+    /**
+     * Sends a continuation prompt to a session via the v2 API
+     * (`POST /api/session/{sessionID}/prompt` with `{"prompt":{"text":"Continue"},"resume":true}`).
+     * Returns true when the server accepted the prompt.
+     */
+    fun sendContinuePrompt(
+        serverUrl: String,
+        basicAuthHeader: String,
+        sessionID: String,
+        connectTimeoutMillis: Int = 5000,
+        readTimeoutMillis: Int = 5000,
+    ): Boolean {
+        if (!isOpenCodeRecordId(sessionID)) return false
+        return try {
+            val url = buildServerRootUrl(serverUrl) + "/api/session/$sessionID/prompt"
+            val connection = URI(url).toURL().openConnection() as HttpURLConnection
+            try {
+                connection.connectTimeout = connectTimeoutMillis
+                connection.readTimeout = readTimeoutMillis
+                connection.requestMethod = "POST"
+                connection.doOutput = true
+                connection.setRequestProperty("Authorization", basicAuthHeader)
+                connection.setRequestProperty("Content-Type", "application/json")
+                val body = """{"prompt":{"text":"Continue"},"resume":true}"""
+                connection.outputStream.use { it.write(body.toByteArray(StandardCharsets.UTF_8)) }
+                connection.responseCode in 200..299
+            } finally {
+                connection.disconnect()
+            }
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun httpGet(
+        url: String,
+        basicAuthHeader: String,
+        connectTimeoutMillis: Int,
+        readTimeoutMillis: Int,
+    ): String? {
+        return try {
+            val connection = URI(url).toURL().openConnection() as HttpURLConnection
+            try {
+                connection.connectTimeout = connectTimeoutMillis
+                connection.readTimeout = readTimeoutMillis
+                connection.requestMethod = "GET"
+                connection.setRequestProperty("Authorization", basicAuthHeader)
+                if (connection.responseCode !in 200..299) return null
+                connection.inputStream.bufferedReader().use { it.readText() }
+            } finally {
+                connection.disconnect()
+            }
+        } catch (_: Exception) {
+            null
+        }
     }
 }

@@ -7,8 +7,6 @@ interface OpenCodeSettingsListener {
 
     fun fileLinkNavigationChanged(enabled: Boolean)
 
-    fun hideBrowserUntilProjectLoadsChanged(enabled: Boolean) {}
-
     fun externalLinkNavigationChanged(enabled: Boolean) {}
 
     fun codeNavigationChanged(enabled: Boolean) {}

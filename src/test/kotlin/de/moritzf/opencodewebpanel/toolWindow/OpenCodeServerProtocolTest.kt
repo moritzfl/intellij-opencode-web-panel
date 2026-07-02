@@ -1368,4 +1368,198 @@ class OpenCodeServerProtocolTest {
             executor.shutdownNow()
         }
     }
+
+    // ─── Interrupted-session detection ──────────────────────────────────────────
+
+    @Test
+    fun userStoppedMessageWithErrorFieldIsNotInterrupted() {
+        val json = """{"type":"assistant","error":{"type":"unknown","message":"Provider turn interrupted"},"time":{"created":12345}}"""
+        assertFalse(OpenCodeServerProtocol.isInterruptedAssistantMessage(json))
+    }
+
+    @Test
+    fun interruptedMessageWithoutCompletedTimeIsDetected() {
+        val json = """{"type":"assistant","time":{"created":12345}}"""
+        assertTrue(OpenCodeServerProtocol.isInterruptedAssistantMessage(json))
+    }
+
+    @Test
+    fun interruptedMessageWithPendingToolIsDetected() {
+        val json = """{"type":"assistant","time":{"created":12345,"completed":12346},"content":[{"type":"tool","state":{"status":"pending","input":"{}"}}]}"""
+        assertTrue(OpenCodeServerProtocol.isInterruptedAssistantMessage(json))
+    }
+
+    @Test
+    fun interruptedMessageWithRunningToolIsDetected() {
+        val json = """{"type":"assistant","time":{"created":12345,"completed":12346},"content":[{"type":"tool","state":{"status":"running","input":{},"structured":{},"content":[]}}]}"""
+        assertTrue(OpenCodeServerProtocol.isInterruptedAssistantMessage(json))
+    }
+
+    @Test
+    fun completedAssistantMessageIsNotInterrupted() {
+        val json = """{"type":"assistant","time":{"created":12345,"completed":12346},"content":[{"type":"tool","state":{"status":"completed","input":{},"content":[],"structured":{}}}]}"""
+        assertFalse(OpenCodeServerProtocol.isInterruptedAssistantMessage(json))
+    }
+
+    @Test
+    fun nonAssistantMessageIsNotInterrupted() {
+        val json = """{"type":"user","text":"hello","time":{"created":12345}}"""
+        assertFalse(OpenCodeServerProtocol.isInterruptedAssistantMessage(json))
+    }
+
+    @Test
+    fun emptyMessageIsNotInterrupted() {
+        assertFalse(OpenCodeServerProtocol.isInterruptedAssistantMessage(""))
+    }
+
+    @Test
+    fun parseSessionListFiltersByRecency() {
+        val now = System.currentTimeMillis()
+        val json = """{"data":[
+            {"id":"ses_recent","time":{"created":${now - 60000},"updated":${now - 60000}}},
+            {"id":"ses_old","time":{"created":${now - 600000},"updated":${now - 600000}}]}"""
+        val sessions = OpenCodeServerProtocol.parseSessionList(json, maxAgeMillis = 300_000, nowMillis = now)
+        assertEquals(1, sessions.size)
+        assertEquals("ses_recent", sessions[0].id)
+    }
+
+    @Test
+    fun parseSessionListParsesMultipleSessions() {
+        val now = System.currentTimeMillis()
+        val recent = now - 10000
+        val json = """{"data":[
+            {"id":"ses_a","time":{"created":$recent,"updated":$recent}},
+            {"id":"ses_b","time":{"created":$recent,"updated":$recent}}]}"""
+        val sessions = OpenCodeServerProtocol.parseSessionList(json, maxAgeMillis = 300_000, nowMillis = now)
+        assertEquals(2, sessions.size)
+        assertTrue(sessions.map { it.id }.containsAll(listOf("ses_a", "ses_b")))
+    }
+
+    @Test
+    fun parseSessionListReturnsEmptyForEmptyData() {
+        val sessions = OpenCodeServerProtocol.parseSessionList(
+            """{"data":[]}""",
+            maxAgeMillis = 300_000,
+            nowMillis = System.currentTimeMillis(),
+        )
+        assertTrue(sessions.isEmpty())
+    }
+
+    @Test
+    fun parseSessionListDeduplicatesById() {
+        val now = System.currentTimeMillis()
+        val recent = now - 1000
+        val json = """{"data":[
+            {"id":"ses_dup","time":{"created":$recent,"updated":$recent}},
+            {"id":"ses_dup","time":{"created":$recent,"updated":$recent}}]}"""
+        val sessions = OpenCodeServerProtocol.parseSessionList(json, maxAgeMillis = 300_000, nowMillis = now)
+        assertEquals(1, sessions.size)
+    }
+
+    @Test
+    fun fetchRecentSessionsReturnsEmptyOnConnectionError() {
+        val auth = OpenCodeServerProtocol.buildBasicAuthHeader("test")
+        val sessions = OpenCodeServerProtocol.fetchRecentSessions(
+            "http://127.0.0.1:1",
+            auth,
+            "/tmp/project",
+            connectTimeoutMillis = 100,
+            readTimeoutMillis = 100,
+        )
+        assertTrue(sessions.isEmpty())
+    }
+
+    @Test
+    fun fetchLastMessageJsonExtractsFirstObject() {
+        val response = """{"data":[{"type":"assistant","time":{"created":12345}}]}"""
+        val serverSocket = ServerSocket(0)
+        val executor = Executors.newSingleThreadExecutor()
+        val responseFuture = executor.submit {
+            try {
+                serverSocket.accept().use { socket ->
+                    val reader = socket.getInputStream().bufferedReader()
+                    reader.readLine()
+                    while (reader.readLine()?.isNotEmpty() == true) {}
+                    socket.getOutputStream().write(
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ${response.length}\r\nConnection: close\r\n\r\n$response"
+                            .toByteArray(Charsets.UTF_8),
+                    )
+                    socket.getOutputStream().flush()
+                }
+            } catch (_: SocketException) {}
+        }
+        try {
+            val auth = OpenCodeServerProtocol.buildBasicAuthHeader("test")
+            val msg = OpenCodeServerProtocol.fetchLastMessageJson(
+                "http://127.0.0.1:${serverSocket.localPort}",
+                auth,
+                "ses_abc123",
+            )
+            assertNotNull(msg)
+            assertTrue(msg!!.contains("\"type\":\"assistant\""))
+            assertTrue(OpenCodeServerProtocol.isInterruptedAssistantMessage(msg))
+            responseFuture.get(5, TimeUnit.SECONDS)
+        } finally {
+            serverSocket.close()
+            executor.shutdownNow()
+        }
+    }
+
+    @Test
+    fun sendContinuePromptReturnsFalseForInvalidSessionId() {
+        val auth = OpenCodeServerProtocol.buildBasicAuthHeader("test")
+        assertFalse(OpenCodeServerProtocol.sendContinuePrompt("http://127.0.0.1:1", auth, "invalid"))
+    }
+
+    @Test
+    fun sendContinuePromptSendsResumeTrueBody() {
+        val serverSocket = ServerSocket(0)
+        val executor = Executors.newSingleThreadExecutor()
+        val capturedBody = java.util.concurrent.CompletableFuture<String>()
+        val responseFuture = executor.submit {
+            try {
+                serverSocket.accept().use { socket ->
+                    val input = socket.getInputStream()
+                    val reader = input.bufferedReader()
+                    reader.readLine()
+                    val headers = mutableMapOf<String, String>()
+                    var line: String?
+                    while (reader.readLine().also { it -> line = it }.isNotEmpty()) {
+                        val parts = line!!.split(": ", limit = 2)
+                        if (parts.size == 2) headers[parts[0]] = parts[1]
+                    }
+                    val contentLength = headers["Content-Length"]?.toIntOrNull() ?: 0
+                    val bodyChars = CharArray(contentLength)
+                    var read = 0
+                    while (read < contentLength) {
+                        val n = reader.read(bodyChars, read, contentLength - read)
+                        if (n < 0) break
+                        read += n
+                    }
+                    capturedBody.complete(String(bodyChars, 0, read))
+                    socket.getOutputStream().write(
+                        "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                            .toByteArray(Charsets.UTF_8),
+                    )
+                    socket.getOutputStream().flush()
+                }
+            } catch (_: SocketException) {}
+        }
+        try {
+            val auth = OpenCodeServerProtocol.buildBasicAuthHeader("test")
+            val accepted = OpenCodeServerProtocol.sendContinuePrompt(
+                "http://127.0.0.1:${serverSocket.localPort}",
+                auth,
+                "ses_abc123",
+            )
+            assertTrue(accepted)
+            val body = capturedBody.get(5, TimeUnit.SECONDS)
+            assertTrue(body.contains("\"resume\":true"))
+            assertTrue(body.contains("\"text\":\"Continue\""))
+            responseFuture.get(5, TimeUnit.SECONDS)
+        } finally {
+            serverSocket.close()
+            executor.shutdownNow()
+        }
+    }
 }

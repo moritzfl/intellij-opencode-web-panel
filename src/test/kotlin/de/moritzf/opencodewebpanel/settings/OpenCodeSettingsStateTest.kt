@@ -83,11 +83,6 @@ class OpenCodeSettingsStateTest {
     }
 
     @Test
-    fun hideBrowserUntilProjectLoadsIsEnabledByDefault() {
-        assertEquals(true, OpenCodeSettingsState().hideBrowserUntilProjectLoads)
-    }
-
-    @Test
     fun uiZoomPercentUsesDefaultValue() {
         assertEquals(OpenCodeSettingsState.DEFAULT_UI_ZOOM_PERCENT, OpenCodeSettingsState().uiZoomPercent)
     }

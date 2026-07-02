@@ -82,7 +82,6 @@ class OpenCodeSettingsConfigurable : Configurable {
         toolTipText = "Current OpenCode server status"
     }
     private val openMostRecentConversationCheckBox = JBCheckBox("Open the most recent conversation for the project on startup")
-    private val hideBrowserUntilProjectLoadsCheckBox = JBCheckBox("Hide browser until the OpenCode project page is ready")
     private val openFileLinksInIdeCheckBox = JBCheckBox("Enable IDE navigation from OpenCode")
     private val openExternalLinksInBrowserCheckBox = JBCheckBox("Open external HTTP links in the system browser")
     private val enableCodeNavigationCheckBox = JBCheckBox("Also navigate code references in chat")
@@ -93,6 +92,7 @@ class OpenCodeSettingsConfigurable : Configurable {
     private val enableSystemNotificationsCheckBox = JBCheckBox("Forward OpenCode system notifications to the IDE")
     private val enablePermissionNotificationActionsCheckBox = JBCheckBox("Offer Allow/Deny actions on permission notifications")
     private val showAgentStatusBadgeCheckBox = JBCheckBox("Show agent status on the tool window icon")
+    private val autoContinueInterruptedSessionsCheckBox = JBCheckBox("Automatically continue interrupted conversations after recovery")
     private val waitForIntellijMcpServerCheckBox = JBCheckBox("Wait for IntelliJ MCP server before starting OpenCode")
     private val uiZoomSpinner = JSpinner(
         SpinnerNumberModel(
@@ -122,7 +122,6 @@ class OpenCodeSettingsConfigurable : Configurable {
 
     private val checkBoxSettingBindings = listOf(
         CheckBoxSettingBinding(openMostRecentConversationCheckBox, { openMostRecentConversationOnStartup }, { value -> openMostRecentConversationOnStartup = value }),
-        CheckBoxSettingBinding(hideBrowserUntilProjectLoadsCheckBox, { hideBrowserUntilProjectLoads }, { value -> hideBrowserUntilProjectLoads = value }, { listener, value -> listener.hideBrowserUntilProjectLoadsChanged(value) }),
         CheckBoxSettingBinding(openFileLinksInIdeCheckBox, { openFileLinksInIde }, { value -> openFileLinksInIde = value }, { listener, value -> listener.fileLinkNavigationChanged(value) }),
         CheckBoxSettingBinding(openExternalLinksInBrowserCheckBox, { openExternalLinksInBrowser }, { value -> openExternalLinksInBrowser = value }, { listener, value -> listener.externalLinkNavigationChanged(value) }),
         CheckBoxSettingBinding(enableCodeNavigationCheckBox, { enableCodeNavigation }, { value -> enableCodeNavigation = value }, { listener, value -> listener.codeNavigationChanged(value) }),
@@ -133,6 +132,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         CheckBoxSettingBinding(enableSystemNotificationsCheckBox, { enableSystemNotifications }, { value -> enableSystemNotifications = value }, { listener, value -> listener.systemNotificationsChanged(value) }),
         CheckBoxSettingBinding(enablePermissionNotificationActionsCheckBox, { enablePermissionNotificationActions }, { value -> enablePermissionNotificationActions = value }),
         CheckBoxSettingBinding(showAgentStatusBadgeCheckBox, { showAgentStatusBadge }, { value -> showAgentStatusBadge = value }, { listener, value -> listener.agentStatusBadgeChanged(value) }),
+        CheckBoxSettingBinding(autoContinueInterruptedSessionsCheckBox, { autoContinueInterruptedSessions }, { value -> autoContinueInterruptedSessions = value }),
         CheckBoxSettingBinding(waitForIntellijMcpServerCheckBox, { waitForIntellijMcpServer }, { value -> waitForIntellijMcpServer = value }),
         CheckBoxSettingBinding(enableServerLogsCheckBox, { enableServerLogs }, { value -> enableServerLogs = value }),
     )
@@ -236,10 +236,6 @@ class OpenCodeSettingsConfigurable : Configurable {
                     cell(openMostRecentConversationCheckBox)
                         .comment("When the tool window opens, restore the project's most recent OpenCode conversation instead of opening a new conversation.")
                 }
-                row {
-                    cell(hideBrowserUntilProjectLoadsCheckBox)
-                        .comment("Keep the startup status visible while OpenCode navigates from the server root to the configured project route.")
-                }
             }
             group("Browser Appearance") {
                 row("Zoom:") {
@@ -279,7 +275,7 @@ class OpenCodeSettingsConfigurable : Configurable {
                         .comment("Use OpenCode's native handling for project file references and file attachments.")
                 }
             }
-            group("OpenCode Notifications") {
+            group("OpenCode Event Handling") {
                 row {
                     cell(enableSystemNotificationsCheckBox)
                         .comment("Show OpenCode browser notifications as IntelliJ notifications and route notification clicks back to OpenCode.")
@@ -297,6 +293,10 @@ class OpenCodeSettingsConfigurable : Configurable {
                 row {
                     cell(showAgentStatusBadgeCheckBox)
                         .comment("Overlay the tool window icon with a live indicator while the agent works and a warning while it awaits your input.")
+                }
+                row {
+                    cell(autoContinueInterruptedSessionsCheckBox)
+                        .comment("Send a continuation prompt to the most recent session after the server restarts or recovers, if its last assistant turn was interrupted.")
                 }
             }
         }

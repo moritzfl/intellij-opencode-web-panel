@@ -4,6 +4,20 @@
 
 ## [Unreleased]
 
+## [1.4.4] - 2026-07-02
+
+### Added
+
+- Automatically continue interrupted conversations after server recovery: sessions updated within the last 5 minutes with a crashed assistant turn (missing completion time or unsettled tools) receive a continuation prompt. User-initiated stops are not resumed. Own safeguard toggle in settings.
+
+### Removed
+
+- "Hide browser until the OpenCode project page is ready" setting and its associated browser-hiding logic. The lifecycle status panel and faster project-page injection make this workaround unnecessary.
+
+### Changed
+
+- Renamed the "OpenCode Notifications" settings group to "OpenCode Event Handling".
+
 ## [1.4.3] - 2026-07-02
 
 ### Added
@@ -158,7 +172,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.3...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.4...HEAD
+[1.4.4]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.3...1.4.4
 [1.4.3]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.2...1.4.3
 [1.4.2]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.1...1.4.2
 [1.4.1]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.0...1.4.1
