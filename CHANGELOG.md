@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [1.4.5] - 2026-07-02
+
+### Fixed
+
+- VCS refresh after agent turn no longer triggers a threading assertion error on non-EDT threads; the refresh now runs entirely on the event dispatch thread.
+
 ## [1.4.4] - 2026-07-02
 
 ### Added
@@ -173,7 +179,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.4...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.5...HEAD
+[1.4.5]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.4...1.4.5
 [1.4.4]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.3...1.4.4
 [1.4.3]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.2...1.4.3
 [1.4.2]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.1...1.4.2
