@@ -28,6 +28,7 @@
                 icon="/icons/opencode.svg">
             <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
             <add-to-group group-id="EditorTabPopupMenu" anchor="last"/>
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
         </action>
         <action id="OpenCodeWebPanel.AddSelectionToChat"
                 class="de.moritzf.opencodewebpanel.toolWindow.OpenCodeAddSelectionToChatAction"

@@ -28,7 +28,9 @@ internal class OpenCodeAddFileToChatAction : DumbAwareAction() {
 
     override fun update(e: AnActionEvent) {
         val project = e.project
+        val hasSelection = e.getData(CommonDataKeys.EDITOR)?.selectionModel?.hasSelection() == true
         e.presentation.isEnabledAndVisible = project != null &&
+            !hasSelection &&
             OpenCodeSettingsState.getInstance().enableChatFileDrop &&
             fileReferenceTexts(e, project).isNotEmpty()
     }
