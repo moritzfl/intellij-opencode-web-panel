@@ -9,6 +9,7 @@
 ### Added
 
 - Automatically continue interrupted conversations after server recovery: sessions updated within the last 5 minutes with a crashed assistant turn (missing completion time or unsettled tools) receive a continuation prompt. User-initiated stops are not resumed. Own safeguard toggle in settings.
+- Refresh project files and VCS change detection when the OpenCode agent finishes a turn, so file modifications and commits appear in the project view and changelists without a manual refresh.
 
 ### Removed
 
