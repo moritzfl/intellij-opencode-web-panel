@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [1.4.3] - 2026-07-02
+
+### Added
+
+- "Always Allow" action on OpenCode permission notifications, granting the permission permanently alongside the existing "Allow" (once) and "Deny" actions.
+
 ## [1.4.2] - 2026-07-02
 
 ### Fixed
@@ -152,7 +158,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.2...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.3...HEAD
+[1.4.3]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.2...1.4.3
 [1.4.2]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.1...1.4.2
 [1.4.1]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.0...1.4.1
 [1.4.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.3.0...1.4.0
