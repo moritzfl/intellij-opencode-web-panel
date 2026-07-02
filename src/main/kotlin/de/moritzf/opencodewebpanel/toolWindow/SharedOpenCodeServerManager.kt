@@ -21,6 +21,9 @@ import java.util.concurrent.TimeUnit
 class SharedOpenCodeServerManager : Disposable {
 
     companion object {
+        private const val SERVER_START_TIMEOUT_MILLIS = 60_000L
+        private const val SERVER_START_POLL_MILLIS = 1_000L
+
         fun getInstance(): SharedOpenCodeServerManager {
             return ApplicationManager.getApplication().getService(SharedOpenCodeServerManager::class.java)
         }
@@ -396,17 +399,15 @@ class SharedOpenCodeServerManager : Disposable {
             logThread.isDaemon = true
             logThread.start()
 
-            var maxAttempts = 30
             val startTime = System.currentTimeMillis()
-            val timeout = 60000L
 
-            while (isCurrentStart(startId) && maxAttempts-- > 0 && (System.currentTimeMillis() - startTime) < timeout) {
-                urlLatch.await(1, TimeUnit.SECONDS)
+            while (isCurrentStart(startId) && (System.currentTimeMillis() - startTime) < SERVER_START_TIMEOUT_MILLIS) {
+                urlLatch.await(SERVER_START_POLL_MILLIS, TimeUnit.MILLISECONDS)
                 val url = getServerUrl()
-                if (process.isAlive && url != null && checkServerResponding(url)) {
+                if (url != null && checkServerResponding(url)) {
                     break
                 }
-                if (!process.isAlive) {
+                if (!process.isAlive && url == null) {
                     break
                 }
             }
@@ -510,18 +511,19 @@ class SharedOpenCodeServerManager : Disposable {
     }
 
     private fun checkServerResponding(serverUrl: String): Boolean {
-        val process = getServerProcess()
-        if (process?.isAlive != true) {
-            thisLogger().info("OpenCode health check skipped because the server process is not alive")
-            return false
-        }
         val password = getServerPassword()
         if (password.isNullOrBlank()) {
             thisLogger().info("OpenCode health check skipped because no server password is available")
             return false
         }
         val responding = OpenCodeServerProtocol.checkServerResponding(serverUrl, OpenCodeServerProtocol.buildBasicAuthHeader(password))
-        if (!responding) thisLogger().info("OpenCode health check failed for $serverUrl")
+        val processAlive = getServerProcess()?.isAlive == true
+        if (responding && !processAlive) {
+            thisLogger().warn("OpenCode health check succeeded but the tracked launcher process is not alive")
+        } else if (!responding) {
+            val reason = if (processAlive) "server did not respond" else "tracked process is not alive"
+            thisLogger().info("OpenCode health check failed for $serverUrl ($reason)")
+        }
         return responding
     }
 
