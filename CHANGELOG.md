@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [1.4.6] - 2026-07-02
+
+### Fixed
+
+- Starting OpenCode on Windows no longer treats short-lived launcher processes as a failed server when the authenticated health endpoint is reachable, and the startup wait now consistently uses the full 60-second window.
+
 ## [1.4.5] - 2026-07-02
 
 ### Fixed
@@ -179,7 +185,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.5...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.6...HEAD
+[1.4.6]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.5...1.4.6
 [1.4.5]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.4...1.4.5
 [1.4.4]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.3...1.4.4
 [1.4.3]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.2...1.4.3
