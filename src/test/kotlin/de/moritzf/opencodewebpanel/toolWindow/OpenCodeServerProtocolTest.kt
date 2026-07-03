@@ -1036,6 +1036,64 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun parseSessionInfoReadsBareAndEnvelopedSessions() {
+        val bare = OpenCodeServerProtocol.parseSessionInfo("""{"id":"ses_1","title":"Fix the build"}""")!!
+        assertEquals("Fix the build", bare.title)
+        assertNull(bare.parentID)
+
+        val enveloped = OpenCodeServerProtocol.parseSessionInfo(
+            """{"data":{"id":"ses_2","title":"Subtask","parentID":"ses_1"}}""",
+        )!!
+        assertEquals("Subtask", enveloped.title)
+        assertEquals("ses_1", enveloped.parentID)
+
+        val untitled = OpenCodeServerProtocol.parseSessionInfo("""{"id":"ses_3"}""")!!
+        assertEquals("", untitled.title)
+    }
+
+    @Test
+    fun parseSessionInfoRejectsMalformedResponses() {
+        assertNull(OpenCodeServerProtocol.parseSessionInfo(""))
+        assertNull(OpenCodeServerProtocol.parseSessionInfo("not json"))
+        assertNull(OpenCodeServerProtocol.parseSessionInfo("[]"))
+    }
+
+    @Test
+    fun buildSessionRouteEncodesDirectoryAndSession() {
+        val root = OpenCodeServerProtocol.buildSessionRoute("/tmp/project", null)
+        assertEquals("/" + OpenCodeServerProtocol.encodeDirectory("/tmp/project"), root)
+        assertEquals(root, OpenCodeServerProtocol.buildSessionRoute("/tmp/project", ""))
+        assertEquals(
+            "$root/session/ses_1",
+            OpenCodeServerProtocol.buildSessionRoute("/tmp/project", "ses_1"),
+        )
+    }
+
+    @Test
+    fun sessionIdFromUrlReadsClassicAndServerRoutes() {
+        assertEquals(
+            "ses_abc123",
+            OpenCodeServerProtocol.sessionIdFromUrl("http://127.0.0.1:1234/L3RtcC9wcm9qZWN0/session/ses_abc123"),
+        )
+        assertEquals(
+            "ses_abc123",
+            OpenCodeServerProtocol.sessionIdFromUrl("http://127.0.0.1:1234/server/key/session/ses_abc123?x=1#frag"),
+        )
+        assertNull(OpenCodeServerProtocol.sessionIdFromUrl(null))
+        assertNull(OpenCodeServerProtocol.sessionIdFromUrl("http://127.0.0.1:1234/L3RtcA/session"))
+        assertNull(OpenCodeServerProtocol.sessionIdFromUrl("http://127.0.0.1:1234/new-session"))
+        assertNull(OpenCodeServerProtocol.sessionIdFromUrl("http://127.0.0.1:1234/x/session/ses%2F..%2Fevil"))
+    }
+
+    @Test
+    fun projectDisplayNameUsesLastPathSegment() {
+        assertEquals("project", OpenCodeServerProtocol.projectDisplayName("/tmp/project"))
+        assertEquals("project", OpenCodeServerProtocol.projectDisplayName("/tmp/project/"))
+        assertEquals("project", OpenCodeServerProtocol.projectDisplayName("C:\\code\\project\\"))
+        assertEquals("/", OpenCodeServerProtocol.projectDisplayName("/"))
+    }
+
+    @Test
     fun parseBusySessionIdsKeepsBusyAndRetrySessions() {
         val json = """
             {

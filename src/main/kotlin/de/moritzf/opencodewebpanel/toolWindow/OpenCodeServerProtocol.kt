@@ -926,6 +926,68 @@ internal object OpenCodeServerProtocol {
         return created <= createdBeforeMillis && !time.has("completed")
     }
 
+    // ─── Session lookup for notifications ───────────────────────────────────────
+
+    data class SessionInfo(val title: String, val parentID: String?)
+
+    /**
+     * Fetches one session (`GET /session/{sessionID}?directory=...`), used for notification
+     * titles and to skip notifications for child sessions. Handles both the bare session
+     * object and the `{"data": {...}}` envelope. Returns null on any error.
+     */
+    fun fetchSessionInfo(
+        serverUrl: String,
+        basicAuthHeader: String,
+        directory: String,
+        sessionID: String,
+        connectTimeoutMillis: Int = 3000,
+        readTimeoutMillis: Int = 3000,
+    ): SessionInfo? {
+        if (!isOpenCodeRecordId(sessionID)) return null
+        val url = buildServerRootUrl(serverUrl) + "/session/" + sessionID + "?directory=" +
+            java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
+        val body = httpGet(url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis) ?: return null
+        return parseSessionInfo(body)
+    }
+
+    fun parseSessionInfo(json: String): SessionInfo? {
+        val root = parseJsonObject(json) ?: return null
+        val session = root.get("data")?.takeIf { it.isJsonObject }?.asJsonObject ?: root
+        return SessionInfo(
+            title = session.stringMember("title").orEmpty(),
+            parentID = session.stringMember("parentID")?.takeIf { it.isNotBlank() },
+        )
+    }
+
+    /** Builds the SPA route for a project directory, or one of its sessions if [sessionID] is set. */
+    fun buildSessionRoute(directory: String, sessionID: String?): String {
+        val root = "/" + encodeDirectory(directory)
+        if (sessionID.isNullOrBlank()) return root
+        return root + "/session/" + java.net.URLEncoder.encode(sessionID, StandardCharsets.UTF_8)
+    }
+
+    /**
+     * Extracts the session ID from an OpenCode route URL (`.../session/<id>`), or null when
+     * the URL shows no session. Both the classic and the new `/server/<key>/session/<id>`
+     * layout put the ID after a `/session/` path segment.
+     */
+    fun sessionIdFromUrl(url: String?): String? {
+        if (url.isNullOrBlank()) return null
+        // rawPath keeps percent-encoding, so an encoded slash cannot split the segment early.
+        val path = runCatching { URI(url).rawPath }.getOrNull() ?: return null
+        val encoded = Regex("/session/([^/?#]+)").find(path)?.groupValues?.get(1) ?: return null
+        return runCatching { URLDecoder.decode(encoded, StandardCharsets.UTF_8) }.getOrNull()
+            ?.takeIf { isOpenCodeRecordId(it) }
+    }
+
+    /** The last path segment of a project directory, for human-readable notification texts. */
+    fun projectDisplayName(directory: String): String {
+        return directory.trimEnd('/', '\\')
+            .split('/', '\\')
+            .lastOrNull { it.isNotBlank() }
+            ?: directory
+    }
+
     // ─── Agent-status seeding ───────────────────────────────────────────────────
 
     const val PERMISSION_LIST_PATH = "/permission"
