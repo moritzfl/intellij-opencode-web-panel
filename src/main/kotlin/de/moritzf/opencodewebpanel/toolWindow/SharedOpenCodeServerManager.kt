@@ -59,6 +59,11 @@ class SharedOpenCodeServerManager : Disposable {
     // so these handles are the only way to stop the server later.
     private var serverProcessDescendants: List<ProcessHandle> = emptyList()
     private var checkScheduledFuture: ScheduledFuture<*>? = null
+
+    // Written when a periodic-check cycle is (re)started and then only touched by the
+    // single-threaded scheduler; volatile covers the cross-thread handoff.
+    @Volatile
+    private var lastPeriodicCheckMillis = 0L
     private var preferredBasePath: String? = null
     private var consecutiveStartFailures = 0
     private var nextStartAllowedAtMillis = 0L
@@ -134,7 +139,7 @@ class SharedOpenCodeServerManager : Disposable {
 
     private fun validateExistingServerOrStart(project: Project, projectBasePath: String?, url: String, startId: Long) {
         if (!isCurrentStart(startId)) return
-        if (checkServerResponding(url)) {
+        if (checkServerRespondingWithConfirmation(url)) {
             if (getServerVersion() == null) refreshServerVersion()
             setServerRunningForStart(startId)
             finishStart(startId, success = true)
@@ -305,9 +310,11 @@ class SharedOpenCodeServerManager : Disposable {
         synchronized(lock) {
             if (checkScheduledFuture != null) return
 
+            lastPeriodicCheckMillis = System.currentTimeMillis()
             checkScheduledFuture = scheduler.scheduleAtFixedRate(
                 {
                     try {
+                        publishResumeFromSuspendIfDetected()
                         checkServerHealth()
                     } catch (e: Exception) {
                         thisLogger().error("Error during periodic check: ${e.message}")
@@ -321,6 +328,31 @@ class SharedOpenCodeServerManager : Disposable {
         thisLogger().info("Started periodic server health check")
     }
 
+    /**
+     * The periodic check runs on a fixed monotonic-clock rate, so an oversized wall-clock gap
+     * between two runs means the machine was suspended in between. Listeners use this to
+     * recover sessions whose turn the suspend severed; publish before the health check so the
+     * signal is not lost when the check ends up restarting the server.
+     */
+    private fun publishResumeFromSuspendIfDetected() {
+        val now = System.currentTimeMillis()
+        val previous = lastPeriodicCheckMillis
+        lastPeriodicCheckMillis = now
+        val gap = OpenCodeServerProtocol.detectSuspendGapMillis(
+            previous,
+            now,
+            TimeUnit.SECONDS.toMillis(OpenCodeServerProtocol.CHECK_INTERVAL_SECONDS),
+        ) ?: return
+        thisLogger().info("Detected resume from a ~${gap / 1000}s system suspend; notifying listeners")
+        try {
+            ApplicationManager.getApplication().messageBus
+                .syncPublisher(OpenCodeSuspendResumeListener.TOPIC)
+                .resumedFromSuspend(lastAliveMillis = previous, resumedAtMillis = now)
+        } catch (e: Exception) {
+            thisLogger().warn("Could not publish OpenCode suspend-resume event: ${e.message}")
+        }
+    }
+
     private fun cancelPeriodicCheck(mayInterruptIfRunning: Boolean = false) {
         val future = synchronized(lock) {
             checkScheduledFuture.also { checkScheduledFuture = null }
@@ -330,7 +362,7 @@ class SharedOpenCodeServerManager : Disposable {
 
     private fun checkServerHealth() {
         val url = getServerUrl()
-        val responding = url != null && checkServerResponding(url)
+        val responding = url != null && checkServerRespondingWithConfirmation(url)
         if (!OpenCodeServerProtocol.shouldRestartServer(url, responding)) return
 
         val backoffMillis = remainingStartBackoffMillis()
@@ -553,13 +585,51 @@ class SharedOpenCodeServerManager : Disposable {
         }
     }
 
-    private fun checkServerResponding(serverUrl: String): Boolean {
+    /**
+     * Probes the server once and, on failure, confirms with slower retries before declaring it
+     * dead. Right after the machine resumes from sleep a healthy server can need several seconds
+     * to answer again; a single 2s probe here used to restart it spuriously, killing sessions
+     * that would have survived the sleep untouched. A genuinely dead server fails each probe
+     * fast (connection refused), so this only adds the inter-probe delays to real recoveries.
+     */
+    private fun checkServerRespondingWithConfirmation(serverUrl: String): Boolean {
+        if (checkServerResponding(serverUrl)) return true
+        repeat(OpenCodeServerProtocol.HEALTH_CHECK_CONFIRMATION_ATTEMPTS) { attempt ->
+            try {
+                Thread.sleep(OpenCodeServerProtocol.HEALTH_CHECK_CONFIRMATION_DELAY_MILLIS)
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return false
+            }
+            thisLogger().info("Confirming failed OpenCode health check (attempt ${attempt + 1})")
+            if (checkServerResponding(
+                    serverUrl,
+                    connectTimeoutMillis = OpenCodeServerProtocol.HEALTH_CHECK_CONFIRMATION_TIMEOUT_MILLIS,
+                    readTimeoutMillis = OpenCodeServerProtocol.HEALTH_CHECK_CONFIRMATION_TIMEOUT_MILLIS,
+                )
+            ) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private fun checkServerResponding(
+        serverUrl: String,
+        connectTimeoutMillis: Int = 2000,
+        readTimeoutMillis: Int = 2000,
+    ): Boolean {
         val password = getServerPassword()
         if (password.isNullOrBlank()) {
             thisLogger().info("OpenCode health check skipped because no server password is available")
             return false
         }
-        val responding = OpenCodeServerProtocol.checkServerResponding(serverUrl, OpenCodeServerProtocol.buildBasicAuthHeader(password))
+        val responding = OpenCodeServerProtocol.checkServerResponding(
+            serverUrl,
+            OpenCodeServerProtocol.buildBasicAuthHeader(password),
+            connectTimeoutMillis,
+            readTimeoutMillis,
+        )
         val processAlive = getServerProcess()?.isAlive == true
         if (responding && !processAlive) {
             // Normal steady state on Windows, where the launcher exits after spawning the

@@ -231,6 +231,14 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         )
         updateLifecycleIndicator(serverManager.getLifecycleState())
         ApplicationManager.getApplication().messageBus.connect(this).subscribe(
+            OpenCodeSuspendResumeListener.TOPIC,
+            object : OpenCodeSuspendResumeListener {
+                override fun resumedFromSuspend(lastAliveMillis: Long, resumedAtMillis: Long) {
+                    interruptedSessionRecovery.onResumedFromSuspend(lastAliveMillis, resumedAtMillis)
+                }
+            },
+        )
+        ApplicationManager.getApplication().messageBus.connect(this).subscribe(
             OpenCodeSettingsListener.TOPIC,
             object : OpenCodeSettingsListener {
                 override fun uiZoomChanged(zoomPercent: Int) {

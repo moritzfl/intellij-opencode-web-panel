@@ -19,6 +19,10 @@ internal object OpenCodeServerProtocol {
     private const val HOST = "127.0.0.1"
     const val DYNAMIC_PORT = "0"
     const val CHECK_INTERVAL_SECONDS = 30L
+    const val HEALTH_CHECK_CONFIRMATION_ATTEMPTS = 2
+    const val HEALTH_CHECK_CONFIRMATION_DELAY_MILLIS = 3_000L
+    const val HEALTH_CHECK_CONFIRMATION_TIMEOUT_MILLIS = 5_000
+    private const val SUSPEND_DETECTION_SLACK_MILLIS = 60_000L
     private const val START_FAILURE_BACKOFF_BASE_MILLIS = 5_000L
     private const val START_FAILURE_BACKOFF_MAX_MILLIS = 60_000L
     const val HEALTH_PATH = "/api/health"
@@ -808,6 +812,51 @@ internal object OpenCodeServerProtocol {
     }
 
     // ─── Interrupted-session recovery ───────────────────────────────────────────
+
+    /**
+     * Returns the wall-clock gap between two periodic-check runs when it is too large to be
+     * scheduler jitter — i.e. the machine was suspended (sleep, hibernate) in between — or
+     * null otherwise. On Apple Silicon the JVM's monotonic clock advances during sleep, so
+     * the overdue tick fires right on wake and the gap approximates the sleep duration; on
+     * platforms where it pauses, the tick fires up to one interval after wake instead.
+     */
+    fun detectSuspendGapMillis(previousRunMillis: Long, nowMillis: Long, intervalMillis: Long): Long? {
+        if (previousRunMillis <= 0L) return null
+        val gap = nowMillis - previousRunMillis
+        return gap.takeIf { it > intervalMillis + SUSPEND_DETECTION_SLACK_MILLIS }
+    }
+
+    /**
+     * Detects an assistant turn that a machine suspend severed: the turn started before the
+     * machine went to sleep ([createdBeforeMillis]) and settled with an error only after it
+     * resumed ([completedAfterMillis]) — the provider connection cannot survive the gap, and
+     * nobody was at the machine to stop the turn in between. The error payload cannot serve
+     * as the discriminator because a user stop settles with the same
+     * `{"type":"unknown",...}` shape (see [isInterruptedLastMessage]); the timestamps can.
+     */
+    fun isSuspendSeveredLastMessage(messageJson: String, createdBeforeMillis: Long, completedAfterMillis: Long): Boolean {
+        val message = parseJsonObject(messageJson) ?: return false
+        if (message.stringMember("type") != "assistant") return false
+        if (message.get("error")?.isJsonNull != false) return false
+        val time = message.get("time")?.takeIf { it.isJsonObject }?.asJsonObject ?: return false
+        val created = time.longMember("created") ?: return false
+        val completed = time.longMember("completed") ?: return false
+        return created <= createdBeforeMillis && completed >= completedAfterMillis
+    }
+
+    /**
+     * An assistant turn that started before [createdBeforeMillis] and has not settled yet
+     * (no `time.completed`). After a resume from suspend such a turn is either hung on a dead
+     * provider connection (and will settle with an error once the server notices) or genuinely
+     * survived the sleep and is still streaming; callers poll until it settles either way.
+     */
+    fun isUnsettledTurnFromBefore(messageJson: String, createdBeforeMillis: Long): Boolean {
+        val message = parseJsonObject(messageJson) ?: return false
+        if (message.stringMember("type") != "assistant") return false
+        val time = message.get("time")?.takeIf { it.isJsonObject }?.asJsonObject ?: return false
+        val created = time.longMember("created") ?: return false
+        return created <= createdBeforeMillis && !time.has("completed")
+    }
 
     data class SessionSummary(val id: String, val updatedMillis: Long)
 

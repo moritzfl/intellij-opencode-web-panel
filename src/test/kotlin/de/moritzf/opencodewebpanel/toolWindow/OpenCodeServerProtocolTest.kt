@@ -1534,6 +1534,88 @@ class OpenCodeServerProtocolTest {
         assertTrue(OpenCodeServerProtocol.isInterruptedLastMessage(json))
     }
 
+    // ─── Suspend/resume detection ────────────────────────────────────────────────
+
+    @Test
+    fun schedulerJitterGapIsNotASuspend() {
+        assertNull(OpenCodeServerProtocol.detectSuspendGapMillis(1_000L, 1_000L + 89_000L, 30_000L))
+    }
+
+    @Test
+    fun oversizedWallClockGapIsASuspend() {
+        assertEquals(
+            600_000L,
+            OpenCodeServerProtocol.detectSuspendGapMillis(1_000L, 601_000L, 30_000L),
+        )
+    }
+
+    @Test
+    fun firstPeriodicRunNeverReportsASuspend() {
+        assertNull(OpenCodeServerProtocol.detectSuspendGapMillis(0L, 10_000_000L, 30_000L))
+    }
+
+    @Test
+    fun errorSettledTurnSpanningTheSuspendIsSevered() {
+        // Same shape as the captured user-stop message; created before the sleep and
+        // error-settled after the wake is the suspend-severed signature.
+        val json = """{"id":"msg_1","time":{"created":900000,"completed":2000000},"type":"assistant","agent":"build","content":[{"type":"text","id":"text-0","text":"partial"}],"finish":"error","error":{"type":"unknown","message":"fetch failed"}}"""
+        assertTrue(OpenCodeServerProtocol.isSuspendSeveredLastMessage(json, 1_000_000L, 1_900_000L))
+    }
+
+    @Test
+    fun turnStoppedByTheUserBeforeTheSuspendIsNotSevered() {
+        val json = """{"id":"msg_1","time":{"created":900000,"completed":950000},"type":"assistant","finish":"error","error":{"type":"unknown","message":"Provider turn interrupted"}}"""
+        assertFalse(OpenCodeServerProtocol.isSuspendSeveredLastMessage(json, 1_000_000L, 1_900_000L))
+    }
+
+    @Test
+    fun turnStartedAfterTheResumeIsNotSevered() {
+        val json = """{"id":"msg_1","time":{"created":1950000,"completed":1960000},"type":"assistant","finish":"error","error":{"type":"unknown","message":"whatever"}}"""
+        assertFalse(OpenCodeServerProtocol.isSuspendSeveredLastMessage(json, 1_000_000L, 1_900_000L))
+    }
+
+    @Test
+    fun cleanlyCompletedTurnSpanningTheSuspendIsNotSevered() {
+        val json = """{"id":"msg_1","time":{"created":900000,"completed":2000000},"type":"assistant","content":[{"type":"text","id":"text-0","text":"done"}]}"""
+        assertFalse(OpenCodeServerProtocol.isSuspendSeveredLastMessage(json, 1_000_000L, 1_900_000L))
+    }
+
+    @Test
+    fun unsettledTurnIsNotSeveredYet() {
+        val json = """{"id":"msg_1","time":{"created":900000},"type":"assistant"}"""
+        assertFalse(OpenCodeServerProtocol.isSuspendSeveredLastMessage(json, 1_000_000L, 1_900_000L))
+    }
+
+    @Test
+    fun userMessageIsNotSevered() {
+        val json = """{"id":"msg_1","time":{"created":900000},"type":"user","text":"prompt"}"""
+        assertFalse(OpenCodeServerProtocol.isSuspendSeveredLastMessage(json, 1_000_000L, 1_900_000L))
+    }
+
+    @Test
+    fun unsettledTurnFromBeforeTheSleepIsAPollingCandidate() {
+        val json = """{"id":"msg_1","time":{"created":900000},"type":"assistant"}"""
+        assertTrue(OpenCodeServerProtocol.isUnsettledTurnFromBefore(json, 1_000_000L))
+    }
+
+    @Test
+    fun unsettledTurnStartedAfterTheSleepIsNotAPollingCandidate() {
+        val json = """{"id":"msg_1","time":{"created":1950000},"type":"assistant"}"""
+        assertFalse(OpenCodeServerProtocol.isUnsettledTurnFromBefore(json, 1_000_000L))
+    }
+
+    @Test
+    fun settledTurnIsNotAPollingCandidate() {
+        val json = """{"id":"msg_1","time":{"created":900000,"completed":950000},"type":"assistant"}"""
+        assertFalse(OpenCodeServerProtocol.isUnsettledTurnFromBefore(json, 1_000_000L))
+    }
+
+    @Test
+    fun userMessageIsNotAPollingCandidate() {
+        val json = """{"id":"msg_1","time":{"created":900000},"type":"user","text":"prompt"}"""
+        assertFalse(OpenCodeServerProtocol.isUnsettledTurnFromBefore(json, 1_000_000L))
+    }
+
     @Test
     fun parseSessionListFiltersByRecency() {
         val now = System.currentTimeMillis()

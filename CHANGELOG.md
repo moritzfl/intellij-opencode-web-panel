@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Sessions survive laptop sleep: a failed health check is now confirmed with slower retries before the server is restarted, so a machine that is still busy waking up no longer triggers a spurious restart that kills running sessions.
+- Conversations interrupted by system sleep now continue automatically: a turn that lost its provider connection while the machine slept is recognized after wake (started before the sleep, error-settled after the resume) and receives a continuation prompt.
+- After a wake-time server restart, the interrupted-session recovery window now spans the sleep gap instead of only the last five minutes, so turns crashed by a long sleep are resumed too.
+
 ## [1.4.10] - 2026-07-03
 
 ### Fixed
