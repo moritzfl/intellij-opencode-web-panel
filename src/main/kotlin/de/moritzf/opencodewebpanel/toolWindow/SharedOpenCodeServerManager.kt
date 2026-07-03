@@ -51,6 +51,7 @@ class SharedOpenCodeServerManager : Disposable {
     private var serverPassword: String? = null
     private var serverVersion: String? = null
     private var serverGeneration = 0L
+    private var launcherExitNoticeLogged = false
     private var checkScheduledFuture: ScheduledFuture<*>? = null
     private var preferredBasePath: String? = null
     private var consecutiveStartFailures = 0
@@ -532,7 +533,14 @@ class SharedOpenCodeServerManager : Disposable {
         val responding = OpenCodeServerProtocol.checkServerResponding(serverUrl, OpenCodeServerProtocol.buildBasicAuthHeader(password))
         val processAlive = getServerProcess()?.isAlive == true
         if (responding && !processAlive) {
-            thisLogger().warn("OpenCode health check succeeded but the tracked launcher process is not alive")
+            // Normal steady state on Windows, where the launcher exits after spawning the
+            // real server - log once per start instead of on every periodic health check.
+            val firstNotice = synchronized(lock) {
+                (!launcherExitNoticeLogged).also { launcherExitNoticeLogged = true }
+            }
+            if (firstNotice) {
+                thisLogger().info("OpenCode server is responding although the tracked launcher process has exited")
+            }
         } else if (!responding) {
             val reason = if (processAlive) "server did not respond" else "tracked process is not alive"
             thisLogger().info("OpenCode health check failed for $serverUrl ($reason)")
@@ -577,6 +585,7 @@ class SharedOpenCodeServerManager : Disposable {
             serverUrl = null
             serverPassword = password
             serverGeneration++
+            launcherExitNoticeLogged = false
             true
         }
     }
