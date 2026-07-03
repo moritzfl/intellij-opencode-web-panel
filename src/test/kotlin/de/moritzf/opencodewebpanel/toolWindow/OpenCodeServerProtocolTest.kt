@@ -1090,21 +1090,6 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
-    fun parseSystemNotificationPayloadReadsPermissionFields() {
-        val payload = listOf(
-            "id1", "%2Ftmp%2Fproject", "%2Froute", "Permission%20required", "Body",
-            "permission", "ses_abc123", "per_xyz789",
-        ).joinToString("\n")
-
-        val notification = OpenCodeServerProtocol.parseSystemNotificationPayload(payload)!!
-
-        assertEquals("permission", notification.kind)
-        assertEquals("ses_abc123", notification.sessionID)
-        assertEquals("per_xyz789", notification.requestID)
-        assertTrue(OpenCodeServerProtocol.isPermissionNotification(notification))
-    }
-
-    @Test
     fun permissionNotificationRequiresSafeRecordIds() {
         val base = OpenCodeServerProtocol.SystemNotificationPayload(
             id = "id", directory = "/tmp", route = "/r", title = "t", body = "b",
@@ -1114,54 +1099,6 @@ class OpenCodeServerProtocolTest {
         assertFalse(OpenCodeServerProtocol.isPermissionNotification(base.copy(kind = "session")))
         assertFalse(OpenCodeServerProtocol.isPermissionNotification(base.copy(requestID = "")))
         assertFalse(OpenCodeServerProtocol.isPermissionNotification(base.copy(sessionID = "ses/../evil")))
-    }
-
-    @Test
-    fun parseSystemNotificationPayloadDecodesEncodedFields() {
-        val payload = "id%201\n%2Ftmp%2Fproject\n%2Fencoded%2Fsession%2Fses_1\nAgent%20done\nLine%201%0ALine%202"
-
-        val notification = OpenCodeServerProtocol.parseSystemNotificationPayload(payload)
-
-        assertNotNull(notification)
-        assertEquals("id 1", notification!!.id)
-        assertEquals("/tmp/project", notification.directory)
-        assertEquals("/encoded/session/ses_1", notification.route)
-        assertEquals("Agent done", notification.title)
-        assertEquals("Line 1\nLine 2", notification.body)
-    }
-
-    @Test
-    fun parseSystemNotificationPayloadRejectsMissingIdentity() {
-        assertNull(OpenCodeServerProtocol.parseSystemNotificationPayload(null))
-        assertNull(OpenCodeServerProtocol.parseSystemNotificationPayload("id-only"))
-        assertNull(OpenCodeServerProtocol.parseSystemNotificationPayload("%20\n%2Ftmp%2Fproject\n%2Fencoded\nTitle\nBody"))
-        assertNull(OpenCodeServerProtocol.parseSystemNotificationPayload("id\n%20\n%2Fencoded\nTitle\nBody"))
-        assertNull(OpenCodeServerProtocol.parseSystemNotificationPayload("id\n%2Ftmp%2Fproject\nencoded\nTitle\nBody"))
-        assertNull(OpenCodeServerProtocol.parseSystemNotificationPayload("id\n%2Ftmp%2Fproject\n%2Fencoded\n%20\nBody"))
-    }
-
-    @Test
-    fun parseSystemNotificationDismissalReadsRequestAndSessionScopes() {
-        assertEquals(
-            "request:per_xyz789",
-            OpenCodeServerProtocol.parseSystemNotificationDismissal("__opencode_dismiss__\nrequest\nper_xyz789")!!.key,
-        )
-        assertEquals(
-            "session:ses_abc123",
-            OpenCodeServerProtocol.parseSystemNotificationDismissal("__opencode_dismiss__\nsession\nses_abc123")!!.key,
-        )
-    }
-
-    @Test
-    fun parseSystemNotificationDismissalRejectsMalformedPayloads() {
-        assertNull(OpenCodeServerProtocol.parseSystemNotificationDismissal(null))
-        assertNull(OpenCodeServerProtocol.parseSystemNotificationDismissal(""))
-        assertNull(OpenCodeServerProtocol.parseSystemNotificationDismissal("__opencode_dismiss__\nrequest"))
-        assertNull(OpenCodeServerProtocol.parseSystemNotificationDismissal("__opencode_dismiss__\nelsewhere\nper_1"))
-        assertNull(OpenCodeServerProtocol.parseSystemNotificationDismissal("__opencode_dismiss__\nsession\nses%2F..%2Fevil"))
-        assertNull(OpenCodeServerProtocol.parseSystemNotificationDismissal("__opencode_dismiss__\nsession\n%20"))
-        // A regular notification payload must never be mistaken for a dismissal.
-        assertNull(OpenCodeServerProtocol.parseSystemNotificationDismissal("id1\n%2Ftmp%2Fproject\n%2Froute\nTitle\nBody\npermission\nses_1\nper_1"))
     }
 
     @Test

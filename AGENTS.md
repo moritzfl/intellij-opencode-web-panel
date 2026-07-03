@@ -45,7 +45,7 @@ Project-specific guidance for future implementation work.
 
 - Chromium allows only **six concurrent HTTP/1.1 connections per host**, shared across **all** JCEF browsers in the IDE. The local OpenCode server is plain HTTP, so this limit applies, and every open project window's panel draws from the same pool.
 - Each embedded OpenCode SPA already holds one persistent `/global/event` stream. When the pool is exhausted, further requests (model lists, session data) queue forever with **no errors**: the page loads, chat input works, but selectors never finish loading.
-- Injected scripts must therefore never open per-feature event streams. All plugin event consumers share the single event hub in `OpenCodeBrowserSnippets` (`EVENT_HUB_BOOTSTRAP`): pages elect a leader via the Web Locks API, the leader owns the only plugin `fetch('/global/event')` reader, and events fan out to all pages through a `BroadcastChannel`. Subscribe new consumers to the hub instead of adding readers.
+- Injected scripts must therefore never open event streams or other long-lived connections. The plugin consumes OpenCode events **JVM-side**: `OpenCodeGlobalEventStream` (owned by `SharedOpenCodeServerManager`) holds the single plugin `/global/event` reader and publishes parsed events on the `OpenCodeGlobalEventListener` application topic, with a `connected()` signal after each (re)connect for consumers that must re-seed reduced state via REST. Subscribe new event consumers to that topic instead of injecting page-side readers.
 
 ## Settings
 
