@@ -855,11 +855,15 @@ internal object OpenCodeServerProtocol {
         val updatedRegex = Regex("\"updated\"\\s*:\\s*(\\d+)")
         val results = mutableListOf<SessionSummary>()
         val idMatches = idRegex.findAll(json).toList()
-        for (idMatch in idMatches) {
+        for ((index, idMatch) in idMatches.withIndex()) {
             val id = idMatch.groupValues[1]
-            // Find the next "updated" field after this id match, within the same object.
+            // Find the next "updated" field after this id match, but before the next session's
+            // id, so a session without a time.updated cannot steal the next session's timestamp.
             val searchStart = idMatch.range.last + 1
-            val updatedMatch = updatedRegex.find(json, searchStart) ?: continue
+            val searchEnd = idMatches.getOrNull(index + 1)?.range?.first ?: json.length
+            val updatedMatch = updatedRegex.find(json, searchStart)
+                ?.takeIf { it.range.first < searchEnd }
+                ?: continue
             val updated = updatedMatch.groupValues[1].toLongOrNull() ?: continue
             if (nowMillis - updated <= maxAgeMillis) {
                 results.add(SessionSummary(id, updated))
@@ -884,17 +888,31 @@ internal object OpenCodeServerProtocol {
         val url = buildServerRootUrl(serverUrl) +
             "/api/session/$sessionID/message?order=desc&limit=1"
         val body = httpGet(url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis) ?: return null
-        // Expect {"data":[{...}]}
+        return extractFirstDataObject(body)
+    }
+
+    /** Extracts the first JSON object of the `data` array from a `{"data":[{...}]}` response. */
+    @TestOnly
+    fun extractFirstDataObject(body: String): String? {
         val dataMatch = Regex("\"data\"\\s*:\\s*\\[").find(body) ?: return null
         // Extract the first object from the data array.
         val arrayStart = dataMatch.range.last + 1
         val objStart = body.indexOf('{', arrayStart)
         if (objStart < 0) return null
+        // Message text routinely contains braces inside JSON string values (code snippets),
+        // so the brace matching must skip string contents and escape sequences.
         var depth = 0
+        var inString = false
+        var escaped = false
         for (i in objStart until body.length) {
-            when (body[i]) {
-                '{' -> depth++
-                '}' -> { depth--; if (depth == 0) return body.substring(objStart, i + 1) }
+            val ch = body[i]
+            when {
+                escaped -> escaped = false
+                inString && ch == '\\' -> escaped = true
+                ch == '"' -> inString = !inString
+                inString -> {}
+                ch == '{' -> depth++
+                ch == '}' -> { depth--; if (depth == 0) return body.substring(objStart, i + 1) }
             }
         }
         return null

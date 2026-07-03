@@ -1480,7 +1480,7 @@ class OpenCodeServerProtocolTest {
         val now = System.currentTimeMillis()
         val json = """{"data":[
             {"id":"ses_recent","time":{"created":${now - 60000},"updated":${now - 60000}}},
-            {"id":"ses_old","time":{"created":${now - 600000},"updated":${now - 600000}}]}"""
+            {"id":"ses_old","time":{"created":${now - 600000},"updated":${now - 600000}}}]}"""
         val sessions = OpenCodeServerProtocol.parseSessionList(json, maxAgeMillis = 300_000, nowMillis = now)
         assertEquals(1, sessions.size)
         assertEquals("ses_recent", sessions[0].id)
@@ -1517,6 +1517,34 @@ class OpenCodeServerProtocolTest {
             {"id":"ses_dup","time":{"created":$recent,"updated":$recent}}]}"""
         val sessions = OpenCodeServerProtocol.parseSessionList(json, maxAgeMillis = 300_000, nowMillis = now)
         assertEquals(1, sessions.size)
+    }
+
+    @Test
+    fun parseSessionListDoesNotPairIdWithNextSessionsTimestamp() {
+        val now = System.currentTimeMillis()
+        val recent = now - 1000
+        val json = """{"data":[
+            {"id":"ses_no_time"},
+            {"id":"ses_recent","time":{"created":$recent,"updated":$recent}}]}"""
+        val sessions = OpenCodeServerProtocol.parseSessionList(json, maxAgeMillis = 300_000, nowMillis = now)
+        assertEquals(listOf("ses_recent"), sessions.map { it.id })
+    }
+
+    @Test
+    fun extractFirstDataObjectIgnoresBracesInsideStrings() {
+        val body = """{"data":[{"type":"assistant","text":"fun main() { if (x) { y() } }","time":{"created":12345,"completed":12346}},{"type":"user"}]}"""
+        val extracted = OpenCodeServerProtocol.extractFirstDataObject(body)
+        assertEquals(
+            """{"type":"assistant","text":"fun main() { if (x) { y() } }","time":{"created":12345,"completed":12346}}""",
+            extracted,
+        )
+    }
+
+    @Test
+    fun extractFirstDataObjectIgnoresEscapedQuotesInsideStrings() {
+        val body = """{"data":[{"type":"assistant","text":"say \"}\" now","time":{"created":1,"completed":2}}]}"""
+        val extracted = OpenCodeServerProtocol.extractFirstDataObject(body)
+        assertEquals("""{"type":"assistant","text":"say \"}\" now","time":{"created":1,"completed":2}}""", extracted)
     }
 
     @Test
@@ -1586,9 +1614,10 @@ class OpenCodeServerProtocolTest {
                     val reader = input.bufferedReader()
                     reader.readLine()
                     val headers = mutableMapOf<String, String>()
-                    var line: String?
-                    while (reader.readLine().also { it -> line = it }.isNotEmpty()) {
-                        val parts = line!!.split(": ", limit = 2)
+                    while (true) {
+                        val line = reader.readLine()
+                        if (line.isNullOrEmpty()) break
+                        val parts = line.split(": ", limit = 2)
                         if (parts.size == 2) headers[parts[0]] = parts[1]
                     }
                     val contentLength = headers["Content-Length"]?.toIntOrNull() ?: 0
