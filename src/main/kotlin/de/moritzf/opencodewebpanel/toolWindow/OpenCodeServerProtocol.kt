@@ -83,10 +83,6 @@ internal object OpenCodeServerProtocol {
         return OpenCodeBrowserSnippets.buildSystemNotificationBridgeScript(enabled, notificationCallback)
     }
 
-    fun buildAgentStatusBridgeScript(projectBasePath: String?, enabled: Boolean, statusCallback: String?): String? {
-        return OpenCodeBrowserSnippets.buildAgentStatusBridgeScript(projectBasePath, enabled, statusCallback)
-    }
-
     fun buildProjectSwitchPromptSuppressionScript(enabled: Boolean): String? {
         return OpenCodeBrowserSnippets.buildProjectSwitchPromptSuppressionScript(enabled)
     }

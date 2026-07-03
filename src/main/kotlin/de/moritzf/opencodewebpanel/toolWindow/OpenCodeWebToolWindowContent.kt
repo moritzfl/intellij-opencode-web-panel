@@ -64,7 +64,6 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     private val openCodeReferenceQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
     private val openCodeLocalStorageQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
     private val systemNotificationQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
-    private val agentStatusQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
     private val openExternalLinkQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
     private val browserCursorQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
     private val serverManager = SharedOpenCodeServerManager.getInstance()
@@ -89,9 +88,14 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     private var projectSwitchPromptSuppressionScriptScheduled = false
     private var cursorMirrorScriptScheduled = false
     private var systemNotificationBridgeScriptScheduled = false
-    private var agentStatusBridgeScriptScheduled = false
-    private var lastAgentStatus = "idle"
+    private var lastAgentStatus = OpenCodeAgentStatusState.IDLE
     private val vcsRefresh = OpenCodeVcsRefresh(project)
+    private val agentStatusTracker = OpenCodeAgentStatusTracker(
+        serverManager,
+        ::openCodeProjectDirectory,
+        enabled = { !isContentDisposed() && OpenCodeSettingsState.getInstance().showAgentStatusBadge },
+        onStateChanged = ::onAgentStatusChanged,
+    )
     private var loadedServerRootUrl: String? = null
     private var pendingServerStartRequest = false
     private var lastBrowserRecoveryAttemptAtMillis = 0L
@@ -113,7 +117,6 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                 projectSwitchPromptSuppressionScriptScheduled = false
                 cursorMirrorScriptScheduled = false
                 systemNotificationBridgeScriptScheduled = false
-                agentStatusBridgeScriptScheduled = false
                 if (OpenCodeServerProtocol.isOpenCodeServerPage(serverManager.getServerUrl(), frame.url)) {
                     // Also reset the open-project flag: if the initial HTML load outlived all retry
                     // delays scheduled by loadProjectPage, onLoadEnd must be able to reschedule it.
@@ -146,7 +149,6 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             scheduleProjectSwitchPromptSuppressionScript()
             scheduleCursorMirrorScript()
             scheduleSystemNotificationBridgeScript()
-            scheduleAgentStatusBridgeScript()
             scheduleFlushPendingChatInput()
             interruptedSessionRecovery.checkAndContinue()
         }
@@ -208,16 +210,6 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             }
             null
         }
-        agentStatusQuery.addHandler { state ->
-            val newState = state.orEmpty()
-            val previousState = lastAgentStatus
-            updateAgentStatusBadge(newState)
-            if ((previousState == "busy" || previousState == "attention") && newState == "idle") {
-                vcsRefresh.refreshProjectFiles(openCodeProjectDirectory())
-            }
-            lastAgentStatus = newState
-            null
-        }
         browser.jbCefClient.addRequestHandler(requestHandler, browser.cefBrowser)
         browser.jbCefClient.addLoadHandler(loadHandler, browser.cefBrowser)
         installFileDropTransferHandler()
@@ -230,6 +222,10 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                     applicationClosing = true
                 }
             },
+        )
+        ApplicationManager.getApplication().messageBus.connect(this).subscribe(
+            OpenCodeGlobalEventListener.TOPIC,
+            agentStatusTracker,
         )
         ApplicationManager.getApplication().messageBus.connect(this).subscribe(
             OpenCodeServerLifecycleListener.TOPIC,
@@ -499,6 +495,8 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         scheduleProjectSwitchPromptSuppressionScript()
         scheduleCursorMirrorScript()
         scheduleSystemNotificationBridgeScript()
+        // Events that fired before this panel started caring never reached the tracker.
+        agentStatusTracker.seed()
     }
 
     private fun clearStaleBrowserPage(state: OpenCodeServerLifecycleState) {
@@ -693,21 +691,17 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         }
     }
 
-    private fun scheduleAgentStatusBridgeScript() {
-        if (agentStatusBridgeScriptScheduled) return
-        if (!OpenCodeSettingsState.getInstance().showAgentStatusBadge) return
-
-        val serverUrl = serverManager.getServerUrl() ?: return
-        val script = OpenCodeServerProtocol.buildAgentStatusBridgeScript(
-            openCodeProjectDirectory(),
-            enabled = true,
-            statusCallback = agentStatusQuery.inject("state"),
-        ) ?: return
-        val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
-        agentStatusBridgeScriptScheduled = true
-
-        scriptScheduler.schedule(script, rootUrl) {
-            OpenCodeSettingsState.getInstance().showAgentStatusBadge && isBrowserOnOpenCodeServerPage(serverUrl)
+    /**
+     * Applies a status transition reported by [agentStatusTracker]. Runs on the event-stream
+     * reader thread or a pooled thread; the badge update and VCS refresh dispatch to the EDT
+     * themselves.
+     */
+    private fun onAgentStatusChanged(state: String) {
+        val previousState = lastAgentStatus
+        lastAgentStatus = state
+        updateAgentStatusBadge(state)
+        if (previousState != OpenCodeAgentStatusState.IDLE && state == OpenCodeAgentStatusState.IDLE) {
+            vcsRefresh.refreshProjectFiles(openCodeProjectDirectory())
         }
     }
 
@@ -721,8 +715,8 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             if (!OpenCodeSettingsState.getInstance().showAgentStatusBadge) return@invokeLater
             toolWindow.setIcon(
                 when (state) {
-                    "attention" -> toolWindowIconSupplier.warningIcon
-                    "busy" -> toolWindowIconSupplier.liveIndicatorIcon
+                    OpenCodeAgentStatusState.ATTENTION -> toolWindowIconSupplier.warningIcon
+                    OpenCodeAgentStatusState.BUSY -> toolWindowIconSupplier.liveIndicatorIcon
                     else -> toolWindowIconSupplier.originalIcon
                 },
             )
@@ -731,26 +725,18 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
 
     private fun resetAgentStatusBadge() {
         if (isContentDisposed()) return
-        lastAgentStatus = "idle"
+        agentStatusTracker.reset()
+        lastAgentStatus = OpenCodeAgentStatusState.IDLE
         toolWindow.setIcon(toolWindowIconSupplier.originalIcon)
     }
 
+    /**
+     * The badge is fed from the Kotlin-side event stream, so toggling it needs no page
+     * reload: disabling clears the badge, enabling re-seeds the tracker from the REST API.
+     */
     private fun applyAgentStatusBadge(enabled: Boolean) {
-        agentStatusBridgeScriptScheduled = false
         resetAgentStatusBadge()
-        val serverUrl = serverManager.getServerUrl() ?: return
-        if (!isBrowserOnOpenCodeServerPage(serverUrl)) return
-        if (!enabled) {
-            browser.cefBrowser.reload()
-            return
-        }
-        val script = OpenCodeServerProtocol.buildAgentStatusBridgeScript(
-            openCodeProjectDirectory(),
-            enabled = true,
-            statusCallback = agentStatusQuery.inject("state"),
-        ) ?: return
-        browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
-        agentStatusBridgeScriptScheduled = true
+        if (enabled) agentStatusTracker.seed()
     }
 
     private fun isBrowserOnOpenCodeServerPage(serverUrl: String): Boolean {
@@ -879,6 +865,8 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         openProjectScriptScheduled = false
         fileLinkScriptScheduled = false
         openProjectAlarm.cancelAllRequests()
+        // The badge state belongs to the previous directory; loadProjectPage re-seeds.
+        resetAgentStatusBadge()
         checkAndLoadContent()
     }
 

@@ -1019,56 +1019,20 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
-    fun buildAgentStatusBridgeScriptIsMissingWhenDisabledOrIncomplete() {
-        assertNull(OpenCodeServerProtocol.buildAgentStatusBridgeScript("/tmp/project", enabled = false, statusCallback = "cb(state)"))
-        assertNull(OpenCodeServerProtocol.buildAgentStatusBridgeScript("/tmp/project", enabled = true, statusCallback = null))
-        assertNull(OpenCodeServerProtocol.buildAgentStatusBridgeScript(null, enabled = true, statusCallback = "cb(state)"))
-        assertNull(OpenCodeServerProtocol.buildAgentStatusBridgeScript(" ", enabled = true, statusCallback = "cb(state)"))
-    }
-
-    @Test
-    fun buildAgentStatusBridgeScriptTracksBusyAndAttentionState() {
-        val script = OpenCodeServerProtocol.buildAgentStatusBridgeScript(
-            "/tmp/project",
-            enabled = true,
-            statusCallback = "window.intellijStatus(state)",
-        )!!
-
-        assertTrue(script.contains("window.__opencodeIntellijAgentStatusInstalled"))
-        assertTrue(script.contains("fetch('/global/event'"))
-        assertTrue(script.contains("window.__opencodeIntellijEventHub.subscribe"))
-        assertTrue(script.contains("'/session/status?directory='"))
-        assertTrue(script.contains("['/permission', '/question']"))
-        assertTrue(script.contains("'session.status'"))
-        assertTrue(script.contains("'permission.asked' || type === 'question.asked'"))
-        assertTrue(script.contains("'permission.replied' || type === 'question.replied' || type === 'question.rejected'"))
-        assertTrue(script.contains("'attention'"))
-        assertTrue(script.contains("'busy'"))
-        assertTrue(script.contains("window.intellijStatus(state)"))
-    }
-
-    @Test
     fun eventBridgeScriptsShareSingleEventStreamConnection() {
         // Chromium allows only six concurrent HTTP/1.1 connections per host across all JCEF
-        // browsers, and each panel's SPA already holds one /global/event stream. Both bridges
-        // must share a single hub reader (with cross-page leader election) instead of opening
-        // one stream each, or two open projects stall every further request in all panels.
+        // browsers, and each panel's SPA already holds one /global/event stream. The remaining
+        // browser-side bridge must keep using the shared hub reader (with cross-page leader
+        // election) instead of opening a stream of its own.
         val notificationScript = OpenCodeServerProtocol.buildSystemNotificationBridgeScript(
             enabled = true,
             notificationCallback = "cb(payload)",
         )!!
-        val agentScript = OpenCodeServerProtocol.buildAgentStatusBridgeScript(
-            "/tmp/project",
-            enabled = true,
-            statusCallback = "cb(state)",
-        )!!
 
-        for (script in listOf(notificationScript, agentScript)) {
-            assertEquals(1, Regex("fetch\\('/global/event'").findAll(script).count())
-            assertTrue(script.contains("if (window.__opencodeIntellijEventHub) return"))
-            assertTrue(script.contains("navigator.locks"))
-            assertTrue(script.contains("BroadcastChannel('opencode-intellij-event-hub')"))
-        }
+        assertEquals(1, Regex("fetch\\('/global/event'").findAll(notificationScript).count())
+        assertTrue(notificationScript.contains("if (window.__opencodeIntellijEventHub) return"))
+        assertTrue(notificationScript.contains("navigator.locks"))
+        assertTrue(notificationScript.contains("BroadcastChannel('opencode-intellij-event-hub')"))
     }
 
     @Test
