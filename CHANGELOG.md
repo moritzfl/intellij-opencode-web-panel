@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [1.4.10] - 2026-07-03
+
+### Fixed
+
+- Session restore can never navigate the panel to another project's session: the remembered session is only used when its own directory matches the panel's project.
+
 ## [1.4.9] - 2026-07-03
 
 ### Fixed
@@ -211,7 +217,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.9...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.10...HEAD
+[1.4.10]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.9...1.4.10
 [1.4.9]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.8...1.4.9
 [1.4.8]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.7...1.4.8
 [1.4.7]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.6...1.4.7
