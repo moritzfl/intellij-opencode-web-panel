@@ -296,7 +296,7 @@ class OpenCodeSettingsConfigurable : Configurable {
                 }
                 row {
                     cell(autoContinueInterruptedSessionsCheckBox)
-                        .comment("Send a continuation prompt to the most recent session after the server restarts or recovers, if its last assistant turn was interrupted.")
+                        .comment("Send a continuation prompt to recently active sessions after the server restarts or recovers, if their last assistant turn was interrupted.")
                 }
             }
         }

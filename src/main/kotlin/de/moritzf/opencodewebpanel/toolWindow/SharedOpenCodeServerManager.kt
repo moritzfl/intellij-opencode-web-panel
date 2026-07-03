@@ -50,6 +50,7 @@ class SharedOpenCodeServerManager : Disposable {
     private var serverUrl: String? = null
     private var serverPassword: String? = null
     private var serverVersion: String? = null
+    private var serverGeneration = 0L
     private var checkScheduledFuture: ScheduledFuture<*>? = null
     private var preferredBasePath: String? = null
     private var consecutiveStartFailures = 0
@@ -193,6 +194,13 @@ class SharedOpenCodeServerManager : Disposable {
     fun getServerPassword(): String? = synchronized(lock) { serverPassword }
 
     fun getServerVersion(): String? = synchronized(lock) { serverVersion }
+
+    /**
+     * Increments each time a new server process is launched (0 while none was ever started).
+     * Lets callers distinguish "the server actually restarted" from mere revalidation of a
+     * healthy server, e.g. to run one-shot recovery work per server process.
+     */
+    fun getServerGeneration(): Long = synchronized(lock) { serverGeneration }
 
     /** Best-effort, informational only: refreshes the reported OpenCode version off the EDT. */
     private fun refreshServerVersion() {
@@ -563,6 +571,7 @@ class SharedOpenCodeServerManager : Disposable {
             serverProcess = process
             serverUrl = null
             serverPassword = password
+            serverGeneration++
             true
         }
     }
