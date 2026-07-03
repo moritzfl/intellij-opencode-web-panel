@@ -32,6 +32,7 @@ internal class OpenCodeGlobalEventStream(
         const val EVENT_PATH = "/global/event"
         private const val RECONNECT_DELAY_MILLIS = 2_000L
         private const val CONNECT_TIMEOUT_MILLIS = 5_000
+        private const val READ_TIMEOUT_MILLIS = 10 * 60 * 1_000
 
         /**
          * Extracts the payload of one SSE block: the `data:` lines with the field name
@@ -126,9 +127,12 @@ internal class OpenCodeGlobalEventStream(
         val url = OpenCodeServerProtocol.buildServerRootUrl(serverUrl) + EVENT_PATH
         val newConnection = URI(url).toURL().openConnection() as HttpURLConnection
         newConnection.connectTimeout = CONNECT_TIMEOUT_MILLIS
-        // The stream is silent while no session is active; only stop()/reconnectNow()'s
-        // disconnect may abort the blocked read, never a timeout.
-        newConnection.readTimeout = 0
+        // The server sends no keep-alives, so a silent stream is normal while no session is
+        // active — but an unbounded read could also block forever on a socket that died
+        // without an error. The bounded timeout turns that into a reconnect (and consumer
+        // re-seed) after at most this long, at the cost of an occasional cheap local
+        // reconnect on genuinely idle streams.
+        newConnection.readTimeout = READ_TIMEOUT_MILLIS
         newConnection.requestMethod = "GET"
         newConnection.setRequestProperty("Accept", "text/event-stream")
         newConnection.setRequestProperty("Authorization", basicAuthHeader)
