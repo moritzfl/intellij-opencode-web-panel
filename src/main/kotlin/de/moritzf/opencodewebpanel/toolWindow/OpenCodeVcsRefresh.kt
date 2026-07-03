@@ -25,8 +25,10 @@ internal class OpenCodeVcsRefresh(private val project: Project) {
             try {
                 val basePath = Path.of(projectBasePath).toAbsolutePath().normalize()
                 val virtualFile = LocalFileSystem.getInstance().findFileByNioFile(basePath) ?: return@invokeLater
-                VfsUtil.markDirtyAndRefresh(false, true, true, virtualFile)
-                thisLogger().info("Refreshed project files after OpenCode agent turn")
+                // async = true: a synchronous recursive refresh of the whole project would
+                // block the EDT for seconds on large projects after every agent turn.
+                VfsUtil.markDirtyAndRefresh(true, true, true, virtualFile)
+                thisLogger().info("Scheduled project files refresh after OpenCode agent turn")
             } catch (e: Exception) {
                 thisLogger().warn("Failed to refresh project files after OpenCode agent turn", e)
             }
