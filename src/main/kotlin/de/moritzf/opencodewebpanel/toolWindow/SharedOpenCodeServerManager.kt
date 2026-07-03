@@ -68,6 +68,7 @@ class SharedOpenCodeServerManager : Disposable {
     private var consecutiveStartFailures = 0
     private var nextStartAllowedAtMillis = 0L
     private val processTerminator = OpenCodeProcessTerminator()
+    private val globalEventStream = OpenCodeGlobalEventStream()
     private val scheduler = Executors.newSingleThreadScheduledExecutor { runnable ->
         Thread(runnable, "OpenCode-Server-Checker").apply { isDaemon = true }
     }
@@ -303,6 +304,7 @@ class SharedOpenCodeServerManager : Disposable {
 
     override fun dispose() {
         stopServer()
+        globalEventStream.stop()
         scheduler.shutdownNow()
     }
 
@@ -344,6 +346,7 @@ class SharedOpenCodeServerManager : Disposable {
             TimeUnit.SECONDS.toMillis(OpenCodeServerProtocol.CHECK_INTERVAL_SECONDS),
         ) ?: return
         thisLogger().info("Detected resume from a ~${gap / 1000}s system suspend; notifying listeners")
+        globalEventStream.reconnectNow()
         try {
             ApplicationManager.getApplication().messageBus
                 .syncPublisher(OpenCodeSuspendResumeListener.TOPIC)
@@ -741,6 +744,7 @@ class SharedOpenCodeServerManager : Disposable {
             }
         }
         if (changed) {
+            updateGlobalEventStream(state)
             try {
                 ApplicationManager.getApplication().messageBus
                     .syncPublisher(OpenCodeServerLifecycleListener.TOPIC)
@@ -748,6 +752,23 @@ class SharedOpenCodeServerManager : Disposable {
             } catch (e: Exception) {
                 thisLogger().warn("Could not publish OpenCode server lifecycle state ${state.name}: ${e.message}")
             }
+        }
+    }
+
+    /**
+     * Keeps the JVM-side `/global/event` reader in lockstep with the server lifecycle: one
+     * stream while the server runs, none otherwise. Restarts route through a non-RUNNING
+     * state first, so a new server process always gets a fresh stream with fresh credentials.
+     */
+    private fun updateGlobalEventStream(state: OpenCodeServerLifecycleState) {
+        if (state != OpenCodeServerLifecycleState.RUNNING) {
+            globalEventStream.stop()
+            return
+        }
+        val url = getServerUrl()
+        val password = getServerPassword()
+        if (url != null && !password.isNullOrBlank()) {
+            globalEventStream.start(url, OpenCodeServerProtocol.buildBasicAuthHeader(password))
         }
     }
 }
