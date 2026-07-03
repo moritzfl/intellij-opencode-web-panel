@@ -1,5 +1,6 @@
 package de.moritzf.opencodewebpanel.toolWindow
 
+import com.intellij.openapi.actionSystem.ActionPlaces
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
@@ -28,9 +29,12 @@ internal class OpenCodeAddFileToChatAction : DumbAwareAction() {
 
     override fun update(e: AnActionEvent) {
         val project = e.project
-        val hasSelection = e.getData(CommonDataKeys.EDITOR)?.selectionModel?.hasSelection() == true
+        // Only yield to the add-selection action inside the editor popup itself; other menus
+        // (project view, editor tabs) should offer the file action even while text is selected.
+        val yieldsToSelectionAction = e.place == ActionPlaces.EDITOR_POPUP &&
+            e.getData(CommonDataKeys.EDITOR)?.selectionModel?.hasSelection() == true
         e.presentation.isEnabledAndVisible = project != null &&
-            !hasSelection &&
+            !yieldsToSelectionAction &&
             OpenCodeSettingsState.getInstance().enableChatFileDrop &&
             fileReferenceTexts(e, project).isNotEmpty()
     }
