@@ -1306,11 +1306,11 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
-    fun isOpenCodeRouteAlreadyOpenIncludesQueryButIgnoresTrailingSlash() {
+    fun isOpenCodeRouteAlreadyOpenIncludesQueryButIgnoresTrailingPathSlash() {
         assertTrue(
             OpenCodeServerProtocol.isOpenCodeRouteAlreadyOpen(
                 "http://127.0.0.1:60482",
-                "http://127.0.0.1:60482/server/abc/session/ses_123?tab=ask/",
+                "http://127.0.0.1:60482/server/abc/session/ses_123/?tab=ask",
                 "/server/abc/session/ses_123?tab=ask",
             ),
         )
@@ -1319,6 +1319,14 @@ class OpenCodeServerProtocolTest {
                 "http://127.0.0.1:60482",
                 "http://127.0.0.1:60482/server/abc/session/ses_123?tab=ask",
                 "/server/abc/session/ses_123?tab=review",
+            ),
+        )
+        // A trailing slash inside a query value is significant, not path noise.
+        assertFalse(
+            OpenCodeServerProtocol.isOpenCodeRouteAlreadyOpen(
+                "http://127.0.0.1:60482",
+                "http://127.0.0.1:60482/server/abc/session/ses_123?tab=ask/",
+                "/server/abc/session/ses_123?tab=ask",
             ),
         )
     }

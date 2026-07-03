@@ -190,17 +190,16 @@ internal object OpenCodeServerProtocol {
     }
 
     private fun URI.rawPathWithQuery(): String {
-        val path = rawPath?.takeIf { it.isNotBlank() } ?: "/"
+        // Trailing slashes are insignificant in the path but meaningful in a query value,
+        // so normalize the path before appending the query.
+        val path = (rawPath?.takeIf { it.isNotBlank() } ?: "/").trimEnd('/').ifBlank { "/" }
         val query = rawQuery?.takeIf { it.isNotBlank() }?.let { "?$it" }.orEmpty()
         return path + query
     }
 
     private fun normalizedRoute(route: String?): String? {
         val text = route?.trim()?.takeIf { it.startsWith('/') } ?: return null
-        return runCatching {
-            val uri = URI(text)
-            uri.rawPathWithQuery().trimEnd('/').ifBlank { "/" }
-        }.getOrNull()
+        return runCatching { URI(text).rawPathWithQuery() }.getOrNull()
     }
 
     fun routeDirectoryFromUrl(frameUrl: String?): String? {
