@@ -67,11 +67,15 @@ internal object OpenCodeBrowserSnippets {
               };
               const findLastProjectSession = (layout) => {
                 if (!layout || typeof layout.lastProjectSession !== 'object' || layout.lastProjectSession === null) return undefined;
-                const raw = layout.lastProjectSession[directory];
-                if (raw && typeof raw.directory === 'string' && typeof raw.id === 'string') return raw;
                 const targetKey = pathKey(directory);
+                // The session's own directory must also match this panel's project: the value is
+                // the navigation target, and a stale or inconsistent entry must never send the
+                // panel to another project's session.
+                const isUsable = (value) => value && typeof value.directory === 'string' && typeof value.id === 'string' && pathKey(value.directory) === targetKey;
+                const raw = layout.lastProjectSession[directory];
+                if (isUsable(raw)) return raw;
                 for (const [key, value] of Object.entries(layout.lastProjectSession)) {
-                  if (pathKey(key) === targetKey && value && typeof value.directory === 'string' && typeof value.id === 'string') {
+                  if (pathKey(key) === targetKey && isUsable(value)) {
                     return value;
                   }
                 }

@@ -352,6 +352,9 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("text.startsWith('\\\\\\\\')"))
         assertTrue(script.contains("text.replace(/\\\\/g, '/')"))
         assertTrue(script.contains("pathKey(key) === targetKey"))
+        // The stored session's own directory must match the panel's project, so a stale
+        // layout entry can never navigate the panel to another project's session.
+        assertTrue(script.contains("pathKey(value.directory) === targetKey"))
     }
 
     @Test
