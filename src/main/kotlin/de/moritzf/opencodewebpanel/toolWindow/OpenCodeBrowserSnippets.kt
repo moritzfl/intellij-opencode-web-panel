@@ -152,7 +152,9 @@ internal object OpenCodeBrowserSnippets {
                 if (!keepWaitingForRecentSession) setNavigationState(path);
                 return;
               }
-              if (window.location.pathname !== projectPath && onProjectSessionRoute && !foundRecentSession) {
+              if (window.location.pathname !== projectPath && onProjectSessionRoute) {
+                // Already viewing a specific conversation of this project (possibly opened by
+                // the user between scheduled runs of this script) - never navigate away from it.
                 setNavigationState(window.location.pathname);
                 return;
               }

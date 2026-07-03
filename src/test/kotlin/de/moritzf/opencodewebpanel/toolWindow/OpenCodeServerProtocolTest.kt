@@ -322,9 +322,22 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("pendingUntil = now + 10000"))
         assertTrue(script.contains("const keepWaitingForRecentSession = shouldKeepWaitingForRecentSession()"))
         assertTrue(script.contains("if (!keepWaitingForRecentSession) setNavigationState(path)"))
-        assertTrue(script.contains("onProjectSessionRoute && !foundRecentSession"))
         assertFalse(script.contains("getNavigationState() === 'complete'"))
         assertFalse(script.contains("setNavigationState('complete')"))
+    }
+
+    @Test
+    fun buildOpenProjectScriptNeverNavigatesAwayFromAnOpenConversation() {
+        val script = OpenCodeServerProtocol.buildOpenProjectScript(
+            "/tmp/project",
+            "http://127.0.0.1:60482/",
+            openMostRecentConversation = true,
+        )!!
+
+        // The stay-on-conversation guard must apply even when a most-recent session is known;
+        // otherwise the delayed script runs yank the user out of a conversation they opened.
+        assertTrue(script.contains("if (window.location.pathname !== projectPath && onProjectSessionRoute) {"))
+        assertFalse(script.contains("onProjectSessionRoute && !foundRecentSession"))
     }
 
     @Test
