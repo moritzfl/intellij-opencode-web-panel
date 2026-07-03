@@ -110,10 +110,10 @@ internal class OpenCodeSystemNotifications(
         }
     }
 
-    private fun canShowNotification(serverUrl: String): Boolean {
-        return !project.isDisposed &&
-            ProjectManager.getInstance().openProjects.contains(project) &&
-            OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)
+    // Deliberately independent of the browser's page state: with events read on the JVM,
+    // notifications matter most exactly while the page is blank, loading, or crashed.
+    private fun isProjectOpen(): Boolean {
+        return !project.isDisposed && ProjectManager.getInstance().openProjects.contains(project)
     }
 
     /**
@@ -137,8 +137,7 @@ internal class OpenCodeSystemNotifications(
 
     private fun openRoute(route: String) {
         val serverUrl = serverManager.getServerUrl() ?: return
-        if (project.isDisposed || !ProjectManager.getInstance().openProjects.contains(project)) return
-        if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)) return
+        if (!isProjectOpen()) return
         val frame = WindowManager.getInstance().getFrame(project)
         if (frame != null) {
             if (frame.extendedState and Frame.ICONIFIED != 0) {
@@ -227,8 +226,10 @@ internal class OpenCodeSystemNotifications(
             ApplicationManager.getApplication().invokeLater {
                 if (!OpenCodeSettingsState.getInstance().enableSystemNotifications) return@invokeLater
                 val target = targetFor(openCodeNotification.directory) ?: return@invokeLater
-                val serverUrl = target.serverManager.getServerUrl() ?: return@invokeLater
-                if (!target.canShowNotification(serverUrl)) return@invokeLater
+                // A stopped server makes the notification pointless: its "Show in OpenCode"
+                // and permission actions would have nothing to talk to.
+                if (target.serverManager.getServerUrl() == null) return@invokeLater
+                if (!target.isProjectOpen()) return@invokeLater
                 // The user is looking at the panel; the OpenCode UI itself shows the state.
                 if (target.isPanelInView()) return@invokeLater
                 if (!markRecent(openCodeNotification.id)) return@invokeLater
