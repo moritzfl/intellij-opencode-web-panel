@@ -38,6 +38,7 @@ class SharedOpenCodeServerManager : Disposable {
     private data class ServerResourcesToStop(
         val future: ScheduledFuture<*>?,
         val process: Process?,
+        val processDescendants: List<ProcessHandle>,
     )
 
     private val lock = Any()
@@ -52,6 +53,11 @@ class SharedOpenCodeServerManager : Disposable {
     private var serverVersion: String? = null
     private var serverGeneration = 0L
     private var launcherExitNoticeLogged = false
+
+    // Descendants of the launcher process, captured while it is still alive. On Windows the
+    // launcher exits after spawning the real server; a dead process reports no descendants,
+    // so these handles are the only way to stop the server later.
+    private var serverProcessDescendants: List<ProcessHandle> = emptyList()
     private var checkScheduledFuture: ScheduledFuture<*>? = null
     private var preferredBasePath: String? = null
     private var consecutiveStartFailures = 0
@@ -272,9 +278,10 @@ class SharedOpenCodeServerManager : Disposable {
     }
 
     private fun detachServerResources(): ServerResourcesToStop {
-        val resources = ServerResourcesToStop(checkScheduledFuture, serverProcess)
+        val resources = ServerResourcesToStop(checkScheduledFuture, serverProcess, serverProcessDescendants)
         checkScheduledFuture = null
         serverProcess = null
+        serverProcessDescendants = emptyList()
         serverRunning = false
         serverUrl = null
         serverPassword = null
@@ -286,7 +293,7 @@ class SharedOpenCodeServerManager : Disposable {
 
     private fun stopResources(resources: ServerResourcesToStop) {
         resources.future?.cancel(true)
-        processTerminator.destroy(resources.process)
+        processTerminator.destroy(resources.process, resources.processDescendants)
     }
 
     override fun dispose() {
@@ -364,6 +371,7 @@ class SharedOpenCodeServerManager : Disposable {
 
     private fun runOpenCodeServerStart(projectBasePath: String?, startId: Long) {
         var process: Process? = null
+        var capturedDescendants: List<ProcessHandle> = emptyList()
         try {
             if (!waitForIntellijMcpServerIfNeeded(startId)) return
             val password = OpenCodePasswordStore.getInstance().ensurePasswordBlocking()
@@ -412,6 +420,7 @@ class SharedOpenCodeServerManager : Disposable {
 
             while (isCurrentStart(startId) && (System.currentTimeMillis() - startTime) < SERVER_START_TIMEOUT_MILLIS) {
                 urlLatch.await(SERVER_START_POLL_MILLIS, TimeUnit.MILLISECONDS)
+                capturedDescendants = captureDescendants(startId, process, capturedDescendants)
                 val url = getServerUrl()
                 if (url != null && checkServerResponding(url)) {
                     break
@@ -425,9 +434,10 @@ class SharedOpenCodeServerManager : Disposable {
                     Thread.sleep(SERVER_START_POLL_MILLIS)
                 }
             }
+            capturedDescendants = captureDescendants(startId, process, capturedDescendants)
 
             if (!isCurrentStart(startId)) {
-                processTerminator.destroy(process)
+                processTerminator.destroy(process, capturedDescendants)
                 return
             }
 
@@ -450,9 +460,28 @@ class SharedOpenCodeServerManager : Disposable {
                 clearServerStateForStart(startId)
                 finishStart(startId, success = false)
             } else {
-                processTerminator.destroy(process)
+                processTerminator.destroy(process, capturedDescendants)
             }
         }
+    }
+
+    /**
+     * Refreshes the descendant snapshot of the launcher process while it is still alive.
+     * On Windows the launcher exits after spawning the real server, so this snapshot is
+     * the only handle for stopping the server later; keep the last non-empty snapshot.
+     */
+    private fun captureDescendants(
+        startId: Long,
+        process: Process,
+        previous: List<ProcessHandle>,
+    ): List<ProcessHandle> {
+        if (!process.isAlive) return previous
+        val snapshot = processTerminator.descendantHandles(process)
+        if (snapshot.isEmpty()) return previous
+        if (snapshot.map { it.pid() }.toSet() != previous.map { it.pid() }.toSet()) {
+            setServerDescendantsForStart(startId, snapshot)
+        }
+        return snapshot
     }
 
     private fun waitForIntellijMcpServerIfNeeded(startId: Long): Boolean {
@@ -572,21 +601,32 @@ class SharedOpenCodeServerManager : Disposable {
     }
 
     private fun destroyCurrentProcess() {
-        val process = synchronized(lock) {
-            serverProcess.also { serverProcess = null }
+        val (process, descendants) = synchronized(lock) {
+            val detached = serverProcess to serverProcessDescendants
+            serverProcess = null
+            serverProcessDescendants = emptyList()
+            detached
         }
-        processTerminator.destroy(process)
+        processTerminator.destroy(process, descendants)
     }
 
     private fun setStartedProcess(startId: Long, process: Process, password: String): Boolean {
         return synchronized(lock) {
             if (startId != startSequence) return@synchronized false
             serverProcess = process
+            serverProcessDescendants = emptyList()
             serverUrl = null
             serverPassword = password
             serverGeneration++
             launcherExitNoticeLogged = false
             true
+        }
+    }
+
+    private fun setServerDescendantsForStart(startId: Long, descendants: List<ProcessHandle>) {
+        synchronized(lock) {
+            if (startId != startSequence) return
+            serverProcessDescendants = descendants
         }
     }
 
@@ -617,6 +657,7 @@ class SharedOpenCodeServerManager : Disposable {
             serverUrl = null
             serverPassword = null
             serverVersion = null
+            serverProcessDescendants = emptyList()
         }
     }
 
