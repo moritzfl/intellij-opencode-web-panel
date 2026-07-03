@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [1.4.11] - 2026-07-03
+
 ### Added
 
 - IDE notifications now dismiss themselves when they become obsolete: permission and question notifications close as soon as the request is answered in the OpenCode UI (or from any other client), and "Show in OpenCode" notifications close when the session starts working again or when you interact with an OpenCode page that is showing that session.
@@ -227,7 +229,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.10...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.11...HEAD
+[1.4.11]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.10...1.4.11
 [1.4.10]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.9...1.4.10
 [1.4.9]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.8...1.4.9
 [1.4.8]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.7...1.4.8
