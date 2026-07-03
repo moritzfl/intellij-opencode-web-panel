@@ -930,6 +930,67 @@ internal object OpenCodeServerProtocol {
         return created <= createdBeforeMillis && !time.has("completed")
     }
 
+    // ─── Agent-status seeding ───────────────────────────────────────────────────
+
+    const val PERMISSION_LIST_PATH = "/permission"
+    const val QUESTION_LIST_PATH = "/question"
+
+    /**
+     * Fetches the current session statuses for a project directory
+     * (`GET /session/status?directory=...`, shape `{"ses_...": {"type": "busy"|...}, ...}`)
+     * and returns the IDs of sessions that are busy or retrying. Returns null on any error
+     * so callers can tell "no busy sessions" from "seed unavailable".
+     */
+    fun fetchBusySessionIds(
+        serverUrl: String,
+        basicAuthHeader: String,
+        directory: String,
+        connectTimeoutMillis: Int = 3000,
+        readTimeoutMillis: Int = 3000,
+    ): Set<String>? {
+        val url = buildServerRootUrl(serverUrl) + "/session/status?directory=" +
+            java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
+        val body = httpGet(url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis) ?: return null
+        return parseBusySessionIds(body)
+    }
+
+    fun parseBusySessionIds(json: String): Set<String> {
+        val statuses = parseJsonObject(json) ?: return emptySet()
+        return statuses.entrySet().mapNotNullTo(mutableSetOf()) { (sessionID, status) ->
+            val type = status?.takeIf { it.isJsonObject }?.asJsonObject?.stringMember("type")
+            sessionID.takeIf { type == "busy" || type == "retry" }
+        }
+    }
+
+    /**
+     * Fetches the pending permission or question requests for a project directory
+     * (`GET /permission?directory=...` or `GET /question?directory=...`, a JSON array of
+     * request objects) and returns their IDs. Returns null on any error.
+     */
+    fun fetchPendingRequestIds(
+        serverUrl: String,
+        basicAuthHeader: String,
+        listPath: String,
+        directory: String,
+        connectTimeoutMillis: Int = 3000,
+        readTimeoutMillis: Int = 3000,
+    ): List<String>? {
+        val url = buildServerRootUrl(serverUrl) + listPath + "?directory=" +
+            java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
+        val body = httpGet(url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis) ?: return null
+        return parsePendingRequestIds(body)
+    }
+
+    fun parsePendingRequestIds(json: String): List<String> {
+        val requests = runCatching { JsonParser.parseString(json) }.getOrNull()
+            ?.takeIf { it.isJsonArray }?.asJsonArray ?: return emptyList()
+        return requests.mapNotNull { request ->
+            request.takeIf { it.isJsonObject }?.asJsonObject
+                ?.stringMember("id")
+                ?.takeIf { it.isNotBlank() }
+        }
+    }
+
     data class SessionSummary(val id: String, val updatedMillis: Long)
 
     /**

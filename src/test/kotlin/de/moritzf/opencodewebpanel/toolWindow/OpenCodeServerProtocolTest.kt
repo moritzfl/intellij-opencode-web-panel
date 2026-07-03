@@ -1072,6 +1072,50 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun parseBusySessionIdsKeepsBusyAndRetrySessions() {
+        val json = """
+            {
+              "ses_busy": {"type": "busy"},
+              "ses_retry": {"type": "retry", "attempt": 2},
+              "ses_idle": {"type": "idle"},
+              "ses_broken": "busy"
+            }
+        """.trimIndent()
+
+        assertEquals(setOf("ses_busy", "ses_retry"), OpenCodeServerProtocol.parseBusySessionIds(json))
+    }
+
+    @Test
+    fun parseBusySessionIdsToleratesMalformedResponses() {
+        assertTrue(OpenCodeServerProtocol.parseBusySessionIds("").isEmpty())
+        assertTrue(OpenCodeServerProtocol.parseBusySessionIds("not json").isEmpty())
+        assertTrue(OpenCodeServerProtocol.parseBusySessionIds("[]").isEmpty())
+        assertTrue(OpenCodeServerProtocol.parseBusySessionIds("{}").isEmpty())
+    }
+
+    @Test
+    fun parsePendingRequestIdsReadsRequestIds() {
+        val json = """
+            [
+              {"id": "per_1", "sessionID": "ses_1"},
+              {"id": "que_2"},
+              {"sessionID": "ses_2"},
+              {"id": ""},
+              "per_3"
+            ]
+        """.trimIndent()
+
+        assertEquals(listOf("per_1", "que_2"), OpenCodeServerProtocol.parsePendingRequestIds(json))
+    }
+
+    @Test
+    fun parsePendingRequestIdsToleratesMalformedResponses() {
+        assertTrue(OpenCodeServerProtocol.parsePendingRequestIds("").isEmpty())
+        assertTrue(OpenCodeServerProtocol.parsePendingRequestIds("not json").isEmpty())
+        assertTrue(OpenCodeServerProtocol.parsePendingRequestIds("{}").isEmpty())
+    }
+
+    @Test
     fun parseSystemNotificationPayloadReadsPermissionFields() {
         val payload = listOf(
             "id1", "%2Ftmp%2Fproject", "%2Froute", "Permission%20required", "Body",
