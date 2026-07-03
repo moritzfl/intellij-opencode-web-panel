@@ -304,7 +304,9 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("const openMostRecentConversation = true"))
         assertTrue(script.contains("let foundRecentSession = false"))
         assertTrue(script.contains("foundRecentSession = true"))
+        assertTrue(script.contains("const findLastProjectSession = (layout)"))
         assertTrue(script.contains("layout.lastProjectSession[directory]"))
+        assertTrue(script.contains("Object.entries(layout.lastProjectSession)"))
         assertTrue(script.contains("'/session/' + encodeURIComponent(session.id)"))
     }
 
@@ -323,6 +325,20 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("onProjectSessionRoute && !foundRecentSession"))
         assertFalse(script.contains("getNavigationState() === 'complete'"))
         assertFalse(script.contains("setNavigationState('complete')"))
+    }
+
+    @Test
+    fun buildOpenProjectScriptNormalizesLastProjectSessionLookupKey() {
+        val script = OpenCodeServerProtocol.buildOpenProjectScript(
+            "/tmp/project",
+            "http://127.0.0.1:60482/",
+            openMostRecentConversation = true,
+        )!!
+
+        assertTrue(script.contains("const pathKey = (value)"))
+        assertTrue(script.contains("text.startsWith('\\\\\\\\')"))
+        assertTrue(script.contains("text.replace(/\\\\/g, '/')"))
+        assertTrue(script.contains("pathKey(key) === targetKey"))
     }
 
     @Test

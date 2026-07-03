@@ -125,6 +125,11 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             if (httpStatusCode !in 200..399) return
             if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverManager.getServerUrl(), frame.url)) return
 
+            // Restore the mirrored localStorage snapshot again on load end. The restore in
+            // onLoadStart can run before the new origin's V8 context is ready (e.g. when
+            // navigating from about:blank), so this second attempt ensures layout.page is
+            // available for the open-project script.
+            localStorageBridge.restore(frame.url)
             scheduleOpenProjectScript()
             localStorageBridge.installSync(frame.url)
             scheduleFileLinkScript()
@@ -497,6 +502,19 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         )
     }
 
+    /**
+     * True when the browser is on the project root route (e.g. /encodedDir/session),
+     * as opposed to a specific session route (e.g. /encodedDir/session/ses_xxx).
+     * The open-project script needs to keep running on the project root route so it
+     * can notice when lastProjectSession becomes available and navigate to it.
+     */
+    private fun isOpenCodeProjectRootRoute(frameUrl: String?): Boolean {
+        val serverUrl = serverManager.getServerUrl() ?: return false
+        val projectDirectory = openCodeProjectDirectory()?.takeIf { it.isNotBlank() } ?: return false
+        val projectUrl = OpenCodeServerProtocol.buildProjectUrl(serverUrl, projectDirectory)
+        return frameUrl?.trimEnd('/') == projectUrl.trimEnd('/')
+    }
+
     private fun scheduleOpenProjectScript() {
         if (openProjectScriptScheduled) return
 
@@ -511,7 +529,10 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         openProjectScriptScheduled = true
 
         scriptScheduler.schedule(script, rootUrl) {
-            isBrowserOnOpenCodeServerPage(serverUrl) && !isOpenCodeProjectDestination(browser.cefBrowser.url)
+            val onServerPage = isBrowserOnOpenCodeServerPage(serverUrl)
+            val onProjectRootRoute = isOpenCodeProjectRootRoute(browser.cefBrowser.url)
+            val onProjectDestination = isOpenCodeProjectDestination(browser.cefBrowser.url)
+            onServerPage && (!onProjectDestination || onProjectRootRoute)
         }
     }
 

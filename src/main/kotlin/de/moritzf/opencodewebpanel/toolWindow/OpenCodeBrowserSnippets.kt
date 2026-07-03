@@ -53,8 +53,29 @@ internal object OpenCodeBrowserSnippets {
                 }
               };
               const comparableDirectory = (value) => {
-                const normalized = String(value || '').trim().replace(/\\/g, '/').replace(/\/+${'$'}/, '');
+                const normalized = String(value || '').trim().replace(/\\/g, '/').replace(/\/+$/, '');
                 return /^[A-Za-z]:\//.test(normalized) ? normalized[0].toLowerCase() + normalized.slice(1) : normalized;
+              };
+              const pathKey = (value) => {
+                const text = String(value || '');
+                const isWindows = (text.length >= 2 && text.charAt(1) === ':') || text.startsWith('\\\\');
+                let normalized = isWindows ? text.replace(/\\/g, '/') : text;
+                while (normalized.endsWith('/')) normalized = normalized.slice(0, -1);
+                if (!normalized && text.startsWith('/')) return '/';
+                if (/^[A-Za-z]:$/.test(normalized)) return normalized + '/';
+                return normalized;
+              };
+              const findLastProjectSession = (layout) => {
+                if (!layout || typeof layout.lastProjectSession !== 'object' || layout.lastProjectSession === null) return undefined;
+                const raw = layout.lastProjectSession[directory];
+                if (raw && typeof raw.directory === 'string' && typeof raw.id === 'string') return raw;
+                const targetKey = pathKey(directory);
+                for (const [key, value] of Object.entries(layout.lastProjectSession)) {
+                  if (pathKey(key) === targetKey && value && typeof value.directory === 'string' && typeof value.id === 'string') {
+                    return value;
+                  }
+                }
+                return undefined;
               };
               const currentRouteDirectory = () => {
                 const match = /^\/([^/?#]+)\/session(?:[/?#]|${'$'})/.exec(window.location.pathname);
@@ -65,8 +86,8 @@ internal object OpenCodeBrowserSnippets {
                 try {
                   const rawLayout = window.localStorage.getItem(layoutStorageKey);
                   const layout = rawLayout ? JSON.parse(rawLayout) : undefined;
-                  const session = layout && layout.lastProjectSession && layout.lastProjectSession[directory];
-                  if (session && typeof session.directory === 'string' && typeof session.id === 'string') {
+                  const session = findLastProjectSession(layout);
+                  if (session) {
                     foundRecentSession = true;
                     path = '/' + routeDirectory(session.directory) + '/session/' + encodeURIComponent(session.id);
                   }
