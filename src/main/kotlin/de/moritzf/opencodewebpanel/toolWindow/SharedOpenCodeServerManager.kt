@@ -418,6 +418,11 @@ class SharedOpenCodeServerManager : Disposable {
                 if (!process.isAlive && url == null) {
                     break
                 }
+                // Once the latch is open, await() returns immediately; without a pause the
+                // loop would hammer failing health checks back-to-back until the timeout.
+                if (urlLatch.count == 0L) {
+                    Thread.sleep(SERVER_START_POLL_MILLIS)
+                }
             }
 
             if (!isCurrentStart(startId)) {
