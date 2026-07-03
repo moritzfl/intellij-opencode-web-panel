@@ -4,6 +4,20 @@
 
 ## [Unreleased]
 
+## [1.4.9] - 2026-07-03
+
+### Fixed
+
+- The panel no longer navigates away from a conversation you opened: the startup script that restores the most recent session could previously yank the browser back to the remembered session right after a manual navigation.
+- Restoring the most recent conversation now works on Windows when the stored project key uses backslashes or a drive-letter root.
+- Automatic continuation of interrupted conversations now runs once per server process instead of on every page load, so reloading the panel during a running turn no longer queues spurious "Continue" prompts.
+- Interrupted conversations are now detected after a real crash: a hard kill mid-turn leaves the unanswered user prompt as the session's last message, which was previously not recognized.
+- Recovery checks now parse server responses structurally instead of with text heuristics, so messages containing code snippets or nested error objects can no longer be misclassified.
+- Stopping or restarting the OpenCode server now also works after the launcher process has exited (the normal case on Windows), instead of orphaning the server and causing port conflicts.
+- The project file refresh after an agent turn runs asynchronously, avoiding UI freezes in large projects.
+- "Add to OpenCode Chat" stays available in the project view and editor tab menus while text is selected in the editor; it only yields to "Add Selection to OpenCode Chat" inside the editor popup itself.
+- Startup health checks are paced again while waiting for the server, and the repeated launcher-exited warning on Windows is now logged only once per start.
+
 ## [1.4.8] - 2026-07-02
 
 ### Added
@@ -197,7 +211,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.8...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.9...HEAD
+[1.4.9]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.8...1.4.9
 [1.4.8]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.7...1.4.8
 [1.4.7]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.6...1.4.7
 [1.4.6]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.5...1.4.6
