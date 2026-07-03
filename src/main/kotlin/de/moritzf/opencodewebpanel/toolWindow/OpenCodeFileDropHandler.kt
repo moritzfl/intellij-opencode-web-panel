@@ -226,7 +226,7 @@ internal class OpenCodeFileDropHandler(
         ApplicationManager.getApplication().executeOnPooledThread {
             if (isDisposed()) return@executeOnPooledThread
             val payloads = selection.acceptedFiles.mapNotNull { droppedFilePayload(it) } + extraPayloads
-            val script = OpenCodeServerProtocol.buildDispatchDroppedFilesScript(
+            val script = OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(
                 payloads,
                 textPlain = textDrops,
                 enabled = OpenCodeSettingsState.getInstance().enableChatFileDrop,

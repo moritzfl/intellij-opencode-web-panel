@@ -47,104 +47,6 @@ internal object OpenCodeServerProtocol {
         return "$root/${encodeDirectory(projectBasePath)}/session"
     }
 
-    fun buildOpenProjectScript(
-        projectBasePath: String?,
-        serverUrl: String? = null,
-        openMostRecentConversation: Boolean = false,
-    ): String? {
-        if (projectBasePath.isNullOrBlank()) return null
-        return OpenCodeBrowserSnippets.buildOpenProjectScript(
-            projectBasePath = projectBasePath,
-            projectPath = "/${encodeDirectory(projectBasePath)}/session",
-            expectedOrigin = serverUrl?.let(::buildOrigin),
-            openMostRecentConversation = openMostRecentConversation,
-        )
-    }
-
-    @TestOnly
-    fun buildFileLinkHandlerScript(projectBasePath: String?): String? {
-        return buildFileLinkHandlerScript(projectBasePath, enabled = true)
-    }
-
-    fun buildRestoreOpenCodeLocalStorageScript(snapshot: String?): String? {
-        return OpenCodeBrowserSnippets.buildRestoreOpenCodeLocalStorageScript(snapshot)
-    }
-
-    fun buildSyncOpenCodeLocalStorageScript(openStorageCallback: String?): String? {
-        return OpenCodeBrowserSnippets.buildSyncOpenCodeLocalStorageScript(openStorageCallback)
-    }
-
-    fun buildCodeNavigationScript(enabled: Boolean, openCodeCallback: String?): String? {
-        return OpenCodeBrowserSnippets.buildCodeNavigationScript(enabled, openCodeCallback)
-    }
-
-    fun buildProjectSwitchPromptSuppressionScript(enabled: Boolean): String? {
-        return OpenCodeBrowserSnippets.buildProjectSwitchPromptSuppressionScript(enabled)
-    }
-
-    fun buildCursorMirrorScript(enabled: Boolean, cursorCallback: String?): String? {
-        return OpenCodeBrowserSnippets.buildCursorMirrorScript(enabled, cursorCallback)
-    }
-
-    /**
-     * Maps a CSS cursor computed value to the closest AWT predefined cursor type. Custom
-     * `url(...)` cursors resolve through their keyword fallback; CSS values without an AWT
-     * counterpart (help, copy, zoom-in, ...) fall back to the default arrow.
-     */
-    fun awtCursorTypeForCss(cssCursor: String?): Int {
-        val keyword = cssCursor?.split(',')
-            ?.map { it.trim().lowercase() }
-            ?.lastOrNull { it.isNotBlank() && !it.startsWith("url(") }
-            ?: return java.awt.Cursor.DEFAULT_CURSOR
-        return when (keyword) {
-            "pointer" -> java.awt.Cursor.HAND_CURSOR
-            "text", "vertical-text" -> java.awt.Cursor.TEXT_CURSOR
-            "wait", "progress" -> java.awt.Cursor.WAIT_CURSOR
-            "crosshair", "cell" -> java.awt.Cursor.CROSSHAIR_CURSOR
-            "move", "grab", "grabbing", "all-scroll" -> java.awt.Cursor.MOVE_CURSOR
-            "n-resize" -> java.awt.Cursor.N_RESIZE_CURSOR
-            "s-resize", "ns-resize", "row-resize" -> java.awt.Cursor.S_RESIZE_CURSOR
-            "e-resize" -> java.awt.Cursor.E_RESIZE_CURSOR
-            "w-resize", "ew-resize", "col-resize" -> java.awt.Cursor.W_RESIZE_CURSOR
-            "ne-resize", "nesw-resize" -> java.awt.Cursor.NE_RESIZE_CURSOR
-            "nw-resize", "nwse-resize" -> java.awt.Cursor.NW_RESIZE_CURSOR
-            "se-resize" -> java.awt.Cursor.SE_RESIZE_CURSOR
-            "sw-resize" -> java.awt.Cursor.SW_RESIZE_CURSOR
-            else -> java.awt.Cursor.DEFAULT_CURSOR
-        }
-    }
-
-    fun buildCompactLayoutScript(enabled: Boolean): String? {
-        return OpenCodeBrowserSnippets.buildCompactLayoutScript(enabled)
-    }
-
-    fun buildIdeThemeSyncScript(enabled: Boolean, dark: Boolean): String? {
-        return OpenCodeBrowserSnippets.buildIdeThemeSyncScript(enabled, dark)
-    }
-
-    @TestOnly
-    fun buildDispatchDroppedFilesScript(files: List<DroppedFilePayload>): String? {
-        return OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(files)
-    }
-
-    @TestOnly
-    fun buildDispatchDroppedFilesScript(files: List<DroppedFilePayload>, enabled: Boolean): String? {
-        return OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(files, enabled)
-    }
-
-    @TestOnly
-    fun buildDispatchDroppedFilesScript(files: List<DroppedFilePayload>, textPlain: String?, enabled: Boolean): String? {
-        return OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(files, textPlain, enabled)
-    }
-
-    fun buildDispatchDroppedFilesScript(files: List<DroppedFilePayload>, textPlain: List<String>, enabled: Boolean): String? {
-        return OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(files, textPlain, enabled)
-    }
-
-    fun buildFilePasteSuppressionScript(enabled: Boolean): String? {
-        return OpenCodeBrowserSnippets.buildFilePasteSuppressionScript(enabled)
-    }
-
     fun localFileDropText(file: File, projectBasePath: String?): String? {
         val projectRoot = projectBasePath?.takeIf { it.isNotBlank() }?.let { Path.of(it).toAbsolutePath().normalize() }
             ?: return null
@@ -154,19 +56,6 @@ internal object OpenCodeServerProtocol {
         val relativePath = projectRoot.relativize(filePath).joinToString("/") { it.toString() }
         if (relativePath.isBlank() || relativePath.startsWith("..")) return null
         return "file:$relativePath"
-    }
-
-    @TestOnly
-    fun buildFileLinkHandlerScript(projectBasePath: String?, enabled: Boolean): String? {
-        return OpenCodeBrowserSnippets.buildFileLinkHandlerScript(projectBasePath, enabled)
-    }
-
-    fun buildFileLinkHandlerScript(projectBasePath: String?, enabled: Boolean, openFileCallback: String?): String? {
-        return OpenCodeBrowserSnippets.buildFileLinkHandlerScript(projectBasePath, enabled, openFileCallback)
-    }
-
-    fun buildExternalLinkHandlerScript(enabled: Boolean, openExternalCallback: String?): String? {
-        return OpenCodeBrowserSnippets.buildExternalLinkHandlerScript(enabled, openExternalCallback)
     }
 
     fun externalHttpUrl(href: String?, serverUrl: String): String? {
@@ -810,7 +699,7 @@ internal object OpenCodeServerProtocol {
         return buildServerRootUrl(serverUrl) + HEALTH_PATH
     }
 
-    private fun buildOrigin(serverUrl: String): String {
+    internal fun buildOrigin(serverUrl: String): String {
         val uri = URI(buildServerRootUrl(serverUrl))
         val port = if (uri.port >= 0) ":${uri.port}" else ""
         return "${uri.scheme}://${uri.host}$port"

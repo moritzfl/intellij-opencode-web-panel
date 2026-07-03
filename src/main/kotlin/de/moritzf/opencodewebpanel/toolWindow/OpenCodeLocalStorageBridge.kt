@@ -12,14 +12,14 @@ internal class OpenCodeLocalStorageBridge(
         val serverUrl = serverManager.getServerUrl() ?: return
         if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, frameUrl)) return
         val snapshot = OpenCodeSettingsState.getInstance().openCodeLocalStorageSnapshot
-        val script = OpenCodeServerProtocol.buildRestoreOpenCodeLocalStorageScript(snapshot) ?: return
+        val script = OpenCodeBrowserSnippets.buildRestoreOpenCodeLocalStorageScript(snapshot) ?: return
         browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
     }
 
     fun installSync(frameUrl: String?) {
         val serverUrl = serverManager.getServerUrl() ?: return
         if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, frameUrl)) return
-        val script = OpenCodeServerProtocol.buildSyncOpenCodeLocalStorageScript(syncCallback()) ?: return
+        val script = OpenCodeBrowserSnippets.buildSyncOpenCodeLocalStorageScript(syncCallback()) ?: return
         browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
     }
 

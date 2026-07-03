@@ -183,7 +183,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         }
         browserCursorQuery.addHandler { cssCursor ->
             if (OpenCodeSettingsState.getInstance().mirrorBrowserCursor) {
-                val cursorType = OpenCodeServerProtocol.awtCursorTypeForCss(cssCursor)
+                val cursorType = OpenCodeBrowserSnippets.awtCursorTypeForCss(cssCursor)
                 ApplicationManager.getApplication().invokeLater {
                     if (!isContentDisposed()) applyBrowserCursor(Cursor.getPredefinedCursor(cursorType))
                 }
@@ -333,7 +333,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         if (!OpenCodeSettingsState.getInstance().enableChatFileDrop) return false
         val serverUrl = serverManager.getServerUrl() ?: return false
         if (!isBrowserOnOpenCodeServerPage(serverUrl)) return false
-        val script = OpenCodeServerProtocol.buildDispatchDroppedFilesScript(emptyList(), texts, enabled = true) ?: return false
+        val script = OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(emptyList(), texts, enabled = true) ?: return false
         browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
         return true
     }
@@ -534,7 +534,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
 
         val serverUrl = serverManager.getServerUrl() ?: return
         val settings = OpenCodeSettingsState.getInstance()
-        val script = OpenCodeServerProtocol.buildOpenProjectScript(
+        val script = OpenCodeBrowserSnippets.buildOpenProjectScript(
             openCodeProjectDirectory(),
             serverUrl,
             settings.openMostRecentConversationOnStartup,
@@ -555,7 +555,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         if (!OpenCodeSettingsState.getInstance().openFileLinksInIde) return
 
         val serverUrl = serverManager.getServerUrl() ?: return
-        val script = OpenCodeServerProtocol.buildFileLinkHandlerScript(
+        val script = OpenCodeBrowserSnippets.buildFileLinkHandlerScript(
             openCodeProjectDirectory(),
             enabled = true,
             openFileCallback = openFileLinkQuery.inject("rawHref + '\\n' + directory"),
@@ -573,7 +573,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         if (!OpenCodeSettingsState.getInstance().openExternalLinksInBrowser) return
 
         val serverUrl = serverManager.getServerUrl() ?: return
-        val script = OpenCodeServerProtocol.buildExternalLinkHandlerScript(
+        val script = OpenCodeBrowserSnippets.buildExternalLinkHandlerScript(
             enabled = true,
             openExternalCallback = openExternalLinkQuery.inject("href"),
         ) ?: return
@@ -590,7 +590,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         if (!OpenCodeSettingsState.getInstance().effectiveCodeNavigationEnabled()) return
 
         val serverUrl = serverManager.getServerUrl() ?: return
-        val script = OpenCodeServerProtocol.buildCodeNavigationScript(
+        val script = OpenCodeBrowserSnippets.buildCodeNavigationScript(
             enabled = true,
             openCodeCallback = openCodeReferenceQuery.inject("ref"),
         ) ?: return
@@ -607,7 +607,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         if (!OpenCodeSettingsState.getInstance().suppressProjectSwitchPrompts) return
 
         val serverUrl = serverManager.getServerUrl() ?: return
-        val script = OpenCodeServerProtocol.buildProjectSwitchPromptSuppressionScript(enabled = true) ?: return
+        val script = OpenCodeBrowserSnippets.buildProjectSwitchPromptSuppressionScript(enabled = true) ?: return
         val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
         projectSwitchPromptSuppressionScriptScheduled = true
 
@@ -621,7 +621,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         if (!OpenCodeSettingsState.getInstance().mirrorBrowserCursor) return
 
         val serverUrl = serverManager.getServerUrl() ?: return
-        val script = OpenCodeServerProtocol.buildCursorMirrorScript(
+        val script = OpenCodeBrowserSnippets.buildCursorMirrorScript(
             enabled = true,
             cursorCallback = browserCursorQuery.inject("payload"),
         ) ?: return
@@ -638,7 +638,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         if (!OpenCodeSettingsState.getInstance().enableChatFileDrop) return
 
         val serverUrl = serverManager.getServerUrl() ?: return
-        val script = OpenCodeServerProtocol.buildFilePasteSuppressionScript(enabled = true) ?: return
+        val script = OpenCodeBrowserSnippets.buildFilePasteSuppressionScript(enabled = true) ?: return
         val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
         filePasteSuppressionScriptScheduled = true
 
@@ -720,7 +720,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             browser.cefBrowser.reload()
             return
         }
-        val script = OpenCodeServerProtocol.buildCodeNavigationScript(
+        val script = OpenCodeBrowserSnippets.buildCodeNavigationScript(
             enabled = true,
             openCodeCallback = openCodeReferenceQuery.inject("ref"),
         ) ?: return
@@ -736,7 +736,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             browser.cefBrowser.reload()
             return
         }
-        val script = OpenCodeServerProtocol.buildFilePasteSuppressionScript(enabled = true) ?: return
+        val script = OpenCodeBrowserSnippets.buildFilePasteSuppressionScript(enabled = true) ?: return
         browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
         filePasteSuppressionScriptScheduled = true
     }
@@ -749,7 +749,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             browser.cefBrowser.reload()
             return
         }
-        val script = OpenCodeServerProtocol.buildProjectSwitchPromptSuppressionScript(enabled = true) ?: return
+        val script = OpenCodeBrowserSnippets.buildProjectSwitchPromptSuppressionScript(enabled = true) ?: return
         browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
         projectSwitchPromptSuppressionScriptScheduled = true
     }
@@ -776,7 +776,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             browser.cefBrowser.reload()
             return
         }
-        val script = OpenCodeServerProtocol.buildCursorMirrorScript(
+        val script = OpenCodeBrowserSnippets.buildCursorMirrorScript(
             enabled = true,
             cursorCallback = browserCursorQuery.inject("payload"),
         ) ?: return
@@ -804,7 +804,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             browser.cefBrowser.reload()
             return
         }
-        val script = OpenCodeServerProtocol.buildFileLinkHandlerScript(
+        val script = OpenCodeBrowserSnippets.buildFileLinkHandlerScript(
             openCodeProjectDirectory(),
             enabled = true,
             openFileCallback = openFileLinkQuery.inject("rawHref + '\\n' + directory"),
@@ -835,7 +835,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             browser.cefBrowser.reload()
             return
         }
-        val script = OpenCodeServerProtocol.buildExternalLinkHandlerScript(
+        val script = OpenCodeBrowserSnippets.buildExternalLinkHandlerScript(
             enabled = true,
             openExternalCallback = openExternalLinkQuery.inject("href"),
         ) ?: return
@@ -848,7 +848,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         if (!OpenCodeSettingsState.getInstance().forceCompactLayout) return
 
         val serverUrl = serverManager.getServerUrl() ?: return
-        val script = OpenCodeServerProtocol.buildCompactLayoutScript(enabled = true) ?: return
+        val script = OpenCodeBrowserSnippets.buildCompactLayoutScript(enabled = true) ?: return
         val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
         compactLayoutScriptScheduled = true
 
@@ -875,7 +875,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     }
 
     private fun executeIdeThemeSyncScript(serverUrl: String): Boolean {
-        val script = OpenCodeServerProtocol.buildIdeThemeSyncScript(
+        val script = OpenCodeBrowserSnippets.buildIdeThemeSyncScript(
             enabled = OpenCodeSettingsState.getInstance().syncThemeWithIde,
             dark = isIdeDarkTheme(),
         ) ?: return false

@@ -265,7 +265,7 @@ class OpenCodeServerProtocolTest {
 
     @Test
     fun buildOpenProjectScriptSeedsProjectStateAndNavigatesToSessionRoute() {
-        val script = OpenCodeServerProtocol.buildOpenProjectScript("/tmp/my 'project'", "http://127.0.0.1:60482/")!!
+        val script = OpenCodeBrowserSnippets.buildOpenProjectScript("/tmp/my 'project'", "http://127.0.0.1:60482/")!!
 
         assertTrue(script.contains("if (window.location.origin !== 'http://127.0.0.1:60482') return;"))
         assertTrue(script.contains("opencode.global.dat:server"))
@@ -289,13 +289,13 @@ class OpenCodeServerProtocolTest {
 
     @Test
     fun buildOpenProjectScriptIsMissingWithoutProjectPath() {
-        assertNull(OpenCodeServerProtocol.buildOpenProjectScript(null))
-        assertNull(OpenCodeServerProtocol.buildOpenProjectScript(""))
+        assertNull(OpenCodeBrowserSnippets.buildOpenProjectScript(null))
+        assertNull(OpenCodeBrowserSnippets.buildOpenProjectScript(""))
     }
 
     @Test
     fun buildOpenProjectScriptCanOpenMostRecentProjectConversation() {
-        val script = OpenCodeServerProtocol.buildOpenProjectScript(
+        val script = OpenCodeBrowserSnippets.buildOpenProjectScript(
             "/tmp/project",
             "http://127.0.0.1:60482/",
             openMostRecentConversation = true,
@@ -312,7 +312,7 @@ class OpenCodeServerProtocolTest {
 
     @Test
     fun buildOpenProjectScriptRetriesUntilRecentSessionIsRestored() {
-        val script = OpenCodeServerProtocol.buildOpenProjectScript(
+        val script = OpenCodeBrowserSnippets.buildOpenProjectScript(
             "/tmp/project",
             "http://127.0.0.1:60482/",
             openMostRecentConversation = true,
@@ -328,7 +328,7 @@ class OpenCodeServerProtocolTest {
 
     @Test
     fun buildOpenProjectScriptNeverNavigatesAwayFromAnOpenConversation() {
-        val script = OpenCodeServerProtocol.buildOpenProjectScript(
+        val script = OpenCodeBrowserSnippets.buildOpenProjectScript(
             "/tmp/project",
             "http://127.0.0.1:60482/",
             openMostRecentConversation = true,
@@ -342,7 +342,7 @@ class OpenCodeServerProtocolTest {
 
     @Test
     fun buildOpenProjectScriptNormalizesLastProjectSessionLookupKey() {
-        val script = OpenCodeServerProtocol.buildOpenProjectScript(
+        val script = OpenCodeBrowserSnippets.buildOpenProjectScript(
             "/tmp/project",
             "http://127.0.0.1:60482/",
             openMostRecentConversation = true,
@@ -359,7 +359,7 @@ class OpenCodeServerProtocolTest {
 
     @Test
     fun buildFileLinkHandlerScriptInterceptsLocalFileLinks() {
-        val script = OpenCodeServerProtocol.buildFileLinkHandlerScript("/tmp/project")!!
+        val script = OpenCodeBrowserSnippets.buildFileLinkHandlerScript("/tmp/project", enabled = true)!!
 
         assertTrue(script.contains("window.__opencodeIntellijFileLinksInstalled"))
         assertTrue(script.contains("FILE_LINKS_VERSION = 3"))
@@ -392,12 +392,12 @@ class OpenCodeServerProtocolTest {
 
     @Test
     fun buildFileLinkHandlerScriptIsMissingWhenDisabled() {
-        assertNull(OpenCodeServerProtocol.buildFileLinkHandlerScript("/tmp/project", enabled = false))
+        assertNull(OpenCodeBrowserSnippets.buildFileLinkHandlerScript("/tmp/project", enabled = false))
     }
 
     @Test
     fun buildFileLinkHandlerScriptCanUseDirectCallback() {
-        val script = OpenCodeServerProtocol.buildFileLinkHandlerScript(
+        val script = OpenCodeBrowserSnippets.buildFileLinkHandlerScript(
             "/tmp/project",
             enabled = true,
             openFileCallback = "window.intellijOpenFile(rawHref + '\\n' + directory)",
@@ -412,7 +412,7 @@ class OpenCodeServerProtocolTest {
 
     @Test
     fun buildExternalLinkHandlerScriptInterceptsOnlyExternalHttpLinks() {
-        val script = OpenCodeServerProtocol.buildExternalLinkHandlerScript(
+        val script = OpenCodeBrowserSnippets.buildExternalLinkHandlerScript(
             enabled = true,
             openExternalCallback = "window.intellijOpenExternal(href)",
         )!!
@@ -430,12 +430,12 @@ class OpenCodeServerProtocolTest {
 
     @Test
     fun buildExternalLinkHandlerScriptIsMissingWhenDisabled() {
-        assertNull(OpenCodeServerProtocol.buildExternalLinkHandlerScript(enabled = false, openExternalCallback = "callback(href)"))
+        assertNull(OpenCodeBrowserSnippets.buildExternalLinkHandlerScript(enabled = false, openExternalCallback = "callback(href)"))
     }
 
     @Test
     fun buildExternalLinkHandlerScriptIsMissingWithoutCallback() {
-        assertNull(OpenCodeServerProtocol.buildExternalLinkHandlerScript(enabled = true, openExternalCallback = null))
+        assertNull(OpenCodeBrowserSnippets.buildExternalLinkHandlerScript(enabled = true, openExternalCallback = null))
     }
 
     @Test
@@ -451,13 +451,13 @@ class OpenCodeServerProtocolTest {
 
     @Test
     fun buildRestoreOpenCodeLocalStorageScriptIsMissingWithoutSnapshot() {
-        assertNull(OpenCodeServerProtocol.buildRestoreOpenCodeLocalStorageScript(null))
-        assertNull(OpenCodeServerProtocol.buildRestoreOpenCodeLocalStorageScript("{}"))
+        assertNull(OpenCodeBrowserSnippets.buildRestoreOpenCodeLocalStorageScript(null))
+        assertNull(OpenCodeBrowserSnippets.buildRestoreOpenCodeLocalStorageScript("{}"))
     }
 
     @Test
     fun buildRestoreOpenCodeLocalStorageScriptRestoresOpenCodeKeysOnlyWhenMissing() {
-        val script = OpenCodeServerProtocol.buildRestoreOpenCodeLocalStorageScript(
+        val script = OpenCodeBrowserSnippets.buildRestoreOpenCodeLocalStorageScript(
             "{\"opencode.global.dat:language\":\"{\\\"locale\\\":\\\"de\\\"}\"}",
         )!!
 
@@ -475,7 +475,7 @@ class OpenCodeServerProtocolTest {
 
     @Test
     fun buildSyncOpenCodeLocalStorageScriptMirrorsOpenCodeKeys() {
-        val script = OpenCodeServerProtocol.buildSyncOpenCodeLocalStorageScript("window.intellijStore(payload)")!!
+        val script = OpenCodeBrowserSnippets.buildSyncOpenCodeLocalStorageScript("window.intellijStore(payload)")!!
 
         assertTrue(script.contains("window.__opencodeIntellijLocalStorageSyncInstalled"))
         assertTrue(script.contains("Storage.prototype.setItem"))
@@ -690,7 +690,7 @@ class OpenCodeServerProtocolTest {
 
     @Test
     fun buildDispatchDroppedFilesScriptCreatesBrowserDropEvent() {
-        val script = OpenCodeServerProtocol.buildDispatchDroppedFilesScript(
+        val script = OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(
             listOf(
                 OpenCodeServerProtocol.DroppedFilePayload(
                     name = "hello 'world'.txt",
@@ -712,7 +712,7 @@ class OpenCodeServerProtocolTest {
 
     @Test
     fun buildDispatchDroppedFilesScriptEscapesUnsafeCharactersInFileNames() {
-        val script = OpenCodeServerProtocol.buildDispatchDroppedFilesScript(
+        val script = OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(
             listOf(
                 OpenCodeServerProtocol.DroppedFilePayload(
                     name = "a<b\u2028c\u2029d\u0000e",
@@ -731,7 +731,7 @@ class OpenCodeServerProtocolTest {
 
     @Test
     fun buildDispatchDroppedFilesScriptCanForwardTextPlainDropData() {
-        val script = OpenCodeServerProtocol.buildDispatchDroppedFilesScript(
+        val script = OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(
             emptyList(),
             textPlain = "file:src/main/App.kt",
             enabled = true,
@@ -743,7 +743,7 @@ class OpenCodeServerProtocolTest {
 
     @Test
     fun buildDispatchDroppedFilesScriptDispatchesTextPlainDropsSeparately() {
-        val script = OpenCodeServerProtocol.buildDispatchDroppedFilesScript(
+        val script = OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(
             emptyList(),
             textPlain = listOf("file:CHANGELOG.md", "file:gradle.properties"),
             enabled = true,
@@ -755,15 +755,15 @@ class OpenCodeServerProtocolTest {
 
     @Test
     fun buildDispatchDroppedFilesScriptIsMissingWithoutFiles() {
-        assertNull(OpenCodeServerProtocol.buildDispatchDroppedFilesScript(emptyList()))
-        assertNull(OpenCodeServerProtocol.buildDispatchDroppedFilesScript(emptyList(), textPlain = null, enabled = true))
-        assertNull(OpenCodeServerProtocol.buildDispatchDroppedFilesScript(emptyList(), textPlain = emptyList(), enabled = true))
+        assertNull(OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(emptyList()))
+        assertNull(OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(emptyList(), textPlain = null, enabled = true))
+        assertNull(OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(emptyList(), textPlain = emptyList(), enabled = true))
     }
 
     @Test
     fun buildDispatchDroppedFilesScriptIsMissingWhenDisabled() {
         assertNull(
-            OpenCodeServerProtocol.buildDispatchDroppedFilesScript(
+            OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(
                 listOf(
                     OpenCodeServerProtocol.DroppedFilePayload(
                         name = "hello.txt",
@@ -811,12 +811,12 @@ class OpenCodeServerProtocolTest {
 
     @Test
     fun buildCompactLayoutScriptIsMissingWhenDisabled() {
-        assertNull(OpenCodeServerProtocol.buildCompactLayoutScript(enabled = false))
+        assertNull(OpenCodeBrowserSnippets.buildCompactLayoutScript(enabled = false))
     }
 
     @Test
     fun buildCompactLayoutScriptPatchesMatchMediaAndInjectsStyle() {
-        val script = OpenCodeServerProtocol.buildCompactLayoutScript(enabled = true)!!
+        val script = OpenCodeBrowserSnippets.buildCompactLayoutScript(enabled = true)!!
 
         assertTrue(script.contains("window.__opencodeIntellijCompactInstalled"))
         assertTrue(script.contains("window.matchMedia = "))
@@ -832,20 +832,20 @@ class OpenCodeServerProtocolTest {
 
     @Test
     fun buildCompactLayoutScriptIsIdempotent() {
-        val script = OpenCodeServerProtocol.buildCompactLayoutScript(enabled = true)!!
+        val script = OpenCodeBrowserSnippets.buildCompactLayoutScript(enabled = true)!!
 
         assertTrue(script.contains("if (window.__opencodeIntellijCompactInstalled) return"))
     }
 
     @Test
     fun buildIdeThemeSyncScriptIsMissingWhenDisabled() {
-        assertNull(OpenCodeServerProtocol.buildIdeThemeSyncScript(enabled = false, dark = true))
+        assertNull(OpenCodeBrowserSnippets.buildIdeThemeSyncScript(enabled = false, dark = true))
     }
 
     @Test
     fun buildIdeThemeSyncScriptPatchesMatchMediaForPrefersColorScheme() {
-        val darkScript = OpenCodeServerProtocol.buildIdeThemeSyncScript(enabled = true, dark = true)!!
-        val lightScript = OpenCodeServerProtocol.buildIdeThemeSyncScript(enabled = true, dark = false)!!
+        val darkScript = OpenCodeBrowserSnippets.buildIdeThemeSyncScript(enabled = true, dark = true)!!
+        val lightScript = OpenCodeBrowserSnippets.buildIdeThemeSyncScript(enabled = true, dark = false)!!
 
         assertTrue(darkScript.contains("(prefers-color-scheme: dark)"))
         assertTrue(darkScript.contains("const dark = true"))
@@ -859,7 +859,7 @@ class OpenCodeServerProtocolTest {
 
     @Test
     fun buildIdeThemeSyncScriptDispatchesChangeEventOnUpdate() {
-        val script = OpenCodeServerProtocol.buildIdeThemeSyncScript(enabled = true, dark = true)!!
+        val script = OpenCodeBrowserSnippets.buildIdeThemeSyncScript(enabled = true, dark = true)!!
 
         assertTrue(script.contains("MediaQueryListEvent('change'"))
         assertTrue(script.contains("window.__opencodeIntellijThemeMql"))
@@ -868,12 +868,12 @@ class OpenCodeServerProtocolTest {
 
     @Test
     fun buildProjectSwitchPromptSuppressionScriptIsMissingWhenDisabled() {
-        assertNull(OpenCodeServerProtocol.buildProjectSwitchPromptSuppressionScript(enabled = false))
+        assertNull(OpenCodeBrowserSnippets.buildProjectSwitchPromptSuppressionScript(enabled = false))
     }
 
     @Test
     fun buildProjectSwitchPromptSuppressionScriptDismissesGoToSessionNotifications() {
-        val script = OpenCodeServerProtocol.buildProjectSwitchPromptSuppressionScript(enabled = true)!!
+        val script = OpenCodeBrowserSnippets.buildProjectSwitchPromptSuppressionScript(enabled = true)!!
 
         assertTrue(script.contains("window.__opencodeIntellijProjectSwitchPromptSuppressionInstalled"))
         assertTrue(script.contains("[data-component=\"toast\"], [data-component=\"toast-v2\"]"))
@@ -887,13 +887,13 @@ class OpenCodeServerProtocolTest {
 
     @Test
     fun buildCursorMirrorScriptIsMissingWhenDisabledOrIncomplete() {
-        assertNull(OpenCodeServerProtocol.buildCursorMirrorScript(enabled = false, cursorCallback = "cb(payload)"))
-        assertNull(OpenCodeServerProtocol.buildCursorMirrorScript(enabled = true, cursorCallback = null))
+        assertNull(OpenCodeBrowserSnippets.buildCursorMirrorScript(enabled = false, cursorCallback = "cb(payload)"))
+        assertNull(OpenCodeBrowserSnippets.buildCursorMirrorScript(enabled = true, cursorCallback = null))
     }
 
     @Test
     fun buildCursorMirrorScriptTracksHoveredElementCursor() {
-        val script = OpenCodeServerProtocol.buildCursorMirrorScript(
+        val script = OpenCodeBrowserSnippets.buildCursorMirrorScript(
             enabled = true,
             cursorCallback = "window.intellijCursor(payload)",
         )!!
@@ -911,30 +911,30 @@ class OpenCodeServerProtocolTest {
 
     @Test
     fun awtCursorTypeCoversCommonCssCursors() {
-        assertEquals(java.awt.Cursor.DEFAULT_CURSOR, OpenCodeServerProtocol.awtCursorTypeForCss(null))
-        assertEquals(java.awt.Cursor.DEFAULT_CURSOR, OpenCodeServerProtocol.awtCursorTypeForCss("default"))
-        assertEquals(java.awt.Cursor.DEFAULT_CURSOR, OpenCodeServerProtocol.awtCursorTypeForCss("auto"))
-        assertEquals(java.awt.Cursor.HAND_CURSOR, OpenCodeServerProtocol.awtCursorTypeForCss("pointer"))
-        assertEquals(java.awt.Cursor.TEXT_CURSOR, OpenCodeServerProtocol.awtCursorTypeForCss("text"))
-        assertEquals(java.awt.Cursor.WAIT_CURSOR, OpenCodeServerProtocol.awtCursorTypeForCss("progress"))
-        assertEquals(java.awt.Cursor.S_RESIZE_CURSOR, OpenCodeServerProtocol.awtCursorTypeForCss("row-resize"))
-        assertEquals(java.awt.Cursor.S_RESIZE_CURSOR, OpenCodeServerProtocol.awtCursorTypeForCss("ns-resize"))
-        assertEquals(java.awt.Cursor.W_RESIZE_CURSOR, OpenCodeServerProtocol.awtCursorTypeForCss("col-resize"))
-        assertEquals(java.awt.Cursor.MOVE_CURSOR, OpenCodeServerProtocol.awtCursorTypeForCss("grabbing"))
+        assertEquals(java.awt.Cursor.DEFAULT_CURSOR, OpenCodeBrowserSnippets.awtCursorTypeForCss(null))
+        assertEquals(java.awt.Cursor.DEFAULT_CURSOR, OpenCodeBrowserSnippets.awtCursorTypeForCss("default"))
+        assertEquals(java.awt.Cursor.DEFAULT_CURSOR, OpenCodeBrowserSnippets.awtCursorTypeForCss("auto"))
+        assertEquals(java.awt.Cursor.HAND_CURSOR, OpenCodeBrowserSnippets.awtCursorTypeForCss("pointer"))
+        assertEquals(java.awt.Cursor.TEXT_CURSOR, OpenCodeBrowserSnippets.awtCursorTypeForCss("text"))
+        assertEquals(java.awt.Cursor.WAIT_CURSOR, OpenCodeBrowserSnippets.awtCursorTypeForCss("progress"))
+        assertEquals(java.awt.Cursor.S_RESIZE_CURSOR, OpenCodeBrowserSnippets.awtCursorTypeForCss("row-resize"))
+        assertEquals(java.awt.Cursor.S_RESIZE_CURSOR, OpenCodeBrowserSnippets.awtCursorTypeForCss("ns-resize"))
+        assertEquals(java.awt.Cursor.W_RESIZE_CURSOR, OpenCodeBrowserSnippets.awtCursorTypeForCss("col-resize"))
+        assertEquals(java.awt.Cursor.MOVE_CURSOR, OpenCodeBrowserSnippets.awtCursorTypeForCss("grabbing"))
         // Unknown keywords resolve to the default arrow; custom cursors use their keyword fallback.
-        assertEquals(java.awt.Cursor.DEFAULT_CURSOR, OpenCodeServerProtocol.awtCursorTypeForCss("zoom-in"))
-        assertEquals(java.awt.Cursor.HAND_CURSOR, OpenCodeServerProtocol.awtCursorTypeForCss("url(\"custom.png\") 4 4, pointer"))
-        assertEquals(java.awt.Cursor.DEFAULT_CURSOR, OpenCodeServerProtocol.awtCursorTypeForCss("URL(x.cur)"))
+        assertEquals(java.awt.Cursor.DEFAULT_CURSOR, OpenCodeBrowserSnippets.awtCursorTypeForCss("zoom-in"))
+        assertEquals(java.awt.Cursor.HAND_CURSOR, OpenCodeBrowserSnippets.awtCursorTypeForCss("url(\"custom.png\") 4 4, pointer"))
+        assertEquals(java.awt.Cursor.DEFAULT_CURSOR, OpenCodeBrowserSnippets.awtCursorTypeForCss("URL(x.cur)"))
     }
 
     @Test
     fun buildFilePasteSuppressionScriptIsMissingWhenDisabled() {
-        assertNull(OpenCodeServerProtocol.buildFilePasteSuppressionScript(enabled = false))
+        assertNull(OpenCodeBrowserSnippets.buildFilePasteSuppressionScript(enabled = false))
     }
 
     @Test
     fun buildFilePasteSuppressionScriptCancelsFilePasteEvents() {
-        val script = OpenCodeServerProtocol.buildFilePasteSuppressionScript(enabled = true)!!
+        val script = OpenCodeBrowserSnippets.buildFilePasteSuppressionScript(enabled = true)!!
 
         assertTrue(script.contains("window.__opencodeIntellijFilePasteSuppressionInstalled"))
         assertTrue(script.contains("document.addEventListener('paste'"))
@@ -947,17 +947,17 @@ class OpenCodeServerProtocolTest {
 
     @Test
     fun buildCodeNavigationScriptIsMissingWhenDisabled() {
-        assertNull(OpenCodeServerProtocol.buildCodeNavigationScript(enabled = false, openCodeCallback = "callback(ref)"))
+        assertNull(OpenCodeBrowserSnippets.buildCodeNavigationScript(enabled = false, openCodeCallback = "callback(ref)"))
     }
 
     @Test
     fun buildCodeNavigationScriptIsMissingWithoutCallback() {
-        assertNull(OpenCodeServerProtocol.buildCodeNavigationScript(enabled = true, openCodeCallback = null))
+        assertNull(OpenCodeBrowserSnippets.buildCodeNavigationScript(enabled = true, openCodeCallback = null))
     }
 
     @Test
     fun buildCodeNavigationScriptInstallsClickListenerOnCodeElements() {
-        val script = OpenCodeServerProtocol.buildCodeNavigationScript(enabled = true, openCodeCallback = "window.intellijOpenCodeRef(ref)")!!
+        val script = OpenCodeBrowserSnippets.buildCodeNavigationScript(enabled = true, openCodeCallback = "window.intellijOpenCodeRef(ref)")!!
 
         assertTrue(script.contains("window.__opencodeIntellijCodeNavInstalled"))
         assertTrue(script.contains("window.__opencodeIntellijCodeNavInstalledVersion"))
@@ -977,7 +977,7 @@ class OpenCodeServerProtocolTest {
 
     @Test
     fun buildFileLinkHandlerScriptStopsAlreadyHandledClicks() {
-        val script = OpenCodeServerProtocol.buildFileLinkHandlerScript(
+        val script = OpenCodeBrowserSnippets.buildFileLinkHandlerScript(
             "/tmp/project",
             enabled = true,
             openFileCallback = "window.intellijOpenFile(rawHref)",
