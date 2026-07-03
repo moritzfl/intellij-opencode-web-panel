@@ -377,21 +377,6 @@ internal object OpenCodeServerProtocol {
         directory: String,
         sessionID: String,
         permissionID: String,
-        allow: Boolean,
-        connectTimeoutMillis: Int = 5000,
-        readTimeoutMillis: Int = 5000,
-    ): Boolean = replyToPermission(
-        serverUrl, basicAuthHeader, directory, sessionID, permissionID,
-        if (allow) PermissionResponse.ONCE else PermissionResponse.REJECT,
-        connectTimeoutMillis, readTimeoutMillis,
-    )
-
-    fun replyToPermission(
-        serverUrl: String,
-        basicAuthHeader: String,
-        directory: String,
-        sessionID: String,
-        permissionID: String,
         response: PermissionResponse,
         connectTimeoutMillis: Int = 5000,
         readTimeoutMillis: Int = 5000,
