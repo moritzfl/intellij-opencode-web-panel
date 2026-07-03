@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- The panel now mirrors the web page's mouse cursor like a regular browser: text shows the I-beam, links and buttons show the hand, and resize handles show resize arrows that no longer get stuck, because JCEF's off-screen rendering does not propagate Chromium's cursor changes itself. Can be disabled via the new "Mirror the web page mouse cursor" setting.
+
 ## [1.4.11] - 2026-07-03
 
 ### Added

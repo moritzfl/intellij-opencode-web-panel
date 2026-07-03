@@ -19,6 +19,8 @@ interface OpenCodeSettingsListener {
 
     fun projectSwitchPromptSuppressionChanged(enabled: Boolean) {}
 
+    fun browserCursorMirrorChanged(enabled: Boolean) {}
+
     fun systemNotificationsChanged(enabled: Boolean) {}
 
     fun agentStatusBadgeChanged(enabled: Boolean) {}

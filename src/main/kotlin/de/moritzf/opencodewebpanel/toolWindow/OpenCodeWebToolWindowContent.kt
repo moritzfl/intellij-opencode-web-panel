@@ -25,6 +25,9 @@ import org.cef.handler.CefLoadHandler
 import org.cef.handler.CefLoadHandlerAdapter
 import org.cef.network.CefRequest
 import java.awt.CardLayout
+import java.awt.Component
+import java.awt.Container
+import java.awt.Cursor
 import javax.swing.JPanel
 
 class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposable {
@@ -63,6 +66,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     private val systemNotificationQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
     private val agentStatusQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
     private val openExternalLinkQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
+    private val browserCursorQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
     private val serverManager = SharedOpenCodeServerManager.getInstance()
     private val ideNavigation = OpenCodeIdeNavigation(project, browser, serverManager, ::openCodeProjectDirectory, this)
     private val localStorageBridge = OpenCodeLocalStorageBridge(
@@ -83,6 +87,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     private var compactLayoutScriptScheduled = false
     private var ideThemeSyncScriptScheduled = false
     private var projectSwitchPromptSuppressionScriptScheduled = false
+    private var cursorMirrorScriptScheduled = false
     private var systemNotificationBridgeScriptScheduled = false
     private var agentStatusBridgeScriptScheduled = false
     private var lastAgentStatus = "idle"
@@ -106,6 +111,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                 compactLayoutScriptScheduled = false
                 ideThemeSyncScriptScheduled = false
                 projectSwitchPromptSuppressionScriptScheduled = false
+                cursorMirrorScriptScheduled = false
                 systemNotificationBridgeScriptScheduled = false
                 agentStatusBridgeScriptScheduled = false
                 if (OpenCodeServerProtocol.isOpenCodeServerPage(serverManager.getServerUrl(), frame.url)) {
@@ -138,6 +144,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             scheduleFilePasteSuppressionScript()
             scheduleIdeThemeSyncScript()
             scheduleProjectSwitchPromptSuppressionScript()
+            scheduleCursorMirrorScript()
             scheduleSystemNotificationBridgeScript()
             scheduleAgentStatusBridgeScript()
             scheduleFlushPendingChatInput()
@@ -173,6 +180,15 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         openExternalLinkQuery.addHandler { href ->
             if (OpenCodeSettingsState.getInstance().openExternalLinksInBrowser) {
                 ideNavigation.openExternalLinkInBrowser(href)
+            }
+            null
+        }
+        browserCursorQuery.addHandler { cssCursor ->
+            if (OpenCodeSettingsState.getInstance().mirrorBrowserCursor) {
+                val cursorType = OpenCodeServerProtocol.awtCursorTypeForCss(cssCursor)
+                ApplicationManager.getApplication().invokeLater {
+                    if (!isContentDisposed()) applyBrowserCursor(Cursor.getPredefinedCursor(cursorType))
+                }
             }
             null
         }
@@ -273,6 +289,10 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
 
                 override fun projectSwitchPromptSuppressionChanged(enabled: Boolean) {
                     applyProjectSwitchPromptSuppression(enabled)
+                }
+
+                override fun browserCursorMirrorChanged(enabled: Boolean) {
+                    applyCursorMirror(enabled)
                 }
 
                 override fun systemNotificationsChanged(enabled: Boolean) {
@@ -466,6 +486,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         compactLayoutScriptScheduled = false
         ideThemeSyncScriptScheduled = false
         projectSwitchPromptSuppressionScriptScheduled = false
+        cursorMirrorScriptScheduled = false
         systemNotificationBridgeScriptScheduled = false
         openProjectAlarm.cancelAllRequests()
         applyBrowserZoom()
@@ -476,6 +497,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         scheduleFilePasteSuppressionScript()
         scheduleIdeThemeSyncScript()
         scheduleProjectSwitchPromptSuppressionScript()
+        scheduleCursorMirrorScript()
         scheduleSystemNotificationBridgeScript()
     }
 
@@ -607,6 +629,23 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
 
         scriptScheduler.schedule(script, rootUrl) {
             OpenCodeSettingsState.getInstance().suppressProjectSwitchPrompts && isBrowserOnOpenCodeServerPage(serverUrl)
+        }
+    }
+
+    private fun scheduleCursorMirrorScript() {
+        if (cursorMirrorScriptScheduled) return
+        if (!OpenCodeSettingsState.getInstance().mirrorBrowserCursor) return
+
+        val serverUrl = serverManager.getServerUrl() ?: return
+        val script = OpenCodeServerProtocol.buildCursorMirrorScript(
+            enabled = true,
+            cursorCallback = browserCursorQuery.inject("payload"),
+        ) ?: return
+        val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
+        cursorMirrorScriptScheduled = true
+
+        scriptScheduler.schedule(script, rootUrl) {
+            OpenCodeSettingsState.getInstance().mirrorBrowserCursor && isBrowserOnOpenCodeServerPage(serverUrl)
         }
     }
 
@@ -758,6 +797,36 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         val script = OpenCodeServerProtocol.buildProjectSwitchPromptSuppressionScript(enabled = true) ?: return
         browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
         projectSwitchPromptSuppressionScriptScheduled = true
+    }
+
+    /**
+     * Applies the mirrored page cursor to the whole browser component tree: in off-screen
+     * rendering the deepest Swing component under the pointer decides the visible cursor,
+     * and the platform may have left a stale cursor on it.
+     */
+    private fun applyBrowserCursor(cursor: Cursor) {
+        fun apply(component: Component) {
+            component.cursor = cursor
+            if (component is Container) component.components.forEach(::apply)
+        }
+        apply(browser.component)
+    }
+
+    private fun applyCursorMirror(enabled: Boolean) {
+        val serverUrl = serverManager.getServerUrl() ?: return
+        if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)) return
+        cursorMirrorScriptScheduled = false
+        if (!enabled) {
+            applyBrowserCursor(Cursor.getPredefinedCursor(Cursor.DEFAULT_CURSOR))
+            browser.cefBrowser.reload()
+            return
+        }
+        val script = OpenCodeServerProtocol.buildCursorMirrorScript(
+            enabled = true,
+            cursorCallback = browserCursorQuery.inject("payload"),
+        ) ?: return
+        browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
+        cursorMirrorScriptScheduled = true
     }
 
     private fun applySystemNotifications(enabled: Boolean) {

@@ -23,6 +23,7 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
     var forceCompactLayout: Boolean = true
     var syncThemeWithIde: Boolean = true
     var suppressProjectSwitchPrompts: Boolean = true
+    var mirrorBrowserCursor: Boolean = true
     var enableSystemNotifications: Boolean = true
     var enablePermissionNotificationActions: Boolean = true
     var showAgentStatusBadge: Boolean = true
@@ -47,6 +48,7 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
         forceCompactLayout = state.forceCompactLayout
         syncThemeWithIde = state.syncThemeWithIde
         suppressProjectSwitchPrompts = state.suppressProjectSwitchPrompts
+        mirrorBrowserCursor = state.mirrorBrowserCursor
         enableSystemNotifications = state.enableSystemNotifications
         enablePermissionNotificationActions = state.enablePermissionNotificationActions
         showAgentStatusBadge = state.showAgentStatusBadge

@@ -881,6 +881,48 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun buildCursorMirrorScriptIsMissingWhenDisabledOrIncomplete() {
+        assertNull(OpenCodeServerProtocol.buildCursorMirrorScript(enabled = false, cursorCallback = "cb(payload)"))
+        assertNull(OpenCodeServerProtocol.buildCursorMirrorScript(enabled = true, cursorCallback = null))
+    }
+
+    @Test
+    fun buildCursorMirrorScriptTracksHoveredElementCursor() {
+        val script = OpenCodeServerProtocol.buildCursorMirrorScript(
+            enabled = true,
+            cursorCallback = "window.intellijCursor(payload)",
+        )!!
+
+        assertTrue(script.contains("window.__opencodeIntellijCursorMirrorInstalled"))
+        assertTrue(script.contains("getComputedStyle(el).cursor"))
+        assertTrue(script.contains("caretRangeFromPoint"))
+        assertTrue(script.contains("addEventListener('pointermove'"))
+        assertTrue(script.contains("addEventListener('pointerdown'"))
+        assertTrue(script.contains("addEventListener('pointerup'"))
+        assertTrue(script.contains("addEventListener('scroll'"))
+        assertTrue(script.contains("event.buttons !== 0"))
+        assertTrue(script.contains("window.intellijCursor(payload)"))
+    }
+
+    @Test
+    fun awtCursorTypeCoversCommonCssCursors() {
+        assertEquals(java.awt.Cursor.DEFAULT_CURSOR, OpenCodeServerProtocol.awtCursorTypeForCss(null))
+        assertEquals(java.awt.Cursor.DEFAULT_CURSOR, OpenCodeServerProtocol.awtCursorTypeForCss("default"))
+        assertEquals(java.awt.Cursor.DEFAULT_CURSOR, OpenCodeServerProtocol.awtCursorTypeForCss("auto"))
+        assertEquals(java.awt.Cursor.HAND_CURSOR, OpenCodeServerProtocol.awtCursorTypeForCss("pointer"))
+        assertEquals(java.awt.Cursor.TEXT_CURSOR, OpenCodeServerProtocol.awtCursorTypeForCss("text"))
+        assertEquals(java.awt.Cursor.WAIT_CURSOR, OpenCodeServerProtocol.awtCursorTypeForCss("progress"))
+        assertEquals(java.awt.Cursor.S_RESIZE_CURSOR, OpenCodeServerProtocol.awtCursorTypeForCss("row-resize"))
+        assertEquals(java.awt.Cursor.S_RESIZE_CURSOR, OpenCodeServerProtocol.awtCursorTypeForCss("ns-resize"))
+        assertEquals(java.awt.Cursor.W_RESIZE_CURSOR, OpenCodeServerProtocol.awtCursorTypeForCss("col-resize"))
+        assertEquals(java.awt.Cursor.MOVE_CURSOR, OpenCodeServerProtocol.awtCursorTypeForCss("grabbing"))
+        // Unknown keywords resolve to the default arrow; custom cursors use their keyword fallback.
+        assertEquals(java.awt.Cursor.DEFAULT_CURSOR, OpenCodeServerProtocol.awtCursorTypeForCss("zoom-in"))
+        assertEquals(java.awt.Cursor.HAND_CURSOR, OpenCodeServerProtocol.awtCursorTypeForCss("url(\"custom.png\") 4 4, pointer"))
+        assertEquals(java.awt.Cursor.DEFAULT_CURSOR, OpenCodeServerProtocol.awtCursorTypeForCss("URL(x.cur)"))
+    }
+
+    @Test
     fun buildFilePasteSuppressionScriptIsMissingWhenDisabled() {
         assertNull(OpenCodeServerProtocol.buildFilePasteSuppressionScript(enabled = false))
     }

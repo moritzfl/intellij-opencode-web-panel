@@ -871,6 +871,88 @@ internal object OpenCodeBrowserSnippets {
         return script.trimIndent()
     }
 
+    /**
+     * Mirrors the web page's mouse cursor to the IDE. JCEF's off-screen rendering does not
+     * reliably propagate Chromium's cursor changes to the Swing component, so the embedded
+     * panel never shows text or link cursors and can get stuck with a stale resize cursor.
+     * This tracks the hovered element's effective CSS cursor (including the I-beam that
+     * browsers render for `cursor: auto` over selectable text) and reports each transition
+     * through [cursorCallback]; the IDE applies the matching AWT cursor to the panel. While
+     * a button is held the cursor from the drag start is kept, matching Chromium's own
+     * behavior during drags.
+     */
+    fun buildCursorMirrorScript(enabled: Boolean, cursorCallback: String?): String? {
+        if (!enabled || cursorCallback == null) return null
+        @Language("JavaScript")
+        val script = """
+            (() => {
+              if (window.__opencodeIntellijCursorMirrorInstalled) return;
+              window.__opencodeIntellijCursorMirrorInstalled = true;
+              let lastSent = '';
+              let lastX = -1;
+              let lastY = -1;
+              const send = (cursor) => {
+                if (!cursor || cursor === lastSent) return;
+                lastSent = cursor;
+                try {
+                  const payload = cursor;
+                  $cursorCallback;
+                } catch (_) {}
+              };
+              const effectiveCursor = (x, y, target) => {
+                const el = target && target.nodeType === 1 ? target : (target && target.parentElement);
+                if (!el) return 'default';
+                const cursor = getComputedStyle(el).cursor;
+                if (cursor !== 'auto') return cursor;
+                if (el.isContentEditable) return 'text';
+                const tag = el.tagName;
+                if (tag === 'TEXTAREA') return 'text';
+                if (tag === 'INPUT' && !/^(button|submit|reset|checkbox|radio|range|file|color|image)${'$'}/i.test(el.type)) return 'text';
+                // Over selectable text, auto renders as the text I-beam. caretRangeFromPoint
+                // snaps to the nearest text, so require the point to be inside its element.
+                if (document.caretRangeFromPoint) {
+                  const range = document.caretRangeFromPoint(x, y);
+                  const node = range && range.startContainer;
+                  if (node && node.nodeType === 3 && node.parentElement) {
+                    const rect = node.parentElement.getBoundingClientRect();
+                    if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) return 'text';
+                  }
+                }
+                return 'default';
+              };
+              const recomputeAtPointer = () => {
+                if (lastX < 0) return;
+                const el = document.elementFromPoint(lastX, lastY);
+                if (el) send(effectiveCursor(lastX, lastY, el));
+              };
+              document.addEventListener('pointermove', (event) => {
+                lastX = event.clientX;
+                lastY = event.clientY;
+                if (event.buttons !== 0) return;
+                send(effectiveCursor(event.clientX, event.clientY, event.target));
+              }, true);
+              document.addEventListener('pointerdown', (event) => {
+                send(effectiveCursor(event.clientX, event.clientY, event.target));
+              }, true);
+              document.addEventListener('pointerup', (event) => {
+                const el = document.elementFromPoint(event.clientX, event.clientY);
+                send(effectiveCursor(event.clientX, event.clientY, el || event.target));
+              }, true);
+              // Content moving under a stationary pointer also changes the cursor in a browser.
+              let scrollRecomputeQueued = false;
+              window.addEventListener('scroll', () => {
+                if (scrollRecomputeQueued) return;
+                scrollRecomputeQueued = true;
+                window.requestAnimationFrame(() => {
+                  scrollRecomputeQueued = false;
+                  recomputeAtPointer();
+                });
+              }, true);
+            })();
+        """
+        return script.trimIndent()
+    }
+
     fun buildProjectSwitchPromptSuppressionScript(enabled: Boolean): String? {
         if (!enabled) return null
         @Language("JavaScript")

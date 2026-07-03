@@ -91,6 +91,38 @@ internal object OpenCodeServerProtocol {
         return OpenCodeBrowserSnippets.buildProjectSwitchPromptSuppressionScript(enabled)
     }
 
+    fun buildCursorMirrorScript(enabled: Boolean, cursorCallback: String?): String? {
+        return OpenCodeBrowserSnippets.buildCursorMirrorScript(enabled, cursorCallback)
+    }
+
+    /**
+     * Maps a CSS cursor computed value to the closest AWT predefined cursor type. Custom
+     * `url(...)` cursors resolve through their keyword fallback; CSS values without an AWT
+     * counterpart (help, copy, zoom-in, ...) fall back to the default arrow.
+     */
+    fun awtCursorTypeForCss(cssCursor: String?): Int {
+        val keyword = cssCursor?.split(',')
+            ?.map { it.trim().lowercase() }
+            ?.lastOrNull { it.isNotBlank() && !it.startsWith("url(") }
+            ?: return java.awt.Cursor.DEFAULT_CURSOR
+        return when (keyword) {
+            "pointer" -> java.awt.Cursor.HAND_CURSOR
+            "text", "vertical-text" -> java.awt.Cursor.TEXT_CURSOR
+            "wait", "progress" -> java.awt.Cursor.WAIT_CURSOR
+            "crosshair", "cell" -> java.awt.Cursor.CROSSHAIR_CURSOR
+            "move", "grab", "grabbing", "all-scroll" -> java.awt.Cursor.MOVE_CURSOR
+            "n-resize" -> java.awt.Cursor.N_RESIZE_CURSOR
+            "s-resize", "ns-resize", "row-resize" -> java.awt.Cursor.S_RESIZE_CURSOR
+            "e-resize" -> java.awt.Cursor.E_RESIZE_CURSOR
+            "w-resize", "ew-resize", "col-resize" -> java.awt.Cursor.W_RESIZE_CURSOR
+            "ne-resize", "nesw-resize" -> java.awt.Cursor.NE_RESIZE_CURSOR
+            "nw-resize", "nwse-resize" -> java.awt.Cursor.NW_RESIZE_CURSOR
+            "se-resize" -> java.awt.Cursor.SE_RESIZE_CURSOR
+            "sw-resize" -> java.awt.Cursor.SW_RESIZE_CURSOR
+            else -> java.awt.Cursor.DEFAULT_CURSOR
+        }
+    }
+
     fun buildCompactLayoutScript(enabled: Boolean): String? {
         return OpenCodeBrowserSnippets.buildCompactLayoutScript(enabled)
     }

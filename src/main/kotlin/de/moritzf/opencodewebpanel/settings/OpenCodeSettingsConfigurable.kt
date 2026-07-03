@@ -89,6 +89,7 @@ class OpenCodeSettingsConfigurable : Configurable {
     private val forceCompactLayoutCheckBox = JBCheckBox("Lock to compact view")
     private val syncThemeWithIdeCheckBox = JBCheckBox("Sync OpenCode color scheme with the IDE theme")
     private val suppressProjectSwitchPromptsCheckBox = JBCheckBox("Suppress project-switch prompts")
+    private val mirrorBrowserCursorCheckBox = JBCheckBox("Mirror the web page mouse cursor")
     private val enableSystemNotificationsCheckBox = JBCheckBox("Forward OpenCode system notifications to the IDE")
     private val enablePermissionNotificationActionsCheckBox = JBCheckBox("Offer Allow/Deny actions on permission notifications")
     private val showAgentStatusBadgeCheckBox = JBCheckBox("Show agent status on the tool window icon")
@@ -129,6 +130,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         CheckBoxSettingBinding(forceCompactLayoutCheckBox, { forceCompactLayout }, { value -> forceCompactLayout = value }, { listener, value -> listener.compactLayoutChanged(value) }),
         CheckBoxSettingBinding(syncThemeWithIdeCheckBox, { syncThemeWithIde }, { value -> syncThemeWithIde = value }, { listener, value -> listener.ideThemeSyncChanged(value) }),
         CheckBoxSettingBinding(suppressProjectSwitchPromptsCheckBox, { suppressProjectSwitchPrompts }, { value -> suppressProjectSwitchPrompts = value }, { listener, value -> listener.projectSwitchPromptSuppressionChanged(value) }),
+        CheckBoxSettingBinding(mirrorBrowserCursorCheckBox, { mirrorBrowserCursor }, { value -> mirrorBrowserCursor = value }, { listener, value -> listener.browserCursorMirrorChanged(value) }),
         CheckBoxSettingBinding(enableSystemNotificationsCheckBox, { enableSystemNotifications }, { value -> enableSystemNotifications = value }, { listener, value -> listener.systemNotificationsChanged(value) }),
         CheckBoxSettingBinding(enablePermissionNotificationActionsCheckBox, { enablePermissionNotificationActions }, { value -> enablePermissionNotificationActions = value }),
         CheckBoxSettingBinding(showAgentStatusBadgeCheckBox, { showAgentStatusBadge }, { value -> showAgentStatusBadge = value }, { listener, value -> listener.agentStatusBadgeChanged(value) }),
@@ -249,6 +251,10 @@ class OpenCodeSettingsConfigurable : Configurable {
                 row {
                     cell(syncThemeWithIdeCheckBox)
                         .comment("Patches the browser's prefers-color-scheme media query to match the IntelliJ theme. Only affects OpenCode when its color scheme is set to System.")
+                }
+                row {
+                    cell(mirrorBrowserCursorCheckBox)
+                        .comment("Apply the hovered page element's cursor style to the panel, like a regular browser would. Fixes the embedded browser never showing text or link cursors and resize cursors getting stuck.")
                 }
             }
             group("IDE Navigation") {
