@@ -745,8 +745,10 @@ internal object OpenCodeBrowserSnippets {
         @Language("JavaScript")
         val script = """
             (() => {
-              if (window.__opencodeIntellijCodeNavInstalled) return;
+              const CODE_NAV_VERSION = 2;
+              if ((window.__opencodeIntellijCodeNavInstalledVersion || 0) >= CODE_NAV_VERSION) return;
               window.__opencodeIntellijCodeNavInstalled = true;
+              window.__opencodeIntellijCodeNavInstalledVersion = CODE_NAV_VERSION;
               const hasExtension = /\.[a-zA-Z][a-zA-Z0-9]{0,8}(?::\d+)?${'$'}/;
               const hasPathSeparator = /[\\/]/;
               const isPascalCase = /^[A-Z][a-zA-Z0-9_]*${'$'}/;
@@ -783,6 +785,33 @@ internal object OpenCodeBrowserSnippets {
                 event.preventDefault();
                 event.stopImmediatePropagation();
                 $openCodeCallback;
+              }, true);
+              // Code references get the pointer cursor on hover; the cursor mirror
+              // reads computed styles, so the embedded panel cursor follows automatically.
+              const POINTER_ATTR = 'data-opencode-intellij-pointer';
+              const ensurePointerCursorStyle = () => {
+                if (window.__opencodeIntellijPointerCursorStyleInstalled) return;
+                window.__opencodeIntellijPointerCursorStyleInstalled = true;
+                const style = document.createElement('style');
+                style.textContent = '[' + POINTER_ATTR + '], [' + POINTER_ATTR + '] * { cursor: pointer !important; }';
+                (document.head || document.documentElement).appendChild(style);
+              };
+              let hoveredCodeElement = null;
+              const markHoveredCodeRef = (element) => {
+                if (element === hoveredCodeElement) return;
+                if (hoveredCodeElement) hoveredCodeElement.removeAttribute(POINTER_ATTR);
+                hoveredCodeElement = element;
+                if (hoveredCodeElement) {
+                  ensurePointerCursorStyle();
+                  hoveredCodeElement.setAttribute(POINTER_ATTR, '');
+                }
+              };
+              document.addEventListener('mouseover', (event) => {
+                const code = event.target && event.target.closest ? event.target.closest('code') : null;
+                markHoveredCodeRef(code && extractRef(code) ? code : null);
+              }, true);
+              document.addEventListener('mouseout', (event) => {
+                if (!event.relatedTarget) markHoveredCodeRef(null);
               }, true);
             })();
         """
@@ -1148,7 +1177,7 @@ internal object OpenCodeBrowserSnippets {
         @Language("JavaScript")
         val script = """
             (() => {
-              const FILE_LINKS_VERSION = 2;
+              const FILE_LINKS_VERSION = 3;
               if ((window.__opencodeIntellijFileLinksInstalledVersion || 0) >= FILE_LINKS_VERSION) return;
               window.__opencodeIntellijFileLinksInstalled = true;
               window.__opencodeIntellijFileLinksInstalledVersion = FILE_LINKS_VERSION;
@@ -1207,8 +1236,9 @@ internal object OpenCodeBrowserSnippets {
               let lastOpenedHref = '';
               let lastOpenedAt = 0;
               const cleanDisplayedPath = (value) => (value || '').replace(/[\u202A-\u202E]/g, '').trim();
+              const changedFileButtonSelector = '[data-slot="session-review-view-button"], button[aria-label="Open file"], button[aria-label="Datei öffnen"], button[title="Open file"], button[title="Datei öffnen"]';
               const changedFileButtonLink = (target) => {
-                const button = target && target.closest ? target.closest('[data-slot="session-review-view-button"], button[aria-label="Open file"], button[aria-label="Datei öffnen"], button[title="Open file"], button[title="Datei öffnen"]') : null;
+                const button = target && target.closest ? target.closest(changedFileButtonSelector) : null;
                 if (!button) return '';
                 const item = button.closest ? button.closest('[data-file], [data-path], [data-slot="session-review-accordion-item"]') : null;
                 const dataPath = item ? (item.getAttribute('data-file') || item.getAttribute('data-path') || '') : '';
@@ -1235,20 +1265,53 @@ internal object OpenCodeBrowserSnippets {
                 lastOpenedAt = now;
                 $openFileAction;
               };
+              const resolveFileOpenTarget = (target, changedButtonOnly) => {
+                const changedFileHref = changedFileButtonLink(target);
+                if (changedButtonOnly && !changedFileHref) return null;
+                const link = !changedFileHref && target && target.closest ? target.closest('a') : null;
+                const rawHref = changedFileHref || (link ? (link.getAttribute('href') || inferredFileLink(link)) : '');
+                if (!isLocalFileLink(rawHref)) return null;
+                return { element: changedFileHref ? target.closest(changedFileButtonSelector) : link, href: rawHref };
+              };
               const handleFileOpenEvent = (event, changedButtonOnly) => {
                 if (event.defaultPrevented) return;
-                const changedFileHref = changedFileButtonLink(event.target);
-                if (changedButtonOnly && !changedFileHref) return;
-                const link = !changedFileHref && event.target && event.target.closest ? event.target.closest('a') : null;
-                const rawHref = changedFileHref || (link ? (link.getAttribute('href') || inferredFileLink(link)) : '');
-                if (!isLocalFileLink(rawHref)) return;
+                const resolved = resolveFileOpenTarget(event.target, changedButtonOnly);
+                if (!resolved) return;
                 event.preventDefault();
                 event.stopImmediatePropagation();
-                openFileInIde(rawHref);
+                openFileInIde(resolved.href);
               };
               document.addEventListener('pointerdown', (event) => handleFileOpenEvent(event, true), true);
               document.addEventListener('mousedown', (event) => handleFileOpenEvent(event, true), true);
               document.addEventListener('click', (event) => handleFileOpenEvent(event, false), true);
+              // Resolvable file links get the pointer cursor on hover; the cursor mirror
+              // reads computed styles, so the embedded panel cursor follows automatically.
+              const POINTER_ATTR = 'data-opencode-intellij-pointer';
+              const ensurePointerCursorStyle = () => {
+                if (window.__opencodeIntellijPointerCursorStyleInstalled) return;
+                window.__opencodeIntellijPointerCursorStyleInstalled = true;
+                const style = document.createElement('style');
+                style.textContent = '[' + POINTER_ATTR + '], [' + POINTER_ATTR + '] * { cursor: pointer !important; }';
+                (document.head || document.documentElement).appendChild(style);
+              };
+              let hoveredFileLinkElement = null;
+              const markHoveredFileLink = (element) => {
+                if (element === hoveredFileLinkElement) return;
+                if (hoveredFileLinkElement) hoveredFileLinkElement.removeAttribute(POINTER_ATTR);
+                hoveredFileLinkElement = element;
+                if (hoveredFileLinkElement) {
+                  ensurePointerCursorStyle();
+                  hoveredFileLinkElement.setAttribute(POINTER_ATTR, '');
+                }
+              };
+              document.addEventListener('mouseover', (event) => {
+                const target = event.target && event.target.nodeType === 1 ? event.target : null;
+                const resolved = target ? resolveFileOpenTarget(target, false) : null;
+                markHoveredFileLink(resolved ? resolved.element : null);
+              }, true);
+              document.addEventListener('mouseout', (event) => {
+                if (!event.relatedTarget) markHoveredFileLink(null);
+              }, true);
             })();
         """
         return script.trimIndent()
