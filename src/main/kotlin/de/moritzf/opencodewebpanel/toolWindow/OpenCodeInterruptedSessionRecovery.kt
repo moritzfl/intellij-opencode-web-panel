@@ -8,9 +8,10 @@ import java.util.concurrent.ConcurrentHashMap
 
 /**
  * After the OpenCode server restarts or recovers, checks recent sessions for the
- * project directory. If the last assistant message in any session shows signs of a
- * crashed turn (missing completion time or unsettled tools), automatically sends a
- * continuation prompt so the agent resumes without manual intervention.
+ * project directory. If the last message in any session shows signs of a crashed turn
+ * (an unanswered user prompt, a missing completion time, or unsettled tools),
+ * automatically sends a continuation prompt so the agent resumes without manual
+ * intervention.
  *
  * Only sessions updated within [OpenCodeServerProtocol.RECENT_SESSION_WINDOW_MILLIS]
  * before the check are considered, so long-idle conversations are not resumed.
@@ -57,7 +58,7 @@ internal class OpenCodeInterruptedSessionRecovery(
                 for (session in sessions) {
                     val lastMessage = OpenCodeServerProtocol.fetchLastMessageJson(serverUrl, authHeader, session.id)
                         ?: continue
-                    if (!OpenCodeServerProtocol.isInterruptedAssistantMessage(lastMessage)) continue
+                    if (!OpenCodeServerProtocol.isInterruptedLastMessage(lastMessage)) continue
                     thisLogger().info("OpenCode session ${session.id} was interrupted; sending continuation prompt")
                     OpenCodeServerProtocol.sendContinuePrompt(serverUrl, authHeader, session.id)
                 }

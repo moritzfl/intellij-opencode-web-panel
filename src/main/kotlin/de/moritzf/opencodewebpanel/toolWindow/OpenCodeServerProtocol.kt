@@ -856,7 +856,7 @@ internal object OpenCodeServerProtocol {
     /**
      * Fetches the last projected message for a session from the v2 API
      * (`GET /api/session/{sessionID}/message?order=desc&limit=1`). Returns the raw JSON
-     * object string for [isInterruptedAssistantMessage] to inspect, or null on any error.
+     * object string for [isInterruptedLastMessage] to inspect, or null on any error.
      */
     fun fetchLastMessageJson(
         serverUrl: String,
@@ -881,17 +881,22 @@ internal object OpenCodeServerProtocol {
     }
 
     /**
-     * Inspects a projected assistant message (SessionMessageAssistant) for signs that the
-     * agent turn was interrupted by a crash or kill (not by a user-initiated stop):
-     * - `time.completed` is missing (the turn never finished)
-     * - Any tool in the content has state `pending` or `running` (never settled)
-     *
-     * A user-initiated stop settles the message: it sets both `time.completed` and the
-     * top-level `error` field (verified against opencode 1.17.13), so it is intentionally
-     * not treated as a crash here.
+     * Inspects the last projected session message for signs that the agent turn was
+     * interrupted by a crash or kill (not by a user-initiated stop). Verified against a
+     * live opencode 1.17.13 server:
+     * - A hard kill mid-turn never persists the partial assistant reply, so after a crash
+     *   the last message is the unanswered `user` prompt.
+     * - An assistant message missing `time.completed`, or with a tool in `pending`/`running`
+     *   state, is an in-flight projection that only an unclean shutdown leaves behind.
+     * - A user-initiated stop settles the message: it sets both `time.completed` and the
+     *   top-level `error` field, so it is intentionally not treated as a crash here.
      */
-    fun isInterruptedAssistantMessage(messageJson: String): Boolean {
+    fun isInterruptedLastMessage(messageJson: String): Boolean {
         val message = parseJsonObject(messageJson) ?: return false
+        // A user prompt with no assistant reply after it: the turn died before any part of
+        // the reply was persisted. Other non-assistant types (compaction, model-switched,
+        // system, ...) do not imply an unanswered prompt.
+        if (message.stringMember("type") == "user") return true
         if (message.stringMember("type") != "assistant") return false
         // Top-level error → the turn ended (user stop or provider failure), not a crash.
         if (message.get("error")?.isJsonNull == false) return false
