@@ -988,54 +988,6 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
-    fun buildSystemNotificationBridgeScriptIsMissingWhenDisabled() {
-        assertNull(OpenCodeServerProtocol.buildSystemNotificationBridgeScript(enabled = false, notificationCallback = "callback(payload)"))
-    }
-
-    @Test
-    fun buildSystemNotificationBridgeScriptIsMissingWithoutCallback() {
-        assertNull(OpenCodeServerProtocol.buildSystemNotificationBridgeScript(enabled = true, notificationCallback = null))
-    }
-
-    @Test
-    fun buildSystemNotificationBridgeScriptListensToOpenCodeEventStream() {
-        val script = OpenCodeServerProtocol.buildSystemNotificationBridgeScript(
-            enabled = true,
-            notificationCallback = "window.intellijNotify(payload)",
-        )!!
-
-        assertTrue(script.contains("window.__opencodeIntellijNotificationBridgeInstalled"))
-        assertTrue(script.contains("fetch('/global/event'"))
-        assertTrue(script.contains("Accept: 'text/event-stream'"))
-        assertTrue(script.contains("window.__opencodeIntellijEventHub.subscribe"))
-        assertTrue(script.contains("type !== 'session.idle'"))
-        assertTrue(script.contains("type !== 'permission.asked'"))
-        assertTrue(script.contains("type === 'session.status'"))
-        assertTrue(script.contains("status.type !== 'idle'"))
-        assertTrue(script.contains("recentIdle"))
-        assertTrue(script.contains("notification.directory"))
-        assertTrue(script.contains("notification.route"))
-        assertTrue(script.contains("window.intellijNotify(payload)"))
-    }
-
-    @Test
-    fun eventBridgeScriptsShareSingleEventStreamConnection() {
-        // Chromium allows only six concurrent HTTP/1.1 connections per host across all JCEF
-        // browsers, and each panel's SPA already holds one /global/event stream. The remaining
-        // browser-side bridge must keep using the shared hub reader (with cross-page leader
-        // election) instead of opening a stream of its own.
-        val notificationScript = OpenCodeServerProtocol.buildSystemNotificationBridgeScript(
-            enabled = true,
-            notificationCallback = "cb(payload)",
-        )!!
-
-        assertEquals(1, Regex("fetch\\('/global/event'").findAll(notificationScript).count())
-        assertTrue(notificationScript.contains("if (window.__opencodeIntellijEventHub) return"))
-        assertTrue(notificationScript.contains("navigator.locks"))
-        assertTrue(notificationScript.contains("BroadcastChannel('opencode-intellij-event-hub')"))
-    }
-
-    @Test
     fun parseSessionInfoReadsBareAndEnvelopedSessions() {
         val bare = OpenCodeServerProtocol.parseSessionInfo("""{"id":"ses_1","title":"Fix the build"}""")!!
         assertEquals("Fix the build", bare.title)
@@ -1186,22 +1138,6 @@ class OpenCodeServerProtocolTest {
         assertNull(OpenCodeServerProtocol.parseSystemNotificationPayload("id\n%20\n%2Fencoded\nTitle\nBody"))
         assertNull(OpenCodeServerProtocol.parseSystemNotificationPayload("id\n%2Ftmp%2Fproject\nencoded\nTitle\nBody"))
         assertNull(OpenCodeServerProtocol.parseSystemNotificationPayload("id\n%2Ftmp%2Fproject\n%2Fencoded\n%20\nBody"))
-    }
-
-    @Test
-    fun buildSystemNotificationBridgeScriptSendsDismissalSignals() {
-        val script = OpenCodeServerProtocol.buildSystemNotificationBridgeScript(
-            enabled = true,
-            notificationCallback = "window.intellijNotify(payload)",
-        )!!
-
-        assertTrue(script.contains("'__opencode_dismiss__'"))
-        assertTrue(script.contains("'permission.replied' || type === 'question.replied' || type === 'question.rejected'"))
-        assertTrue(script.contains("status.type === 'busy' || status.type === 'retry'"))
-        assertTrue(script.contains("addEventListener('pointerdown'"))
-        assertTrue(script.contains("addEventListener('keydown'"))
-        assertTrue(script.contains("addEventListener('focus'"))
-        assertTrue(script.contains("/session\\/"))
     }
 
     @Test

@@ -79,10 +79,6 @@ internal object OpenCodeServerProtocol {
         return OpenCodeBrowserSnippets.buildCodeNavigationScript(enabled, openCodeCallback)
     }
 
-    fun buildSystemNotificationBridgeScript(enabled: Boolean, notificationCallback: String?): String? {
-        return OpenCodeBrowserSnippets.buildSystemNotificationBridgeScript(enabled, notificationCallback)
-    }
-
     fun buildProjectSwitchPromptSuppressionScript(enabled: Boolean): String? {
         return OpenCodeBrowserSnippets.buildProjectSwitchPromptSuppressionScript(enabled)
     }
@@ -480,7 +476,7 @@ internal object OpenCodeServerProtocol {
     }
 
     /** OpenCode record IDs (`ses_...`, `per_...`) are URL-safe by construction; reject anything else. */
-    private fun isOpenCodeRecordId(value: String): Boolean {
+    fun isOpenCodeRecordId(value: String): Boolean {
         return value.isNotBlank() && Regex("^[A-Za-z0-9_-]+$").matches(value)
     }
 

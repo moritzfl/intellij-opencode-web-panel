@@ -63,7 +63,6 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     private val openFileLinkQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
     private val openCodeReferenceQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
     private val openCodeLocalStorageQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
-    private val systemNotificationQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
     private val openExternalLinkQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
     private val browserCursorQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
     private val serverManager = SharedOpenCodeServerManager.getInstance()
@@ -73,7 +72,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         serverManager,
         syncCallback = { openCodeLocalStorageQuery.inject("payload") },
     )
-    private val systemNotifications = OpenCodeSystemNotifications(project, toolWindow, browser, serverManager, ::openCodeProjectDirectory)
+    private val systemNotifications = OpenCodeSystemNotifications(project, toolWindow, browser, serverManager, ::openCodeProjectDirectory, this)
     private val requestHandler = OpenCodeBrowserRequestHandler(serverManager, ideNavigation, ::recoverFromRendererCrash)
     private val interruptedSessionRecovery = OpenCodeInterruptedSessionRecovery(project, serverManager, ::openCodeProjectDirectory)
     private val openProjectAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
@@ -87,7 +86,6 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     private var ideThemeSyncScriptScheduled = false
     private var projectSwitchPromptSuppressionScriptScheduled = false
     private var cursorMirrorScriptScheduled = false
-    private var systemNotificationBridgeScriptScheduled = false
     private var lastAgentStatus = OpenCodeAgentStatusState.IDLE
     private val vcsRefresh = OpenCodeVcsRefresh(project)
     private val agentStatusTracker = OpenCodeAgentStatusTracker(
@@ -116,7 +114,6 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                 ideThemeSyncScriptScheduled = false
                 projectSwitchPromptSuppressionScriptScheduled = false
                 cursorMirrorScriptScheduled = false
-                systemNotificationBridgeScriptScheduled = false
                 if (OpenCodeServerProtocol.isOpenCodeServerPage(serverManager.getServerUrl(), frame.url)) {
                     // Also reset the open-project flag: if the initial HTML load outlived all retry
                     // delays scheduled by loadProjectPage, onLoadEnd must be able to reschedule it.
@@ -148,7 +145,6 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             scheduleIdeThemeSyncScript()
             scheduleProjectSwitchPromptSuppressionScript()
             scheduleCursorMirrorScript()
-            scheduleSystemNotificationBridgeScript()
             scheduleFlushPendingChatInput()
             interruptedSessionRecovery.checkAndContinue()
         }
@@ -202,12 +198,6 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         }
         openCodeLocalStorageQuery.addHandler { snapshot ->
             localStorageBridge.sync(snapshot)
-            null
-        }
-        systemNotificationQuery.addHandler { payload ->
-            if (OpenCodeSettingsState.getInstance().enableSystemNotifications) {
-                systemNotifications.handle(payload)
-            }
             null
         }
         browser.jbCefClient.addRequestHandler(requestHandler, browser.cefBrowser)
@@ -291,10 +281,8 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                     applyCursorMirror(enabled)
                 }
 
-                override fun systemNotificationsChanged(enabled: Boolean) {
-                    applySystemNotifications(enabled)
-                }
-
+                // System notifications need no page interaction: the Kotlin-side event
+                // consumer re-checks the setting on every event.
                 override fun agentStatusBadgeChanged(enabled: Boolean) {
                     applyAgentStatusBadge(enabled)
                 }
@@ -483,7 +471,6 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         ideThemeSyncScriptScheduled = false
         projectSwitchPromptSuppressionScriptScheduled = false
         cursorMirrorScriptScheduled = false
-        systemNotificationBridgeScriptScheduled = false
         openProjectAlarm.cancelAllRequests()
         applyBrowserZoom()
         browser.loadURL(url)
@@ -494,7 +481,6 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         scheduleIdeThemeSyncScript()
         scheduleProjectSwitchPromptSuppressionScript()
         scheduleCursorMirrorScript()
-        scheduleSystemNotificationBridgeScript()
         // Events that fired before this panel started caring never reached the tracker.
         agentStatusTracker.seed()
     }
@@ -674,23 +660,6 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         )
     }
 
-    private fun scheduleSystemNotificationBridgeScript() {
-        if (systemNotificationBridgeScriptScheduled) return
-        if (!OpenCodeSettingsState.getInstance().enableSystemNotifications) return
-
-        val serverUrl = serverManager.getServerUrl() ?: return
-        val script = OpenCodeServerProtocol.buildSystemNotificationBridgeScript(
-            enabled = true,
-            notificationCallback = systemNotificationQuery.inject("payload"),
-        ) ?: return
-        val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
-        systemNotificationBridgeScriptScheduled = true
-
-        scriptScheduler.schedule(script, rootUrl) {
-            OpenCodeSettingsState.getInstance().enableSystemNotifications && isBrowserOnOpenCodeServerPage(serverUrl)
-        }
-    }
-
     /**
      * Applies a status transition reported by [agentStatusTracker]. Runs on the event-stream
      * reader thread or a pooled thread; the badge update and VCS refresh dispatch to the EDT
@@ -813,22 +782,6 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         ) ?: return
         browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
         cursorMirrorScriptScheduled = true
-    }
-
-    private fun applySystemNotifications(enabled: Boolean) {
-        val serverUrl = serverManager.getServerUrl() ?: return
-        if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)) return
-        systemNotificationBridgeScriptScheduled = false
-        if (!enabled) {
-            browser.cefBrowser.reload()
-            return
-        }
-        val script = OpenCodeServerProtocol.buildSystemNotificationBridgeScript(
-            enabled = true,
-            notificationCallback = systemNotificationQuery.inject("payload"),
-        ) ?: return
-        browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
-        systemNotificationBridgeScriptScheduled = true
     }
 
     private fun applyIdeThemeSync(enabled: Boolean) {
