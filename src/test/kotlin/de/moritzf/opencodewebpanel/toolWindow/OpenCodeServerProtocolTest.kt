@@ -1497,6 +1497,33 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun completedMessageMentioningRunningStatusInTextIsNotInterrupted() {
+        val json = """{"type":"assistant","time":{"created":1,"completed":2},"content":[{"type":"text","id":"text-0","text":"the part was {\"status\":\"running\"} earlier"}]}"""
+        assertFalse(OpenCodeServerProtocol.isInterruptedAssistantMessage(json))
+    }
+
+    @Test
+    fun realMidTurnMessageFromOpenCodeIsInterrupted() {
+        // Captured from opencode 1.17.13 while a turn was still streaming.
+        val json = """{"id":"msg_f2634f542001uygREY9qiW1ixO","time":{"created":1783052432706},"type":"assistant","agent":"build","model":{"id":"north-mini-code-free","providerID":"opencode"},"content":[{"type":"text","id":"text-0","text":""}],"snapshot":{"start":"4b825dc642cb6eb9a060e54bf8d69288fbee4904"}}"""
+        assertTrue(OpenCodeServerProtocol.isInterruptedAssistantMessage(json))
+    }
+
+    @Test
+    fun realUserInterruptedMessageFromOpenCodeIsNotInterrupted() {
+        // Captured from opencode 1.17.13 after POST /api/session/{id}/interrupt: the stop
+        // settles the message with time.completed plus a top-level error.
+        val json = """{"id":"msg_f2634f542001uygREY9qiW1ixO","time":{"created":1783052432706,"completed":1783052433991},"type":"assistant","agent":"build","model":{"id":"north-mini-code-free","providerID":"opencode"},"content":[{"type":"text","id":"text-0","text":"Here are the numbers from one to five hundred as words:\n\none"}],"snapshot":{"start":"4b825dc642cb6eb9a060e54bf8d69288fbee4904"},"finish":"error","error":{"type":"unknown","message":"Provider turn interrupted"}}"""
+        assertFalse(OpenCodeServerProtocol.isInterruptedAssistantMessage(json))
+    }
+
+    @Test
+    fun nestedErrorObjectDoesNotMaskAnInterruptedMessage() {
+        val json = """{"type":"assistant","time":{"created":1},"content":[{"type":"tool","state":{"status":"running","input":{}},"metadata":{"error":{"type":"x"}}}]}"""
+        assertTrue(OpenCodeServerProtocol.isInterruptedAssistantMessage(json))
+    }
+
+    @Test
     fun parseSessionListFiltersByRecency() {
         val now = System.currentTimeMillis()
         val json = """{"data":[

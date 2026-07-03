@@ -1,5 +1,8 @@
 package de.moritzf.opencodewebpanel.toolWindow
 
+import com.google.gson.JsonElement
+import com.google.gson.JsonObject
+import com.google.gson.JsonParser
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URI
@@ -832,23 +835,17 @@ internal object OpenCodeServerProtocol {
 
     @TestOnly
     fun parseSessionList(json: String, maxAgeMillis: Long, nowMillis: Long): List<SessionSummary> {
-        // Extract each session ID and its time.updated timestamp from the data array.
-        // The session objects contain nested objects (time, tokens, etc.), so we scan for
-        // id fields and nearby updated fields rather than trying to match whole objects.
-        val idRegex = Regex("\"id\"\\s*:\\s*\"(ses_[A-Za-z0-9_-]+)\"")
-        val updatedRegex = Regex("\"updated\"\\s*:\\s*(\\d+)")
+        // Response shape (verified against opencode 1.17.13): {"data":[SessionV2Info...],"cursor":{...}}
+        // with each session carrying id ("ses_...") and time.{created,updated} epoch millis.
+        val data = parseJsonObject(json)?.get("data")?.takeIf { it.isJsonArray }?.asJsonArray
+            ?: return emptyList()
         val results = mutableListOf<SessionSummary>()
-        val idMatches = idRegex.findAll(json).toList()
-        for ((index, idMatch) in idMatches.withIndex()) {
-            val id = idMatch.groupValues[1]
-            // Find the next "updated" field after this id match, but before the next session's
-            // id, so a session without a time.updated cannot steal the next session's timestamp.
-            val searchStart = idMatch.range.last + 1
-            val searchEnd = idMatches.getOrNull(index + 1)?.range?.first ?: json.length
-            val updatedMatch = updatedRegex.find(json, searchStart)
-                ?.takeIf { it.range.first < searchEnd }
+        for (element in data) {
+            val session = element.takeIf { it.isJsonObject }?.asJsonObject ?: continue
+            val id = session.stringMember("id")?.takeIf { it.startsWith("ses_") } ?: continue
+            val updated = session.get("time")?.takeIf { it.isJsonObject }?.asJsonObject
+                ?.longMember("updated")
                 ?: continue
-            val updated = updatedMatch.groupValues[1].toLongOrNull() ?: continue
             if (nowMillis - updated <= maxAgeMillis) {
                 results.add(SessionSummary(id, updated))
             }
@@ -878,54 +875,54 @@ internal object OpenCodeServerProtocol {
     /** Extracts the first JSON object of the `data` array from a `{"data":[{...}]}` response. */
     @TestOnly
     fun extractFirstDataObject(body: String): String? {
-        val dataMatch = Regex("\"data\"\\s*:\\s*\\[").find(body) ?: return null
-        // Extract the first object from the data array.
-        val arrayStart = dataMatch.range.last + 1
-        val objStart = body.indexOf('{', arrayStart)
-        if (objStart < 0) return null
-        // Message text routinely contains braces inside JSON string values (code snippets),
-        // so the brace matching must skip string contents and escape sequences.
-        var depth = 0
-        var inString = false
-        var escaped = false
-        for (i in objStart until body.length) {
-            val ch = body[i]
-            when {
-                escaped -> escaped = false
-                inString && ch == '\\' -> escaped = true
-                ch == '"' -> inString = !inString
-                inString -> {}
-                ch == '{' -> depth++
-                ch == '}' -> { depth--; if (depth == 0) return body.substring(objStart, i + 1) }
-            }
-        }
-        return null
+        val data = parseJsonObject(body)?.get("data")?.takeIf { it.isJsonArray }?.asJsonArray
+            ?: return null
+        return data.firstOrNull { it.isJsonObject }?.toString()
     }
 
     /**
-     * Inspects a projected assistant message JSON object for signs that the agent turn was
-     * interrupted by a crash or kill (not by a user-initiated stop):
+     * Inspects a projected assistant message (SessionMessageAssistant) for signs that the
+     * agent turn was interrupted by a crash or kill (not by a user-initiated stop):
      * - `time.completed` is missing (the turn never finished)
      * - Any tool in the content has state `pending` or `running` (never settled)
      *
-     * A user-initiated stop sets the `error` field and marks tools with `error` status
-     * gracefully, so it is intentionally not treated as a crash here.
+     * A user-initiated stop settles the message: it sets both `time.completed` and the
+     * top-level `error` field (verified against opencode 1.17.13), so it is intentionally
+     * not treated as a crash here.
      */
     fun isInterruptedAssistantMessage(messageJson: String): Boolean {
-        if (messageJson.isBlank()) return false
-        // Must be an assistant message.
-        if (!Regex("\"type\"\\s*:\\s*\"assistant\"").containsMatchIn(messageJson)) return false
-        // A user-initiated stop sets the error field and settles tools with error status
-        // gracefully — that is an intentional stop, not a crash. Skip it.
-        if (Regex("\"error\"\\s*:\\s*\\{").containsMatchIn(messageJson)) return false
+        val message = parseJsonObject(messageJson) ?: return false
+        if (message.stringMember("type") != "assistant") return false
+        // Top-level error → the turn ended (user stop or provider failure), not a crash.
+        if (message.get("error")?.isJsonNull == false) return false
         // time.completed missing → turn never finished (process died mid-turn).
-        val hasCompleted = Regex("\"completed\"\\s*:\\s*\\d").containsMatchIn(messageJson)
-        val hasTime = Regex("\"time\"\\s*:\\s*\\{").containsMatchIn(messageJson)
-        if (hasTime && !hasCompleted) return true
-        // Any tool with pending/running state → unsettled work.
-        if (Regex("\"status\"\\s*:\\s*\"(?:pending|running)\"").containsMatchIn(messageJson)) return true
-        return false
+        val time = message.get("time")?.takeIf { it.isJsonObject }?.asJsonObject
+        if (time != null && !time.has("completed")) return true
+        // Any tool part with pending/running state → unsettled work.
+        val content = message.get("content")?.takeIf { it.isJsonArray }?.asJsonArray ?: return false
+        return content.any { part ->
+            val partObject = part.takeIf { it.isJsonObject }?.asJsonObject
+            partObject?.stringMember("type") == "tool" &&
+                partObject.get("state")?.takeIf { it.isJsonObject }?.asJsonObject
+                    ?.stringMember("status") in listOf("pending", "running")
+        }
     }
+
+    private fun parseJsonObject(text: String): JsonObject? {
+        if (text.isBlank()) return null
+        return runCatching { JsonParser.parseString(text) }.getOrNull()
+            ?.takeIf { it.isJsonObject }
+            ?.asJsonObject
+    }
+
+    private fun JsonObject.stringMember(name: String): String? =
+        get(name)?.takeIf { it.isStringPrimitive() }?.asString
+
+    private fun JsonObject.longMember(name: String): Long? =
+        get(name)?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isNumber }
+            ?.let { runCatching { it.asLong }.getOrNull() }
+
+    private fun JsonElement.isStringPrimitive(): Boolean = isJsonPrimitive && asJsonPrimitive.isString
 
     /**
      * Sends a continuation prompt to a session via the v2 API
