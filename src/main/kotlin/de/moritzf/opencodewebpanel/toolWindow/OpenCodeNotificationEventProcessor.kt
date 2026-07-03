@@ -51,8 +51,7 @@ internal class OpenCodeNotificationEventProcessor(
         // session.status is the successor of the deprecated session.idle event; current
         // servers emit both for the same state change.
         if (type == "session.status") {
-            val statusType = properties.get("status")?.takeIf { it.isJsonObject }?.asJsonObject
-                ?.stringMember("type")
+            val statusType = properties.objectMember("status")?.stringMember("type")
             if (statusType == "busy" || statusType == "retry") {
                 // The session picked up work again (a prompt from any OpenCode client), so
                 // stale "response ready" / "session error" notifications no longer apply.
@@ -138,7 +137,4 @@ internal class OpenCodeNotificationEventProcessor(
         }
         return true
     }
-
-    private fun JsonObject.stringMember(name: String): String? =
-        get(name)?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }?.asString
 }

@@ -1,6 +1,5 @@
 package de.moritzf.opencodewebpanel.toolWindow
 
-import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import java.io.File
@@ -856,7 +855,7 @@ internal object OpenCodeServerProtocol {
         val message = parseJsonObject(messageJson) ?: return false
         if (message.stringMember("type") != "assistant") return false
         if (message.get("error")?.isJsonNull != false) return false
-        val time = message.get("time")?.takeIf { it.isJsonObject }?.asJsonObject ?: return false
+        val time = message.objectMember("time") ?: return false
         val created = time.longMember("created") ?: return false
         val completed = time.longMember("completed") ?: return false
         return created <= createdBeforeMillis && completed >= completedAfterMillis
@@ -871,7 +870,7 @@ internal object OpenCodeServerProtocol {
     fun isUnsettledTurnFromBefore(messageJson: String, createdBeforeMillis: Long): Boolean {
         val message = parseJsonObject(messageJson) ?: return false
         if (message.stringMember("type") != "assistant") return false
-        val time = message.get("time")?.takeIf { it.isJsonObject }?.asJsonObject ?: return false
+        val time = message.objectMember("time") ?: return false
         val created = time.longMember("created") ?: return false
         return created <= createdBeforeMillis && !time.has("completed")
     }
@@ -902,7 +901,7 @@ internal object OpenCodeServerProtocol {
 
     fun parseSessionInfo(json: String): SessionInfo? {
         val root = parseJsonObject(json) ?: return null
-        val session = root.get("data")?.takeIf { it.isJsonObject }?.asJsonObject ?: root
+        val session = root.objectMember("data") ?: root
         return SessionInfo(
             title = session.stringMember("title").orEmpty(),
             parentID = session.stringMember("parentID")?.takeIf { it.isNotBlank() },
@@ -1033,7 +1032,7 @@ internal object OpenCodeServerProtocol {
         for (element in data) {
             val session = element.takeIf { it.isJsonObject }?.asJsonObject ?: continue
             val id = session.stringMember("id")?.takeIf { it.startsWith("ses_") } ?: continue
-            val updated = session.get("time")?.takeIf { it.isJsonObject }?.asJsonObject
+            val updated = session.objectMember("time")
                 ?.longMember("updated")
                 ?: continue
             if (nowMillis - updated <= maxAgeMillis) {
@@ -1091,14 +1090,14 @@ internal object OpenCodeServerProtocol {
         // Top-level error → the turn ended (user stop or provider failure), not a crash.
         if (message.get("error")?.isJsonNull == false) return false
         // time.completed missing → turn never finished (process died mid-turn).
-        val time = message.get("time")?.takeIf { it.isJsonObject }?.asJsonObject
+        val time = message.objectMember("time")
         if (time != null && !time.has("completed")) return true
         // Any tool part with pending/running state → unsettled work.
         val content = message.get("content")?.takeIf { it.isJsonArray }?.asJsonArray ?: return false
         return content.any { part ->
             val partObject = part.takeIf { it.isJsonObject }?.asJsonObject
             partObject?.stringMember("type") == "tool" &&
-                partObject.get("state")?.takeIf { it.isJsonObject }?.asJsonObject
+                partObject.objectMember("state")
                     ?.stringMember("status") in listOf("pending", "running")
         }
     }
@@ -1109,15 +1108,6 @@ internal object OpenCodeServerProtocol {
             ?.takeIf { it.isJsonObject }
             ?.asJsonObject
     }
-
-    private fun JsonObject.stringMember(name: String): String? =
-        get(name)?.takeIf { it.isStringPrimitive() }?.asString
-
-    private fun JsonObject.longMember(name: String): Long? =
-        get(name)?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isNumber }
-            ?.let { runCatching { it.asLong }.getOrNull() }
-
-    private fun JsonElement.isStringPrimitive(): Boolean = isJsonPrimitive && asJsonPrimitive.isString
 
     /**
      * Sends a continuation prompt to a session via the v2 API

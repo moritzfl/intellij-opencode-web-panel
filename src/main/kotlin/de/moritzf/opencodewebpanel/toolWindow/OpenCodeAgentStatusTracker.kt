@@ -41,8 +41,7 @@ internal class OpenCodeAgentStatusState {
         when (type) {
             "session.status" -> {
                 val sessionID = properties.stringMember("sessionID").orEmpty()
-                val statusType = properties.get("status")?.takeIf { it.isJsonObject }?.asJsonObject
-                    ?.stringMember("type")
+                val statusType = properties.objectMember("status")?.stringMember("type")
                 if (sessionID.isBlank() || statusType == null) return false
                 if (statusType == "busy" || statusType == "retry") {
                     busySessions.add(sessionID)
@@ -69,9 +68,6 @@ internal class OpenCodeAgentStatusState {
         busySessions.clear()
         attentionRequests.clear()
     }
-
-    private fun JsonObject.stringMember(name: String): String? =
-        get(name)?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }?.asString
 }
 
 /**

@@ -52,15 +52,12 @@ internal class OpenCodeGlobalEventStream(
             val event = runCatching { JsonParser.parseString(json) }.getOrNull()
                 ?.takeIf { it.isJsonObject }?.asJsonObject ?: return null
             val directory = event.stringMember("directory")?.takeIf { it.isNotBlank() } ?: return null
-            val payload = event.get("payload")?.takeIf { it.isJsonObject }?.asJsonObject ?: return null
+            val payload = event.objectMember("payload") ?: return null
             val type = payload.stringMember("type")?.takeIf { it.isNotBlank() } ?: return null
             val recordId = payload.stringMember("id").orEmpty()
-            val properties = payload.get("properties")?.takeIf { it.isJsonObject }?.asJsonObject ?: JsonObject()
+            val properties = payload.objectMember("properties") ?: JsonObject()
             return OpenCodeGlobalEvent(directory, type, recordId, properties)
         }
-
-        private fun JsonObject.stringMember(name: String): String? =
-            get(name)?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }?.asString
     }
 
     private val lock = Any()
