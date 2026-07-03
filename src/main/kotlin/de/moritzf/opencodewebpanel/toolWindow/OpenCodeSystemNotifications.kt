@@ -28,6 +28,29 @@ internal class OpenCodeSystemNotifications(
         }
     }
 
+    /**
+     * Entry point for everything the browser-side notification bridge sends: either a
+     * notification to show or a dismissal signal for notifications that became obsolete
+     * (request answered in the OpenCode UI, or the user interacted with the notified session).
+     */
+    fun handle(payload: String?) {
+        val dismissal = OpenCodeServerProtocol.parseSystemNotificationDismissal(payload)
+        if (dismissal != null) {
+            dismiss(dismissal)
+            return
+        }
+        show(payload)
+    }
+
+    private fun dismiss(dismissal: OpenCodeServerProtocol.SystemNotificationDismissal) {
+        val toExpire = synchronized(activeNotificationsByKey) {
+            activeNotificationsByKey.remove(dismissal.key)?.toList()
+        } ?: return
+        ApplicationManager.getApplication().invokeLater {
+            toExpire.forEach { it.expire() }
+        }
+    }
+
     fun show(payload: String?) {
         val openCodeNotification = OpenCodeServerProtocol.parseSystemNotificationPayload(payload) ?: return
         ApplicationManager.getApplication().invokeLater {
@@ -55,7 +78,23 @@ internal class OpenCodeSystemNotifications(
                     target.openRoute(openCodeNotification.route)
                 }
             })
+            OpenCodeServerProtocol.notificationDismissKeys(openCodeNotification).forEach { key ->
+                registerForAutoDismiss(key, ideNotification)
+            }
             ideNotification.notify(target.project)
+        }
+    }
+
+    private fun registerForAutoDismiss(key: String, notification: Notification) {
+        synchronized(activeNotificationsByKey) {
+            activeNotificationsByKey.getOrPut(key) { mutableListOf() }.add(notification)
+        }
+        notification.whenExpired {
+            synchronized(activeNotificationsByKey) {
+                val remaining = activeNotificationsByKey[key] ?: return@whenExpired
+                remaining.remove(notification)
+                if (remaining.isEmpty()) activeNotificationsByKey.remove(key)
+            }
         }
     }
 
@@ -148,6 +187,11 @@ internal class OpenCodeSystemNotifications(
         private const val RECENT_NOTIFICATION_MILLIS = 30_000L
         private val targets = mutableSetOf<OpenCodeSystemNotifications>()
         private val recentNotificationIds = linkedMapOf<String, Long>()
+
+        // Live notifications by dismiss key ("request:<id>" / "session:<id>"). Static because a
+        // dismissal can arrive through any panel's bridge, not just the one that created the
+        // notification; entries are removed via whenExpired, so the map cannot grow stale.
+        private val activeNotificationsByKey = mutableMapOf<String, MutableList<Notification>>()
 
         private fun targetFor(directory: String): OpenCodeSystemNotifications? {
             val normalizedDirectory = normalizeDirectory(directory) ?: return null

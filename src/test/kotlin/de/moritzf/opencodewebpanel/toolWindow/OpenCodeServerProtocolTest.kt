@@ -1071,6 +1071,71 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun buildSystemNotificationBridgeScriptSendsDismissalSignals() {
+        val script = OpenCodeServerProtocol.buildSystemNotificationBridgeScript(
+            enabled = true,
+            notificationCallback = "window.intellijNotify(payload)",
+        )!!
+
+        assertTrue(script.contains("'__opencode_dismiss__'"))
+        assertTrue(script.contains("'permission.replied' || type === 'question.replied' || type === 'question.rejected'"))
+        assertTrue(script.contains("status.type === 'busy' || status.type === 'retry'"))
+        assertTrue(script.contains("addEventListener('pointerdown'"))
+        assertTrue(script.contains("addEventListener('keydown'"))
+        assertTrue(script.contains("addEventListener('focus'"))
+        assertTrue(script.contains("/session\\/"))
+    }
+
+    @Test
+    fun parseSystemNotificationDismissalReadsRequestAndSessionScopes() {
+        assertEquals(
+            "request:per_xyz789",
+            OpenCodeServerProtocol.parseSystemNotificationDismissal("__opencode_dismiss__\nrequest\nper_xyz789")!!.key,
+        )
+        assertEquals(
+            "session:ses_abc123",
+            OpenCodeServerProtocol.parseSystemNotificationDismissal("__opencode_dismiss__\nsession\nses_abc123")!!.key,
+        )
+    }
+
+    @Test
+    fun parseSystemNotificationDismissalRejectsMalformedPayloads() {
+        assertNull(OpenCodeServerProtocol.parseSystemNotificationDismissal(null))
+        assertNull(OpenCodeServerProtocol.parseSystemNotificationDismissal(""))
+        assertNull(OpenCodeServerProtocol.parseSystemNotificationDismissal("__opencode_dismiss__\nrequest"))
+        assertNull(OpenCodeServerProtocol.parseSystemNotificationDismissal("__opencode_dismiss__\nelsewhere\nper_1"))
+        assertNull(OpenCodeServerProtocol.parseSystemNotificationDismissal("__opencode_dismiss__\nsession\nses%2F..%2Fevil"))
+        assertNull(OpenCodeServerProtocol.parseSystemNotificationDismissal("__opencode_dismiss__\nsession\n%20"))
+        // A regular notification payload must never be mistaken for a dismissal.
+        assertNull(OpenCodeServerProtocol.parseSystemNotificationDismissal("id1\n%2Ftmp%2Fproject\n%2Froute\nTitle\nBody\npermission\nses_1\nper_1"))
+    }
+
+    @Test
+    fun permissionAndQuestionNotificationsDismissByRequest() {
+        val permission = OpenCodeServerProtocol.SystemNotificationPayload(
+            id = "id", directory = "/tmp", route = "/r", title = "t", body = "b",
+            kind = "permission", sessionID = "ses_1", requestID = "per_1",
+        )
+        assertEquals(listOf("request:per_1"), OpenCodeServerProtocol.notificationDismissKeys(permission))
+        assertEquals(
+            listOf("request:que_1"),
+            OpenCodeServerProtocol.notificationDismissKeys(permission.copy(kind = "question", requestID = "que_1")),
+        )
+        assertTrue(OpenCodeServerProtocol.notificationDismissKeys(permission.copy(requestID = "")).isEmpty())
+    }
+
+    @Test
+    fun sessionNotificationsDismissBySession() {
+        val session = OpenCodeServerProtocol.SystemNotificationPayload(
+            id = "id", directory = "/tmp", route = "/r", title = "t", body = "b",
+            kind = "session", sessionID = "ses_1", requestID = "",
+        )
+        assertEquals(listOf("session:ses_1"), OpenCodeServerProtocol.notificationDismissKeys(session))
+        assertTrue(OpenCodeServerProtocol.notificationDismissKeys(session.copy(sessionID = "")).isEmpty())
+        assertTrue(OpenCodeServerProtocol.notificationDismissKeys(session.copy(sessionID = "ses/../evil")).isEmpty())
+    }
+
+    @Test
     fun parseCodeReferenceExtractsFileNameAndExtension() {
         val ref = OpenCodeServerProtocol.parseCodeReference("Main.kt")!!
 

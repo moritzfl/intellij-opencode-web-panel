@@ -188,7 +188,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         }
         systemNotificationQuery.addHandler { payload ->
             if (OpenCodeSettingsState.getInstance().enableSystemNotifications) {
-                systemNotifications.show(payload)
+                systemNotifications.handle(payload)
             }
             null
         }

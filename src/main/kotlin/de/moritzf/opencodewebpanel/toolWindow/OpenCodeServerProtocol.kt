@@ -362,6 +362,46 @@ internal object OpenCodeServerProtocol {
         val requestID: String = "",
     )
 
+    /**
+     * Marker line the notification bridge sends instead of a notification payload when a shown
+     * notification became obsolete: the user answered the permission or question in the OpenCode
+     * UI, or interacted with the notified session. Cannot collide with a real payload, whose
+     * first line is a record id.
+     */
+    const val NOTIFICATION_DISMISSAL_MARKER = "__opencode_dismiss__"
+
+    data class SystemNotificationDismissal(val key: String)
+
+    /** Parses a `marker\nscope\nid` dismissal payload; scope is `request` or `session`. */
+    fun parseSystemNotificationDismissal(payload: String?): SystemNotificationDismissal? {
+        val parts = payload?.split('\n', limit = 3) ?: return null
+        if (parts.size != 3) return null
+        if (decodeUrlParameter(parts[0]) != NOTIFICATION_DISMISSAL_MARKER) return null
+        val scope = decodeUrlParameter(parts[1])
+        if (scope != "request" && scope != "session") return null
+        val id = decodeUrlParameter(parts[2])?.trim().orEmpty()
+        if (!isOpenCodeRecordId(id)) return null
+        return SystemNotificationDismissal("$scope:$id")
+    }
+
+    /**
+     * Keys under which a shown notification can be auto-dismissed. Permission and question
+     * notifications are dismissed when their request is answered ([SystemNotificationDismissal]
+     * with a `request` scope); plain session notifications (response ready, session error) when
+     * the user interacts with the notified session (`session` scope). Deliberately not both for
+     * permissions: merely viewing the session must not remove a still-unanswered request.
+     */
+    fun notificationDismissKeys(payload: SystemNotificationPayload): List<String> {
+        return when (payload.kind) {
+            "permission", "question" -> listOfNotNull(
+                payload.requestID.takeIf(::isOpenCodeRecordId)?.let { "request:$it" },
+            )
+            else -> listOfNotNull(
+                payload.sessionID.takeIf(::isOpenCodeRecordId)?.let { "session:$it" },
+            )
+        }
+    }
+
     fun isPermissionNotification(payload: SystemNotificationPayload): Boolean {
         return payload.kind == "permission" &&
             isOpenCodeRecordId(payload.sessionID) &&

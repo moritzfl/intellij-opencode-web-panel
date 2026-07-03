@@ -545,20 +545,43 @@ internal object OpenCodeBrowserSnippets {
                   }
                 }
               };
+              const sendDismissToIde = (scope, id) => {
+                const encodedPayload = ['__opencode_dismiss__', scope, id].map(encode).join('\n');
+                try {
+                  const payload = encodedPayload;
+                  $notificationCallback;
+                } catch (_) {}
+              };
               const handleEvent = async (event) => {
                 const record = event && event.payload;
                 const directory = event && typeof event.directory === 'string' ? event.directory : '';
                 if (!directory || !record || typeof record.type !== 'string') return;
-                if (focused()) return;
                 const properties = record.properties || {};
                 let type = record.type;
+                // Dismissal signals are processed regardless of page focus: an answered request
+                // or a resumed session makes its IDE notification obsolete everywhere.
+                if (type === 'permission.replied' || type === 'question.replied' || type === 'question.rejected') {
+                  if (typeof properties.requestID === 'string' && properties.requestID) {
+                    sendDismissToIde('request', properties.requestID);
+                  }
+                  return;
+                }
                 // session.status is the successor of the deprecated session.idle event; current
                 // servers emit both for the same state change.
                 if (type === 'session.status') {
                   const status = properties.status;
+                  if (status && (status.type === 'busy' || status.type === 'retry')) {
+                    // The session picked up work again (a prompt from any OpenCode client), so
+                    // stale "response ready" / "session error" notifications no longer apply.
+                    if (typeof properties.sessionID === 'string' && properties.sessionID) {
+                      sendDismissToIde('session', properties.sessionID);
+                    }
+                    return;
+                  }
                   if (!status || status.type !== 'idle') return;
                   type = 'session.idle';
                 }
+                if (focused()) return;
                 if (
                   type !== 'session.idle' &&
                   type !== 'session.error' &&
@@ -605,6 +628,28 @@ internal object OpenCodeBrowserSnippets {
                 window.setTimeout(() => seen.delete(id), 30000);
                 sendToIde({ id, directory, route: routeFor(directory, sessionID), title, body, kind, sessionID, requestID });
               };
+              // Interacting with a page that shows a session dismisses that session's
+              // notifications: the user has seen what the notification pointed at. Both route
+              // layouts put the session id after a "/session/" path segment. The short delay
+              // lets a navigating click be evaluated against the route it navigates to, and the
+              // throttle keeps ordinary typing from flooding the IDE callback.
+              let lastDismissedSessionID = '';
+              let lastDismissSentAt = 0;
+              const dismissCurrentSessionNotifications = () => {
+                if (!focused()) return;
+                const match = window.location.pathname.match(/\/session\/([^\/?#]+)/);
+                const sessionID = match ? decodeURIComponent(match[1]) : '';
+                if (!sessionID) return;
+                const now = Date.now();
+                if (sessionID === lastDismissedSessionID && now - lastDismissSentAt < 5000) return;
+                lastDismissedSessionID = sessionID;
+                lastDismissSentAt = now;
+                sendDismissToIde('session', sessionID);
+              };
+              const onUserInteraction = () => window.setTimeout(dismissCurrentSessionNotifications, 50);
+              window.addEventListener('focus', onUserInteraction);
+              document.addEventListener('pointerdown', onUserInteraction, true);
+              document.addEventListener('keydown', onUserInteraction, true);
               window.__opencodeIntellijEventHub.subscribe({ onEvent: handleEvent });
             })();
         """
