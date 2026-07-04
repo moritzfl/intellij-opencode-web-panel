@@ -18,10 +18,10 @@ import com.intellij.ui.dsl.builder.AlignX
 import com.intellij.ui.dsl.builder.RightGap
 import com.intellij.ui.dsl.builder.panel
 import com.intellij.util.ui.UIUtil
-import de.moritzf.opencodewebpanel.toolWindow.OpenCodeServerLifecycleState
-import de.moritzf.opencodewebpanel.toolWindow.OpenCodeServerLifecycleListener
-import de.moritzf.opencodewebpanel.toolWindow.OpenCodeServerProtocol
-import de.moritzf.opencodewebpanel.toolWindow.SharedOpenCodeServerManager
+import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleListener
+import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState
+import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
+import de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager
 import de.moritzf.opencodewebpanel.toolWindow.confirmOpenCodeServerRestart
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection

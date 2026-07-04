@@ -10,6 +10,8 @@ import com.intellij.ui.components.JBTextArea
 import com.intellij.util.ui.JBFont
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.components.BorderLayoutPanel
+import de.moritzf.opencodewebpanel.server.OpenCodeServerLogBuffer
+import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.settings.OpenCodePortMode
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsListener

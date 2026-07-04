@@ -7,6 +7,8 @@ import com.intellij.openapi.actionSystem.Shortcut
 import com.intellij.openapi.keymap.KeymapManager
 import com.intellij.openapi.util.Disposer
 import com.intellij.ui.jcef.JBCefBrowser
+import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
+import de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
 import java.awt.KeyboardFocusManager
 import java.awt.KeyEventDispatcher

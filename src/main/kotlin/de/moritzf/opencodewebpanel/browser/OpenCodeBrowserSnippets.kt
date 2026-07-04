@@ -1,0 +1,1001 @@
+package de.moritzf.opencodewebpanel.browser
+
+import org.intellij.lang.annotations.Language
+import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
+
+internal object OpenCodeBrowserSnippets {
+
+    fun buildOpenProjectScript(
+        projectBasePath: String?,
+        serverUrl: String? = null,
+        openMostRecentConversation: Boolean = false,
+    ): String? {
+        if (projectBasePath.isNullOrBlank()) return null
+        return buildOpenProjectScript(
+            projectBasePath = projectBasePath,
+            projectPath = "/${OpenCodeServerProtocol.encodeDirectory(projectBasePath)}/session",
+            expectedOrigin = serverUrl?.let(OpenCodeServerProtocol::buildOrigin),
+            openMostRecentConversation = openMostRecentConversation,
+        )
+    }
+
+    /**
+     * Maps a CSS cursor computed value to the closest AWT predefined cursor type. Custom
+     * `url(...)` cursors resolve through their keyword fallback; CSS values without an AWT
+     * counterpart (help, copy, zoom-in, ...) fall back to the default arrow.
+     */
+    fun awtCursorTypeForCss(cssCursor: String?): Int {
+        val keyword = cssCursor?.split(',')
+            ?.map { it.trim().lowercase() }
+            ?.lastOrNull { it.isNotBlank() && !it.startsWith("url(") }
+            ?: return java.awt.Cursor.DEFAULT_CURSOR
+        return when (keyword) {
+            "pointer" -> java.awt.Cursor.HAND_CURSOR
+            "text", "vertical-text" -> java.awt.Cursor.TEXT_CURSOR
+            "wait", "progress" -> java.awt.Cursor.WAIT_CURSOR
+            "crosshair", "cell" -> java.awt.Cursor.CROSSHAIR_CURSOR
+            "move", "grab", "grabbing", "all-scroll" -> java.awt.Cursor.MOVE_CURSOR
+            "n-resize" -> java.awt.Cursor.N_RESIZE_CURSOR
+            "s-resize", "ns-resize", "row-resize" -> java.awt.Cursor.S_RESIZE_CURSOR
+            "e-resize" -> java.awt.Cursor.E_RESIZE_CURSOR
+            "w-resize", "ew-resize", "col-resize" -> java.awt.Cursor.W_RESIZE_CURSOR
+            "ne-resize", "nesw-resize" -> java.awt.Cursor.NE_RESIZE_CURSOR
+            "nw-resize", "nwse-resize" -> java.awt.Cursor.NW_RESIZE_CURSOR
+            "se-resize" -> java.awt.Cursor.SE_RESIZE_CURSOR
+            "sw-resize" -> java.awt.Cursor.SW_RESIZE_CURSOR
+            else -> java.awt.Cursor.DEFAULT_CURSOR
+        }
+    }
+
+    fun buildOpenProjectScript(
+        projectBasePath: String,
+        projectPath: String,
+        expectedOrigin: String?,
+        openMostRecentConversation: Boolean,
+    ): String {
+        val directory = escapeJavaScript(projectBasePath)
+        val escapedProjectPath = escapeJavaScript(projectPath)
+        val originGuard = expectedOrigin
+            ?.let(::escapeJavaScript)
+            ?.let {
+                @Language("JavaScript")
+                val guard = "if (window.location.origin !== '$it') return;"
+                guard
+            }
+            .orEmpty()
+        val openMostRecentConversationLiteral = openMostRecentConversation.toString()
+        @Language("JavaScript")
+        val script = """
+            (() => {
+              const directory = '$directory';
+              const projectPath = '$escapedProjectPath';
+              let path = projectPath;
+              const storageKey = 'opencode.global.dat:server';
+              const layoutStorageKey = 'opencode.global.dat:layout.page';
+              const scope = 'local';
+              const openMostRecentConversation = $openMostRecentConversationLiteral;
+              let foundRecentSession = false;
+              const routeDirectory = (value) => {
+                const bytes = new TextEncoder().encode(value);
+                let binary = '';
+                bytes.forEach((byte) => binary += String.fromCharCode(byte));
+                return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+${'$'}/g, '');
+              };
+              const decodeRouteDirectory = (value) => {
+                try {
+                  const base64 = value.replace(/-/g, '+').replace(/_/g, '/');
+                  const padded = base64 + '='.repeat((4 - base64.length % 4) % 4);
+                  const binary = atob(padded);
+                  const bytes = new Uint8Array(binary.length);
+                  for (let index = 0; index < binary.length; index += 1) {
+                    bytes[index] = binary.charCodeAt(index);
+                  }
+                  return new TextDecoder().decode(bytes);
+                } catch (_) {
+                  return '';
+                }
+              };
+              const comparableDirectory = (value) => {
+                const normalized = String(value || '').trim().replace(/\\/g, '/').replace(/\/+$/, '');
+                return /^[A-Za-z]:\//.test(normalized) ? normalized[0].toLowerCase() + normalized.slice(1) : normalized;
+              };
+              const pathKey = (value) => {
+                const text = String(value || '');
+                const isWindows = (text.length >= 2 && text.charAt(1) === ':') || text.startsWith('\\\\');
+                let normalized = isWindows ? text.replace(/\\/g, '/') : text;
+                while (normalized.endsWith('/')) normalized = normalized.slice(0, -1);
+                if (!normalized && text.startsWith('/')) return '/';
+                if (/^[A-Za-z]:$/.test(normalized)) return normalized + '/';
+                return normalized;
+              };
+              const findLastProjectSession = (layout) => {
+                if (!layout || typeof layout.lastProjectSession !== 'object' || layout.lastProjectSession === null) return undefined;
+                const targetKey = pathKey(directory);
+                // The session's own directory must also match this panel's project: the value is
+                // the navigation target, and a stale or inconsistent entry must never send the
+                // panel to another project's session.
+                const isUsable = (value) => value && typeof value.directory === 'string' && typeof value.id === 'string' && pathKey(value.directory) === targetKey;
+                const raw = layout.lastProjectSession[directory];
+                if (isUsable(raw)) return raw;
+                for (const [key, value] of Object.entries(layout.lastProjectSession)) {
+                  if (pathKey(key) === targetKey && isUsable(value)) {
+                    return value;
+                  }
+                }
+                return undefined;
+              };
+              const currentRouteDirectory = () => {
+                const match = /^\/([^/?#]+)\/session(?:[/?#]|${'$'})/.exec(window.location.pathname);
+                return match ? decodeRouteDirectory(match[1]) : '';
+              };
+              const onSameProjectRoute = () => comparableDirectory(currentRouteDirectory()) === comparableDirectory(directory);
+              if (openMostRecentConversation) {
+                try {
+                  const rawLayout = window.localStorage.getItem(layoutStorageKey);
+                  const layout = rawLayout ? JSON.parse(rawLayout) : undefined;
+                  const session = findLastProjectSession(layout);
+                  if (session) {
+                    foundRecentSession = true;
+                    path = '/' + routeDirectory(session.directory) + '/session/' + encodeURIComponent(session.id);
+                  }
+                } catch (_) {}
+              }
+              const navigationKey = 'opencode.intellij.project.opened:' + directory;
+              const navigationPendingUntilKey = navigationKey + ':pending-until';
+              const getNavigationState = () => {
+                try {
+                  return window.sessionStorage.getItem(navigationKey);
+                } catch (_) {
+                  return undefined;
+                }
+              };
+              const setNavigationState = (value) => {
+                try {
+                  window.sessionStorage.setItem(navigationKey, value);
+                } catch (_) {}
+              };
+              const shouldKeepWaitingForRecentSession = () => {
+                if (!openMostRecentConversation || foundRecentSession) return false;
+                try {
+                  let pendingUntil = Number(window.sessionStorage.getItem(navigationPendingUntilKey) || '0');
+                  const now = Date.now();
+                  if (!Number.isFinite(pendingUntil) || pendingUntil <= 0) {
+                    pendingUntil = now + 10000;
+                    window.sessionStorage.setItem(navigationPendingUntilKey, String(pendingUntil));
+                  }
+                  return now < pendingUntil;
+                } catch (_) {
+                  return false;
+                }
+              };
+              $originGuard
+              try {
+                const raw = window.localStorage.getItem(storageKey);
+                const state = raw ? JSON.parse(raw) : { list: [], projects: {}, lastProject: {} };
+                state.list = Array.isArray(state.list) ? state.list : [];
+                state.projects = state.projects && typeof state.projects === 'object' ? state.projects : {};
+                state.lastProject = state.lastProject && typeof state.lastProject === 'object' ? state.lastProject : {};
+                const projects = Array.isArray(state.projects[scope]) ? state.projects[scope] : [];
+                state.projects[scope] = [
+                  { worktree: directory, expanded: true },
+                  ...projects.filter((project) => project && project.worktree !== directory),
+                ];
+                state.lastProject[scope] = directory;
+                window.localStorage.setItem(storageKey, JSON.stringify(state));
+              } catch (error) {
+                if (window.console && window.console.warn) {
+                  window.console.warn('Failed to seed OpenCode project state', error);
+                }
+              }
+              const projectSessionPrefix = projectPath + '/';
+              const onProjectSessionRoute = window.location.pathname === projectPath || window.location.pathname.startsWith(projectSessionPrefix);
+              const keepWaitingForRecentSession = shouldKeepWaitingForRecentSession();
+              if (getNavigationState() === path && !keepWaitingForRecentSession) return;
+              if (onSameProjectRoute() && !keepWaitingForRecentSession && !foundRecentSession) {
+                setNavigationState(window.location.pathname);
+                return;
+              }
+              if (window.location.pathname === path) {
+                if (!keepWaitingForRecentSession) setNavigationState(path);
+                return;
+              }
+              if (window.location.pathname !== projectPath && onProjectSessionRoute) {
+                // Already viewing a specific conversation of this project (possibly opened by
+                // the user between scheduled runs of this script) - never navigate away from it.
+                setNavigationState(window.location.pathname);
+                return;
+              }
+              if (window.location.pathname !== path) {
+                if (!keepWaitingForRecentSession) setNavigationState(path);
+                window.location.assign(path);
+                return;
+              }
+              if (!keepWaitingForRecentSession) setNavigationState(path);
+            })();
+        """
+        return script.trimIndent()
+    }
+
+    fun buildRestoreOpenCodeLocalStorageScript(snapshot: String?): String? {
+        val text = snapshot?.trim().orEmpty()
+        if (text.isBlank() || text == "{}") return null
+        val payload = escapeJavaScript(text)
+        @Language("JavaScript")
+        val script = """
+            (() => {
+              const raw = '$payload';
+              const exactKeys = new Set([
+                '${OpenCodeServerProtocol.OPEN_CODE_THEME_ID_STORAGE_KEY}',
+                '${OpenCodeServerProtocol.OPEN_CODE_COLOR_SCHEME_STORAGE_KEY}',
+                'opencode-theme-css-light',
+                'opencode-theme-css-dark',
+                'settings.v3',
+              ]);
+              const globalKeys = /^opencode\.global\.dat:(language|model|layout|layout\.page|permission|notification|tabs|open\.app|go-upsell)${'$'}/;
+              const workspaceKeys = /^opencode\.workspace\.[^:]+:workspace:(model-selection|terminal|project|icon|vcs)${'$'}/;
+              const windowKeys = /^opencode\.window\.browser\.dat:tabs(\.recent)?${'$'}/;
+              const shouldPersistKey = (key) => typeof key === 'string' && (exactKeys.has(key) || globalKeys.test(key) || workspaceKeys.test(key) || windowKeys.test(key));
+              try {
+                const snapshot = JSON.parse(raw);
+                if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return;
+                for (const [key, value] of Object.entries(snapshot)) {
+                  if (!shouldPersistKey(key) || typeof value !== 'string') continue;
+                  if (window.localStorage.getItem(key) === null) {
+                    window.localStorage.setItem(key, value);
+                  }
+                }
+              } catch (error) {
+                if (window.console && window.console.warn) {
+                  window.console.warn('Failed to restore OpenCode localStorage snapshot', error);
+                }
+              }
+            })();
+        """
+        return script.trimIndent()
+    }
+
+    fun buildSyncOpenCodeLocalStorageScript(openStorageCallback: String?): String? {
+        if (openStorageCallback == null) return null
+        @Language("JavaScript")
+        val script = """
+            (() => {
+              const exactKeys = new Set([
+                '${OpenCodeServerProtocol.OPEN_CODE_THEME_ID_STORAGE_KEY}',
+                '${OpenCodeServerProtocol.OPEN_CODE_COLOR_SCHEME_STORAGE_KEY}',
+                'opencode-theme-css-light',
+                'opencode-theme-css-dark',
+                'settings.v3',
+              ]);
+              const globalKeys = /^opencode\.global\.dat:(language|model|layout|layout\.page|permission|notification|tabs|open\.app|go-upsell)${'$'}/;
+              const workspaceKeys = /^opencode\.workspace\.[^:]+:workspace:(model-selection|terminal|project|icon|vcs)${'$'}/;
+              const windowKeys = /^opencode\.window\.browser\.dat:tabs(\.recent)?${'$'}/;
+              const shouldPersistKey = (key) => typeof key === 'string' && (exactKeys.has(key) || globalKeys.test(key) || workspaceKeys.test(key) || windowKeys.test(key));
+              // Bound each mirrored value so a single oversized entry (e.g. a huge cached theme
+              // CSS) cannot bloat the IDE-side settings store.
+              const MAX_VALUE_CHARS = 131072;
+              const snapshot = () => {
+                const entries = {};
+                for (let index = 0; index < window.localStorage.length; index += 1) {
+                  const key = window.localStorage.key(index);
+                  if (!shouldPersistKey(key)) continue;
+                  const value = window.localStorage.getItem(key);
+                  if (typeof value === 'string' && value.length <= MAX_VALUE_CHARS) entries[key] = value;
+                }
+                return entries;
+              };
+              const send = () => {
+                let payload = '{}';
+                try {
+                  payload = JSON.stringify(snapshot());
+                } catch (_) {
+                  return;
+                }
+                $openStorageCallback;
+              };
+              if (window.__opencodeIntellijLocalStorageSyncInstalled) {
+                send();
+                return;
+              }
+              window.__opencodeIntellijLocalStorageSyncInstalled = true;
+              let pending = undefined;
+              const queueSend = () => {
+                if (pending !== undefined) window.clearTimeout(pending);
+                pending = window.setTimeout(() => {
+                  pending = undefined;
+                  send();
+                }, 100);
+              };
+              const originalSetItem = Storage.prototype.setItem;
+              const originalRemoveItem = Storage.prototype.removeItem;
+              const originalClear = Storage.prototype.clear;
+              Storage.prototype.setItem = function(key, value) {
+                const result = originalSetItem.apply(this, arguments);
+                if (this === window.localStorage && shouldPersistKey(String(key))) queueSend();
+                return result;
+              };
+              Storage.prototype.removeItem = function(key) {
+                const result = originalRemoveItem.apply(this, arguments);
+                if (this === window.localStorage && shouldPersistKey(String(key))) queueSend();
+                return result;
+              };
+              Storage.prototype.clear = function() {
+                const result = originalClear.apply(this, arguments);
+                if (this === window.localStorage) queueSend();
+                return result;
+              };
+              document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'hidden') send();
+              });
+              window.addEventListener('pagehide', send);
+              window.addEventListener('beforeunload', send);
+              send();
+            })();
+        """
+        return script.trimIndent()
+    }
+
+    fun buildExternalLinkHandlerScript(enabled: Boolean, openExternalCallback: String?): String? {
+        if (!enabled || openExternalCallback == null) return null
+        @Language("JavaScript")
+        val script = """
+            (() => {
+              if (window.__opencodeIntellijExternalLinksInstalled) return;
+              window.__opencodeIntellijExternalLinksInstalled = true;
+              const externalHttpUrl = (rawHref, baseHref) => {
+                if (!rawHref || rawHref.trim().startsWith('#')) return '';
+                let url;
+                try {
+                  url = new URL(rawHref, baseHref || window.location.href);
+                } catch (_) {
+                  return '';
+                }
+                if (url.protocol !== 'http:' && url.protocol !== 'https:') return '';
+                if (url.origin === window.location.origin) return '';
+                return url.href;
+              };
+              const openExternal = (href) => {
+                try {
+                  $openExternalCallback;
+                } catch (error) {
+                  if (window.console && window.console.warn) {
+                    window.console.warn('Failed to forward external link to IntelliJ', error);
+                  }
+                }
+              };
+              const nativeWindowOpen = window.open;
+              window.__opencodeIntellijNativeWindowOpen = nativeWindowOpen;
+              window.open = function(url, target, features) {
+                const href = externalHttpUrl(typeof url === 'string' ? url : String(url == null ? '' : url));
+                if (href) {
+                  openExternal(href);
+                  return null;
+                }
+                return nativeWindowOpen ? nativeWindowOpen.apply(window, arguments) : null;
+              };
+              document.addEventListener('click', (event) => {
+                if (event.defaultPrevented) return;
+                const link = event.target && event.target.closest ? event.target.closest('a') : null;
+                if (!link) return;
+                const href = externalHttpUrl(link.getAttribute('href'), link.href);
+                if (!href) return;
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                openExternal(href);
+              }, true);
+            })();
+        """
+        return script.trimIndent()
+    }
+
+    fun buildCodeNavigationScript(enabled: Boolean, openCodeCallback: String?): String? {
+        if (!enabled || openCodeCallback == null) return null
+        @Language("JavaScript")
+        val script = """
+            (() => {
+              const CODE_NAV_VERSION = 2;
+              if ((window.__opencodeIntellijCodeNavInstalledVersion || 0) >= CODE_NAV_VERSION) return;
+              window.__opencodeIntellijCodeNavInstalled = true;
+              window.__opencodeIntellijCodeNavInstalledVersion = CODE_NAV_VERSION;
+              const hasExtension = /\.[a-zA-Z][a-zA-Z0-9]{0,8}(?::\d+)?${'$'}/;
+              const hasPathSeparator = /[\\/]/;
+              const isPascalCase = /^[A-Z][a-zA-Z0-9_]*${'$'}/;
+              const isQualifiedClass = /^(?:[a-zA-Z_][a-zA-Z0-9_]*\.)+[A-Z][a-zA-Z0-9_]*${'$'}/;
+              const isSnakeCase = /^[a-z][a-z0-9]*_[a-z0-9_]+${'$'}/;
+              const looksLikeCodeRef = (text) => {
+                const t = text.trim();
+                if (t.length < 2 || t.length > 512) return false;
+                if (t.includes(' ') || t.includes('\n')) return false;
+                if (hasExtension.test(t)) return true;
+                if (hasPathSeparator.test(t) && /:\d+${'$'}/.test(t)) return true;
+                if (isPascalCase.test(t)) return true;
+                if (isQualifiedClass.test(t)) return true;
+                if (isSnakeCase.test(t) && /[A-Z]/.test(t)) return true;
+                return false;
+              };
+              const extractRef = (codeEl) => {
+                const text = (codeEl.textContent || '').trim();
+                if (!looksLikeCodeRef(text)) return '';
+                const parent = codeEl.parentElement;
+                if (!parent) return text;
+                const path = parent.getAttribute('data-path') || parent.getAttribute('data-file');
+                if (path) return path;
+                const lineMatch = text.match(/:(\d+)${'$'}/);
+                if (lineMatch) return text;
+                return text;
+              };
+              document.addEventListener('click', (event) => {
+                if (event.defaultPrevented) return;
+                const code = event.target && event.target.closest ? event.target.closest('code') : null;
+                if (!code) return;
+                const ref = extractRef(code);
+                if (!ref) return;
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                $openCodeCallback;
+              }, true);
+              // Code references get the pointer cursor on hover; the cursor mirror
+              // reads computed styles, so the embedded panel cursor follows automatically.
+              const POINTER_ATTR = 'data-opencode-intellij-pointer';
+              const ensurePointerCursorStyle = () => {
+                if (window.__opencodeIntellijPointerCursorStyleInstalled) return;
+                window.__opencodeIntellijPointerCursorStyleInstalled = true;
+                const style = document.createElement('style');
+                style.textContent = '[' + POINTER_ATTR + '], [' + POINTER_ATTR + '] * { cursor: pointer !important; }';
+                (document.head || document.documentElement).appendChild(style);
+              };
+              let hoveredCodeElement = null;
+              const markHoveredCodeRef = (element) => {
+                if (element === hoveredCodeElement) return;
+                if (hoveredCodeElement) hoveredCodeElement.removeAttribute(POINTER_ATTR);
+                hoveredCodeElement = element;
+                if (hoveredCodeElement) {
+                  ensurePointerCursorStyle();
+                  hoveredCodeElement.setAttribute(POINTER_ATTR, '');
+                }
+              };
+              document.addEventListener('mouseover', (event) => {
+                const code = event.target && event.target.closest ? event.target.closest('code') : null;
+                markHoveredCodeRef(code && extractRef(code) ? code : null);
+              }, true);
+              document.addEventListener('mouseout', (event) => {
+                if (!event.relatedTarget) markHoveredCodeRef(null);
+              }, true);
+            })();
+        """
+        return script.trimIndent()
+    }
+
+    fun buildCompactLayoutScript(enabled: Boolean): String? {
+        if (!enabled) return null
+        @Language("JavaScript")
+        val script = """
+            (() => {
+              if (window.__opencodeIntellijCompactInstalled) return;
+              window.__opencodeIntellijCompactInstalled = true;
+              // OpenCode checks both the wide query and its inverse (titlebar, settings), so both
+              // must be patched for a consistent compact layout.
+              const WIDE_QUERY = '(min-width: 768px)';
+              const NARROW_QUERY = '(max-width: 767px)';
+              const orig = window.matchMedia.bind(window);
+              window.__opencodeIntellijOrigMatchMedia = orig;
+              const stub = (media, matches) => ({ matches, media, onchange: null, addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false });
+              window.matchMedia = (q) => {
+                if (q === WIDE_QUERY) return stub(WIDE_QUERY, false);
+                if (q === NARROW_QUERY) return stub(NARROW_QUERY, true);
+                return orig(q);
+              };
+              const style = document.createElement('style');
+              style.id = 'opencode-intellij-compact-layout';
+              style.textContent = '@media (min-width: 768px) {\n  .md\\:flex-row { flex-direction: column !important; }\n  .md\\:flex-none { flex: 1 1 0% !important; }\n  .hidden.md\\:flex { display: none !important; }\n  .hidden.md\\:block { display: none !important; }\n}';
+              // At the earliest injection point document.documentElement can still be null; retry
+              // until a parent exists and re-attach if the SPA replaces the head content.
+              const ensureStyle = () => {
+                const parent = document.head || document.documentElement;
+                if (!parent) return false;
+                if (!style.isConnected) parent.appendChild(style);
+                return true;
+              };
+              if (!ensureStyle()) {
+                const observer = new MutationObserver(() => { if (ensureStyle()) observer.disconnect(); });
+                observer.observe(document, { childList: true, subtree: true });
+              }
+              document.addEventListener('DOMContentLoaded', ensureStyle, { once: true });
+            })();
+        """
+        return script.trimIndent()
+    }
+
+    fun buildIdeThemeSyncScript(enabled: Boolean, dark: Boolean): String? {
+        if (!enabled) return null
+        val darkLiteral = dark.toString()
+        @Language("JavaScript")
+        val script = """
+            (() => {
+              const QUERY = '(prefers-color-scheme: dark)';
+              const dark = $darkLiteral;
+              if (window.__opencodeIntellijThemeInstalled) {
+                if (window.__opencodeIntellijThemeMql && window.__opencodeIntellijThemeDark !== dark) {
+                  window.__opencodeIntellijThemeDark = dark;
+                  window.__opencodeIntellijThemeMql.matches = dark;
+                  window.__opencodeIntellijThemeMql.dispatchEvent(new MediaQueryListEvent('change', { matches: dark, media: QUERY }));
+                }
+                return;
+              }
+              window.__opencodeIntellijThemeInstalled = true;
+              window.__opencodeIntellijThemeDark = dark;
+              const orig = window.matchMedia.bind(window);
+              window.__opencodeIntellijOrigMatchMedia = orig;
+              const mql = {
+                matches: dark,
+                media: QUERY,
+                onchange: null,
+                __listeners: new Set(),
+                addEventListener(type, listener) { if (type === 'change' && typeof listener === 'function') this.__listeners.add(listener); },
+                removeEventListener(type, listener) { if (type === 'change') this.__listeners.delete(listener); },
+                addListener(listener) { if (typeof listener === 'function') this.__listeners.add(listener); },
+                removeListener(listener) { this.__listeners.delete(listener); },
+                dispatchEvent(event) {
+                  if (typeof this.onchange === 'function') this.onchange.call(this, event);
+                  for (const listener of this.__listeners) { try { listener.call(this, event); } catch (_) {} }
+                  return true;
+                },
+              };
+              window.__opencodeIntellijThemeMql = mql;
+              window.matchMedia = (q) => q === QUERY ? mql : orig(q);
+            })();
+        """
+        return script.trimIndent()
+    }
+
+    /**
+     * Mirrors the web page's mouse cursor to the IDE. JCEF's off-screen rendering does not
+     * reliably propagate Chromium's cursor changes to the Swing component, so the embedded
+     * panel never shows text or link cursors and can get stuck with a stale resize cursor.
+     * This tracks the hovered element's effective CSS cursor (including the I-beam that
+     * browsers render for `cursor: auto` over selectable text) and reports each transition
+     * through [cursorCallback]; the IDE applies the matching AWT cursor to the panel. While
+     * a button is held the cursor from the drag start is kept, matching Chromium's own
+     * behavior during drags.
+     */
+    fun buildCursorMirrorScript(enabled: Boolean, cursorCallback: String?): String? {
+        if (!enabled || cursorCallback == null) return null
+        @Language("JavaScript")
+        val script = """
+            (() => {
+              if (window.__opencodeIntellijCursorMirrorInstalled) return;
+              window.__opencodeIntellijCursorMirrorInstalled = true;
+              let lastSent = '';
+              let lastX = -1;
+              let lastY = -1;
+              const send = (cursor) => {
+                if (!cursor || cursor === lastSent) return;
+                lastSent = cursor;
+                try {
+                  const payload = cursor;
+                  $cursorCallback;
+                } catch (_) {}
+              };
+              const effectiveCursor = (x, y, target) => {
+                const el = target && target.nodeType === 1 ? target : (target && target.parentElement);
+                if (!el) return 'default';
+                const cursor = getComputedStyle(el).cursor;
+                if (cursor !== 'auto') return cursor;
+                if (el.isContentEditable) return 'text';
+                const tag = el.tagName;
+                if (tag === 'TEXTAREA') return 'text';
+                if (tag === 'INPUT' && !/^(button|submit|reset|checkbox|radio|range|file|color|image)${'$'}/i.test(el.type)) return 'text';
+                // Over selectable text, auto renders as the text I-beam. caretRangeFromPoint
+                // snaps to the nearest text, so require the point to be inside its element.
+                if (document.caretRangeFromPoint) {
+                  const range = document.caretRangeFromPoint(x, y);
+                  const node = range && range.startContainer;
+                  if (node && node.nodeType === 3 && node.parentElement) {
+                    const rect = node.parentElement.getBoundingClientRect();
+                    if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) return 'text';
+                  }
+                }
+                return 'default';
+              };
+              const recomputeAtPointer = () => {
+                if (lastX < 0) return;
+                const el = document.elementFromPoint(lastX, lastY);
+                if (el) send(effectiveCursor(lastX, lastY, el));
+              };
+              document.addEventListener('pointermove', (event) => {
+                lastX = event.clientX;
+                lastY = event.clientY;
+                if (event.buttons !== 0) return;
+                send(effectiveCursor(event.clientX, event.clientY, event.target));
+              }, true);
+              document.addEventListener('pointerdown', (event) => {
+                send(effectiveCursor(event.clientX, event.clientY, event.target));
+              }, true);
+              document.addEventListener('pointerup', (event) => {
+                const el = document.elementFromPoint(event.clientX, event.clientY);
+                send(effectiveCursor(event.clientX, event.clientY, el || event.target));
+              }, true);
+              // Content moving under a stationary pointer also changes the cursor in a browser.
+              let scrollRecomputeQueued = false;
+              window.addEventListener('scroll', () => {
+                if (scrollRecomputeQueued) return;
+                scrollRecomputeQueued = true;
+                window.requestAnimationFrame(() => {
+                  scrollRecomputeQueued = false;
+                  recomputeAtPointer();
+                });
+              }, true);
+            })();
+        """
+        return script.trimIndent()
+    }
+
+    fun buildProjectSwitchPromptSuppressionScript(enabled: Boolean): String? {
+        if (!enabled) return null
+        @Language("JavaScript")
+        val script = """
+            (() => {
+              if (window.__opencodeIntellijProjectSwitchPromptSuppressionInstalled) return;
+              window.__opencodeIntellijProjectSwitchPromptSuppressionInstalled = true;
+              const notificationTitles = new Set(['Permission required', 'Question', 'Berechtigung erforderlich', 'Frage']);
+              const goToSessionLabels = new Set(['Go to session', 'Zur Sitzung gehen']);
+              const text = (element) => (element && element.textContent ? element.textContent : '').replace(/\s+/g, ' ').trim();
+              const toastSelector = '[data-component="toast"], [data-component="toast-v2"]';
+              const titleSelector = '[data-slot="toast-title"], [data-slot="toast-v2-title"]';
+              const actionSelector = '[data-slot="toast-action"], [data-slot="toast-v2-actions"] button';
+              const closeSelector = '[data-slot="toast-close-button"], [data-slot="toast-v2-close-button"]';
+              const dismissIfProjectSwitchPrompt = (toast) => {
+                const title = toast.querySelector(titleSelector);
+                if (!notificationTitles.has(text(title))) return;
+                const actions = Array.from(toast.querySelectorAll(actionSelector));
+                if (!actions.some((action) => goToSessionLabels.has(text(action)))) return;
+                const close = toast.querySelector(closeSelector);
+                if (close && typeof close.click === 'function') {
+                  close.click();
+                } else {
+                  toast.remove();
+                }
+              };
+              const scan = (root) => {
+                if (!root || root.nodeType !== Node.ELEMENT_NODE) return;
+                if (root.matches && root.matches(toastSelector)) dismissIfProjectSwitchPrompt(root);
+                if (root.querySelectorAll) root.querySelectorAll(toastSelector).forEach(dismissIfProjectSwitchPrompt);
+              };
+              const install = () => {
+                const target = document.body || document.documentElement;
+                if (!target) return;
+                const observer = new MutationObserver((mutations) => {
+                  for (const mutation of mutations) {
+                    mutation.addedNodes.forEach(scan);
+                  }
+                });
+                observer.observe(target, { childList: true, subtree: true });
+                scan(target);
+              };
+              if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', install, { once: true });
+              } else {
+                install();
+              }
+            })();
+        """
+        return script.trimIndent()
+    }
+
+    fun buildDispatchDroppedFilesScript(files: List<OpenCodeServerProtocol.DroppedFilePayload>): String? {
+        return buildDispatchDroppedFilesScript(files, enabled = true)
+    }
+
+    fun buildDispatchDroppedFilesScript(files: List<OpenCodeServerProtocol.DroppedFilePayload>, enabled: Boolean): String? {
+        return buildDispatchDroppedFilesScript(files, textPlain = null, enabled)
+    }
+
+    fun buildDispatchDroppedFilesScript(
+        files: List<OpenCodeServerProtocol.DroppedFilePayload>,
+        textPlain: String?,
+        enabled: Boolean,
+    ): String? {
+        return buildDispatchDroppedFilesScript(files, listOfNotNull(textPlain?.takeIf { it.isNotBlank() }), enabled)
+    }
+
+    fun buildDispatchDroppedFilesScript(
+        files: List<OpenCodeServerProtocol.DroppedFilePayload>,
+        textPlain: List<String>,
+        enabled: Boolean,
+    ): String? {
+        val textEntries = textPlain.filter { it.isNotBlank() }
+        if (!enabled || (files.isEmpty() && textEntries.isEmpty())) return null
+        val fileEntries = files.joinToString(",\n") { file ->
+            @Language("JavaScript")
+            val entry = "{ name: '${escapeJavaScript(file.name)}', mime: '${escapeJavaScript(file.mime)}', lastModified: ${file.lastModified}, base64: '${escapeJavaScript(file.base64)}' }"
+            entry
+        }
+        val textDrops = textEntries.joinToString("\n") {
+            @Language("JavaScript")
+            val drop = "dispatchDrop((transfer) => transfer.setData('text/plain', '${escapeJavaScript(it)}'));"
+            drop
+        }
+        val fileDrop = if (files.isNotEmpty()) {
+            @Language("JavaScript")
+            val drop = """
+                dispatchDrop((transfer) => {
+                  const entries = [
+                    $fileEntries
+                  ];
+                  for (const entry of entries) {
+                    transfer.items.add(new File([decode(entry.base64)], entry.name, {
+                      type: entry.mime,
+                      lastModified: entry.lastModified,
+                    }));
+                  }
+                });
+            """
+            drop.trimIndent()
+        } else {
+            ""
+        }
+        @Language("JavaScript")
+        val script = """
+            (() => {
+              if (typeof DataTransfer !== 'function' || typeof File !== 'function' || typeof DragEvent !== 'function') {
+                  console.warn('OpenCode Web Panel could not dispatch dropped files: browser drag APIs unavailable');
+                  return;
+                }
+              const decode = (base64) => {
+                const binary = atob(base64);
+                const bytes = new Uint8Array(binary.length);
+                for (let index = 0; index < binary.length; index += 1) {
+                  bytes[index] = binary.charCodeAt(index);
+                }
+                return bytes;
+              };
+              const dispatchDrop = (fill) => {
+                const previousActive = document.activeElement;
+                const target = previousActive instanceof HTMLElement && document.contains(previousActive) ? previousActive : document;
+                const transfer = new DataTransfer();
+                fill(transfer);
+                const options = { bubbles: true, cancelable: true, dataTransfer: transfer };
+                target.dispatchEvent(new DragEvent('dragover', options));
+                target.dispatchEvent(new DragEvent('drop', options));
+                if (previousActive instanceof HTMLElement && previousActive.isContentEditable) {
+                  requestAnimationFrame(() => {
+                    if (document.contains(previousActive)) previousActive.focus();
+                  });
+                }
+              };
+              $textDrops
+              $fileDrop
+            })();
+        """
+        return script.trimIndent()
+    }
+
+    fun buildFilePasteSuppressionScript(enabled: Boolean): String? {
+        if (!enabled) return null
+        @Language("JavaScript")
+        val script = """
+            (() => {
+              if (window.__opencodeIntellijFilePasteSuppressionInstalled) return;
+              window.__opencodeIntellijFilePasteSuppressionInstalled = true;
+              document.addEventListener('paste', (event) => {
+                const clipboard = event.clipboardData;
+                const hasFile = Array.from(clipboard?.items || []).some((item) => item.kind === 'file') ||
+                  Array.from(clipboard?.types || []).includes('Files');
+                if (!hasFile) return;
+                event.preventDefault();
+                event.stopImmediatePropagation();
+              }, true);
+            })();
+        """
+        return script.trimIndent()
+    }
+
+    fun buildFileLinkHandlerScript(projectBasePath: String?, enabled: Boolean): String? {
+        return buildFileLinkHandlerScript(projectBasePath, enabled, openFileCallback = null)
+    }
+
+    fun buildFileLinkHandlerScript(projectBasePath: String?, enabled: Boolean, openFileCallback: String?): String? {
+        if (!enabled) return null
+        if (projectBasePath.isNullOrBlank()) return null
+        val directory = escapeJavaScript(projectBasePath)
+
+        @Language("JavaScript")
+        val openFileFallback =
+            "window.location.assign('${OpenCodeServerProtocol.OPEN_FILE_LINK_SCHEME}://${OpenCodeServerProtocol.OPEN_FILE_LINK_HOST}?href=' + encodeURIComponent(rawHref) + '&base=' + encodeURIComponent(directory))"
+        val openFileAction = openFileCallback
+            ?.let { callback ->
+                @Language("JavaScript")
+                val action = """
+                    if (typeof window.cefQuery === 'function') {
+                      try {
+                        $callback;
+                        return;
+                      } catch (error) {
+                        if (window.console && window.console.warn) {
+                          window.console.warn('Failed to forward file link to IntelliJ', error);
+                        }
+                      }
+                    }
+                    $openFileFallback;
+                """
+                action.trimIndent()
+            }
+            ?: openFileFallback
+
+        @Language("JavaScript")
+        val script = """
+            (() => {
+              const FILE_LINKS_VERSION = 3;
+              if ((window.__opencodeIntellijFileLinksInstalledVersion || 0) >= FILE_LINKS_VERSION) return;
+              window.__opencodeIntellijFileLinksInstalled = true;
+              window.__opencodeIntellijFileLinksInstalledVersion = FILE_LINKS_VERSION;
+              const directory = '$directory';
+              const unsupportedProtocol = /^(https?|mailto|tel|data|blob|javascript):/i;
+              const absoluteFilePath = /^(\/|[A-Za-z]:[\\/])/;
+              const decodeRouteDirectory = (value) => {
+                try {
+                  const base64 = value.replace(/-/g, '+').replace(/_/g, '/');
+                  const padded = base64 + '='.repeat((4 - base64.length % 4) % 4);
+                  const binary = atob(padded);
+                  const bytes = new Uint8Array(binary.length);
+                  for (let index = 0; index < binary.length; index += 1) {
+                    bytes[index] = binary.charCodeAt(index);
+                  }
+                  return new TextDecoder().decode(bytes);
+                } catch (_) {
+                  return '';
+                }
+              };
+              const openCodeRoutePath = (value) => {
+                const text = (value || '').trim();
+                if (text.startsWith('/')) return text;
+                if (!/^https?:\/\//i.test(text)) return '';
+                try {
+                  const url = new URL(text);
+                  return url.origin === window.location.origin ? url.pathname : '';
+                } catch (_) {
+                  return '';
+                }
+              };
+              const isOpenCodeAppRoute = (value) => {
+                const path = openCodeRoutePath(value);
+                const match = /^\/([^/?#]+)\/session(?:[/?#]|${'$'})/.exec(path);
+                if (!match) return false;
+                return absoluteFilePath.test(decodeRouteDirectory(match[1]));
+              };
+              const looksLikeFilePath = (value) => {
+                if (!value) return false;
+                const text = value.trim();
+                return text.length > 0 && text.length < 512 && !/\s/.test(text) && /[./\\]/.test(text);
+              };
+              const inferredFileLink = (link) => {
+                const row = link.closest ? link.closest('tr') : null;
+                const cell = link.closest ? link.closest('td,th') : null;
+                if (!row || !cell) return '';
+                const cells = Array.from(row.children);
+                const index = cells.indexOf(cell);
+                if (index <= 0) return '';
+                for (const candidate of cells.slice(0, index).reverse()) {
+                  const text = (candidate.textContent || '').trim();
+                  if (looksLikeFilePath(text)) return text;
+                }
+                return '';
+              };
+              let lastOpenedHref = '';
+              let lastOpenedAt = 0;
+              const cleanDisplayedPath = (value) => (value || '').replace(/[\u202A-\u202E]/g, '').trim();
+              const changedFileButtonSelector = '[data-slot="session-review-view-button"], button[aria-label="Open file"], button[aria-label="Datei öffnen"], button[title="Open file"], button[title="Datei öffnen"]';
+              const changedFileButtonLink = (target) => {
+                const button = target && target.closest ? target.closest(changedFileButtonSelector) : null;
+                if (!button) return '';
+                const item = button.closest ? button.closest('[data-file], [data-path], [data-slot="session-review-accordion-item"]') : null;
+                const dataPath = item ? (item.getAttribute('data-file') || item.getAttribute('data-path') || '') : '';
+                if (dataPath) return dataPath;
+                const info = (button.closest && button.closest('[data-slot="session-review-file-info"]')) ||
+                  (item && item.querySelector ? item.querySelector('[data-slot="session-review-file-info"]') : null);
+                const directory = cleanDisplayedPath(info && info.querySelector ? info.querySelector('[data-slot="session-review-directory"]')?.textContent : '');
+                const fileName = cleanDisplayedPath(info && info.querySelector ? info.querySelector('[data-slot="session-review-filename"]')?.textContent : '');
+                if (!fileName) return '';
+                return directory ? directory.replace(/[\\/]?${'$'}/, '/') + fileName : fileName;
+              };
+              const isLocalFileLink = (href) => {
+                if (!href || href.startsWith('#')) return false;
+                if (isOpenCodeAppRoute(href)) return false;
+                if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(href)) return !unsupportedProtocol.test(href);
+                if (href.startsWith('/') || href.startsWith('./') || href.startsWith('../')) return true;
+                if (/^[A-Za-z]:[\\/]/.test(href)) return true;
+                return !href.startsWith('//') && !href.includes('://');
+              };
+              const openFileInIde = (rawHref) => {
+                const now = Date.now();
+                if (rawHref === lastOpenedHref && now - lastOpenedAt < 750) return;
+                lastOpenedHref = rawHref;
+                lastOpenedAt = now;
+                $openFileAction;
+              };
+              const resolveFileOpenTarget = (target, changedButtonOnly) => {
+                const changedFileHref = changedFileButtonLink(target);
+                if (changedButtonOnly && !changedFileHref) return null;
+                const link = !changedFileHref && target && target.closest ? target.closest('a') : null;
+                const rawHref = changedFileHref || (link ? (link.getAttribute('href') || inferredFileLink(link)) : '');
+                if (!isLocalFileLink(rawHref)) return null;
+                return { element: changedFileHref ? target.closest(changedFileButtonSelector) : link, href: rawHref };
+              };
+              const handleFileOpenEvent = (event, changedButtonOnly) => {
+                if (event.defaultPrevented) return;
+                const resolved = resolveFileOpenTarget(event.target, changedButtonOnly);
+                if (!resolved) return;
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                openFileInIde(resolved.href);
+              };
+              document.addEventListener('pointerdown', (event) => handleFileOpenEvent(event, true), true);
+              document.addEventListener('mousedown', (event) => handleFileOpenEvent(event, true), true);
+              document.addEventListener('click', (event) => handleFileOpenEvent(event, false), true);
+              // Resolvable file links get the pointer cursor on hover; the cursor mirror
+              // reads computed styles, so the embedded panel cursor follows automatically.
+              const POINTER_ATTR = 'data-opencode-intellij-pointer';
+              const ensurePointerCursorStyle = () => {
+                if (window.__opencodeIntellijPointerCursorStyleInstalled) return;
+                window.__opencodeIntellijPointerCursorStyleInstalled = true;
+                const style = document.createElement('style');
+                style.textContent = '[' + POINTER_ATTR + '], [' + POINTER_ATTR + '] * { cursor: pointer !important; }';
+                (document.head || document.documentElement).appendChild(style);
+              };
+              let hoveredFileLinkElement = null;
+              const markHoveredFileLink = (element) => {
+                if (element === hoveredFileLinkElement) return;
+                if (hoveredFileLinkElement) hoveredFileLinkElement.removeAttribute(POINTER_ATTR);
+                hoveredFileLinkElement = element;
+                if (hoveredFileLinkElement) {
+                  ensurePointerCursorStyle();
+                  hoveredFileLinkElement.setAttribute(POINTER_ATTR, '');
+                }
+              };
+              document.addEventListener('mouseover', (event) => {
+                const target = event.target && event.target.nodeType === 1 ? event.target : null;
+                const resolved = target ? resolveFileOpenTarget(target, false) : null;
+                markHoveredFileLink(resolved ? resolved.element : null);
+              }, true);
+              document.addEventListener('mouseout', (event) => {
+                if (!event.relatedTarget) markHoveredFileLink(null);
+              }, true);
+            })();
+        """
+        return script.trimIndent()
+    }
+
+    private fun escapeJavaScript(value: String): String {
+        val builder = StringBuilder(value.length + 8)
+        for (char in value) {
+            when (char) {
+                '\\' -> builder.append("\\\\")
+                '\'' -> builder.append("\\'")
+                '\n' -> builder.append("\\n")
+                '\r' -> builder.append("\\r")
+                '\t' -> builder.append("\\t")
+                '\b' -> builder.append("\\b")
+                '\u000C' -> builder.append("\\f")
+                // Escape '<' so an interpolated value can never break out of an inline <script> context.
+                '<' -> builder.append("\\u003C")
+                // U+2028/U+2029 are valid line terminators inside JS string literals and must be escaped.
+                '\u2028' -> builder.append("\\u2028")
+                '\u2029' -> builder.append("\\u2029")
+                else -> if (char.code < 0x20) {
+                    builder.append("\\u").append(char.code.toString(16).padStart(4, '0'))
+                } else {
+                    builder.append(char)
+                }
+            }
+        }
+        return builder.toString()
+    }
+
+    private fun escapeHtml(value: String): String {
+        return value
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace("\"", "&quot;")
+            .replace("'", "&#39;")
+    }
+}

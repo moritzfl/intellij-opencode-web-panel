@@ -5,7 +5,7 @@ import com.intellij.credentialStore.Credentials
 import com.intellij.ide.passwordSafe.PasswordSafe
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
-import de.moritzf.opencodewebpanel.toolWindow.OpenCodeServerProtocol
+import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import java.util.concurrent.atomic.AtomicReference
 
 @Service(Service.Level.APP)

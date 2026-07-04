@@ -15,14 +15,14 @@
     <extensions defaultExtensionNs="com.intellij">
         <applicationConfigurable id="opencode.web.panel.settings" parentId="tools" displayName="OpenCode Web Panel" instance="de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable"/>
         <projectConfigurable id="opencode.web.panel.project.settings" parentId="tools" displayName="OpenCode Web Panel" instance="de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsConfigurable"/>
-        <applicationService serviceImplementation="de.moritzf.opencodewebpanel.toolWindow.SharedOpenCodeServerManager"/>
+        <applicationService serviceImplementation="de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager"/>
         <notificationGroup id="OpenCode Web Panel" displayType="BALLOON"/>
         <toolWindow factoryClass="de.moritzf.opencodewebpanel.toolWindow.OpenCodeWebToolWindowFactoryImpl" id="OpenCode Web Panel" anchor="right" icon="/icons/opencode.svg"/>
     </extensions>
 
     <actions>
         <action id="OpenCodeWebPanel.AddFileToChat"
-                class="de.moritzf.opencodewebpanel.toolWindow.OpenCodeAddFileToChatAction"
+                class="de.moritzf.opencodewebpanel.features.OpenCodeAddFileToChatAction"
                 text="Add to OpenCode Chat"
                 description="Add the selected files to the OpenCode chat as references"
                 icon="/icons/opencode.svg">
@@ -31,7 +31,7 @@
             <add-to-group group-id="EditorPopupMenu" anchor="last"/>
         </action>
         <action id="OpenCodeWebPanel.AddSelectionToChat"
-                class="de.moritzf.opencodewebpanel.toolWindow.OpenCodeAddSelectionToChatAction"
+                class="de.moritzf.opencodewebpanel.features.OpenCodeAddSelectionToChatAction"
                 text="Add Selection to OpenCode Chat"
                 description="Add the selected code and its file reference to the OpenCode chat"
                 icon="/icons/opencode.svg">

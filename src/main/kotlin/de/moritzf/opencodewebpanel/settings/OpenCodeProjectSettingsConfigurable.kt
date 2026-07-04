@@ -10,7 +10,7 @@ import com.intellij.ui.components.JBRadioButton
 import com.intellij.ui.dsl.builder.AlignX
 import com.intellij.ui.dsl.builder.RightGap
 import com.intellij.ui.dsl.builder.panel
-import de.moritzf.opencodewebpanel.toolWindow.SharedOpenCodeServerManager
+import de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager
 import java.io.File
 import javax.swing.ButtonGroup
 import javax.swing.JButton

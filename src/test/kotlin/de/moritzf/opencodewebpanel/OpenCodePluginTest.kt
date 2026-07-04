@@ -1,10 +1,10 @@
 package de.moritzf.opencodewebpanel
 
-import de.moritzf.opencodewebpanel.toolWindow.OpenCodeWebToolWindowFactoryImpl
-import de.moritzf.opencodewebpanel.toolWindow.OpenCodeServerLifecycleState
-import de.moritzf.opencodewebpanel.toolWindow.SharedOpenCodeServerManager
+import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState
+import de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager
 import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsConfigurable
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable
+import de.moritzf.opencodewebpanel.toolWindow.OpenCodeWebToolWindowFactoryImpl
 import com.intellij.openapi.project.DumbAware
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import java.io.ByteArrayInputStream
@@ -34,7 +34,7 @@ class OpenCodePluginTest : BasePlatformTestCase() {
         assertTrue(pluginXml.contains("icon=\"/icons/opencode.svg\""))
         assertTrue(pluginXml.contains("factoryClass=\"de.moritzf.opencodewebpanel.toolWindow.OpenCodeWebToolWindowFactoryImpl\""))
         assertTrue(pluginXml.contains("applicationService"))
-        assertTrue(pluginXml.contains("serviceImplementation=\"de.moritzf.opencodewebpanel.toolWindow.SharedOpenCodeServerManager\""))
+        assertTrue(pluginXml.contains("serviceImplementation=\"de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager\""))
         assertTrue(pluginXml.contains("applicationConfigurable"))
         assertTrue(pluginXml.contains("instance=\"de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable\""))
         assertTrue(pluginXml.contains("projectConfigurable"))

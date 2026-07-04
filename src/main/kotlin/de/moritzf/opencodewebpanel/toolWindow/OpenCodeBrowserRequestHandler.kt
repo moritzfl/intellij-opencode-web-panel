@@ -1,5 +1,8 @@
 package de.moritzf.opencodewebpanel.toolWindow
 
+import de.moritzf.opencodewebpanel.features.OpenCodeIdeNavigation
+import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
+import de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
 import org.cef.browser.CefBrowser
 import org.cef.browser.CefFrame

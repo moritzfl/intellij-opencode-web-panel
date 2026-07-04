@@ -5,7 +5,7 @@ import com.intellij.openapi.components.PersistentStateComponent
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
-import de.moritzf.opencodewebpanel.toolWindow.OpenCodeServerProtocol
+import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 
 @State(name = "OpenCodeWebPanelSettings", storages = [Storage("opencode-web-panel.xml")])
 @Service(Service.Level.APP)

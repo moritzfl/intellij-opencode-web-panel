@@ -5,6 +5,11 @@ import com.intellij.ui.components.JBLabel
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.components.BorderLayoutPanel
 import javax.swing.JButton
+import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState
+import de.moritzf.opencodewebpanel.server.formatOpenCodeServerLifecycleStatusText
+import de.moritzf.opencodewebpanel.server.isOpenCodeServerLifecycleStatusVisible
+import de.moritzf.opencodewebpanel.server.isOpenCodeServerRetryVisible
+import de.moritzf.opencodewebpanel.server.openCodeServerRetryLabel
 
 internal class OpenCodeLifecycleStatusPanel(onRetry: () -> Unit) {
     private val lifecycleStatusLabel = JBLabel()

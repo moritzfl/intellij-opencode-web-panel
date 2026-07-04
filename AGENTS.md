@@ -14,7 +14,13 @@ Project-specific guidance for future implementation work.
 ## Source Layout
 
 - Main Kotlin sources live under `src/main/kotlin/de/moritzf/opencodewebpanel`.
-- Tests live under `src/test/kotlin/de/moritzf/opencodewebpanel`.
+- Tests live under `src/test/kotlin/de/moritzf/opencodewebpanel`, mirroring the main packages.
+- Packages, by dependency direction (each may depend on the ones before it, never after):
+  - `server` — OpenCode process lifecycle, protocol/REST helpers, and the JVM `/global/event` stream: `SharedOpenCodeServerManager`, `OpenCodeServerProtocol`, `OpenCodeGlobalEventStream`, lifecycle/log/terminator/MCP-startup support.
+  - `browser` — page-injection mechanics: `OpenCodeBrowserSnippets` (all injected JS builders), `OpenCodeBrowserScriptScheduler`.
+  - `features` — the individual enhancements: agent-status tracking, system notifications, interrupted-session recovery, VCS refresh, IDE navigation, chat input, file drop, localStorage mirror.
+  - `toolWindow` — JCEF/tool-window glue: factory, content, title/gear actions, status panels, request/shortcut handlers.
+  - `settings` — settings state, secure password storage, settings UI (referenced by all of the above; only its restart-confirmation dialog reaches back into `toolWindow`).
 - Plugin metadata lives in `src/main/resources/META-INF/plugin.xml`.
 - Icons live in `src/main/resources/icons`.
 - README screenshot lives at `docs/opencode-web-panel.png`.
@@ -24,9 +30,9 @@ Project-specific guidance for future implementation work.
 - Keep one shared OpenCode server process per IDE application.
 - Keep browser/tool-window state project-scoped, except the mirrored OpenCode web-session settings store.
 - The mirrored OpenCode web-session settings store is intentionally application-global by design; it should preserve OpenCode's own settings across embedded sessions and projects unless this decision is explicitly revisited.
-- Put command construction, auth helpers, URL helpers, path detection, and route encoding in `OpenCodeServerProtocol`.
+- Put command construction, auth helpers, URL helpers, path detection, and route encoding in `OpenCodeServerProtocol`; injected-JS builders belong in `OpenCodeBrowserSnippets`, not the protocol.
 - Keep OpenCode process lifecycle in `SharedOpenCodeServerManager`.
-- Keep JCEF/tool-window integration in `OpenCodeWebToolWindowFactory`.
+- Keep JCEF/tool-window integration in the `toolWindow` package (`OpenCodeWebToolWindowFactoryImpl` and `OpenCodeWebToolWindowContent`).
 - Tool-window title-bar actions and gear-menu actions live in `OpenCodeToolWindowActions` and are wired in the factory. Title actions must stay few and icon-only because IntelliJ clips them on narrow panels; the gear menu must duplicate every title action.
 - Keep settings state, secure password storage, and settings UI in the `settings` package.
 - Store secrets only in IntelliJ `PasswordSafe`; do not persist passwords in XML or project files.

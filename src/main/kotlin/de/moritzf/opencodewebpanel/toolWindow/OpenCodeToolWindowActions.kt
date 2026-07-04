@@ -12,6 +12,8 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.MessageDialogBuilder
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.vfs.LocalFileSystem
+import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState
+import de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsListener
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
