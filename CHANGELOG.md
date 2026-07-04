@@ -8,6 +8,11 @@
 
 - Hovering anything the panel opens in the IDE — local file links, changed-file buttons, and code references in chat — now shows the hand cursor, in the page and on the mirrored panel cursor, so clickable IDE targets are recognizable before you click.
 
+### Changed
+
+- The agent-status badge and system notifications are now driven by a single IDE-side connection to the OpenCode event stream instead of scripts injected into every embedded page. The badge stays correct while a page is loading or after a browser crash, notifications appear even when the panel shows an error page, toggling either setting no longer reloads the panel, and the plugin no longer competes with the embedded pages for Chromium's six-connections-per-host budget.
+- System notifications are now suppressed while the OpenCode tool window is visible and the IDE window is focused (previously: while the embedded page itself had focus), and bringing the notified session into view dismisses them.
+
 ### Fixed
 
 - The panel now mirrors the web page's mouse cursor like a regular browser: text shows the I-beam, links and buttons show the hand, and resize handles show resize arrows that no longer get stuck, because JCEF's off-screen rendering does not propagate Chromium's cursor changes itself. Can be disabled via the new "Mirror the web page mouse cursor" setting.
