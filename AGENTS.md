@@ -90,6 +90,24 @@ Follow this recipe exactly; getting auth wrong has repeatedly cost debugging loo
 8. A healthy server answers `curl -u opencode:testpw123 http://127.0.0.1:<port>/api/health` with `{"healthy":true}`. Use curl with `-u` first when the page misbehaves to separate auth issues from app issues.
 9. The served UI is localized (e.g. German button labels on a German system); do not assert English-only UI strings when exercising the DOM.
 
+## Event Stream and REST Contract Validation
+
+The JVM-side event consumers (`server.OpenCodeGlobalEventStream`, agent-status seeding, notification session lookup) depend on the wire shapes below instead of DOM structure. After touching them — or when an OpenCode update changes event behavior — re-verify the contract against a real server (last verified against opencode 1.17.13):
+
+1. Start a server and wait for `{"healthy":true}`:
+   `OPENCODE_SERVER_PASSWORD=testpw123 opencode serve --hostname 127.0.0.1 --port 41973 --print-logs`
+   `curl -u opencode:testpw123 http://127.0.0.1:41973/api/health`
+2. Subscribe to the event stream in one terminal (this is exactly what `OpenCodeGlobalEventStream` does):
+   `curl -N -u opencode:testpw123 -H "Accept: text/event-stream" http://127.0.0.1:41973/global/event`
+3. Trigger events from another terminal by creating a session for some directory:
+   `curl -u opencode:testpw123 -X POST "http://127.0.0.1:41973/session?directory=<url-encoded dir>" -H 'Content-Type: application/json' -d '{}'`
+4. Expected event framing: SSE blocks whose `data:` payload is `{"directory": "...", "payload": {"id": "evt_...", "type": "...", "properties": {...}}}`. Events without a `directory` (e.g. `server.connected`) are intentionally dropped by `OpenCodeGlobalEventStream.parseGlobalEvent`. Consumed types: `session.status`, `session.idle`, `session.error`, `permission.asked`/`replied`, `question.asked`/`replied`/`rejected`.
+5. Expected REST shapes (all take `?directory=`; parsers live in `server.OpenCodeServerProtocol` with unit tests next to them):
+   - `GET /session/status` → `{"ses_...": {"type": "busy"|"retry"|"idle"}, ...}` (`parseBusySessionIds`)
+   - `GET /permission`, `GET /question` → JSON array of request objects with `id` (`parsePendingRequestIds`)
+   - `GET /session/{id}` → session object with `title` and optional `parentID`, bare or wrapped in `{"data": {...}}` (`parseSessionInfo`)
+6. If a shape changed, fix the matching parser and its unit test, then update the version note in this section.
+
 ## Verification
 
 - Primary command: `./gradlew check`.
