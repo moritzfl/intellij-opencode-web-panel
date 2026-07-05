@@ -469,7 +469,7 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("opencode\\.workspace\\."))
         assertTrue(script.contains("opencode\\.window\\.browser\\.dat:tabs"))
         assertTrue(script.contains("'settings.v3'"))
-        assertFalse(script.contains(OpenCodeServerProtocol.OPEN_CODE_DEFAULT_SERVER_URL_STORAGE_KEY))
+        assertFalse(script.contains("opencode.settings.dat:defaultServerUrl"))
         assertTrue(script.contains("window.localStorage.getItem(key) === null"))
         assertTrue(script.contains("window.localStorage.setItem(key, value)"))
     }
@@ -489,7 +489,7 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("opencode\\.window\\.browser\\.dat:tabs"))
         assertTrue(script.contains("'settings.v3'"))
         assertTrue(script.contains("MAX_VALUE_CHARS"))
-        assertFalse(script.contains(OpenCodeServerProtocol.OPEN_CODE_DEFAULT_SERVER_URL_STORAGE_KEY))
+        assertFalse(script.contains("opencode.settings.dat:defaultServerUrl"))
         assertTrue(script.contains("window.intellijStore(payload)"))
     }
 
@@ -1455,20 +1455,6 @@ class OpenCodeServerProtocolTest {
                 readTimeoutMillis = 100,
             ),
         )
-    }
-
-    @Test
-    fun shouldRestartServerOnlyWhenKnownUrlFailsHealthCheck() {
-        assertFalse(OpenCodeServerProtocol.shouldRestartServer(null, serverResponding = false))
-        assertTrue(OpenCodeServerProtocol.shouldRestartServer("http://127.0.0.1:60482", serverResponding = false))
-        assertFalse(OpenCodeServerProtocol.shouldRestartServer("http://127.0.0.1:60482", serverResponding = true))
-    }
-
-    @Test
-    fun shouldDelayServerStartOnlyBeforeBackoffExpires() {
-        assertTrue(OpenCodeServerProtocol.shouldDelayServerStart(nextStartAllowedAtMillis = 2_000, nowMillis = 1_999))
-        assertFalse(OpenCodeServerProtocol.shouldDelayServerStart(nextStartAllowedAtMillis = 2_000, nowMillis = 2_000))
-        assertFalse(OpenCodeServerProtocol.shouldDelayServerStart(nextStartAllowedAtMillis = 0, nowMillis = 1_999))
     }
 
     @Test

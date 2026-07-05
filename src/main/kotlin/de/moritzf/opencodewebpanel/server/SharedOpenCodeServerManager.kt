@@ -365,8 +365,7 @@ class SharedOpenCodeServerManager : Disposable {
 
     private fun checkServerHealth() {
         val url = getServerUrl()
-        val responding = url != null && checkServerRespondingWithConfirmation(url)
-        if (!OpenCodeServerProtocol.shouldRestartServer(url, responding)) return
+        if (url == null || checkServerRespondingWithConfirmation(url)) return
 
         val backoffMillis = remainingStartBackoffMillis()
         if (backoffMillis > 0) {

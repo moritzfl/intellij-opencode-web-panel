@@ -30,7 +30,6 @@ internal object OpenCodeServerProtocol {
     const val DEFAULT_EXECUTABLE = "opencode"
     const val OPEN_FILE_LINK_SCHEME = "opencode-web-panel"
     const val OPEN_FILE_LINK_HOST = "open-file"
-    const val OPEN_CODE_DEFAULT_SERVER_URL_STORAGE_KEY = "opencode.settings.dat:defaultServerUrl"
     const val OPEN_CODE_THEME_ID_STORAGE_KEY = "opencode-theme-id"
     const val OPEN_CODE_COLOR_SCHEME_STORAGE_KEY = "opencode-color-scheme"
     const val NOTIFICATION_GROUP_ID = "OpenCode Web Panel"
@@ -294,27 +293,10 @@ internal object OpenCodeServerProtocol {
         readTimeoutMillis: Int = 5000,
     ): Boolean {
         if (!isOpenCodeRecordId(sessionID) || !isOpenCodeRecordId(permissionID)) return false
-        return try {
-            val url = buildServerRootUrl(serverUrl) +
-                "/session/$sessionID/permissions/$permissionID" +
-                "?directory=" + java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
-            val connection = URI(url).toURL().openConnection() as HttpURLConnection
-            try {
-                connection.connectTimeout = connectTimeoutMillis
-                connection.readTimeout = readTimeoutMillis
-                connection.requestMethod = "POST"
-                connection.doOutput = true
-                connection.setRequestProperty("Authorization", basicAuthHeader)
-                connection.setRequestProperty("Content-Type", "application/json")
-                val body = "{\"response\":\"${response.jsonValue}\"}"
-                connection.outputStream.use { it.write(body.toByteArray(StandardCharsets.UTF_8)) }
-                connection.responseCode in 200..299
-            } finally {
-                connection.disconnect()
-            }
-        } catch (_: Exception) {
-            false
-        }
+        val url = buildServerRootUrl(serverUrl) +
+            "/session/$sessionID/permissions/$permissionID" +
+            "?directory=" + java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
+        return httpPostJson(url, basicAuthHeader, "{\"response\":\"${response.jsonValue}\"}", connectTimeoutMillis, readTimeoutMillis)
     }
 
     /** OpenCode record IDs (`ses_...`, `per_...`) are URL-safe by construction; reject anything else. */
@@ -498,28 +480,8 @@ internal object OpenCodeServerProtocol {
         connectTimeoutMillis: Int = 2000,
         readTimeoutMillis: Int = 2000,
     ): Boolean {
-        return try {
-            val connection = URI(buildHealthUrl(serverUrl)).toURL().openConnection() as HttpURLConnection
-            try {
-                connection.connectTimeout = connectTimeoutMillis
-                connection.readTimeout = readTimeoutMillis
-                connection.requestMethod = "GET"
-                if (!basicAuthHeader.isNullOrBlank()) {
-                    connection.setRequestProperty("Authorization", basicAuthHeader)
-                }
-                if (connection.responseCode != HttpURLConnection.HTTP_OK) return false
-                val body = connection.inputStream.bufferedReader().use { it.readText() }
-                Regex("\"healthy\"\\s*:\\s*true").containsMatchIn(body)
-            } finally {
-                connection.disconnect()
-            }
-        } catch (_: Exception) {
-            false
-        }
-    }
-
-    fun shouldRestartServer(serverUrl: String?, serverResponding: Boolean): Boolean {
-        return serverUrl != null && !serverResponding
+        val body = httpGet(buildHealthUrl(serverUrl), basicAuthHeader, connectTimeoutMillis, readTimeoutMillis) ?: return false
+        return Regex("\"healthy\"\\s*:\\s*true").containsMatchIn(body)
     }
 
     /**
@@ -532,24 +494,9 @@ internal object OpenCodeServerProtocol {
         connectTimeoutMillis: Int = 2000,
         readTimeoutMillis: Int = 2000,
     ): String? {
-        return try {
-            val connection = URI(buildServerRootUrl(serverUrl) + GLOBAL_HEALTH_PATH).toURL().openConnection() as HttpURLConnection
-            try {
-                connection.connectTimeout = connectTimeoutMillis
-                connection.readTimeout = readTimeoutMillis
-                connection.requestMethod = "GET"
-                if (!basicAuthHeader.isNullOrBlank()) {
-                    connection.setRequestProperty("Authorization", basicAuthHeader)
-                }
-                if (connection.responseCode != HttpURLConnection.HTTP_OK) return null
-                val body = connection.inputStream.bufferedReader().use { it.readText() }
-                Regex("\"version\"\\s*:\\s*\"([^\"]+)\"").find(body)?.groupValues?.get(1)
-            } finally {
-                connection.disconnect()
-            }
-        } catch (_: Exception) {
-            null
-        }
+        val body = httpGet(buildServerRootUrl(serverUrl) + GLOBAL_HEALTH_PATH, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)
+            ?: return null
+        return Regex("\"version\"\\s*:\\s*\"([^\"]+)\"").find(body)?.groupValues?.get(1)
     }
 
     /**
@@ -563,16 +510,9 @@ internal object OpenCodeServerProtocol {
         return logLines.any { pattern.containsMatchIn(it) }
     }
 
-    fun shouldDelayServerStart(nextStartAllowedAtMillis: Long, nowMillis: Long = System.currentTimeMillis()): Boolean {
-        return nextStartAllowedAtMillis > nowMillis
-    }
-
     fun startFailureBackoffMillis(consecutiveFailures: Int): Long {
-        var delay = START_FAILURE_BACKOFF_BASE_MILLIS
-        repeat((consecutiveFailures.coerceAtLeast(1) - 1).coerceAtMost(20)) {
-            delay = (delay * 2).coerceAtMost(START_FAILURE_BACKOFF_MAX_MILLIS)
-        }
-        return delay
+        val exponent = (consecutiveFailures - 1).coerceIn(0, 4)
+        return (START_FAILURE_BACKOFF_BASE_MILLIS shl exponent).coerceAtMost(START_FAILURE_BACKOFF_MAX_MILLIS)
     }
 
     fun resolvePath(
@@ -685,14 +625,10 @@ internal object OpenCodeServerProtocol {
     }
 
     private fun decodeDirectory(directory: String): String? {
-        val padding = "=".repeat((4 - directory.length % 4) % 4)
+        // The JDK URL decoder accepts unpadded base64url input.
         return runCatching {
-            String(Base64.getUrlDecoder().decode(directory + padding), StandardCharsets.UTF_8)
+            String(Base64.getUrlDecoder().decode(directory), StandardCharsets.UTF_8)
         }.getOrNull()
-    }
-
-    private fun decodeUrlParameter(value: String): String? {
-        return runCatching { URLDecoder.decode(value, StandardCharsets.UTF_8) }.getOrNull()
     }
 
     private fun buildHealthUrl(serverUrl: String): String {
@@ -1011,30 +947,13 @@ internal object OpenCodeServerProtocol {
         readTimeoutMillis: Int = 5000,
     ): Boolean {
         if (!isOpenCodeRecordId(sessionID)) return false
-        return try {
-            val url = buildServerRootUrl(serverUrl) + "/api/session/$sessionID/prompt"
-            val connection = URI(url).toURL().openConnection() as HttpURLConnection
-            try {
-                connection.connectTimeout = connectTimeoutMillis
-                connection.readTimeout = readTimeoutMillis
-                connection.requestMethod = "POST"
-                connection.doOutput = true
-                connection.setRequestProperty("Authorization", basicAuthHeader)
-                connection.setRequestProperty("Content-Type", "application/json")
-                val body = """{"prompt":{"text":"Continue"},"resume":true}"""
-                connection.outputStream.use { it.write(body.toByteArray(StandardCharsets.UTF_8)) }
-                connection.responseCode in 200..299
-            } finally {
-                connection.disconnect()
-            }
-        } catch (_: Exception) {
-            false
-        }
+        val url = buildServerRootUrl(serverUrl) + "/api/session/$sessionID/prompt"
+        return httpPostJson(url, basicAuthHeader, """{"prompt":{"text":"Continue"},"resume":true}""", connectTimeoutMillis, readTimeoutMillis)
     }
 
     private fun httpGet(
         url: String,
-        basicAuthHeader: String,
+        basicAuthHeader: String?,
         connectTimeoutMillis: Int,
         readTimeoutMillis: Int,
     ): String? {
@@ -1044,7 +963,9 @@ internal object OpenCodeServerProtocol {
                 connection.connectTimeout = connectTimeoutMillis
                 connection.readTimeout = readTimeoutMillis
                 connection.requestMethod = "GET"
-                connection.setRequestProperty("Authorization", basicAuthHeader)
+                if (!basicAuthHeader.isNullOrBlank()) {
+                    connection.setRequestProperty("Authorization", basicAuthHeader)
+                }
                 if (connection.responseCode !in 200..299) return null
                 connection.inputStream.bufferedReader().use { it.readText() }
             } finally {
@@ -1052,6 +973,32 @@ internal object OpenCodeServerProtocol {
             }
         } catch (_: Exception) {
             null
+        }
+    }
+
+    private fun httpPostJson(
+        url: String,
+        basicAuthHeader: String,
+        body: String,
+        connectTimeoutMillis: Int,
+        readTimeoutMillis: Int,
+    ): Boolean {
+        return try {
+            val connection = URI(url).toURL().openConnection() as HttpURLConnection
+            try {
+                connection.connectTimeout = connectTimeoutMillis
+                connection.readTimeout = readTimeoutMillis
+                connection.requestMethod = "POST"
+                connection.doOutput = true
+                connection.setRequestProperty("Authorization", basicAuthHeader)
+                connection.setRequestProperty("Content-Type", "application/json")
+                connection.outputStream.use { it.write(body.toByteArray(StandardCharsets.UTF_8)) }
+                connection.responseCode in 200..299
+            } finally {
+                connection.disconnect()
+            }
+        } catch (_: Exception) {
+            false
         }
     }
 }
