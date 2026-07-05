@@ -769,11 +769,7 @@ internal object OpenCodeBrowserSnippets {
         return script.trimIndent()
     }
 
-    fun buildFileLinkHandlerScript(projectBasePath: String?, enabled: Boolean): String? {
-        return buildFileLinkHandlerScript(projectBasePath, enabled, openFileCallback = null)
-    }
-
-    fun buildFileLinkHandlerScript(projectBasePath: String?, enabled: Boolean, openFileCallback: String?): String? {
+    fun buildFileLinkHandlerScript(projectBasePath: String?, enabled: Boolean, openFileCallback: String? = null): String? {
         if (!enabled) return null
         if (projectBasePath.isNullOrBlank()) return null
         val directory = escapeJavaScript(projectBasePath)
