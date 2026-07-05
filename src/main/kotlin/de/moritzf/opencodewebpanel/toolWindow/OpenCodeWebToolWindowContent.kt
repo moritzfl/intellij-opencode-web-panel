@@ -36,6 +36,7 @@ import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsListener
 import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsState
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsListener
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
+import de.moritzf.opencodewebpanel.settings.OpenCodeUiSetting
 import org.cef.browser.CefBrowser
 import org.cef.browser.CefFrame
 import org.cef.handler.CefLoadHandler
@@ -64,8 +65,8 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
 
     private val project = toolWindow.project
     private val browser = JBCefBrowser()
-    private val lifecycleStatusPanel = OpenCodeLifecycleStatusPanel(::retryOpenCodeServerStart)
-    private val startupErrorPanel = OpenCodeStartupErrorPanel(project, ::retryOpenCodeServerStart)
+    private val lifecycleStatusPanel = OpenCodeLifecycleStatusPanel(::restartOpenCodeServer)
+    private val startupErrorPanel = OpenCodeStartupErrorPanel(project, ::restartOpenCodeServer)
     private val centerCardLayout = CardLayout()
     private val centerCardPanel = JPanel(centerCardLayout).apply {
         isOpaque = false
@@ -95,14 +96,77 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     private val openProjectAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
     private val scriptScheduler = OpenCodeBrowserScriptScheduler(project, browser, openProjectAlarm)
     private var openProjectScriptScheduled = false
-    private var fileLinkScriptScheduled = false
-    private var externalLinkScriptScheduled = false
-    private var codeNavigationScriptScheduled = false
-    private var filePasteSuppressionScriptScheduled = false
     private var compactLayoutScriptScheduled = false
     private var ideThemeSyncScriptScheduled = false
-    private var projectSwitchPromptSuppressionScriptScheduled = false
-    private var cursorMirrorScriptScheduled = false
+
+    /**
+     * A UI-behavior enhancement injected into the OpenCode page as JavaScript. Instances bundle
+     * the setting gate, the script builder, and the per-page-load "already scheduled" flag so
+     * scheduling and setting toggles can be handled generically for every feature.
+     */
+    private class InjectedFeature(
+        val enabledInSettings: () -> Boolean,
+        val buildScript: () -> String?,
+        /** Extra cleanup before the page reload that removes a disabled feature. */
+        val onDisable: () -> Unit = {},
+    ) {
+        var scheduled = false
+    }
+
+    private val fileLinkFeature = InjectedFeature(
+        enabledInSettings = { OpenCodeSettingsState.getInstance().openFileLinksInIde },
+        buildScript = {
+            OpenCodeBrowserSnippets.buildFileLinkHandlerScript(
+                openCodeProjectDirectory(),
+                enabled = true,
+                openFileCallback = openFileLinkQuery.inject("rawHref + '\\n' + directory"),
+            )
+        },
+    )
+    private val externalLinkFeature = InjectedFeature(
+        enabledInSettings = { OpenCodeSettingsState.getInstance().openExternalLinksInBrowser },
+        buildScript = {
+            OpenCodeBrowserSnippets.buildExternalLinkHandlerScript(
+                enabled = true,
+                openExternalCallback = openExternalLinkQuery.inject("href"),
+            )
+        },
+    )
+    private val codeNavigationFeature = InjectedFeature(
+        enabledInSettings = { OpenCodeSettingsState.getInstance().effectiveCodeNavigationEnabled() },
+        buildScript = {
+            OpenCodeBrowserSnippets.buildCodeNavigationScript(
+                enabled = true,
+                openCodeCallback = openCodeReferenceQuery.inject("ref"),
+            )
+        },
+    )
+    private val filePasteSuppressionFeature = InjectedFeature(
+        enabledInSettings = { OpenCodeSettingsState.getInstance().enableChatFileDrop },
+        buildScript = { OpenCodeBrowserSnippets.buildFilePasteSuppressionScript(enabled = true) },
+    )
+    private val projectSwitchPromptSuppressionFeature = InjectedFeature(
+        enabledInSettings = { OpenCodeSettingsState.getInstance().suppressProjectSwitchPrompts },
+        buildScript = { OpenCodeBrowserSnippets.buildProjectSwitchPromptSuppressionScript(enabled = true) },
+    )
+    private val cursorMirrorFeature = InjectedFeature(
+        enabledInSettings = { OpenCodeSettingsState.getInstance().mirrorBrowserCursor },
+        buildScript = {
+            OpenCodeBrowserSnippets.buildCursorMirrorScript(
+                enabled = true,
+                cursorCallback = browserCursorQuery.inject("payload"),
+            )
+        },
+        onDisable = { applyBrowserCursor(Cursor.getPredefinedCursor(Cursor.DEFAULT_CURSOR)) },
+    )
+    private val injectedFeatures = listOf(
+        fileLinkFeature,
+        externalLinkFeature,
+        codeNavigationFeature,
+        filePasteSuppressionFeature,
+        projectSwitchPromptSuppressionFeature,
+        cursorMirrorFeature,
+    )
     private var lastAgentStatus = OpenCodeAgentStatusState.IDLE
     private val vcsRefresh = OpenCodeVcsRefresh(project)
     private val agentStatusTracker = OpenCodeAgentStatusTracker(
@@ -123,14 +187,9 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     private val loadHandler = object : CefLoadHandlerAdapter() {
         override fun onLoadStart(browser: CefBrowser?, frame: CefFrame?, transitionType: CefRequest.TransitionType?) {
             if (frame?.isMain == true) {
-                fileLinkScriptScheduled = false
-                externalLinkScriptScheduled = false
-                codeNavigationScriptScheduled = false
-                filePasteSuppressionScriptScheduled = false
+                injectedFeatures.forEach { it.scheduled = false }
                 compactLayoutScriptScheduled = false
                 ideThemeSyncScriptScheduled = false
-                projectSwitchPromptSuppressionScriptScheduled = false
-                cursorMirrorScriptScheduled = false
                 if (OpenCodeServerProtocol.isOpenCodeServerPage(serverManager.getServerUrl(), frame.url)) {
                     // Also reset the open-project flag: if the initial HTML load outlived all retry
                     // delays scheduled by loadProjectPage, onLoadEnd must be able to reschedule it.
@@ -155,13 +214,8 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             localStorageBridge.restore(frame.url)
             scheduleOpenProjectScript()
             localStorageBridge.installSync(frame.url)
-            scheduleFileLinkScript()
-            scheduleExternalLinkScript()
-            scheduleCodeNavigationScript()
-            scheduleFilePasteSuppressionScript()
+            injectedFeatures.forEach(::scheduleFeatureScript)
             scheduleIdeThemeSyncScript()
-            scheduleProjectSwitchPromptSuppressionScript()
-            scheduleCursorMirrorScript()
             scheduleFlushPendingChatInput()
             interruptedSessionRecovery.checkAndContinue()
         }
@@ -219,8 +273,8 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         }
         browser.jbCefClient.addRequestHandler(requestHandler, browser.cefBrowser)
         browser.jbCefClient.addLoadHandler(loadHandler, browser.cefBrowser)
-        installFileDropTransferHandler()
-        installBrowserEditShortcutHandler()
+        OpenCodeFileDropHandler(project, browser, serverManager, ::openCodeProjectDirectory, ::isContentDisposed, this).install()
+        OpenCodeBrowserEditShortcutHandler(browser, serverManager, ::isContentDisposed, this).install()
         OpenCodeChatInputService.getInstance(project).setDispatcher(::dispatchChatTexts)
         ApplicationManager.getApplication().messageBus.connect(this).subscribe(
             AppLifecycleListener.TOPIC,
@@ -266,42 +320,18 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                     applyBrowserZoom(zoomPercent)
                 }
 
-                override fun fileLinkNavigationChanged(enabled: Boolean) {
-                    applyFileLinkNavigation(enabled)
-                }
-
-                override fun externalLinkNavigationChanged(enabled: Boolean) {
-                    applyExternalLinkNavigation(enabled)
-                }
-
-                override fun codeNavigationChanged(enabled: Boolean) {
-                    applyCodeNavigation(enabled)
-                }
-
-                override fun chatFileDropChanged(enabled: Boolean) {
-                    applyFilePasteSuppression(enabled)
-                }
-
-                override fun compactLayoutChanged(enabled: Boolean) {
-                    applyCompactLayout()
-                }
-
-                override fun ideThemeSyncChanged(enabled: Boolean) {
-                    applyIdeThemeSync(enabled)
-                }
-
-                override fun projectSwitchPromptSuppressionChanged(enabled: Boolean) {
-                    applyProjectSwitchPromptSuppression(enabled)
-                }
-
-                override fun browserCursorMirrorChanged(enabled: Boolean) {
-                    applyCursorMirror(enabled)
-                }
-
-                // System notifications need no page interaction: the Kotlin-side event
-                // consumer re-checks the setting on every event.
-                override fun agentStatusBadgeChanged(enabled: Boolean) {
-                    applyAgentStatusBadge(enabled)
+                override fun uiSettingChanged(setting: OpenCodeUiSetting, enabled: Boolean) {
+                    when (setting) {
+                        OpenCodeUiSetting.FILE_LINK_NAVIGATION -> applyFileLinkNavigation(enabled)
+                        OpenCodeUiSetting.EXTERNAL_LINK_NAVIGATION -> applyFeature(externalLinkFeature, enabled)
+                        OpenCodeUiSetting.CODE_NAVIGATION -> applyFeature(codeNavigationFeature, enabled)
+                        OpenCodeUiSetting.CHAT_FILE_DROP -> applyFeature(filePasteSuppressionFeature, enabled)
+                        OpenCodeUiSetting.COMPACT_LAYOUT -> applyCompactLayout()
+                        OpenCodeUiSetting.IDE_THEME_SYNC -> applyIdeThemeSync(enabled)
+                        OpenCodeUiSetting.PROJECT_SWITCH_PROMPT_SUPPRESSION -> applyFeature(projectSwitchPromptSuppressionFeature, enabled)
+                        OpenCodeUiSetting.BROWSER_CURSOR_MIRROR -> applyFeature(cursorMirrorFeature, enabled)
+                        OpenCodeUiSetting.AGENT_STATUS_BADGE -> applyAgentStatusBadge(enabled)
+                    }
                 }
 
                 override fun serverRestartRequested() {
@@ -327,17 +357,6 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                 }
             },
         )
-    }
-
-    private fun installFileDropTransferHandler() {
-        OpenCodeFileDropHandler(
-            project,
-            browser,
-            serverManager,
-            ::openCodeProjectDirectory,
-            ::isContentDisposed,
-            this
-        ).install()
     }
 
     /**
@@ -370,10 +389,6 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         )
     }
 
-    private fun installBrowserEditShortcutHandler() {
-        OpenCodeBrowserEditShortcutHandler(browser, serverManager, ::isContentDisposed, this).install()
-    }
-
     fun getContent() = contentPanel
 
     private fun updateLifecycleIndicator(state: OpenCodeServerLifecycleState) {
@@ -383,10 +398,6 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         lifecycleStatusPanel.update(state)
         contentPanel.revalidate()
         contentPanel.repaint()
-    }
-
-    private fun retryOpenCodeServerStart() {
-        restartOpenCodeServer()
     }
 
     private fun restartOpenCodeServer() {
@@ -481,22 +492,15 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         showCenterCard(BROWSER_CARD)
         loadedServerRootUrl = url
         openProjectScriptScheduled = false
-        fileLinkScriptScheduled = false
-        externalLinkScriptScheduled = false
+        injectedFeatures.forEach { it.scheduled = false }
         compactLayoutScriptScheduled = false
         ideThemeSyncScriptScheduled = false
-        projectSwitchPromptSuppressionScriptScheduled = false
-        cursorMirrorScriptScheduled = false
         openProjectAlarm.cancelAllRequests()
         applyBrowserZoom()
         browser.loadURL(url)
         scheduleOpenProjectScript()
-        scheduleFileLinkScript()
-        scheduleExternalLinkScript()
-        scheduleFilePasteSuppressionScript()
+        injectedFeatures.forEach(::scheduleFeatureScript)
         scheduleIdeThemeSyncScript()
-        scheduleProjectSwitchPromptSuppressionScript()
-        scheduleCursorMirrorScript()
         // Events that fired before this panel started caring never reached the tracker.
         agentStatusTracker.seed()
     }
@@ -566,101 +570,38 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         }
     }
 
-    private fun scheduleFileLinkScript() {
-        if (fileLinkScriptScheduled) return
-        if (!OpenCodeSettingsState.getInstance().openFileLinksInIde) return
+    /** Schedules [feature]'s script for retried injection into the current page load. */
+    private fun scheduleFeatureScript(feature: InjectedFeature) {
+        if (feature.scheduled) return
+        if (!feature.enabledInSettings()) return
 
         val serverUrl = serverManager.getServerUrl() ?: return
-        val script = OpenCodeBrowserSnippets.buildFileLinkHandlerScript(
-            openCodeProjectDirectory(),
-            enabled = true,
-            openFileCallback = openFileLinkQuery.inject("rawHref + '\\n' + directory"),
-        ) ?: return
+        val script = feature.buildScript() ?: return
         val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
-        fileLinkScriptScheduled = true
+        feature.scheduled = true
 
         scriptScheduler.schedule(script, rootUrl) {
-            OpenCodeSettingsState.getInstance().openFileLinksInIde && isBrowserOnOpenCodeServerPage(serverUrl)
+            feature.enabledInSettings() && isBrowserOnOpenCodeServerPage(serverUrl)
         }
     }
 
-    private fun scheduleExternalLinkScript() {
-        if (externalLinkScriptScheduled) return
-        if (!OpenCodeSettingsState.getInstance().openExternalLinksInBrowser) return
-
+    /**
+     * Applies a runtime toggle of [feature]: injects the script when enabled, or reloads the
+     * page when disabled so previously installed listeners and patches are fully removed
+     * (per the safeguard contract, never a "disable" script).
+     */
+    private fun applyFeature(feature: InjectedFeature, enabled: Boolean) {
         val serverUrl = serverManager.getServerUrl() ?: return
-        val script = OpenCodeBrowserSnippets.buildExternalLinkHandlerScript(
-            enabled = true,
-            openExternalCallback = openExternalLinkQuery.inject("href"),
-        ) ?: return
-        val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
-        externalLinkScriptScheduled = true
-
-        scriptScheduler.schedule(script, rootUrl) {
-            OpenCodeSettingsState.getInstance().openExternalLinksInBrowser && isBrowserOnOpenCodeServerPage(serverUrl)
+        if (!isBrowserOnOpenCodeServerPage(serverUrl)) return
+        feature.scheduled = false
+        if (!enabled || !feature.enabledInSettings()) {
+            feature.onDisable()
+            browser.cefBrowser.reload()
+            return
         }
-    }
-
-    private fun scheduleCodeNavigationScript() {
-        if (codeNavigationScriptScheduled) return
-        if (!OpenCodeSettingsState.getInstance().effectiveCodeNavigationEnabled()) return
-
-        val serverUrl = serverManager.getServerUrl() ?: return
-        val script = OpenCodeBrowserSnippets.buildCodeNavigationScript(
-            enabled = true,
-            openCodeCallback = openCodeReferenceQuery.inject("ref"),
-        ) ?: return
-        val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
-        codeNavigationScriptScheduled = true
-
-        scriptScheduler.schedule(script, rootUrl) {
-            OpenCodeSettingsState.getInstance().effectiveCodeNavigationEnabled() && isBrowserOnOpenCodeServerPage(serverUrl)
-        }
-    }
-
-    private fun scheduleProjectSwitchPromptSuppressionScript() {
-        if (projectSwitchPromptSuppressionScriptScheduled) return
-        if (!OpenCodeSettingsState.getInstance().suppressProjectSwitchPrompts) return
-
-        val serverUrl = serverManager.getServerUrl() ?: return
-        val script = OpenCodeBrowserSnippets.buildProjectSwitchPromptSuppressionScript(enabled = true) ?: return
-        val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
-        projectSwitchPromptSuppressionScriptScheduled = true
-
-        scriptScheduler.schedule(script, rootUrl) {
-            OpenCodeSettingsState.getInstance().suppressProjectSwitchPrompts && isBrowserOnOpenCodeServerPage(serverUrl)
-        }
-    }
-
-    private fun scheduleCursorMirrorScript() {
-        if (cursorMirrorScriptScheduled) return
-        if (!OpenCodeSettingsState.getInstance().mirrorBrowserCursor) return
-
-        val serverUrl = serverManager.getServerUrl() ?: return
-        val script = OpenCodeBrowserSnippets.buildCursorMirrorScript(
-            enabled = true,
-            cursorCallback = browserCursorQuery.inject("payload"),
-        ) ?: return
-        val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
-        cursorMirrorScriptScheduled = true
-
-        scriptScheduler.schedule(script, rootUrl) {
-            OpenCodeSettingsState.getInstance().mirrorBrowserCursor && isBrowserOnOpenCodeServerPage(serverUrl)
-        }
-    }
-
-    private fun scheduleFilePasteSuppressionScript() {
-        if (filePasteSuppressionScriptScheduled) return
-        if (!OpenCodeSettingsState.getInstance().enableChatFileDrop) return
-
-        val serverUrl = serverManager.getServerUrl() ?: return
-        val script = OpenCodeBrowserSnippets.buildFilePasteSuppressionScript(enabled = true) ?: return
-        val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
-        filePasteSuppressionScriptScheduled = true
-
-        scriptScheduler.schedule(script, rootUrl) {
-            OpenCodeSettingsState.getInstance().enableChatFileDrop && isBrowserOnOpenCodeServerPage(serverUrl)
-        }
+        val script = feature.buildScript() ?: return
+        browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
+        feature.scheduled = true
     }
 
     private fun scheduleIdeThemeSyncScript() {
@@ -728,48 +669,6 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         return OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)
     }
 
-    private fun applyCodeNavigation(enabled: Boolean) {
-        val serverUrl = serverManager.getServerUrl() ?: return
-        if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)) return
-        codeNavigationScriptScheduled = false
-        if (!enabled || !OpenCodeSettingsState.getInstance().openFileLinksInIde) {
-            browser.cefBrowser.reload()
-            return
-        }
-        val script = OpenCodeBrowserSnippets.buildCodeNavigationScript(
-            enabled = true,
-            openCodeCallback = openCodeReferenceQuery.inject("ref"),
-        ) ?: return
-        browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
-        codeNavigationScriptScheduled = true
-    }
-
-    private fun applyFilePasteSuppression(enabled: Boolean) {
-        val serverUrl = serverManager.getServerUrl() ?: return
-        if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)) return
-        filePasteSuppressionScriptScheduled = false
-        if (!enabled) {
-            browser.cefBrowser.reload()
-            return
-        }
-        val script = OpenCodeBrowserSnippets.buildFilePasteSuppressionScript(enabled = true) ?: return
-        browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
-        filePasteSuppressionScriptScheduled = true
-    }
-
-    private fun applyProjectSwitchPromptSuppression(enabled: Boolean) {
-        val serverUrl = serverManager.getServerUrl() ?: return
-        if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)) return
-        projectSwitchPromptSuppressionScriptScheduled = false
-        if (!enabled) {
-            browser.cefBrowser.reload()
-            return
-        }
-        val script = OpenCodeBrowserSnippets.buildProjectSwitchPromptSuppressionScript(enabled = true) ?: return
-        browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
-        projectSwitchPromptSuppressionScriptScheduled = true
-    }
-
     /**
      * Applies the mirrored page cursor to the whole browser component tree: in off-screen
      * rendering the deepest Swing component under the pointer decides the visible cursor,
@@ -783,23 +682,6 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         apply(browser.component)
     }
 
-    private fun applyCursorMirror(enabled: Boolean) {
-        val serverUrl = serverManager.getServerUrl() ?: return
-        if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)) return
-        cursorMirrorScriptScheduled = false
-        if (!enabled) {
-            applyBrowserCursor(Cursor.getPredefinedCursor(Cursor.DEFAULT_CURSOR))
-            browser.cefBrowser.reload()
-            return
-        }
-        val script = OpenCodeBrowserSnippets.buildCursorMirrorScript(
-            enabled = true,
-            cursorCallback = browserCursorQuery.inject("payload"),
-        ) ?: return
-        browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
-        cursorMirrorScriptScheduled = true
-    }
-
     private fun applyIdeThemeSync(enabled: Boolean) {
         val serverUrl = serverManager.getServerUrl() ?: return
         if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)) return
@@ -811,28 +693,18 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         if (executeIdeThemeSyncScript(serverUrl)) ideThemeSyncScriptScheduled = true
     }
 
+    /** Code navigation piggybacks on file-link navigation, so a toggle here re-applies both. */
     private fun applyFileLinkNavigation(enabled: Boolean) {
-        val serverUrl = serverManager.getServerUrl() ?: return
-        if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)) return
-        fileLinkScriptScheduled = false
-        codeNavigationScriptScheduled = false
-        if (!enabled) {
-            browser.cefBrowser.reload()
-            return
+        codeNavigationFeature.scheduled = false
+        applyFeature(fileLinkFeature, enabled)
+        if (enabled && OpenCodeSettingsState.getInstance().enableCodeNavigation) {
+            applyFeature(codeNavigationFeature, enabled = true)
         }
-        val script = OpenCodeBrowserSnippets.buildFileLinkHandlerScript(
-            openCodeProjectDirectory(),
-            enabled = true,
-            openFileCallback = openFileLinkQuery.inject("rawHref + '\\n' + directory"),
-        ) ?: return
-        browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
-        fileLinkScriptScheduled = true
-        if (OpenCodeSettingsState.getInstance().enableCodeNavigation) applyCodeNavigation(enabled = true)
     }
 
     private fun applyOpenCodeProjectDirectoryChange() {
         openProjectScriptScheduled = false
-        fileLinkScriptScheduled = false
+        fileLinkFeature.scheduled = false
         openProjectAlarm.cancelAllRequests()
         // The badge state belongs to the previous directory; loadProjectPage re-seeds.
         resetAgentStatusBadge()
@@ -841,22 +713,6 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
 
     private fun openCodeProjectDirectory(): String? {
         return OpenCodeProjectSettingsState.getInstance(project).effectiveProjectDirectory(project.basePath)
-    }
-
-    private fun applyExternalLinkNavigation(enabled: Boolean) {
-        val serverUrl = serverManager.getServerUrl() ?: return
-        if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)) return
-        externalLinkScriptScheduled = false
-        if (!enabled) {
-            browser.cefBrowser.reload()
-            return
-        }
-        val script = OpenCodeBrowserSnippets.buildExternalLinkHandlerScript(
-            enabled = true,
-            openExternalCallback = openExternalLinkQuery.inject("href"),
-        ) ?: return
-        browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
-        externalLinkScriptScheduled = true
     }
 
     private fun injectCompactLayoutEarly() {
@@ -871,7 +727,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         // Inject immediately (onLoadStart — before SPA bundle executes)
         browser.cefBrowser.executeJavaScript(script, rootUrl, 0)
         // Re-inject on delays in case the early injection ran before JS context was ready
-        scriptScheduler.scheduleEarly(script, rootUrl) {
+        scriptScheduler.schedule(script, rootUrl, early = true) {
             OpenCodeSettingsState.getInstance().forceCompactLayout && isBrowserOnOpenCodeServerPage(serverUrl)
         }
     }
@@ -884,7 +740,8 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         ideThemeSyncScriptScheduled = true
 
         executeIdeThemeSyncScript(serverUrl)
-        scriptScheduler.scheduleEarlyAction(
+        scriptScheduler.scheduleAction(
+            early = true,
             shouldRun = { OpenCodeSettingsState.getInstance().syncThemeWithIde && isBrowserOnOpenCodeServerPage(serverUrl) },
             action = { executeIdeThemeSyncScript(serverUrl) },
         )

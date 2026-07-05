@@ -2,28 +2,23 @@ package de.moritzf.opencodewebpanel.settings
 
 import com.intellij.util.messages.Topic
 
+/** The UI-behavior toggles whose changes the tool window must apply to the live page. */
+enum class OpenCodeUiSetting {
+    FILE_LINK_NAVIGATION,
+    EXTERNAL_LINK_NAVIGATION,
+    CODE_NAVIGATION,
+    CHAT_FILE_DROP,
+    COMPACT_LAYOUT,
+    IDE_THEME_SYNC,
+    PROJECT_SWITCH_PROMPT_SUPPRESSION,
+    BROWSER_CURSOR_MIRROR,
+    AGENT_STATUS_BADGE,
+}
+
 interface OpenCodeSettingsListener {
-    fun uiZoomChanged(zoomPercent: Int)
+    fun uiZoomChanged(zoomPercent: Int) {}
 
-    fun fileLinkNavigationChanged(enabled: Boolean)
-
-    fun externalLinkNavigationChanged(enabled: Boolean) {}
-
-    fun codeNavigationChanged(enabled: Boolean) {}
-
-    fun chatFileDropChanged(enabled: Boolean) {}
-
-    fun compactLayoutChanged(enabled: Boolean) {}
-
-    fun ideThemeSyncChanged(enabled: Boolean) {}
-
-    fun projectSwitchPromptSuppressionChanged(enabled: Boolean) {}
-
-    fun browserCursorMirrorChanged(enabled: Boolean) {}
-
-    fun systemNotificationsChanged(enabled: Boolean) {}
-
-    fun agentStatusBadgeChanged(enabled: Boolean) {}
+    fun uiSettingChanged(setting: OpenCodeUiSetting, enabled: Boolean) {}
 
     fun serverRestartRequested() {}
 

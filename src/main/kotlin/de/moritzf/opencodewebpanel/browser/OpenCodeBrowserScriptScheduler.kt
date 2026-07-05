@@ -14,27 +14,14 @@ internal class OpenCodeBrowserScriptScheduler(
         private val EARLY_DELAYS_MILLIS = listOf(50, 250, 750, 1500, 3000)
     }
 
-    fun schedule(script: String, rootUrl: String, shouldRun: () -> Boolean = { true }) {
-        schedule(DEFAULT_DELAYS_MILLIS, shouldRun) {
+    fun schedule(script: String, rootUrl: String, early: Boolean = false, shouldRun: () -> Boolean = { true }) {
+        scheduleAction(early, shouldRun) {
             browser.cefBrowser.executeJavaScript(script, rootUrl, 0)
         }
     }
 
-    fun scheduleEarly(script: String, rootUrl: String, shouldRun: () -> Boolean = { true }) {
-        schedule(EARLY_DELAYS_MILLIS, shouldRun) {
-            browser.cefBrowser.executeJavaScript(script, rootUrl, 0)
-        }
-    }
-
-    fun scheduleAction(shouldRun: () -> Boolean = { true }, action: () -> Unit) {
-        schedule(DEFAULT_DELAYS_MILLIS, shouldRun, action)
-    }
-
-    fun scheduleEarlyAction(shouldRun: () -> Boolean = { true }, action: () -> Unit) {
-        schedule(EARLY_DELAYS_MILLIS, shouldRun, action)
-    }
-
-    private fun schedule(delaysMillis: List<Int>, shouldRun: () -> Boolean, action: () -> Unit) {
+    fun scheduleAction(early: Boolean = false, shouldRun: () -> Boolean = { true }, action: () -> Unit) {
+        val delaysMillis = if (early) EARLY_DELAYS_MILLIS else DEFAULT_DELAYS_MILLIS
         delaysMillis.forEach { delayMillis ->
             alarm.addRequest(
                 {

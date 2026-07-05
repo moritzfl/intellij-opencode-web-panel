@@ -119,22 +119,25 @@ class OpenCodeSettingsConfigurable : Configurable {
         val checkBox: JBCheckBox,
         val read: OpenCodeSettingsState.() -> Boolean,
         val write: OpenCodeSettingsState.(Boolean) -> Unit,
-        val broadcast: ((OpenCodeSettingsListener, Boolean) -> Unit)? = null,
+        /** When set, a change to this toggle is broadcast as [OpenCodeSettingsListener.uiSettingChanged]. */
+        val uiSetting: OpenCodeUiSetting? = null,
     )
 
     private val checkBoxSettingBindings = listOf(
         CheckBoxSettingBinding(openMostRecentConversationCheckBox, { openMostRecentConversationOnStartup }, { value -> openMostRecentConversationOnStartup = value }),
-        CheckBoxSettingBinding(openFileLinksInIdeCheckBox, { openFileLinksInIde }, { value -> openFileLinksInIde = value }, { listener, value -> listener.fileLinkNavigationChanged(value) }),
-        CheckBoxSettingBinding(openExternalLinksInBrowserCheckBox, { openExternalLinksInBrowser }, { value -> openExternalLinksInBrowser = value }, { listener, value -> listener.externalLinkNavigationChanged(value) }),
-        CheckBoxSettingBinding(enableCodeNavigationCheckBox, { enableCodeNavigation }, { value -> enableCodeNavigation = value }, { listener, value -> listener.codeNavigationChanged(value) }),
-        CheckBoxSettingBinding(enableChatFileDropCheckBox, { enableChatFileDrop }, { value -> enableChatFileDrop = value }, { listener, value -> listener.chatFileDropChanged(value) }),
-        CheckBoxSettingBinding(forceCompactLayoutCheckBox, { forceCompactLayout }, { value -> forceCompactLayout = value }, { listener, value -> listener.compactLayoutChanged(value) }),
-        CheckBoxSettingBinding(syncThemeWithIdeCheckBox, { syncThemeWithIde }, { value -> syncThemeWithIde = value }, { listener, value -> listener.ideThemeSyncChanged(value) }),
-        CheckBoxSettingBinding(suppressProjectSwitchPromptsCheckBox, { suppressProjectSwitchPrompts }, { value -> suppressProjectSwitchPrompts = value }, { listener, value -> listener.projectSwitchPromptSuppressionChanged(value) }),
-        CheckBoxSettingBinding(mirrorBrowserCursorCheckBox, { mirrorBrowserCursor }, { value -> mirrorBrowserCursor = value }, { listener, value -> listener.browserCursorMirrorChanged(value) }),
-        CheckBoxSettingBinding(enableSystemNotificationsCheckBox, { enableSystemNotifications }, { value -> enableSystemNotifications = value }, { listener, value -> listener.systemNotificationsChanged(value) }),
+        CheckBoxSettingBinding(openFileLinksInIdeCheckBox, { openFileLinksInIde }, { value -> openFileLinksInIde = value }, OpenCodeUiSetting.FILE_LINK_NAVIGATION),
+        CheckBoxSettingBinding(openExternalLinksInBrowserCheckBox, { openExternalLinksInBrowser }, { value -> openExternalLinksInBrowser = value }, OpenCodeUiSetting.EXTERNAL_LINK_NAVIGATION),
+        CheckBoxSettingBinding(enableCodeNavigationCheckBox, { enableCodeNavigation }, { value -> enableCodeNavigation = value }, OpenCodeUiSetting.CODE_NAVIGATION),
+        CheckBoxSettingBinding(enableChatFileDropCheckBox, { enableChatFileDrop }, { value -> enableChatFileDrop = value }, OpenCodeUiSetting.CHAT_FILE_DROP),
+        CheckBoxSettingBinding(forceCompactLayoutCheckBox, { forceCompactLayout }, { value -> forceCompactLayout = value }, OpenCodeUiSetting.COMPACT_LAYOUT),
+        CheckBoxSettingBinding(syncThemeWithIdeCheckBox, { syncThemeWithIde }, { value -> syncThemeWithIde = value }, OpenCodeUiSetting.IDE_THEME_SYNC),
+        CheckBoxSettingBinding(suppressProjectSwitchPromptsCheckBox, { suppressProjectSwitchPrompts }, { value -> suppressProjectSwitchPrompts = value }, OpenCodeUiSetting.PROJECT_SWITCH_PROMPT_SUPPRESSION),
+        CheckBoxSettingBinding(mirrorBrowserCursorCheckBox, { mirrorBrowserCursor }, { value -> mirrorBrowserCursor = value }, OpenCodeUiSetting.BROWSER_CURSOR_MIRROR),
+        // System notifications need no page interaction: the Kotlin-side event consumer
+        // re-checks the setting on every event.
+        CheckBoxSettingBinding(enableSystemNotificationsCheckBox, { enableSystemNotifications }, { value -> enableSystemNotifications = value }),
         CheckBoxSettingBinding(enablePermissionNotificationActionsCheckBox, { enablePermissionNotificationActions }, { value -> enablePermissionNotificationActions = value }),
-        CheckBoxSettingBinding(showAgentStatusBadgeCheckBox, { showAgentStatusBadge }, { value -> showAgentStatusBadge = value }, { listener, value -> listener.agentStatusBadgeChanged(value) }),
+        CheckBoxSettingBinding(showAgentStatusBadgeCheckBox, { showAgentStatusBadge }, { value -> showAgentStatusBadge = value }, OpenCodeUiSetting.AGENT_STATUS_BADGE),
         CheckBoxSettingBinding(autoContinueInterruptedSessionsCheckBox, { autoContinueInterruptedSessions }, { value -> autoContinueInterruptedSessions = value }),
         CheckBoxSettingBinding(waitForIntellijMcpServerCheckBox, { waitForIntellijMcpServer }, { value -> waitForIntellijMcpServer = value }),
         CheckBoxSettingBinding(enableServerLogsCheckBox, { enableServerLogs }, { value -> enableServerLogs = value }),
@@ -340,10 +343,10 @@ class OpenCodeSettingsConfigurable : Configurable {
         val oldUiZoomPercent = OpenCodeSettingsState.sanitizeUiZoomPercent(settings.uiZoomPercent)
         val oldPassword = savedPassword
         val pendingBroadcasts = checkBoxSettingBindings.mapNotNull { binding ->
-            val broadcast = binding.broadcast ?: return@mapNotNull null
+            val uiSetting = binding.uiSetting ?: return@mapNotNull null
             val newValue = binding.checkBox.isSelected
             if (binding.read(settings) == newValue) return@mapNotNull null
-            { listener: OpenCodeSettingsListener -> broadcast(listener, newValue) }
+            uiSetting to newValue
         }
 
         val nextPassword = passwordForApply ?: OpenCodePasswordStore.getInstance().generatePasswordForEditing()
@@ -389,7 +392,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         if (pendingBroadcasts.isNotEmpty()) {
             val publisher = ApplicationManager.getApplication().messageBus
                 .syncPublisher(OpenCodeSettingsListener.TOPIC)
-            pendingBroadcasts.forEach { broadcast -> broadcast(publisher) }
+            pendingBroadcasts.forEach { (setting, enabled) -> publisher.uiSettingChanged(setting, enabled) }
         }
     }
 
