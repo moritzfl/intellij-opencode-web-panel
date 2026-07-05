@@ -21,9 +21,15 @@ import de.moritzf.opencodewebpanel.server.OpenCodeGlobalEventListener
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
+import com.intellij.openapi.util.text.StringUtil
 import java.awt.Frame
 import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicBoolean
+
+/** Collapses whitespace, truncates, and HTML-escapes a value for use in notification HTML. */
+internal fun notificationText(value: String, maxLength: Int = 1000): String {
+    return StringUtil.escapeXmlEntities(value.replace(Regex("\\s+"), " ").trim().take(maxLength))
+}
 
 /**
  * Shows IDE notifications for OpenCode events (response ready, session error, permission or
@@ -274,18 +280,6 @@ internal class OpenCodeSystemNotifications(
                     if (remaining.isEmpty()) activeNotificationsByKey.remove(key)
                 }
             }
-        }
-
-        private fun notificationText(value: String, maxLength: Int): String {
-            return value
-                .replace(Regex("\\s+"), " ")
-                .trim()
-                .take(maxLength)
-                .replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")
-                .replace("\"", "&quot;")
-                .replace("'", "&#39;")
         }
 
         private fun targetFor(directory: String): OpenCodeSystemNotifications? {

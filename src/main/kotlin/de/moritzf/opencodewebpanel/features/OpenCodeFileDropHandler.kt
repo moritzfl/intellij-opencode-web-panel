@@ -47,11 +47,7 @@ internal class OpenCodeFileDropHandler(
         private const val MAX_DROPPED_FILES_TOTAL_BYTES = 10L * 1024L * 1024L
         private const val BROWSER_PASTE_SUPPRESSION_MILLIS = 1_500L
 
-        fun isPasteShortcut(keyCode: Int, modifiers: Int): Boolean {
-            return isPasteShortcut(keyCode, modifiers, 0.toChar(), 0.toChar())
-        }
-
-        fun isPasteShortcut(keyCode: Int, modifiers: Int, character: Char, unmodifiedCharacter: Char): Boolean {
+        fun isPasteShortcut(keyCode: Int, modifiers: Int, character: Char = 0.toChar(), unmodifiedCharacter: Char = 0.toChar()): Boolean {
             val hasCommand = modifiers and EventFlags.EVENTFLAG_COMMAND_DOWN != 0
             val hasControl = modifiers and EventFlags.EVENTFLAG_CONTROL_DOWN != 0
             val hasAlt = modifiers and EventFlags.EVENTFLAG_ALT_DOWN != 0
@@ -200,7 +196,11 @@ internal class OpenCodeFileDropHandler(
         val files = transferables
             .flatMap { clipboardFiles(it) }
             .distinctBy { it.toPath().toAbsolutePath().normalize() }
-        val imagePayloads = if (files.isEmpty()) clipboardImagePayloads(transferables) else emptyList()
+        val imagePayloads = if (files.isEmpty()) {
+            imagePayloads(transferables, fileNamePrefix = "pasted-image", warningDescription = "pasted image")
+        } else {
+            emptyList()
+        }
         val text = transferables.firstNotNullOfOrNull { droppedTextPayload(it) }
         val fileReferenceText = text?.takeIf { it.startsWith("file:") }
         if (files.isEmpty() && imagePayloads.isEmpty() && fileReferenceText == null) return false
@@ -243,10 +243,6 @@ internal class OpenCodeFileDropHandler(
             }
         }
         return true
-    }
-
-    private fun clipboardImagePayloads(transferables: List<Transferable>): List<OpenCodeServerProtocol.DroppedFilePayload> {
-        return imagePayloads(transferables, fileNamePrefix = "pasted-image", warningDescription = "pasted image")
     }
 
     private fun droppedImagePayloads(
@@ -330,7 +326,7 @@ internal class OpenCodeFileDropHandler(
         if (files.isNotEmpty()) return emptyList()
         val text = textPlain?.takeIf { it.isNotBlank() } ?: return emptyList()
         val lines = text.lineSequence().map { it.trim() }.filter { it.isNotBlank() }.toList()
-        if (lines.size > 1 && lines.all { it.isOpenCodeFileDropText() }) return lines
+        if (lines.size > 1 && lines.all { it.startsWith("file:") }) return lines
         return listOf(text)
     }
 
@@ -350,10 +346,6 @@ internal class OpenCodeFileDropHandler(
                     flavor.getReaderForText(transferable).use { it.readText() }
                 }.getOrNull()?.takeIf { it.isNotBlank() }
             }
-    }
-
-    private fun String.isOpenCodeFileDropText(): Boolean {
-        return startsWith("file:")
     }
 
     private fun showFileDropWarning(rejectionMessages: List<String>) {
@@ -389,17 +381,5 @@ internal class OpenCodeFileDropHandler(
                 base64 = Base64.getEncoder().encodeToString(Files.readAllBytes(path)),
             )
         }.getOrNull()
-    }
-
-    private fun notificationText(value: String): String {
-        return value
-            .replace(Regex("\\s+"), " ")
-            .trim()
-            .take(1000)
-            .replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
-            .replace("\"", "&quot;")
-            .replace("'", "&#39;")
     }
 }
