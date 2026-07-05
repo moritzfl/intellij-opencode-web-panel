@@ -734,7 +734,7 @@ class OpenCodeServerProtocolTest {
     fun buildDispatchDroppedFilesScriptCanForwardTextPlainDropData() {
         val script = OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(
             emptyList(),
-            textPlain = "file:src/main/App.kt",
+            textPlain = listOf("file:src/main/App.kt"),
             enabled = true,
         )!!
 
@@ -757,7 +757,6 @@ class OpenCodeServerProtocolTest {
     @Test
     fun buildDispatchDroppedFilesScriptIsMissingWithoutFiles() {
         assertNull(OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(emptyList()))
-        assertNull(OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(emptyList(), textPlain = null, enabled = true))
         assertNull(OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(emptyList(), textPlain = emptyList(), enabled = true))
     }
 

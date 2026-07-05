@@ -5,19 +5,70 @@ import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 
 internal object OpenCodeBrowserSnippets {
 
-    fun buildOpenProjectScript(
-        projectBasePath: String?,
-        serverUrl: String? = null,
-        openMostRecentConversation: Boolean = false,
-    ): String? {
-        if (projectBasePath.isNullOrBlank()) return null
-        return buildOpenProjectScript(
-            projectBasePath = projectBasePath,
-            projectPath = "/${OpenCodeServerProtocol.encodeDirectory(projectBasePath)}/session",
-            expectedOrigin = serverUrl?.let(OpenCodeServerProtocol::buildOrigin),
-            openMostRecentConversation = openMostRecentConversation,
-        )
-    }
+    /** Decodes a base64url route segment back to the project directory. Shared by the builders below. */
+    @Language("JavaScript")
+    private val DECODE_ROUTE_DIRECTORY_JS = """
+        const decodeRouteDirectory = (value) => {
+          try {
+            const base64 = value.replace(/-/g, '+').replace(/_/g, '/');
+            const padded = base64 + '='.repeat((4 - base64.length % 4) % 4);
+            const binary = atob(padded);
+            const bytes = new Uint8Array(binary.length);
+            for (let index = 0; index < binary.length; index += 1) {
+              bytes[index] = binary.charCodeAt(index);
+            }
+            return new TextDecoder().decode(bytes);
+          } catch (_) {
+            return '';
+          }
+        };
+    """.trimIndent()
+
+    /**
+     * Hovered interactive elements get the pointer cursor; the cursor mirror reads computed
+     * styles, so the embedded panel cursor follows automatically. Callers wire their own
+     * mouseover listener that calls `markHovered(elementOrNull)`.
+     */
+    @Language("JavaScript")
+    private val POINTER_CURSOR_KIT_JS = """
+        const POINTER_ATTR = 'data-opencode-intellij-pointer';
+        const ensurePointerCursorStyle = () => {
+          if (window.__opencodeIntellijPointerCursorStyleInstalled) return;
+          window.__opencodeIntellijPointerCursorStyleInstalled = true;
+          const style = document.createElement('style');
+          style.textContent = '[' + POINTER_ATTR + '], [' + POINTER_ATTR + '] * { cursor: pointer !important; }';
+          (document.head || document.documentElement).appendChild(style);
+        };
+        let hoveredElement = null;
+        const markHovered = (element) => {
+          if (element === hoveredElement) return;
+          if (hoveredElement) hoveredElement.removeAttribute(POINTER_ATTR);
+          hoveredElement = element;
+          if (hoveredElement) {
+            ensurePointerCursorStyle();
+            hoveredElement.setAttribute(POINTER_ATTR, '');
+          }
+        };
+        document.addEventListener('mouseout', (event) => {
+          if (!event.relatedTarget) markHovered(null);
+        }, true);
+    """.trimIndent()
+
+    /** The OpenCode localStorage keys mirrored into the IDE-side settings store. */
+    @Language("JavaScript")
+    private val PERSISTED_STORAGE_KEY_FILTER_JS = """
+        const exactKeys = new Set([
+          '${OpenCodeServerProtocol.OPEN_CODE_THEME_ID_STORAGE_KEY}',
+          '${OpenCodeServerProtocol.OPEN_CODE_COLOR_SCHEME_STORAGE_KEY}',
+          'opencode-theme-css-light',
+          'opencode-theme-css-dark',
+          'settings.v3',
+        ]);
+        const globalKeys = /^opencode\.global\.dat:(language|model|layout|layout\.page|permission|notification|tabs|open\.app|go-upsell)${'$'}/;
+        const workspaceKeys = /^opencode\.workspace\.[^:]+:workspace:(model-selection|terminal|project|icon|vcs)${'$'}/;
+        const windowKeys = /^opencode\.window\.browser\.dat:tabs(\.recent)?${'$'}/;
+        const shouldPersistKey = (key) => typeof key === 'string' && (exactKeys.has(key) || globalKeys.test(key) || workspaceKeys.test(key) || windowKeys.test(key));
+    """.trimIndent()
 
     /**
      * Maps a CSS cursor computed value to the closest AWT predefined cursor type. Custom
@@ -48,14 +99,14 @@ internal object OpenCodeBrowserSnippets {
     }
 
     fun buildOpenProjectScript(
-        projectBasePath: String,
-        projectPath: String,
-        expectedOrigin: String?,
-        openMostRecentConversation: Boolean,
-    ): String {
+        projectBasePath: String?,
+        serverUrl: String? = null,
+        openMostRecentConversation: Boolean = false,
+    ): String? {
+        if (projectBasePath.isNullOrBlank()) return null
         val directory = escapeJavaScript(projectBasePath)
-        val escapedProjectPath = escapeJavaScript(projectPath)
-        val originGuard = expectedOrigin
+        val escapedProjectPath = escapeJavaScript("/${OpenCodeServerProtocol.encodeDirectory(projectBasePath)}/session")
+        val originGuard = serverUrl?.let(OpenCodeServerProtocol::buildOrigin)
             ?.let(::escapeJavaScript)
             ?.let {
                 @Language("JavaScript")
@@ -81,20 +132,7 @@ internal object OpenCodeBrowserSnippets {
                 bytes.forEach((byte) => binary += String.fromCharCode(byte));
                 return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+${'$'}/g, '');
               };
-              const decodeRouteDirectory = (value) => {
-                try {
-                  const base64 = value.replace(/-/g, '+').replace(/_/g, '/');
-                  const padded = base64 + '='.repeat((4 - base64.length % 4) % 4);
-                  const binary = atob(padded);
-                  const bytes = new Uint8Array(binary.length);
-                  for (let index = 0; index < binary.length; index += 1) {
-                    bytes[index] = binary.charCodeAt(index);
-                  }
-                  return new TextDecoder().decode(bytes);
-                } catch (_) {
-                  return '';
-                }
-              };
+              $DECODE_ROUTE_DIRECTORY_JS
               const comparableDirectory = (value) => {
                 const normalized = String(value || '').trim().replace(/\\/g, '/').replace(/\/+$/, '');
                 return /^[A-Za-z]:\//.test(normalized) ? normalized[0].toLowerCase() + normalized.slice(1) : normalized;
@@ -224,17 +262,7 @@ internal object OpenCodeBrowserSnippets {
         val script = """
             (() => {
               const raw = '$payload';
-              const exactKeys = new Set([
-                '${OpenCodeServerProtocol.OPEN_CODE_THEME_ID_STORAGE_KEY}',
-                '${OpenCodeServerProtocol.OPEN_CODE_COLOR_SCHEME_STORAGE_KEY}',
-                'opencode-theme-css-light',
-                'opencode-theme-css-dark',
-                'settings.v3',
-              ]);
-              const globalKeys = /^opencode\.global\.dat:(language|model|layout|layout\.page|permission|notification|tabs|open\.app|go-upsell)${'$'}/;
-              const workspaceKeys = /^opencode\.workspace\.[^:]+:workspace:(model-selection|terminal|project|icon|vcs)${'$'}/;
-              const windowKeys = /^opencode\.window\.browser\.dat:tabs(\.recent)?${'$'}/;
-              const shouldPersistKey = (key) => typeof key === 'string' && (exactKeys.has(key) || globalKeys.test(key) || workspaceKeys.test(key) || windowKeys.test(key));
+              $PERSISTED_STORAGE_KEY_FILTER_JS
               try {
                 const snapshot = JSON.parse(raw);
                 if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return;
@@ -259,17 +287,7 @@ internal object OpenCodeBrowserSnippets {
         @Language("JavaScript")
         val script = """
             (() => {
-              const exactKeys = new Set([
-                '${OpenCodeServerProtocol.OPEN_CODE_THEME_ID_STORAGE_KEY}',
-                '${OpenCodeServerProtocol.OPEN_CODE_COLOR_SCHEME_STORAGE_KEY}',
-                'opencode-theme-css-light',
-                'opencode-theme-css-dark',
-                'settings.v3',
-              ]);
-              const globalKeys = /^opencode\.global\.dat:(language|model|layout|layout\.page|permission|notification|tabs|open\.app|go-upsell)${'$'}/;
-              const workspaceKeys = /^opencode\.workspace\.[^:]+:workspace:(model-selection|terminal|project|icon|vcs)${'$'}/;
-              const windowKeys = /^opencode\.window\.browser\.dat:tabs(\.recent)?${'$'}/;
-              const shouldPersistKey = (key) => typeof key === 'string' && (exactKeys.has(key) || globalKeys.test(key) || workspaceKeys.test(key) || windowKeys.test(key));
+              $PERSISTED_STORAGE_KEY_FILTER_JS
               // Bound each mirrored value so a single oversized entry (e.g. a huge cached theme
               // CSS) cannot bloat the IDE-side settings store.
               const MAX_VALUE_CHARS = 131072;
@@ -433,32 +451,10 @@ internal object OpenCodeBrowserSnippets {
                 event.stopImmediatePropagation();
                 $openCodeCallback;
               }, true);
-              // Code references get the pointer cursor on hover; the cursor mirror
-              // reads computed styles, so the embedded panel cursor follows automatically.
-              const POINTER_ATTR = 'data-opencode-intellij-pointer';
-              const ensurePointerCursorStyle = () => {
-                if (window.__opencodeIntellijPointerCursorStyleInstalled) return;
-                window.__opencodeIntellijPointerCursorStyleInstalled = true;
-                const style = document.createElement('style');
-                style.textContent = '[' + POINTER_ATTR + '], [' + POINTER_ATTR + '] * { cursor: pointer !important; }';
-                (document.head || document.documentElement).appendChild(style);
-              };
-              let hoveredCodeElement = null;
-              const markHoveredCodeRef = (element) => {
-                if (element === hoveredCodeElement) return;
-                if (hoveredCodeElement) hoveredCodeElement.removeAttribute(POINTER_ATTR);
-                hoveredCodeElement = element;
-                if (hoveredCodeElement) {
-                  ensurePointerCursorStyle();
-                  hoveredCodeElement.setAttribute(POINTER_ATTR, '');
-                }
-              };
+              $POINTER_CURSOR_KIT_JS
               document.addEventListener('mouseover', (event) => {
                 const code = event.target && event.target.closest ? event.target.closest('code') : null;
-                markHoveredCodeRef(code && extractRef(code) ? code : null);
-              }, true);
-              document.addEventListener('mouseout', (event) => {
-                if (!event.relatedTarget) markHoveredCodeRef(null);
+                markHovered(code && extractRef(code) ? code : null);
               }, true);
             })();
         """
@@ -681,26 +677,10 @@ internal object OpenCodeBrowserSnippets {
         return script.trimIndent()
     }
 
-    fun buildDispatchDroppedFilesScript(files: List<OpenCodeServerProtocol.DroppedFilePayload>): String? {
-        return buildDispatchDroppedFilesScript(files, enabled = true)
-    }
-
-    fun buildDispatchDroppedFilesScript(files: List<OpenCodeServerProtocol.DroppedFilePayload>, enabled: Boolean): String? {
-        return buildDispatchDroppedFilesScript(files, textPlain = null, enabled)
-    }
-
     fun buildDispatchDroppedFilesScript(
         files: List<OpenCodeServerProtocol.DroppedFilePayload>,
-        textPlain: String?,
-        enabled: Boolean,
-    ): String? {
-        return buildDispatchDroppedFilesScript(files, listOfNotNull(textPlain?.takeIf { it.isNotBlank() }), enabled)
-    }
-
-    fun buildDispatchDroppedFilesScript(
-        files: List<OpenCodeServerProtocol.DroppedFilePayload>,
-        textPlain: List<String>,
-        enabled: Boolean,
+        textPlain: List<String> = emptyList(),
+        enabled: Boolean = true,
     ): String? {
         val textEntries = textPlain.filter { it.isNotBlank() }
         if (!enabled || (files.isEmpty() && textEntries.isEmpty())) return null
@@ -831,20 +811,7 @@ internal object OpenCodeBrowserSnippets {
               const directory = '$directory';
               const unsupportedProtocol = /^(https?|mailto|tel|data|blob|javascript):/i;
               const absoluteFilePath = /^(\/|[A-Za-z]:[\\/])/;
-              const decodeRouteDirectory = (value) => {
-                try {
-                  const base64 = value.replace(/-/g, '+').replace(/_/g, '/');
-                  const padded = base64 + '='.repeat((4 - base64.length % 4) % 4);
-                  const binary = atob(padded);
-                  const bytes = new Uint8Array(binary.length);
-                  for (let index = 0; index < binary.length; index += 1) {
-                    bytes[index] = binary.charCodeAt(index);
-                  }
-                  return new TextDecoder().decode(bytes);
-                } catch (_) {
-                  return '';
-                }
-              };
+              $DECODE_ROUTE_DIRECTORY_JS
               const openCodeRoutePath = (value) => {
                 const text = (value || '').trim();
                 if (text.startsWith('/')) return text;
@@ -931,33 +898,11 @@ internal object OpenCodeBrowserSnippets {
               document.addEventListener('pointerdown', (event) => handleFileOpenEvent(event, true), true);
               document.addEventListener('mousedown', (event) => handleFileOpenEvent(event, true), true);
               document.addEventListener('click', (event) => handleFileOpenEvent(event, false), true);
-              // Resolvable file links get the pointer cursor on hover; the cursor mirror
-              // reads computed styles, so the embedded panel cursor follows automatically.
-              const POINTER_ATTR = 'data-opencode-intellij-pointer';
-              const ensurePointerCursorStyle = () => {
-                if (window.__opencodeIntellijPointerCursorStyleInstalled) return;
-                window.__opencodeIntellijPointerCursorStyleInstalled = true;
-                const style = document.createElement('style');
-                style.textContent = '[' + POINTER_ATTR + '], [' + POINTER_ATTR + '] * { cursor: pointer !important; }';
-                (document.head || document.documentElement).appendChild(style);
-              };
-              let hoveredFileLinkElement = null;
-              const markHoveredFileLink = (element) => {
-                if (element === hoveredFileLinkElement) return;
-                if (hoveredFileLinkElement) hoveredFileLinkElement.removeAttribute(POINTER_ATTR);
-                hoveredFileLinkElement = element;
-                if (hoveredFileLinkElement) {
-                  ensurePointerCursorStyle();
-                  hoveredFileLinkElement.setAttribute(POINTER_ATTR, '');
-                }
-              };
+              $POINTER_CURSOR_KIT_JS
               document.addEventListener('mouseover', (event) => {
                 const target = event.target && event.target.nodeType === 1 ? event.target : null;
                 const resolved = target ? resolveFileOpenTarget(target, false) : null;
-                markHoveredFileLink(resolved ? resolved.element : null);
-              }, true);
-              document.addEventListener('mouseout', (event) => {
-                if (!event.relatedTarget) markHoveredFileLink(null);
+                markHovered(resolved ? resolved.element : null);
               }, true);
             })();
         """
@@ -988,14 +933,5 @@ internal object OpenCodeBrowserSnippets {
             }
         }
         return builder.toString()
-    }
-
-    private fun escapeHtml(value: String): String {
-        return value
-            .replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
-            .replace("\"", "&quot;")
-            .replace("'", "&#39;")
     }
 }
