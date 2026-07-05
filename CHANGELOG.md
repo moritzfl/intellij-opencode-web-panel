@@ -4,8 +4,11 @@
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-07-05
+
 ### Added
 
+- "Open the most recent conversation on startup" now really does open the most recent conversation. Instead of picking up whatever session happened to be last shown in the panel, the plugin asks the OpenCode server which conversation was updated most recently — even if the new messages came from another IDE window, the terminal, or an OpenCode agent — and navigates there after a restart.
 - Hovering anything the panel opens in the IDE — local file links, changed-file buttons, and code references in chat — now shows the hand cursor, in the page and on the mirrored panel cursor, so clickable IDE targets are recognizable before you click.
 
 ### Changed
@@ -15,6 +18,7 @@
 
 ### Fixed
 
+- Fixed blank or partially painted areas in the embedded OpenCode page after navigating between conversations. The off-screen Chromium renderer now gets the extra nudge it needs to redraw after the SPA changes routes.
 - The panel now mirrors the web page's mouse cursor like a regular browser: text shows the I-beam, links and buttons show the hand, and resize handles show resize arrows that no longer get stuck, because JCEF's off-screen rendering does not propagate Chromium's cursor changes itself. Can be disabled via the new "Mirror the web page mouse cursor" setting.
 
 ## [1.4.11] - 2026-07-03
@@ -242,7 +246,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.11...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.5.0...HEAD
+[1.5.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.11...1.5.0
 [1.4.11]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.10...1.4.11
 [1.4.10]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.9...1.4.10
 [1.4.9]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.8...1.4.9
