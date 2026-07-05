@@ -357,7 +357,6 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
 
     private fun scheduleFlushPendingChatInput() {
         val service = OpenCodeChatInputService.getInstance(project)
-        if (!service.hasPending()) return
         openProjectAlarm.addRequest(
             {
                 if (isContentDisposed()) return@addRequest

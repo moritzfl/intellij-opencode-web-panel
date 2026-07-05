@@ -78,10 +78,6 @@ class SharedOpenCodeServerManager : Disposable {
         return serverLogBuffer.currentOrLatestFile()
     }
 
-    private fun appendServerLog(line: String) {
-        serverLogBuffer.append(line)
-    }
-
     fun ensureStarted(
         project: Project,
         projectBasePath: String?,
@@ -188,21 +184,7 @@ class SharedOpenCodeServerManager : Disposable {
 
     fun getServerProcess(): Process? = synchronized(lock) { serverProcess }
 
-    @TestOnly
-    fun setServerProcess(process: Process?) {
-        synchronized(lock) {
-            serverProcess = process
-        }
-    }
-
     fun getServerUrl(): String? = synchronized(lock) { serverUrl }
-
-    @TestOnly
-    fun setServerUrl(url: String?) {
-        synchronized(lock) {
-            serverUrl = url
-        }
-    }
 
     fun getServerPassword(): String? = synchronized(lock) { serverPassword }
 
@@ -225,19 +207,19 @@ class SharedOpenCodeServerManager : Disposable {
         }
     }
 
+    /** Installs a hand-assembled server state so tests can exercise [stopServer]. */
     @TestOnly
-    fun setServerPassword(password: String?) {
+    fun installTestServerState(
+        process: Process? = null,
+        url: String? = null,
+        password: String? = null,
+        checkFuture: ScheduledFuture<*>? = null,
+    ) {
         synchronized(lock) {
+            serverProcess = process
+            serverUrl = url
             serverPassword = password
-        }
-    }
-
-    fun getCheckScheduledFuture(): ScheduledFuture<*>? = synchronized(lock) { checkScheduledFuture }
-
-    @TestOnly
-    fun setCheckScheduledFuture(future: ScheduledFuture<*>?) {
-        synchronized(lock) {
-            checkScheduledFuture = future
+            checkScheduledFuture = checkFuture
         }
     }
 
@@ -428,7 +410,7 @@ class SharedOpenCodeServerManager : Disposable {
                     reader.useLines { lines ->
                         lines.forEach { line ->
                             thisLogger().info(line)
-                            appendServerLog(line)
+                            serverLogBuffer.append(line)
                             OpenCodeServerProtocol.parseServerUrl(line)?.let { url ->
                                 if (setServerUrlForStart(startId, url)) {
                                     urlLatch.countDown()
@@ -438,7 +420,7 @@ class SharedOpenCodeServerManager : Disposable {
                     }
                 } catch (e: Exception) {
                     thisLogger().info("Stopped reading OpenCode output: ${e.message}")
-                    appendServerLog("Stopped reading OpenCode output: ${e.message}")
+                    serverLogBuffer.append("Stopped reading OpenCode output: ${e.message}")
                 }
                 if (isCurrentStart(startId)) {
                     thisLogger().warn("OpenCode process output stream ended; triggering immediate health check")

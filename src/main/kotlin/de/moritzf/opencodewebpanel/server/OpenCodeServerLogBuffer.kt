@@ -11,7 +11,6 @@ import java.nio.file.StandardOpenOption
 import java.time.Duration
 import java.time.Instant
 import java.util.Comparator
-import java.util.UUID
 
 internal class OpenCodeServerLogBuffer(
     private val logDir: Path = defaultLogDir(),
@@ -29,8 +28,10 @@ internal class OpenCodeServerLogBuffer(
                 return@synchronized null
             }
             pruneOldLogs()
-            currentLogFile = createLogFile()
-            currentLogFile?.let { writeStartMarker(it, startedAt) }
+            currentLogFile = createLogFile(
+                "========== OpenCode server start/restart via OpenCode Web Panel at $startedAt ==========" +
+                    System.lineSeparator(),
+            )
             currentLogFile
         }
     }
@@ -85,16 +86,15 @@ internal class OpenCodeServerLogBuffer(
         }
     }
 
-    private fun createLogFile(): Path? {
+    private fun createLogFile(initialContent: String = ""): Path? {
         return try {
             Files.createDirectories(logDir)
-            val timestamp = Instant.now().toEpochMilli()
-            val file = logDir.resolve(
-                "opencode-server-$timestamp-${UUID.randomUUID()}$LOG_FILE_EXTENSION"
-            )
+            // The millisecond timestamp is unique enough for one server manager per IDE; on the
+            // freak collision CREATE_NEW fails, we warn, and the next append recreates the file.
+            val file = logDir.resolve("opencode-server-${Instant.now().toEpochMilli()}$LOG_FILE_EXTENSION")
             Files.writeString(
                 file,
-                "",
+                initialContent,
                 StandardCharsets.UTF_8,
                 StandardOpenOption.CREATE_NEW,
                 StandardOpenOption.WRITE,
@@ -111,10 +111,6 @@ internal class OpenCodeServerLogBuffer(
             currentLogFile ?: createLogFile()?.also { currentLogFile = it }
         } ?: return
         writeLine(file, line)
-    }
-
-    private fun writeStartMarker(file: Path, startedAt: Instant) {
-        writeLine(file, "========== OpenCode server start/restart via OpenCode Web Panel at $startedAt ==========")
     }
 
     private fun writeLine(file: Path, line: String) {

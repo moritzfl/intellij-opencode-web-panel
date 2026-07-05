@@ -17,7 +17,6 @@ import com.intellij.ui.components.JBTextField
 import com.intellij.ui.dsl.builder.AlignX
 import com.intellij.ui.dsl.builder.RightGap
 import com.intellij.ui.dsl.builder.panel
-import com.intellij.openapi.util.text.StringUtil
 import com.intellij.util.ui.UIUtil
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleListener
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState
@@ -446,9 +445,9 @@ class OpenCodeSettingsConfigurable : Configurable {
         val serverUrl = serverManager.getServerUrl()
         val detail = if (state == OpenCodeServerLifecycleState.RUNNING && !serverUrl.isNullOrBlank()) {
             val version = serverManager.getServerVersion()?.takeIf { it.isNotBlank() }
-                ?.let { " (OpenCode ${StringUtil.escapeXmlEntities(it)})" }
+                ?.let { " (OpenCode $it)" }
                 .orEmpty()
-            ": ${StringUtil.escapeXmlEntities(serverUrl)}$version"
+            ": $serverUrl$version"
         } else {
             ""
         }

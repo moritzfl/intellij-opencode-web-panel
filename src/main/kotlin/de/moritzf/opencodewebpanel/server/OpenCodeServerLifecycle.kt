@@ -1,5 +1,6 @@
 package de.moritzf.opencodewebpanel.server
 
+import com.intellij.openapi.util.text.StringUtil
 import com.intellij.util.messages.Topic
 
 enum class OpenCodeServerLifecycleState(
@@ -24,10 +25,10 @@ interface OpenCodeServerLifecycleListener {
     }
 }
 
-/** [detail] is appended verbatim; callers must HTML-escape any untrusted content in it. */
+/** [detail] is plain text and gets HTML-escaped here. */
 internal fun formatOpenCodeServerLifecycleStatusText(state: OpenCodeServerLifecycleState, detail: String = ""): String {
     return "<html><span style=\"color: ${state.colorHex}\">&#9679;</span>&nbsp;" +
-        "OpenCode server: ${state.displayLabel}$detail</html>"
+        "OpenCode server: ${state.displayLabel}${StringUtil.escapeXmlEntities(detail)}</html>"
 }
 
 internal fun isOpenCodeServerLifecycleStatusVisible(state: OpenCodeServerLifecycleState): Boolean {

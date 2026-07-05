@@ -31,8 +31,6 @@ class OpenCodeChatInputService {
         return false
     }
 
-    fun hasPending(): Boolean = synchronized(lock) { pending.isNotEmpty() }
-
     fun takePending(): List<String> = synchronized(lock) { pending.toList().also { pending.clear() } }
 
     companion object {

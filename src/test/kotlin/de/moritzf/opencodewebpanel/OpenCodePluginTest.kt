@@ -56,11 +56,13 @@ class OpenCodePluginTest : BasePlatformTestCase() {
         val service = SharedOpenCodeServerManager.getInstance()
         val process = RecordingProcess()
         val future = RecordingFuture()
-        service.setServerProcess(process)
+        service.installTestServerState(
+            process = process,
+            url = "http://127.0.0.1:60482",
+            password = "secret-password",
+            checkFuture = future,
+        )
         service.setServerRunning(true)
-        service.setServerUrl("http://127.0.0.1:60482")
-        service.setServerPassword("secret-password")
-        service.setCheckScheduledFuture(future)
 
         service.stopServer()
 
@@ -71,16 +73,17 @@ class OpenCodePluginTest : BasePlatformTestCase() {
         assertNull(service.getServerProcess())
         assertNull(service.getServerUrl())
         assertNull(service.getServerPassword())
-        assertNull(service.getCheckScheduledFuture())
     }
 
     fun testSharedServerManagerForceKillsStubbornServerProcess() {
         val service = SharedOpenCodeServerManager.getInstance()
         val process = StubbornProcess()
-        service.setServerProcess(process)
+        service.installTestServerState(
+            process = process,
+            url = "http://127.0.0.1:60482",
+            password = "secret-password",
+        )
         service.setServerRunning(true)
-        service.setServerUrl("http://127.0.0.1:60482")
-        service.setServerPassword("secret-password")
 
         service.stopServer()
 
