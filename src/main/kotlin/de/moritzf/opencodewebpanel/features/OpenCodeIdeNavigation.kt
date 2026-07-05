@@ -63,9 +63,7 @@ internal class OpenCodeIdeNavigation(
             return
         }
         ReadAction.nonBlocking<VirtualFile?> {
-            val scope = GlobalSearchScope.projectScope(project)
-            resolveCodeReferenceClass(parsed, scope)
-                ?: resolveCodeReferenceFileName(parsed, scope)
+            resolveCodeReferenceFileName(parsed, GlobalSearchScope.projectScope(project))
         }.finishOnUiThread(ModalityState.defaultModalityState()) { virtualFile ->
             if (project.isDisposed || virtualFile == null) return@finishOnUiThread
             OpenFileDescriptor(project, virtualFile, parsed.line ?: -1, -1).navigate(true)
@@ -88,24 +86,10 @@ internal class OpenCodeIdeNavigation(
         return LocalFileSystem.getInstance().refreshAndFindFileByNioFile(path)
     }
 
-    private fun resolveCodeReferenceClass(
-        parsed: OpenCodeServerProtocol.ParsedCodeReference,
-        scope: GlobalSearchScope,
-    ): VirtualFile? {
-        if (parsed.extension != null || parsed.hasPath) return null
-        val cacheClass = runCatching { Class.forName("com.intellij.psi.search.PsiShortNamesCache") }.getOrNull() ?: return null
-        val cache = runCatching { cacheClass.getMethod("getInstance", Project::class.java).invoke(null, project) }.getOrNull()
-            ?: return null
-        val classes = runCatching {
-            cacheClass.getMethod("getClassesByName", String::class.java, GlobalSearchScope::class.java)
-                .invoke(cache, parsed.fileName, scope) as? Array<*>
-        }.getOrNull() ?: return null
-        return classes.asSequence()
-            .filter { psiClass -> parsed.qualifiedName == null || psiClass.qualifiedName() == parsed.qualifiedName }
-            .mapNotNull { psiClass -> psiClass.containingVirtualFile() }
-            .firstOrNull()
-    }
-
+    // Class references resolve through the filename index only (Foo -> Foo.kt/.java/...).
+    // A PsiShortNamesCache lookup would also find classes in unrelated file names, but that
+    // requires the com.intellij.java plugin; a best-effort click-to-navigate feature does
+    // not justify that dependency.
     private fun resolveCodeReferenceFileName(
         parsed: OpenCodeServerProtocol.ParsedCodeReference,
         scope: GlobalSearchScope,
@@ -127,21 +111,5 @@ internal class OpenCodeIdeNavigation(
         return fileNames.asSequence()
             .flatMap { fileName -> FilenameIndex.getVirtualFilesByName(fileName, scope).asSequence() }
             .firstOrNull()
-    }
-
-    private fun Any?.qualifiedName(): String? {
-        return this?.javaClass?.methods
-            ?.firstOrNull { it.name == "getQualifiedName" && it.parameterCount == 0 }
-            ?.let { method -> runCatching { method.invoke(this) as? String }.getOrNull() }
-    }
-
-    private fun Any?.containingVirtualFile(): VirtualFile? {
-        val containingFile = this?.javaClass?.methods
-            ?.firstOrNull { it.name == "getContainingFile" && it.parameterCount == 0 }
-            ?.let { method -> runCatching { method.invoke(this) }.getOrNull() }
-            ?: return null
-        return containingFile.javaClass.methods
-            .firstOrNull { it.name == "getVirtualFile" && it.parameterCount == 0 }
-            ?.let { method -> runCatching { method.invoke(containingFile) as? VirtualFile }.getOrNull() }
     }
 }
