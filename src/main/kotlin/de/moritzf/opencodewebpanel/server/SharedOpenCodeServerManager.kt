@@ -514,9 +514,11 @@ class SharedOpenCodeServerManager : Disposable {
         thisLogger().info("Waiting for ${initialStatus.message} before starting OpenCode")
         return when (
             IntellijMcpServerStartup.waitUntilReady(
-                initialStatus,
-                shouldWaitForStatus = { status ->
-                    IntellijMcpServerStartup.shouldWaitFor(status, OpenCodeSettingsState.getInstance().waitForIntellijMcpServer)
+                stillWaiting = {
+                    IntellijMcpServerStartup.shouldWaitFor(
+                        IntellijMcpServerStartup.currentStatus(),
+                        OpenCodeSettingsState.getInstance().waitForIntellijMcpServer,
+                    )
                 },
                 isStillCurrent = { isCurrentStart(startId) },
             )

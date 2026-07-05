@@ -31,18 +31,16 @@ internal object IntellijMcpServerStartup {
         return enabled && status.state == IntellijMcpServerStartupState.ENABLED_NOT_RUNNING
     }
 
+    /** Polls until [stillWaiting] turns false (READY), the timeout expires, or the start is superseded. */
     fun waitUntilReady(
-        initialStatus: IntellijMcpServerStartupStatus = currentStatus(),
-        statusProvider: () -> IntellijMcpServerStartupStatus = ::currentStatus,
-        shouldWaitForStatus: (IntellijMcpServerStartupStatus) -> Boolean = ::shouldWaitFor,
+        stillWaiting: () -> Boolean = { shouldWaitFor(currentStatus()) },
         isStillCurrent: () -> Boolean = { true },
         nowMillis: () -> Long = System::currentTimeMillis,
         sleepMillis: (Long) -> Unit = Thread::sleep,
         timeoutMillis: Long = WAIT_TIMEOUT_MILLIS,
         pollIntervalMillis: Long = POLL_INTERVAL_MILLIS,
     ): IntellijMcpServerWaitResult {
-        var status = initialStatus
-        if (!shouldWaitForStatus(status)) return IntellijMcpServerWaitResult.READY
+        if (!stillWaiting()) return IntellijMcpServerWaitResult.READY
 
         val deadlineMillis = nowMillis() + timeoutMillis
         while (isStillCurrent()) {
@@ -54,8 +52,7 @@ internal object IntellijMcpServerStartup {
                 Thread.currentThread().interrupt()
                 return IntellijMcpServerWaitResult.CANCELLED
             }
-            status = statusProvider()
-            if (!shouldWaitForStatus(status)) return IntellijMcpServerWaitResult.READY
+            if (!stillWaiting()) return IntellijMcpServerWaitResult.READY
         }
         return IntellijMcpServerWaitResult.CANCELLED
     }

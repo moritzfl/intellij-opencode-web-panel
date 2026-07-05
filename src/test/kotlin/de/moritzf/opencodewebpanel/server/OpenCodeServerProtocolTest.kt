@@ -604,16 +604,10 @@ class OpenCodeServerProtocolTest {
         val sleeps = mutableListOf<Long>()
 
         val result = IntellijMcpServerStartup.waitUntilReady(
-            initialStatus = IntellijMcpServerStartupStatus(
-                IntellijMcpServerStartupState.ENABLED_NOT_RUNNING,
-                "not running",
-            ),
-            statusProvider = {
+            stillWaiting = {
                 checks += 1
-                IntellijMcpServerStartupStatus(
-                    if (checks < 2) IntellijMcpServerStartupState.ENABLED_NOT_RUNNING else IntellijMcpServerStartupState.ENABLED,
-                    "status $checks",
-                )
+                // Initial check plus one polled check still waiting; the server is up on the third.
+                checks <= 2
             },
             nowMillis = { now },
             sleepMillis = { millis ->
@@ -634,16 +628,7 @@ class OpenCodeServerProtocolTest {
         val sleeps = mutableListOf<Long>()
 
         val result = IntellijMcpServerStartup.waitUntilReady(
-            initialStatus = IntellijMcpServerStartupStatus(
-                IntellijMcpServerStartupState.ENABLED_NOT_RUNNING,
-                "not running",
-            ),
-            statusProvider = {
-                IntellijMcpServerStartupStatus(
-                    IntellijMcpServerStartupState.ENABLED_NOT_RUNNING,
-                    "not running",
-                )
-            },
+            stillWaiting = { true },
             nowMillis = { now },
             sleepMillis = { millis ->
                 sleeps += millis
@@ -664,17 +649,12 @@ class OpenCodeServerProtocolTest {
         val sleeps = mutableListOf<Long>()
 
         val result = IntellijMcpServerStartup.waitUntilReady(
-            initialStatus = IntellijMcpServerStartupStatus(
-                IntellijMcpServerStartupState.ENABLED_NOT_RUNNING,
-                "not running",
-            ),
-            statusProvider = {
-                IntellijMcpServerStartupStatus(
-                    IntellijMcpServerStartupState.ENABLED_NOT_RUNNING,
-                    "not running",
+            stillWaiting = {
+                IntellijMcpServerStartup.shouldWaitFor(
+                    IntellijMcpServerStartupStatus(IntellijMcpServerStartupState.ENABLED_NOT_RUNNING, "not running"),
+                    enabled,
                 )
             },
-            shouldWaitForStatus = { status -> IntellijMcpServerStartup.shouldWaitFor(status, enabled) },
             nowMillis = { now },
             sleepMillis = { millis ->
                 sleeps += millis
