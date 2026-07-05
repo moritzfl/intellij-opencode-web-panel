@@ -106,6 +106,7 @@ The JVM-side event consumers (`server.OpenCodeGlobalEventStream`, agent-status s
    - `GET /session/status` → `{"ses_...": {"type": "busy"|"retry"|"idle"}, ...}` (`parseBusySessionIds`)
    - `GET /permission`, `GET /question` → JSON array of request objects with `id` (`parsePendingRequestIds`)
    - `GET /session/{id}` → session object with `title` and optional `parentID`, bare or wrapped in `{"data": {...}}` (`parseSessionInfo`)
+   - `GET /api/session?order=desc&limit=N` → `{"data": [{"id": "ses_...", "parentID"?, "time": {"created", "updated"}}, ...], "cursor": {...}}` (`parseSessionList`). The listing is creation-ordered, **not** `time.updated`-ordered, and includes subagent child sessions; "most recent activity" callers must select `max(time.updated)` themselves and skip entries with a `parentID`. The server canonicalizes directories (macOS `/var/...` → `/private/var/...`), so query with the same directory value used elsewhere in the plugin.
 6. If a shape changed, fix the matching parser and its unit test, then update the version note in this section.
 
 ## Verification
