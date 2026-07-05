@@ -823,12 +823,15 @@ internal object OpenCodeServerProtocol {
         }
     }
 
-    data class SessionSummary(val id: String, val updatedMillis: Long)
+    data class SessionSummary(val id: String, val updatedMillis: Long, val parentID: String? = null)
 
     /**
      * Fetches recent sessions for a project directory from the v2 API
      * (`GET /api/session?directory=...&order=desc&limit=N`). Returns session IDs with their
-     * `time.updated` timestamp, filtered to those updated within [maxAgeMillis] of [nowMillis].
+     * `time.updated` timestamp and parent ID, filtered to those updated within [maxAgeMillis]
+     * of [nowMillis]. Note (verified against opencode 1.17.13): the listing is ordered by
+     * creation, not by `time.updated`, and includes subagent child sessions — callers that
+     * want "most recent activity" must select by [SessionSummary.updatedMillis] themselves.
      */
     fun fetchRecentSessions(
         serverUrl: String,
@@ -861,7 +864,7 @@ internal object OpenCodeServerProtocol {
                 ?.longMember("updated")
                 ?: continue
             if (nowMillis - updated <= maxAgeMillis) {
-                results.add(SessionSummary(id, updated))
+                results.add(SessionSummary(id, updated, session.stringMember("parentID")?.takeIf { it.isNotBlank() }))
             }
         }
         return results.distinctBy { it.id }

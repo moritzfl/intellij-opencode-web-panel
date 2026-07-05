@@ -312,6 +312,35 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun buildOpenProjectScriptPrefersServerResolvedMostRecentSession() {
+        val script = OpenCodeBrowserSnippets.buildOpenProjectScript(
+            "/tmp/project",
+            "http://127.0.0.1:60482/",
+            openMostRecentConversation = true,
+            mostRecentSessionId = "ses_abc123",
+        )!!
+
+        assertTrue(script.contains("const providedSessionId = 'ses_abc123'"))
+        assertTrue(script.contains("if (openMostRecentConversation && providedSessionId)"))
+        assertTrue(script.contains("'/session/' + encodeURIComponent(providedSessionId)"))
+        // The localStorage layout lookup stays available as the fallback path.
+        assertTrue(script.contains("const findLastProjectSession = (layout)"))
+    }
+
+    @Test
+    fun buildOpenProjectScriptRejectsMalformedMostRecentSessionIds() {
+        val script = OpenCodeBrowserSnippets.buildOpenProjectScript(
+            "/tmp/project",
+            "http://127.0.0.1:60482/",
+            openMostRecentConversation = true,
+            mostRecentSessionId = "ses_'; alert(1); '",
+        )!!
+
+        assertTrue(script.contains("const providedSessionId = ''"))
+        assertFalse(script.contains("alert(1)"))
+    }
+
+    @Test
     fun buildOpenProjectScriptRetriesUntilRecentSessionIsRestored() {
         val script = OpenCodeBrowserSnippets.buildOpenProjectScript(
             "/tmp/project",
@@ -1680,6 +1709,17 @@ class OpenCodeServerProtocolTest {
             {"id":"ses_dup","time":{"created":$recent,"updated":$recent}}]}"""
         val sessions = OpenCodeServerProtocol.parseSessionList(json, maxAgeMillis = 300_000, nowMillis = now)
         assertEquals(1, sessions.size)
+    }
+
+    @Test
+    fun parseSessionListExposesParentIdOfChildSessions() {
+        val now = System.currentTimeMillis()
+        val recent = now - 1000
+        val json = """{"data":[
+            {"id":"ses_top","time":{"created":$recent,"updated":$recent}},
+            {"id":"ses_child","parentID":"ses_top","time":{"created":$recent,"updated":$recent}}]}"""
+        val sessions = OpenCodeServerProtocol.parseSessionList(json, maxAgeMillis = 300_000, nowMillis = now)
+        assertEquals(listOf(null, "ses_top"), sessions.map { it.parentID })
     }
 
     @Test

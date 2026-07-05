@@ -578,14 +578,55 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         if (openProjectScriptScheduled) return
 
         val serverUrl = serverManager.getServerUrl() ?: return
-        val settings = OpenCodeSettingsState.getInstance()
-        val script = OpenCodeBrowserSnippets.buildOpenProjectScript(
-            openCodeProjectDirectory(),
+        val projectDirectory = openCodeProjectDirectory()?.takeIf { it.isNotBlank() } ?: return
+        openProjectScriptScheduled = true
+
+        if (!OpenCodeSettingsState.getInstance().openMostRecentConversationOnStartup) {
+            scheduleOpenProjectScript(serverUrl, projectDirectory, openMostRecentConversation = false, mostRecentSessionId = null)
+            return
+        }
+        // "Most recent conversation" means the session with the newest message, which only the
+        // server knows (`time.updated`); the mirrored localStorage only remembers the session
+        // this panel viewed last. Resolve it off the EDT, then fall back to the localStorage
+        // lookup inside the script when the fetch failed.
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val sessionId = fetchMostRecentSessionId(serverUrl, projectDirectory)
+            ApplicationManager.getApplication().invokeLater {
+                if (isContentDisposed()) return@invokeLater
+                scheduleOpenProjectScript(serverUrl, projectDirectory, openMostRecentConversation = true, mostRecentSessionId = sessionId)
+            }
+        }
+    }
+
+    private fun fetchMostRecentSessionId(serverUrl: String, projectDirectory: String): String? {
+        val password = serverManager.getServerPassword() ?: return null
+        return OpenCodeServerProtocol.fetchRecentSessions(
             serverUrl,
-            settings.openMostRecentConversationOnStartup,
+            OpenCodeServerProtocol.buildBasicAuthHeader(password),
+            projectDirectory,
+            maxAgeMillis = Long.MAX_VALUE,
+            // The listing is creation-ordered (see fetchRecentSessions); a large window keeps a
+            // long-running conversation findable even after many later-created subagent sessions.
+            limit = 100,
+        )
+            .filter { it.parentID == null } // never navigate to a subagent child session
+            .maxByOrNull { it.updatedMillis }
+            ?.id
+    }
+
+    private fun scheduleOpenProjectScript(
+        serverUrl: String,
+        projectDirectory: String,
+        openMostRecentConversation: Boolean,
+        mostRecentSessionId: String?,
+    ) {
+        val script = OpenCodeBrowserSnippets.buildOpenProjectScript(
+            projectDirectory,
+            serverUrl,
+            openMostRecentConversation,
+            mostRecentSessionId,
         ) ?: return
         val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
-        openProjectScriptScheduled = true
 
         scriptScheduler.schedule(script, rootUrl) {
             val onServerPage = isBrowserOnOpenCodeServerPage(serverUrl)

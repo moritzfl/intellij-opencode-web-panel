@@ -102,9 +102,14 @@ internal object OpenCodeBrowserSnippets {
         projectBasePath: String?,
         serverUrl: String? = null,
         openMostRecentConversation: Boolean = false,
+        mostRecentSessionId: String? = null,
     ): String? {
         if (projectBasePath.isNullOrBlank()) return null
         val directory = escapeJavaScript(projectBasePath)
+        val providedSessionId = mostRecentSessionId
+            ?.takeIf { OpenCodeServerProtocol.isOpenCodeRecordId(it) }
+            ?.let(::escapeJavaScript)
+            .orEmpty()
         val escapedProjectPath = escapeJavaScript("/${OpenCodeServerProtocol.encodeDirectory(projectBasePath)}/session")
         val originGuard = serverUrl?.let(OpenCodeServerProtocol::buildOrigin)
             ?.let(::escapeJavaScript)
@@ -167,7 +172,14 @@ internal object OpenCodeBrowserSnippets {
                 return match ? decodeRouteDirectory(match[1]) : '';
               };
               const onSameProjectRoute = () => comparableDirectory(currentRouteDirectory()) === comparableDirectory(directory);
-              if (openMostRecentConversation) {
+              // The session with the newest message, resolved server-side by the IDE. The
+              // localStorage layout below only knows the session this panel viewed last and
+              // serves as the fallback when the server lookup failed.
+              const providedSessionId = '$providedSessionId';
+              if (openMostRecentConversation && providedSessionId) {
+                foundRecentSession = true;
+                path = '/' + routeDirectory(directory) + '/session/' + encodeURIComponent(providedSessionId);
+              } else if (openMostRecentConversation) {
                 try {
                   const rawLayout = window.localStorage.getItem(layoutStorageKey);
                   const layout = rawLayout ? JSON.parse(rawLayout) : undefined;
