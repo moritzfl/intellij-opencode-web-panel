@@ -39,6 +39,7 @@ import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
 import de.moritzf.opencodewebpanel.settings.OpenCodeUiSetting
 import org.cef.browser.CefBrowser
 import org.cef.browser.CefFrame
+import org.cef.handler.CefDisplayHandlerAdapter
 import org.cef.handler.CefLoadHandler
 import org.cef.handler.CefLoadHandlerAdapter
 import org.cef.network.CefRequest
@@ -273,6 +274,16 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         }
         browser.jbCefClient.addRequestHandler(requestHandler, browser.cefBrowser)
         browser.jbCefClient.addLoadHandler(loadHandler, browser.cefBrowser)
+        // onAddressChange also fires for the SPA's history-API route changes, which full-load
+        // handlers never see.
+        browser.jbCefClient.addDisplayHandler(
+            object : CefDisplayHandlerAdapter() {
+                override fun onAddressChange(cefBrowser: CefBrowser?, frame: CefFrame?, url: String?) {
+                    if (frame?.isMain == true) scheduleBrowserRepaintNudges()
+                }
+            },
+            browser.cefBrowser,
+        )
         OpenCodeFileDropHandler(project, browser, serverManager, ::openCodeProjectDirectory, ::isContentDisposed, this).install()
         OpenCodeBrowserEditShortcutHandler(browser, serverManager, ::isContentDisposed, this).install()
         OpenCodeChatInputService.getInstance(project).setDispatcher(::dispatchChatTexts)
@@ -357,6 +368,20 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                 }
             },
         )
+    }
+
+    /**
+     * JCEF's off-screen rendering occasionally leaves stale-frame artifacts after SPA route
+     * changes: Chromium repaints only the dirty region while the previous route's pixels stay
+     * in the composited buffer. `notifyScreenInfoChanged` makes Chromium re-query the screen
+     * and re-composite the full surface. Retried over the next few seconds because the SPA
+     * keeps painting for a moment after the address change.
+     */
+    private fun scheduleBrowserRepaintNudges() {
+        scriptScheduler.scheduleAction(early = true, shouldRun = { !isContentDisposed() }) {
+            browser.cefBrowser.notifyScreenInfoChanged()
+            browser.component.repaint()
+        }
     }
 
     /**
