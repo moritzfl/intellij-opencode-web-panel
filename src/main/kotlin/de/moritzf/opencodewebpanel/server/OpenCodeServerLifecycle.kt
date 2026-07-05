@@ -24,9 +24,10 @@ interface OpenCodeServerLifecycleListener {
     }
 }
 
-internal fun formatOpenCodeServerLifecycleStatusText(state: OpenCodeServerLifecycleState): String {
+/** [detail] is appended verbatim; callers must HTML-escape any untrusted content in it. */
+internal fun formatOpenCodeServerLifecycleStatusText(state: OpenCodeServerLifecycleState, detail: String = ""): String {
     return "<html><span style=\"color: ${state.colorHex}\">&#9679;</span>&nbsp;" +
-        "OpenCode server: ${escapeLifecycleStatusHtml(state.displayLabel)}</html>"
+        "OpenCode server: ${state.displayLabel}$detail</html>"
 }
 
 internal fun isOpenCodeServerLifecycleStatusVisible(state: OpenCodeServerLifecycleState): Boolean {
@@ -39,13 +40,4 @@ internal fun isOpenCodeServerRetryVisible(state: OpenCodeServerLifecycleState): 
 
 internal fun openCodeServerRetryLabel(state: OpenCodeServerLifecycleState): String {
     return if (state == OpenCodeServerLifecycleState.STOPPED) "Start" else "Retry"
-}
-
-private fun escapeLifecycleStatusHtml(value: String): String {
-    return value
-        .replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace("\"", "&quot;")
-        .replace("'", "&#39;")
 }

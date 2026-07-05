@@ -36,23 +36,7 @@ internal class OpenCodeLifecycleStatusPanel(onRetry: () -> Unit) {
         component.isVisible = isOpenCodeServerLifecycleStatusVisible(state)
     }
 
-    fun showProgress(message: String) {
-        lifecycleStatusLabel.text = "<html><span style=\"color: #FFC107\">&#9679;</span>&nbsp;${escapeHtml(message)}</html>"
-        lifecycleStatusLabel.toolTipText = message
-        retryServerButton.isVisible = false
-        component.isVisible = true
-    }
-
     fun setRetryEnabled(enabled: Boolean) {
         retryServerButton.isEnabled = enabled
-    }
-
-    private fun escapeHtml(value: String): String {
-        return value
-            .replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
-            .replace("\"", "&quot;")
-            .replace("'", "&#39;")
     }
 }

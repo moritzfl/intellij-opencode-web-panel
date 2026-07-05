@@ -17,11 +17,13 @@ import com.intellij.ui.components.JBTextField
 import com.intellij.ui.dsl.builder.AlignX
 import com.intellij.ui.dsl.builder.RightGap
 import com.intellij.ui.dsl.builder.panel
+import com.intellij.openapi.util.text.StringUtil
 import com.intellij.util.ui.UIUtil
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleListener
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager
+import de.moritzf.opencodewebpanel.server.formatOpenCodeServerLifecycleStatusText
 import de.moritzf.opencodewebpanel.toolWindow.confirmOpenCodeServerRestart
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
@@ -441,26 +443,16 @@ class OpenCodeSettingsConfigurable : Configurable {
     private fun updateServerStatus() {
         val serverManager = SharedOpenCodeServerManager.getInstance()
         val state = serverManager.getLifecycleState()
-        serverStatusLabel.text = formatLifecycleStatusText(state, serverManager.getServerUrl(), serverManager.getServerVersion())
-    }
-
-    private fun formatLifecycleStatusText(state: OpenCodeServerLifecycleState, serverUrl: String?, serverVersion: String?): String {
+        val serverUrl = serverManager.getServerUrl()
         val detail = if (state == OpenCodeServerLifecycleState.RUNNING && !serverUrl.isNullOrBlank()) {
-            val version = serverVersion?.takeIf { it.isNotBlank() }?.let { " (OpenCode ${escapeStatusHtml(it)})" }.orEmpty()
-            ": ${escapeStatusHtml(serverUrl)}$version"
+            val version = serverManager.getServerVersion()?.takeIf { it.isNotBlank() }
+                ?.let { " (OpenCode ${StringUtil.escapeXmlEntities(it)})" }
+                .orEmpty()
+            ": ${StringUtil.escapeXmlEntities(serverUrl)}$version"
         } else {
             ""
         }
-        return "<html><span style=\"color: ${state.colorHex}\">&#9679;</span>&nbsp;Server: ${state.displayLabel}$detail</html>"
-    }
-
-    private fun escapeStatusHtml(value: String): String {
-        return value
-            .replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
-            .replace("\"", "&quot;")
-            .replace("'", "&#39;")
+        serverStatusLabel.text = formatOpenCodeServerLifecycleStatusText(state, detail)
     }
 
     private fun password(): String? = String(passwordField.password).trim().ifBlank { null }

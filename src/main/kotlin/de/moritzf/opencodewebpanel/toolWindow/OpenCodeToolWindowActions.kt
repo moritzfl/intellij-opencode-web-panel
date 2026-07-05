@@ -114,12 +114,8 @@ internal class OpenCodeRestartServerAction : DumbAwareAction(
  * server requires explicit confirmation. Restarting a stopped or failed server loses nothing and
  * proceeds without a prompt.
  */
-internal fun shouldConfirmOpenCodeServerRestart(state: OpenCodeServerLifecycleState): Boolean {
-    return state == OpenCodeServerLifecycleState.RUNNING
-}
-
 internal fun confirmOpenCodeServerRestart(project: Project?): Boolean {
-    if (!shouldConfirmOpenCodeServerRestart(SharedOpenCodeServerManager.getInstance().getLifecycleState())) return true
+    if (SharedOpenCodeServerManager.getInstance().getLifecycleState() != OpenCodeServerLifecycleState.RUNNING) return true
     return MessageDialogBuilder.yesNo(
         "Restart OpenCode Server",
         "The OpenCode server is shared by all open projects. " +
