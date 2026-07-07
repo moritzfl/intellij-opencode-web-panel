@@ -33,4 +33,15 @@ internal class OpenCodeBrowserScriptScheduler(
             )
         }
     }
+
+    fun scheduleAt(delayMillis: Int, shouldRun: () -> Boolean = { true }, action: () -> Unit) {
+        alarm.addRequest(
+            {
+                if (!project.isDisposed && shouldRun()) {
+                    action()
+                }
+            },
+            delayMillis,
+        )
+    }
 }

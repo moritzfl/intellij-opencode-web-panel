@@ -26,6 +26,7 @@ import de.moritzf.opencodewebpanel.features.OpenCodeInterruptedSessionRecovery
 import de.moritzf.opencodewebpanel.features.OpenCodeLocalStorageBridge
 import de.moritzf.opencodewebpanel.features.OpenCodeSystemNotifications
 import de.moritzf.opencodewebpanel.features.OpenCodeVcsRefresh
+import de.moritzf.opencodewebpanel.server.OpenCodeGlobalEvent
 import de.moritzf.opencodewebpanel.server.OpenCodeGlobalEventListener
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleListener
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState
@@ -59,6 +60,10 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         // Delay after a project-page load before flushing queued chat input, so the SPA's own
         // drop handlers are installed when the synthetic drop is dispatched.
         private const val PENDING_CHAT_INPUT_FLUSH_DELAY_MILLIS = 1_500
+
+        // How long the 1 px repaint-recovery resize is held before restoring the real bounds,
+        // so CEF's asynchronous view-rect query observes the transient size.
+        private const val COMPONENT_SIZE_NUDGE_RESTORE_DELAY_MILLIS = 100
 
         @Volatile
         private var applicationClosing = false
@@ -299,6 +304,23 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             OpenCodeGlobalEventListener.TOPIC,
             agentStatusTracker,
         )
+        // Permission/question sections appear in-place, without an address change, so the
+        // onAddressChange repaint hook never sees them. Nudge the compositor from the JVM-side
+        // event stream instead when such a request targets this panel's directory.
+        ApplicationManager.getApplication().messageBus.connect(this).subscribe(
+            OpenCodeGlobalEventListener.TOPIC,
+            object : OpenCodeGlobalEventListener {
+                override fun eventReceived(event: OpenCodeGlobalEvent) {
+                    if (event.type != "permission.asked" && event.type != "question.asked") return
+                    if (isContentDisposed()) return
+                    val directory = openCodeProjectDirectory() ?: return
+                    if (!OpenCodeServerProtocol.isSameFilesystemPath(event.directory, directory)) return
+                    val serverUrl = serverManager.getServerUrl() ?: return
+                    if (!isBrowserOnOpenCodeServerPage(serverUrl)) return
+                    scheduleBrowserRepaintNudges()
+                }
+            },
+        )
         ApplicationManager.getApplication().messageBus.connect(this).subscribe(
             OpenCodeServerLifecycleListener.TOPIC,
             object : OpenCodeServerLifecycleListener {
@@ -371,16 +393,72 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     }
 
     /**
-     * JCEF's off-screen rendering occasionally leaves stale-frame artifacts after SPA route
-     * changes: Chromium repaints only the dirty region while the previous route's pixels stay
-     * in the composited buffer. `notifyScreenInfoChanged` makes Chromium re-query the screen
-     * and re-composite the full surface. Retried over the next few seconds because the SPA
-     * keeps painting for a moment after the address change.
+     * JCEF's off-screen rendering occasionally leaves stale-frame artifacts after large DOM
+     * repaints: Chromium repaints only the dirty region while the previous content's pixels stay
+     * in the composited buffer. Triggered from `onAddressChange` for SPA route changes and from
+     * the JVM event stream for permission/question sections, which render without a route change.
+     * `notifyScreenInfoChanged` makes Chromium re-query the screen and re-composite the full
+     * surface. Retried over the next few seconds because the SPA keeps painting for a moment
+     * after the trigger. May be called from any thread; the alarm runs the nudges on the EDT.
      */
     private fun scheduleBrowserRepaintNudges() {
+        val nudgedAtUrl = browser.cefBrowser.url
+        val serverUrl = serverManager.getServerUrl() ?: return
+        val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
+
         scriptScheduler.scheduleAction(early = true, shouldRun = { !isContentDisposed() }) {
+            if (!stillOnSamePage(nudgedAtUrl)) return@scheduleAction
             browser.cefBrowser.notifyScreenInfoChanged()
             browser.component.repaint()
+        }
+        // If the composite-level nudge was not enough, force the SPA to re-layout and, on the
+        // later attempts, wiggle the Swing component size. A 1 px resize causes CEF to reallocate
+        // the off-screen backing surface, which clears the mismatched-frame state that a plain
+        // repaint sometimes cannot recover.
+        scriptScheduler.scheduleAt(500, shouldRun = { !isContentDisposed() }) {
+            if (!stillOnSamePage(nudgedAtUrl)) return@scheduleAt
+            browser.cefBrowser.executeJavaScript("window.dispatchEvent(new Event('resize'))", rootUrl, 0)
+        }
+        scriptScheduler.scheduleAt(1500, shouldRun = { !isContentDisposed() }) {
+            if (!stillOnSamePage(nudgedAtUrl)) return@scheduleAt
+            nudgeComponentSize()
+        }
+        scriptScheduler.scheduleAt(3000, shouldRun = { !isContentDisposed() }) {
+            if (!stillOnSamePage(nudgedAtUrl)) return@scheduleAt
+            nudgeComponentSize()
+        }
+    }
+
+    private fun stillOnSamePage(expectedUrl: String?): Boolean {
+        if (expectedUrl.isNullOrBlank()) return false
+        return expectedUrl == browser.cefBrowser.url
+    }
+
+    /**
+     * Grows the browser wrapper by one pixel, holds that size briefly, then restores it. CEF
+     * consumes resizes asynchronously (the view rect is queried later from its own thread), so
+     * the transient size must survive past this EDT cycle or CEF never observes a change and the
+     * off-screen surface is not reallocated. For the same reason the grow step must not
+     * revalidate — the layout manager would reassert the old bounds immediately — but it must
+     * validate synchronously so the inner CEF component actually resizes with the wrapper.
+     */
+    private fun nudgeComponentSize() {
+        ApplicationManager.getApplication().invokeLater {
+            if (isContentDisposed()) return@invokeLater
+            val component = browser.component
+            val bounds = component.bounds
+            if (bounds.width <= 0 || bounds.height <= 0) return@invokeLater
+            component.setBounds(bounds.x, bounds.y, bounds.width + 1, bounds.height)
+            component.validate()
+            component.repaint()
+            scriptScheduler.scheduleAt(COMPONENT_SIZE_NUDGE_RESTORE_DELAY_MILLIS, shouldRun = { !isContentDisposed() }) {
+                component.setBounds(bounds)
+                component.validate()
+                // Reconcile with any parent resize that happened while the nudge was held.
+                component.revalidate()
+                component.repaint()
+                browser.cefBrowser.notifyScreenInfoChanged()
+            }
         }
     }
 
