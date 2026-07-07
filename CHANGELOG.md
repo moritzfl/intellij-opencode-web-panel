@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-07-07
+
+### Fixed
+
+- Fixed blank or partially painted areas in the embedded OpenCode page after navigating between conversations and when a permission or question section appears. The off-screen Chromium renderer now gets the extra nudge it needs to redraw after the SPA changes routes, and permission/question prompts trigger the same recovery from the IDE-side event stream, since they render without a route change the previous fix could not see. The backing-surface reallocation that clears frame-buffer mismatches now also survives past one EDT cycle so CEF actually observes the resize.
+
 ## [1.5.0] - 2026-07-05
 
 ### Added
@@ -246,7 +252,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.5.0...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.5.1...HEAD
+[1.5.1]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.5.0...1.5.1
 [1.5.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.11...1.5.0
 [1.4.11]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.10...1.4.11
 [1.4.10]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.9...1.4.10
