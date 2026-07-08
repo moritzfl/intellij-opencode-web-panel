@@ -90,9 +90,11 @@ Follow this recipe exactly; getting auth wrong has repeatedly cost debugging loo
 8. A healthy server answers `curl -u opencode:testpw123 http://127.0.0.1:<port>/api/health` with `{"healthy":true}`. Use curl with `-u` first when the page misbehaves to separate auth issues from app issues.
 9. The served UI is localized (e.g. German button labels on a German system); do not assert English-only UI strings when exercising the DOM.
 
-## Event Stream and REST Contract Validation
+## Event Stream and REST Contract
 
-The JVM-side event consumers (`server.OpenCodeGlobalEventStream`, agent-status seeding, notification session lookup) depend on the wire shapes below instead of DOM structure. After touching them — or when an OpenCode update changes event behavior — re-verify the contract against a real server (last verified against opencode 1.17.13):
+The OpenCode server is written in TypeScript and publishes an **OpenAPI 3.1 spec** at `GET /doc` while running. The JS SDK (`@opencode-ai/sdk`) is auto-generated from that spec; its generated types are the reference contract but can lag behind the server — always cross-check against a live server or the source at `/Users/moritz/Desktop/git/opencode` (`packages/schema/src/`).
+
+The JVM-side event consumers (`server.OpenCodeGlobalEventStream`, agent-status seeding, notification session lookup) depend on the wire shapes below instead of DOM structure. After touching them — or when an OpenCode update changes event behavior — re-verify the contract against a real server (last verified against the source at `/Users/moritz/Desktop/git/opencode`, post-`a26722208` schema refactor):
 
 1. Start a server and wait for `{"healthy":true}`:
    `OPENCODE_SERVER_PASSWORD=testpw123 opencode serve --hostname 127.0.0.1 --port 41973 --print-logs`
@@ -101,13 +103,23 @@ The JVM-side event consumers (`server.OpenCodeGlobalEventStream`, agent-status s
    `curl -N -u opencode:testpw123 -H "Accept: text/event-stream" http://127.0.0.1:41973/global/event`
 3. Trigger events from another terminal by creating a session for some directory:
    `curl -u opencode:testpw123 -X POST "http://127.0.0.1:41973/session?directory=<url-encoded dir>" -H 'Content-Type: application/json' -d '{}'`
-4. Expected event framing: SSE blocks whose `data:` payload is `{"directory": "...", "payload": {"id": "evt_...", "type": "...", "properties": {...}}}`. Events without a `directory` (e.g. `server.connected`) are intentionally dropped by `OpenCodeGlobalEventStream.parseGlobalEvent`. Consumed types: `session.status`, `session.idle`, `session.error`, `permission.asked`/`replied`, `question.asked`/`replied`/`rejected`.
-5. Expected REST shapes (all take `?directory=`; parsers live in `server.OpenCodeServerProtocol` with unit tests next to them):
+4. Expected event framing: SSE blocks whose `data:` payload is `{"directory": "...", "payload": {"id": "evt_...", "type": "...", "properties": {...}}}`. Events without a `directory` (e.g. `server.connected`) are intentionally dropped by `OpenCodeGlobalEventStream.parseGlobalEvent`. The server emits `server.heartbeat` every 10s on the stream. Consumed types (v1, actively published — see `packages/schema/src/v1/`):
+   - `session.status` → `{sessionID, status: {type: "busy"|"retry"|"idle", ...}}`
+   - `session.idle` (deprecated predecessor of `session.status`) → `{sessionID}`
+   - `session.error` → `{sessionID?, error?}`
+   - `permission.asked` → `{id, sessionID, permission, patterns, metadata, always, tool?}` (NOT `permission.updated` — that only exists in the stale legacy v1 SDK gen file; the real type is `permission.asked`)
+   - `permission.replied` → `{sessionID, requestID, reply}` where `reply ∈ {"once","always","reject"}` (NOT `{sessionID, permissionID, response}` — the legacy SDK gen is stale)
+   - `question.asked` → `{id, sessionID, questions: QuestionInfo[], tool?}`
+   - `question.replied` → `{sessionID, requestID, answers: string[][]}`
+   - `question.rejected` → `{sessionID, requestID}`
+5. Additional event types available on the stream (defined but not yet consumed by the plugin): `session.created`/`updated`/`deleted`, `session.diff`, `session.compacted`, `message.updated`/`removed`, `message.part.updated`/`removed`/`delta`, `file.edited`, `file.watcher.updated`, `vcs.branch.updated`, `todo.updated`, `command.executed`, `project.updated`/`project.directories.updated`, `pty.created`/`updated`/`exited`/`deleted`, `lsp.updated`, `workspace.ready`/`failed`/`status`, `worktree.ready`/`failed`, `mcp.tools.changed`/`mcp.browser.open.failed`, `plugin.added`, `reference.updated`, `integration.updated`/`connection.updated`, `catalog.updated`, `models-dev.refreshed`, `global.disposed`, `server.instance.disposed`, and the v2 `session.next.*` family (32 types, see `packages/schema/src/session-event.ts`). Durable events are also re-emitted as `sync` wrapper events with `syncEvent.type = "<type>.<version>"`. There is NO `lsp.client.diagnostics` — only `lsp.updated` (with empty properties).
+6. Expected REST shapes (all take `?directory=`; parsers live in `server.OpenCodeServerProtocol` with unit tests next to them):
    - `GET /session/status` → `{"ses_...": {"type": "busy"|"retry"|"idle"}, ...}` (`parseBusySessionIds`)
    - `GET /permission`, `GET /question` → JSON array of request objects with `id` (`parsePendingRequestIds`)
    - `GET /session/{id}` → session object with `title` and optional `parentID`, bare or wrapped in `{"data": {...}}` (`parseSessionInfo`)
    - `GET /api/session?order=desc&limit=N` → `{"data": [{"id": "ses_...", "parentID"?, "time": {"created", "updated"}}, ...], "cursor": {...}}` (`parseSessionList`). The listing is creation-ordered, **not** `time.updated`-ordered, and includes subagent child sessions; "most recent activity" callers must select `max(time.updated)` themselves and skip entries with a `parentID`. The server canonicalizes directories (macOS `/var/...` → `/private/var/...`), so query with the same directory value used elsewhere in the plugin.
-6. If a shape changed, fix the matching parser and its unit test, then update the version note in this section.
+   - `GET /session/{sessionID}/diff?messageID=<id>&directory=<dir>` → `Array<SnapshotFileDiff>` where `SnapshotFileDiff = {file?: string, patch?: string, additions: number, deletions: number, status?: "added"|"deleted"|"modified"}`. **There is no `before`/`after` field** — the diff is a unified `patch` string, not full before/after content. The same `SnapshotFileDiff` shape is carried by the `session.diff` event (`{sessionID, diff: Array<SnapshotFileDiff>}`). The stale legacy v1 SDK gen file shows `before`/`after`; that contract is wrong and was never regenerated after the schema refactor.
+7. If a shape changed, fix the matching parser and its unit test, then update the version note and the cross-reference in this section.
 
 ## Verification
 
