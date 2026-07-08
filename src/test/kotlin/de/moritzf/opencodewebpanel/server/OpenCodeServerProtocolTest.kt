@@ -2077,6 +2077,8 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("edit-tool"))
         assertTrue(script.contains("write-tool"))
         assertTrue(script.contains("diff-changes"))
+        assertTrue(script.contains("session-turn-diff-trigger"))
+        assertTrue(script.contains("session-turn-diff-filename"))
         assertTrue(script.contains("[data-message-id]"))
         assertTrue(script.contains("window.__openDiff(messageID, filePath)"))
         // Capture phase so it pre-empts the SPA's own click handlers.

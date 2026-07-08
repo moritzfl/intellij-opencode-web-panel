@@ -942,18 +942,25 @@ internal object OpenCodeBrowserSnippets {
                 const el = node && node.closest ? node.closest('[data-message-id], [data-message]') : null;
                 return el ? (el.getAttribute('data-message-id') || el.getAttribute('data-message') || '') : '';
               };
-              const editBlockFilePath = (block) => {
-                const dir = clean(block.querySelector ? block.querySelector('[data-slot="message-part-directory"]')?.textContent : '');
-                const name = clean(block.querySelector ? block.querySelector('[data-slot="message-part-title-filename"]')?.textContent : '');
+              const pathFrom = (root, dirSel, nameSel) => {
+                if (!root || !root.querySelector) return '';
+                const dir = clean(root.querySelector(dirSel)?.textContent);
+                const name = clean(root.querySelector(nameSel)?.textContent);
                 if (!name) return '';
                 return dir ? dir.replace(/[\\/]?${'$'}/, '/') + name : name;
               };
               const resolveDiffTarget = (start) => {
                 if (!start || !start.closest) return null;
+                // Review panel row: clean data-file, cumulative session diff for the file.
                 const fileItem = start.closest('[data-file]');
                 if (fileItem) return { messageID: '', filePath: fileItem.getAttribute('data-file') || '' };
+                // "Changed files" turn-summary row: no data-file, path lives in its spans.
+                const turnRow = start.closest('[data-slot="session-turn-diff-trigger"]');
+                if (turnRow) return { messageID: '', filePath: pathFrom(turnRow, '[data-slot="session-turn-diff-directory"]', '[data-slot="session-turn-diff-filename"]') };
+                // Chat edit/write block: that message's diff for the edited file.
                 const editBlock = start.closest('[data-component="edit-tool"], [data-component="write-tool"]');
-                if (editBlock) return { messageID: messageIdOf(editBlock), filePath: editBlockFilePath(editBlock) };
+                if (editBlock) return { messageID: messageIdOf(editBlock), filePath: pathFrom(editBlock, '[data-slot="message-part-directory"]', '[data-slot="message-part-title-filename"]') };
+                // Any diff indicator (e.g. the summary total): that message's diff, all files.
                 const indicator = start.closest('[data-component="diff-changes"]');
                 if (indicator) return { messageID: messageIdOf(indicator), filePath: '' };
                 return null;
