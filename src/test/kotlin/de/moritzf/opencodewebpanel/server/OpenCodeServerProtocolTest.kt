@@ -1934,4 +1934,124 @@ class OpenCodeServerProtocolTest {
             executor.shutdownNow()
         }
     }
+
+    @Test
+    fun parseSessionDiffParsesFileEntries() {
+        val json = """
+            [
+              {"file":"src/Foo.kt","patch":"@@ -1 +1 @@\n-a\n+b","additions":1,"deletions":1,"status":"modified"},
+              {"file":"new.txt","patch":"@@ -0,0 +1 @@\n+x","additions":1,"deletions":0,"status":"added"},
+              {"additions":0,"deletions":0}
+            ]
+        """.trimIndent()
+        val diffs = OpenCodeServerProtocol.parseSessionDiff(json)
+        assertEquals(3, diffs.size)
+        assertEquals("src/Foo.kt", diffs[0].file)
+        assertEquals("@@ -1 +1 @@\n-a\n+b", diffs[0].patch)
+        assertEquals(1L, diffs[0].additions)
+        assertEquals(1L, diffs[0].deletions)
+        assertEquals("modified", diffs[0].status)
+        assertEquals("added", diffs[1].status)
+        assertNull(diffs[2].file)
+        assertNull(diffs[2].patch)
+        assertEquals(0L, diffs[2].additions)
+    }
+
+    @Test
+    fun parseSessionDiffReturnsEmptyForNonArray() {
+        assertTrue(OpenCodeServerProtocol.parseSessionDiff("{}").isEmpty())
+        assertTrue(OpenCodeServerProtocol.parseSessionDiff("").isEmpty())
+        assertTrue(OpenCodeServerProtocol.parseSessionDiff("not json").isEmpty())
+    }
+
+    @Test
+    fun fetchSessionDiffReturnsEmptyForInvalidSessionId() {
+        val auth = OpenCodeServerProtocol.buildBasicAuthHeader("test")
+        assertTrue(
+            OpenCodeServerProtocol.fetchSessionDiff("http://127.0.0.1:1", auth, "/tmp", "invalid").isEmpty(),
+        )
+    }
+
+    @Test
+    fun fetchSessionDiffRequestsDiffUrlAndParsesResult() {
+        val body = """[{"file":"src/Foo.kt","patch":"@@ -1 +1 @@\n-a\n+b","additions":1,"deletions":1,"status":"modified"}]"""
+        val serverSocket = ServerSocket(0)
+        val executor = Executors.newSingleThreadExecutor()
+        val capturedRequestLine = java.util.concurrent.CompletableFuture<String>()
+        val responseFuture = executor.submit {
+            try {
+                serverSocket.accept().use { socket ->
+                    val reader = socket.getInputStream().bufferedReader()
+                    capturedRequestLine.complete(reader.readLine())
+                    while (reader.readLine()?.isNotEmpty() == true) {
+                        // Drain request headers.
+                    }
+                    socket.getOutputStream().write(
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ${body.toByteArray(Charsets.UTF_8).size}\r\nConnection: close\r\n\r\n$body"
+                            .toByteArray(Charsets.UTF_8),
+                    )
+                    socket.getOutputStream().flush()
+                }
+            } catch (_: SocketException) {}
+        }
+        try {
+            val auth = OpenCodeServerProtocol.buildBasicAuthHeader("test")
+            val diffs = OpenCodeServerProtocol.fetchSessionDiff(
+                "http://127.0.0.1:${serverSocket.localPort}",
+                auth,
+                "/tmp/project",
+                "ses_abc123",
+            )
+            val requestLine = capturedRequestLine.get(5, TimeUnit.SECONDS)
+            assertTrue(requestLine.startsWith("GET /session/ses_abc123/diff?directory="))
+            assertFalse(requestLine.contains("messageID"))
+            assertEquals(1, diffs.size)
+            assertEquals("src/Foo.kt", diffs[0].file)
+            responseFuture.get(5, TimeUnit.SECONDS)
+        } finally {
+            serverSocket.close()
+            executor.shutdownNow()
+        }
+    }
+
+    @Test
+    fun fetchSessionDiffAppendsMessageIdParam() {
+        val serverSocket = ServerSocket(0)
+        val executor = Executors.newSingleThreadExecutor()
+        val capturedRequestLine = java.util.concurrent.CompletableFuture<String>()
+        val responseFuture = executor.submit {
+            try {
+                serverSocket.accept().use { socket ->
+                    val reader = socket.getInputStream().bufferedReader()
+                    capturedRequestLine.complete(reader.readLine())
+                    while (reader.readLine()?.isNotEmpty() == true) {
+                        // Drain request headers.
+                    }
+                    val body = "[]"
+                    socket.getOutputStream().write(
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ${body.length}\r\nConnection: close\r\n\r\n$body"
+                            .toByteArray(Charsets.UTF_8),
+                    )
+                    socket.getOutputStream().flush()
+                }
+            } catch (_: SocketException) {}
+        }
+        try {
+            val auth = OpenCodeServerProtocol.buildBasicAuthHeader("test")
+            OpenCodeServerProtocol.fetchSessionDiff(
+                "http://127.0.0.1:${serverSocket.localPort}",
+                auth,
+                "/tmp/project",
+                "ses_abc123",
+                "msg_xyz",
+            )
+            val requestLine = capturedRequestLine.get(5, TimeUnit.SECONDS)
+            assertTrue(requestLine.contains("/session/ses_abc123/diff?directory="))
+            assertTrue(requestLine.contains("&messageID=msg_xyz"))
+            responseFuture.get(5, TimeUnit.SECONDS)
+        } finally {
+            serverSocket.close()
+            executor.shutdownNow()
+        }
+    }
 }

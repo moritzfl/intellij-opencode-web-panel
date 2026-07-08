@@ -1,5 +1,6 @@
 package de.moritzf.opencodewebpanel.server
 
+import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import java.io.File
@@ -738,6 +739,61 @@ internal object OpenCodeServerProtocol {
         )
     }
 
+    // ─── Session diffs (for the "open diff in IDE" feature) ─────────────────────
+
+    /** One file's diff as returned by `GET /session/{id}/diff`; `patch` is a unified diff string. */
+    data class SnapshotFileDiff(
+        val file: String?,
+        val patch: String?,
+        val additions: Long,
+        val deletions: Long,
+        val status: String?,
+    )
+
+    /**
+     * Fetches the diff for a session (`GET /session/{sessionID}/diff?directory=...`). With a
+     * [messageID] (`msg_...`) it returns that message's snapshot diff; without one it returns the
+     * session's cumulative diff. Returns an empty list on any error.
+     */
+    fun fetchSessionDiff(
+        serverUrl: String,
+        basicAuthHeader: String,
+        directory: String,
+        sessionID: String,
+        messageID: String? = null,
+        connectTimeoutMillis: Int = 5000,
+        readTimeoutMillis: Int = 5000,
+    ): List<SnapshotFileDiff> {
+        if (!isOpenCodeRecordId(sessionID)) return emptyList()
+        val messageParam = messageID
+            ?.takeIf { it.isNotBlank() && isOpenCodeRecordId(it) }
+            ?.let { "&messageID=" + java.net.URLEncoder.encode(it, StandardCharsets.UTF_8) }
+            .orEmpty()
+        val url = buildServerRootUrl(serverUrl) + "/session/" + sessionID + "/diff?directory=" +
+            java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8) + messageParam
+        val body = httpGet(url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis) ?: return emptyList()
+        return parseSessionDiff(body)
+    }
+
+    @TestOnly
+    fun parseSessionDiff(json: String): List<SnapshotFileDiff> {
+        val array = parseJsonArray(json) ?: return emptyList()
+        val results = mutableListOf<SnapshotFileDiff>()
+        for (element in array) {
+            val entry = element.takeIf { it.isJsonObject }?.asJsonObject ?: continue
+            results.add(
+                SnapshotFileDiff(
+                    file = entry.stringMember("file")?.takeIf { it.isNotBlank() },
+                    patch = entry.stringMember("patch"),
+                    additions = entry.longMember("additions") ?: 0L,
+                    deletions = entry.longMember("deletions") ?: 0L,
+                    status = entry.stringMember("status"),
+                ),
+            )
+        }
+        return results
+    }
+
     /** Builds the SPA route for a project directory, or one of its sessions if [sessionID] is set. */
     fun buildSessionRoute(directory: String, sessionID: String?): String {
         val root = "/" + encodeDirectory(directory)
@@ -940,6 +996,13 @@ internal object OpenCodeServerProtocol {
         return runCatching { JsonParser.parseString(text) }.getOrNull()
             ?.takeIf { it.isJsonObject }
             ?.asJsonObject
+    }
+
+    private fun parseJsonArray(text: String): JsonArray? {
+        if (text.isBlank()) return null
+        return runCatching { JsonParser.parseString(text) }.getOrNull()
+            ?.takeIf { it.isJsonArray }
+            ?.asJsonArray
     }
 
     /**
