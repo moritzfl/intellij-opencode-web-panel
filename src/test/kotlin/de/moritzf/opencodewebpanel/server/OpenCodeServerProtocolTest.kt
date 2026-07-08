@@ -2054,4 +2054,38 @@ class OpenCodeServerProtocolTest {
             executor.shutdownNow()
         }
     }
+
+    @Test
+    fun buildDiffNavigationScriptIsMissingWhenDisabled() {
+        assertNull(OpenCodeBrowserSnippets.buildDiffNavigationScript(enabled = false, openDiffCallback = "cb(payload)"))
+    }
+
+    @Test
+    fun buildDiffNavigationScriptIsMissingWithoutCallback() {
+        assertNull(OpenCodeBrowserSnippets.buildDiffNavigationScript(enabled = true, openDiffCallback = null))
+    }
+
+    @Test
+    fun buildDiffNavigationScriptInstallsAltClickHandlerForDiffTargets() {
+        val script = OpenCodeBrowserSnippets.buildDiffNavigationScript(
+            enabled = true,
+            openDiffCallback = "window.__openDiff(messageID, filePath)",
+        )!!
+        assertTrue(script.contains("event.altKey"))
+        assertTrue(script.contains("addEventListener('click'"))
+        assertTrue(script.contains("[data-file]"))
+        assertTrue(script.contains("edit-tool"))
+        assertTrue(script.contains("write-tool"))
+        assertTrue(script.contains("diff-changes"))
+        assertTrue(script.contains("[data-message]"))
+        assertTrue(script.contains("window.__openDiff(messageID, filePath)"))
+        // Capture phase so it pre-empts the SPA's own click handlers.
+        assertTrue(script.contains("}, true)"))
+    }
+
+    @Test
+    fun fileLinkHandlerReservesAltClickForDiffGesture() {
+        val script = OpenCodeBrowserSnippets.buildFileLinkHandlerScript("/tmp/project", enabled = true)!!
+        assertTrue(script.contains("if (event.altKey) return;"))
+    }
 }

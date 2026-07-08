@@ -897,6 +897,9 @@ internal object OpenCodeBrowserSnippets {
               };
               const handleFileOpenEvent = (event, changedButtonOnly) => {
                 if (event.defaultPrevented) return;
+                // Alt is reserved for the IDE diff gesture (buildDiffNavigationScript); a plain
+                // click still opens the file.
+                if (event.altKey) return;
                 const resolved = resolveFileOpenTarget(event.target, changedButtonOnly);
                 if (!resolved) return;
                 event.preventDefault();
@@ -911,6 +914,65 @@ internal object OpenCodeBrowserSnippets {
                 const target = event.target && event.target.nodeType === 1 ? event.target : null;
                 const resolved = target ? resolveFileOpenTarget(target, false) : null;
                 markHovered(resolved ? resolved.element : null);
+              }, true);
+            })();
+        """
+        return script.trimIndent()
+    }
+
+    /**
+     * Installs an Alt+Click handler that opens the IDE diff viewer for a diff target in the
+     * OpenCode page. Recognises changes/review-panel rows (`[data-file]` → cumulative session
+     * diff for that file), chat edit/write blocks (`[data-component="edit-tool"|"write-tool"]`
+     * inside a `[data-message]` → that message's diff for the edited file) and any diff indicator
+     * (`[data-component="diff-changes"]` → that message's diff, all files). Forwards
+     * `messageID + "\n" + filePath` (both may be empty) to the JVM via [openDiffCallback]; the JVM
+     * derives the session id and directory itself. Returns null when disabled or without a callback.
+     */
+    fun buildDiffNavigationScript(enabled: Boolean, openDiffCallback: String? = null): String? {
+        if (!enabled || openDiffCallback == null) return null
+
+        @Language("JavaScript")
+        val script = """
+            (() => {
+              if (window.__opencodeIntellijDiffNavInstalled) return;
+              window.__opencodeIntellijDiffNavInstalled = true;
+              const clean = (value) => (value || '').replace(/[\u202A-\u202E]/g, '').trim();
+              const messageIdOf = (node) => {
+                const el = node && node.closest ? node.closest('[data-message]') : null;
+                return el ? (el.getAttribute('data-message') || '') : '';
+              };
+              const editBlockFilePath = (block) => {
+                const dir = clean(block.querySelector ? block.querySelector('[data-slot="message-part-directory"]')?.textContent : '');
+                const name = clean(block.querySelector ? block.querySelector('[data-slot="message-part-title-filename"]')?.textContent : '');
+                if (!name) return '';
+                return dir ? dir.replace(/[\\/]?${'$'}/, '/') + name : name;
+              };
+              const resolveDiffTarget = (start) => {
+                if (!start || !start.closest) return null;
+                const fileItem = start.closest('[data-file]');
+                if (fileItem) return { messageID: '', filePath: fileItem.getAttribute('data-file') || '' };
+                const editBlock = start.closest('[data-component="edit-tool"], [data-component="write-tool"]');
+                if (editBlock) return { messageID: messageIdOf(editBlock), filePath: editBlockFilePath(editBlock) };
+                const indicator = start.closest('[data-component="diff-changes"]');
+                if (indicator) return { messageID: messageIdOf(indicator), filePath: '' };
+                return null;
+              };
+              document.addEventListener('click', (event) => {
+                if (!event.altKey || event.defaultPrevented) return;
+                const target = resolveDiffTarget(event.target);
+                if (!target) return;
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                const messageID = target.messageID || '';
+                const filePath = target.filePath || '';
+                try {
+                  $openDiffCallback;
+                } catch (error) {
+                  if (window.console && window.console.warn) {
+                    window.console.warn('Failed to forward diff target to IntelliJ', error);
+                  }
+                }
               }, true);
             })();
         """
