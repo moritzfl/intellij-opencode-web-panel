@@ -4,6 +4,16 @@
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-07-08
+
+### Added
+
+- Alt+Click a diff in a conversation to open it in the IDE's native diff viewer — works on file edits in the chat, rows in the "Changed files" turn summary, and changes-list entries. Alt is reserved for this, so a plain click still opens the file in the editor. Can be turned off with the new "Open diffs in the IDE on Alt+Click" setting.
+
+### Changed
+
+- Agent permission requests are now answered through OpenCode's current permission-reply endpoint instead of the deprecated one it replaced, keeping the IDE-side Allow / Always Allow / Deny actions working against current and future OpenCode releases.
+
 ## [1.5.1] - 2026-07-07
 
 ### Fixed
@@ -252,7 +262,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.5.1...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.6.0...HEAD
+[1.6.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.5.1...1.6.0
 [1.5.1]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.5.0...1.5.1
 [1.5.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.11...1.5.0
 [1.4.11]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.10...1.4.11
