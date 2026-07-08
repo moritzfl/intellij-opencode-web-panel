@@ -274,9 +274,14 @@ internal object OpenCodeServerProtocol {
     }
 
     /**
-     * Answers a pending permission request via the long-standing endpoint the OpenCode web app
-     * itself uses: `POST /session/{sessionID}/permissions/{permissionID}?directory=...` with
-     * `{"response":"once"|"always"|"reject"}`. Returns true when the server accepted the reply.
+     * Answers a pending permission request via the non-deprecated endpoint
+     * `POST /permission/{requestID}/reply?directory=...` with `{"reply":"once"|"always"|"reject"}`.
+     *
+     * This replaces the deprecated `POST /session/{sessionID}/permissions/{permissionID}` +
+     * `{"response":...}` form (op `permission.respond`, marked `deprecated` in the 1.17.x OpenAPI
+     * spec) with its successor `permission.reply`. The `permissionID` is the `per_...` request id
+     * carried by the `permission.asked`/`permission.replied` events. Returns true when the server
+     * accepted the reply.
      */
     enum class PermissionResponse(val jsonValue: String) {
         ONCE("once"), ALWAYS("always"), REJECT("reject")
@@ -294,9 +299,9 @@ internal object OpenCodeServerProtocol {
     ): Boolean {
         if (!isOpenCodeRecordId(sessionID) || !isOpenCodeRecordId(permissionID)) return false
         val url = buildServerRootUrl(serverUrl) +
-            "/session/$sessionID/permissions/$permissionID" +
+            "/permission/$permissionID/reply" +
             "?directory=" + java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
-        return httpPostJson(url, basicAuthHeader, "{\"response\":\"${response.jsonValue}\"}", connectTimeoutMillis, readTimeoutMillis)
+        return httpPostJson(url, basicAuthHeader, "{\"reply\":\"${response.jsonValue}\"}", connectTimeoutMillis, readTimeoutMillis)
     }
 
     /** OpenCode record IDs (`ses_...`, `per_...`) are URL-safe by construction; reject anything else. */

@@ -1857,4 +1857,81 @@ class OpenCodeServerProtocolTest {
             executor.shutdownNow()
         }
     }
+
+    @Test
+    fun replyToPermissionReturnsFalseForInvalidIds() {
+        val auth = OpenCodeServerProtocol.buildBasicAuthHeader("test")
+        assertFalse(
+            OpenCodeServerProtocol.replyToPermission(
+                "http://127.0.0.1:1", auth, "/tmp", "invalid", "per_1",
+                OpenCodeServerProtocol.PermissionResponse.ONCE,
+            ),
+        )
+        assertFalse(
+            OpenCodeServerProtocol.replyToPermission(
+                "http://127.0.0.1:1", auth, "/tmp", "ses_1", "not a valid id",
+                OpenCodeServerProtocol.PermissionResponse.ONCE,
+            ),
+        )
+    }
+
+    @Test
+    fun replyToPermissionPostsToNonDeprecatedReplyEndpoint() {
+        val serverSocket = ServerSocket(0)
+        val executor = Executors.newSingleThreadExecutor()
+        val capturedRequestLine = java.util.concurrent.CompletableFuture<String>()
+        val capturedBody = java.util.concurrent.CompletableFuture<String>()
+        val responseFuture = executor.submit {
+            try {
+                serverSocket.accept().use { socket ->
+                    val reader = socket.getInputStream().bufferedReader()
+                    capturedRequestLine.complete(reader.readLine())
+                    val headers = mutableMapOf<String, String>()
+                    while (true) {
+                        val line = reader.readLine()
+                        if (line.isNullOrEmpty()) break
+                        val parts = line.split(": ", limit = 2)
+                        if (parts.size == 2) headers[parts[0]] = parts[1]
+                    }
+                    val contentLength = headers["Content-Length"]?.toIntOrNull() ?: 0
+                    val bodyChars = CharArray(contentLength)
+                    var read = 0
+                    while (read < contentLength) {
+                        val n = reader.read(bodyChars, read, contentLength - read)
+                        if (n < 0) break
+                        read += n
+                    }
+                    capturedBody.complete(String(bodyChars, 0, read))
+                    socket.getOutputStream().write(
+                        "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                            .toByteArray(Charsets.UTF_8),
+                    )
+                    socket.getOutputStream().flush()
+                }
+            } catch (_: SocketException) {}
+        }
+        try {
+            val auth = OpenCodeServerProtocol.buildBasicAuthHeader("test")
+            val accepted = OpenCodeServerProtocol.replyToPermission(
+                "http://127.0.0.1:${serverSocket.localPort}",
+                auth,
+                "/tmp/project",
+                "ses_abc123",
+                "per_abc123",
+                OpenCodeServerProtocol.PermissionResponse.ONCE,
+            )
+            assertTrue(accepted)
+            val requestLine = capturedRequestLine.get(5, TimeUnit.SECONDS)
+            // Non-deprecated successor: POST /permission/{requestID}/reply, not the deprecated
+            // POST /session/{id}/permissions/{id} form.
+            assertTrue(requestLine.startsWith("POST /permission/per_abc123/reply?directory="))
+            assertFalse(requestLine.contains("/permissions/"))
+            val body = capturedBody.get(5, TimeUnit.SECONDS)
+            assertEquals("{\"reply\":\"once\"}", body)
+            responseFuture.get(5, TimeUnit.SECONDS)
+        } finally {
+            serverSocket.close()
+            executor.shutdownNow()
+        }
+    }
 }
