@@ -19,6 +19,7 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
     var openFileLinksInIde: Boolean = true
     var openExternalLinksInBrowser: Boolean = true
     var enableCodeNavigation: Boolean = true
+    var openDiffsInIde: Boolean = true
     var enableChatFileDrop: Boolean = true
     var forceCompactLayout: Boolean = true
     var syncThemeWithIde: Boolean = true
@@ -44,6 +45,7 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
         openFileLinksInIde = state.openFileLinksInIde
         openExternalLinksInBrowser = state.openExternalLinksInBrowser
         enableCodeNavigation = state.enableCodeNavigation
+        openDiffsInIde = state.openDiffsInIde
         enableChatFileDrop = state.enableChatFileDrop
         forceCompactLayout = state.forceCompactLayout
         syncThemeWithIde = state.syncThemeWithIde

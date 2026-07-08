@@ -86,6 +86,7 @@ class OpenCodeSettingsConfigurable : Configurable {
     private val openFileLinksInIdeCheckBox = JBCheckBox("Enable IDE navigation from OpenCode")
     private val openExternalLinksInBrowserCheckBox = JBCheckBox("Open external HTTP links in the system browser")
     private val enableCodeNavigationCheckBox = JBCheckBox("Also navigate code references in chat")
+    private val openDiffsInIdeCheckBox = JBCheckBox("Open diffs in the IDE on Alt+Click")
     private val enableChatFileDropCheckBox = JBCheckBox("Enable file drop and paste into chat")
     private val forceCompactLayoutCheckBox = JBCheckBox("Lock to compact view")
     private val syncThemeWithIdeCheckBox = JBCheckBox("Sync OpenCode color scheme with the IDE theme")
@@ -128,6 +129,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         CheckBoxSettingBinding(openFileLinksInIdeCheckBox, { openFileLinksInIde }, { value -> openFileLinksInIde = value }, OpenCodeUiSetting.FILE_LINK_NAVIGATION),
         CheckBoxSettingBinding(openExternalLinksInBrowserCheckBox, { openExternalLinksInBrowser }, { value -> openExternalLinksInBrowser = value }, OpenCodeUiSetting.EXTERNAL_LINK_NAVIGATION),
         CheckBoxSettingBinding(enableCodeNavigationCheckBox, { enableCodeNavigation }, { value -> enableCodeNavigation = value }, OpenCodeUiSetting.CODE_NAVIGATION),
+        CheckBoxSettingBinding(openDiffsInIdeCheckBox, { openDiffsInIde }, { value -> openDiffsInIde = value }, OpenCodeUiSetting.DIFF_NAVIGATION),
         CheckBoxSettingBinding(enableChatFileDropCheckBox, { enableChatFileDrop }, { value -> enableChatFileDrop = value }, OpenCodeUiSetting.CHAT_FILE_DROP),
         CheckBoxSettingBinding(forceCompactLayoutCheckBox, { forceCompactLayout }, { value -> forceCompactLayout = value }, OpenCodeUiSetting.COMPACT_LAYOUT),
         CheckBoxSettingBinding(syncThemeWithIdeCheckBox, { syncThemeWithIde }, { value -> syncThemeWithIde = value }, OpenCodeUiSetting.IDE_THEME_SYNC),
@@ -271,6 +273,10 @@ class OpenCodeSettingsConfigurable : Configurable {
                         cell(enableCodeNavigationCheckBox)
                             .comment("Open file names, class names, and code references from chat.")
                     }
+                }
+                row {
+                    cell(openDiffsInIdeCheckBox)
+                        .comment("Alt+Click a diff in chat or in the changes list to open it in the IDE's diff viewer.")
                 }
             }
             group("Link Handling") {

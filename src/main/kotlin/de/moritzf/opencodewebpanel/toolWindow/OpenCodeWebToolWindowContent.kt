@@ -20,6 +20,7 @@ import de.moritzf.opencodewebpanel.browser.OpenCodeBrowserSnippets
 import de.moritzf.opencodewebpanel.features.OpenCodeAgentStatusState
 import de.moritzf.opencodewebpanel.features.OpenCodeAgentStatusTracker
 import de.moritzf.opencodewebpanel.features.OpenCodeChatInputService
+import de.moritzf.opencodewebpanel.features.OpenCodeDiffNavigation
 import de.moritzf.opencodewebpanel.features.OpenCodeFileDropHandler
 import de.moritzf.opencodewebpanel.features.OpenCodeIdeNavigation
 import de.moritzf.opencodewebpanel.features.OpenCodeInterruptedSessionRecovery
@@ -89,8 +90,10 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     private val openCodeLocalStorageQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
     private val openExternalLinkQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
     private val browserCursorQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
+    private val openDiffQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
     private val serverManager = SharedOpenCodeServerManager.getInstance()
     private val ideNavigation = OpenCodeIdeNavigation(project, browser, serverManager, ::openCodeProjectDirectory, this)
+    private val diffNavigation = OpenCodeDiffNavigation(project, browser, serverManager, ::openCodeProjectDirectory)
     private val localStorageBridge = OpenCodeLocalStorageBridge(
         browser,
         serverManager,
@@ -147,6 +150,15 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             )
         },
     )
+    private val diffNavigationFeature = InjectedFeature(
+        enabledInSettings = { OpenCodeSettingsState.getInstance().openDiffsInIde },
+        buildScript = {
+            OpenCodeBrowserSnippets.buildDiffNavigationScript(
+                enabled = true,
+                openDiffCallback = openDiffQuery.inject("messageID + '\\n' + filePath"),
+            )
+        },
+    )
     private val filePasteSuppressionFeature = InjectedFeature(
         enabledInSettings = { OpenCodeSettingsState.getInstance().enableChatFileDrop },
         buildScript = { OpenCodeBrowserSnippets.buildFilePasteSuppressionScript(enabled = true) },
@@ -169,6 +181,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         fileLinkFeature,
         externalLinkFeature,
         codeNavigationFeature,
+        diffNavigationFeature,
         filePasteSuppressionFeature,
         projectSwitchPromptSuppressionFeature,
         cursorMirrorFeature,
@@ -273,6 +286,12 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             }
             null
         }
+        openDiffQuery.addHandler { payload ->
+            if (OpenCodeSettingsState.getInstance().openDiffsInIde) {
+                diffNavigation.openDiff(payload)
+            }
+            null
+        }
         openCodeLocalStorageQuery.addHandler { snapshot ->
             localStorageBridge.sync(snapshot)
             null
@@ -358,6 +377,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                         OpenCodeUiSetting.FILE_LINK_NAVIGATION -> applyFileLinkNavigation(enabled)
                         OpenCodeUiSetting.EXTERNAL_LINK_NAVIGATION -> applyFeature(externalLinkFeature, enabled)
                         OpenCodeUiSetting.CODE_NAVIGATION -> applyFeature(codeNavigationFeature, enabled)
+                        OpenCodeUiSetting.DIFF_NAVIGATION -> applyFeature(diffNavigationFeature, enabled)
                         OpenCodeUiSetting.CHAT_FILE_DROP -> applyFeature(filePasteSuppressionFeature, enabled)
                         OpenCodeUiSetting.COMPACT_LAYOUT -> applyCompactLayout()
                         OpenCodeUiSetting.IDE_THEME_SYNC -> applyIdeThemeSync(enabled)
