@@ -949,18 +949,21 @@ internal object OpenCodeBrowserSnippets {
                 if (!name) return '';
                 return dir ? dir.replace(/[\\/]?${'$'}/, '/') + name : name;
               };
+              // The server keys /session/{id}/diff by the turn's *user* message id (an empty or
+              // assistant id yields []), and data-message-id sits on the turn container, so every
+              // target resolves its message id from the nearest [data-message-id] ancestor.
               const resolveDiffTarget = (start) => {
                 if (!start || !start.closest) return null;
-                // Review panel row: clean data-file, cumulative session diff for the file.
+                // Review panel row: file path from data-file.
                 const fileItem = start.closest('[data-file]');
-                if (fileItem) return { messageID: '', filePath: fileItem.getAttribute('data-file') || '' };
+                if (fileItem) return { messageID: messageIdOf(fileItem), filePath: fileItem.getAttribute('data-file') || '' };
                 // "Changed files" turn-summary row: no data-file, path lives in its spans.
                 const turnRow = start.closest('[data-slot="session-turn-diff-trigger"]');
-                if (turnRow) return { messageID: '', filePath: pathFrom(turnRow, '[data-slot="session-turn-diff-directory"]', '[data-slot="session-turn-diff-filename"]') };
-                // Chat edit/write block: that message's diff for the edited file.
+                if (turnRow) return { messageID: messageIdOf(turnRow), filePath: pathFrom(turnRow, '[data-slot="session-turn-diff-directory"]', '[data-slot="session-turn-diff-filename"]') };
+                // Chat edit/write block: the edited file.
                 const editBlock = start.closest('[data-component="edit-tool"], [data-component="write-tool"]');
                 if (editBlock) return { messageID: messageIdOf(editBlock), filePath: pathFrom(editBlock, '[data-slot="message-part-directory"]', '[data-slot="message-part-title-filename"]') };
-                // Any diff indicator (e.g. the summary total): that message's diff, all files.
+                // Any diff indicator (e.g. the summary total): the whole turn's diff, all files.
                 const indicator = start.closest('[data-component="diff-changes"]');
                 if (indicator) return { messageID: messageIdOf(indicator), filePath: '' };
                 return null;

@@ -2080,6 +2080,9 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("session-turn-diff-trigger"))
         assertTrue(script.contains("session-turn-diff-filename"))
         assertTrue(script.contains("[data-message-id]"))
+        // The diff endpoint is keyed by the turn's user message id, so every target must resolve
+        // it from the nearest [data-message-id] ancestor (an empty id yields no diff).
+        assertTrue(script.contains("messageIdOf(turnRow)"))
         assertTrue(script.contains("window.__openDiff(messageID, filePath)"))
         // Capture phase so it pre-empts the SPA's own click handlers.
         assertTrue(script.contains("}, true)"))
