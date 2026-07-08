@@ -939,8 +939,8 @@ internal object OpenCodeBrowserSnippets {
               window.__opencodeIntellijDiffNavInstalled = true;
               const clean = (value) => (value || '').replace(/[\u202A-\u202E]/g, '').trim();
               const messageIdOf = (node) => {
-                const el = node && node.closest ? node.closest('[data-message]') : null;
-                return el ? (el.getAttribute('data-message') || '') : '';
+                const el = node && node.closest ? node.closest('[data-message-id], [data-message]') : null;
+                return el ? (el.getAttribute('data-message-id') || el.getAttribute('data-message') || '') : '';
               };
               const editBlockFilePath = (block) => {
                 const dir = clean(block.querySelector ? block.querySelector('[data-slot="message-part-directory"]')?.textContent : '');

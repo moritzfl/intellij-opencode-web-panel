@@ -2077,7 +2077,7 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("edit-tool"))
         assertTrue(script.contains("write-tool"))
         assertTrue(script.contains("diff-changes"))
-        assertTrue(script.contains("[data-message]"))
+        assertTrue(script.contains("[data-message-id]"))
         assertTrue(script.contains("window.__openDiff(messageID, filePath)"))
         // Capture phase so it pre-empts the SPA's own click handlers.
         assertTrue(script.contains("}, true)"))
