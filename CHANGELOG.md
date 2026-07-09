@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-07-09
+
+### Fixed
+
+- Alt+Click now opens the diff for OpenCode's "Patch" (apply_patch) tool as well — previously only chat edits, writes, and "Changed files" rows responded. Opening these diffs is also fixed on Windows: patches with CRLF line endings no longer add stray blank lines, and file paths that differ only by separator or case now match, so diffs open the same on Windows and macOS.
+
 ## [1.6.0] - 2026-07-08
 
 ### Added
@@ -262,7 +268,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.6.0...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.6.1...HEAD
+[1.6.1]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.6.0...1.6.1
 [1.6.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.5.1...1.6.0
 [1.5.1]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.5.0...1.5.1
 [1.5.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.4.11...1.5.0
