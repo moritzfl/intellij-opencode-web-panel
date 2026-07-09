@@ -76,6 +76,17 @@ class OpenCodeUnifiedDiffTest {
     }
 
     @Test
+    fun stripsCarriageReturnsFromCrlfPatches() {
+        val patch = "@@ -1,3 +1,3 @@\r\n line1\r\n-old\r\n+new\r\n line3\r\n"
+        val sides = OpenCodeUnifiedDiff.sides(patch)!!
+        assertEquals("line1\nold\nline3", sides.before)
+        assertEquals("line1\nnew\nline3", sides.after)
+        // No stray CRs survive into the reconstructed content.
+        assertEquals(false, sides.before.contains('\r'))
+        assertEquals(false, sides.after.contains('\r'))
+    }
+
+    @Test
     fun treatsEmptyContextLineAsBlankOnBothSides() {
         val patch = "@@ -1,3 +1,3 @@\n a\n\n-b\n+c"
         val sides = OpenCodeUnifiedDiff.sides(patch)!!

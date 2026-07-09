@@ -960,8 +960,11 @@ internal object OpenCodeBrowserSnippets {
                 // "Changed files" turn-summary row: no data-file, path lives in its spans.
                 const turnRow = start.closest('[data-slot="session-turn-diff-trigger"]');
                 if (turnRow) return { messageID: messageIdOf(turnRow), filePath: pathFrom(turnRow, '[data-slot="session-turn-diff-directory"]', '[data-slot="session-turn-diff-filename"]') };
-                // Chat edit/write block: the edited file.
-                const editBlock = start.closest('[data-component="edit-tool"], [data-component="write-tool"]');
+                // Multi-file apply_patch ("Patch" tool): the specific file row.
+                const patchRow = start.closest('[data-slot="apply-patch-trigger-content"]');
+                if (patchRow) return { messageID: messageIdOf(patchRow), filePath: pathFrom(patchRow, '[data-slot="apply-patch-directory"]', '[data-slot="apply-patch-filename"]') };
+                // Chat edit/write/single-file-patch block: the edited file (all reuse message-part-* spans).
+                const editBlock = start.closest('[data-component="edit-tool"], [data-component="write-tool"], [data-component="apply-patch-tool"]');
                 if (editBlock) return { messageID: messageIdOf(editBlock), filePath: pathFrom(editBlock, '[data-slot="message-part-directory"]', '[data-slot="message-part-title-filename"]') };
                 // Any diff indicator (e.g. the summary total): the whole turn's diff, all files.
                 const indicator = start.closest('[data-component="diff-changes"]');

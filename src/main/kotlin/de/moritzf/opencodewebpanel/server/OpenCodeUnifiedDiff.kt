@@ -30,7 +30,13 @@ object OpenCodeUnifiedDiff {
         val after = StringBuilder()
         var inHunk = false
         var sawContent = false
-        for (line in patch.split('\n')) {
+        // Tolerate CRLF patches (common on Windows) by dropping the CR left when splitting on '\n'.
+        val lines = patch.split('\n').map { it.removeSuffix("\r") }
+        // A patch normally ends with a line terminator, so the split leaves an empty final element
+        // that is not a content line — dropping it avoids a spurious trailing blank on both sides.
+        val lineCount = if (lines.lastOrNull()?.isEmpty() == true) lines.size - 1 else lines.size
+        for (index in 0 until lineCount) {
+            val line = lines[index]
             when {
                 line.startsWith("@@") -> inHunk = true
                 !inHunk -> Unit // skip file-header noise before the first hunk

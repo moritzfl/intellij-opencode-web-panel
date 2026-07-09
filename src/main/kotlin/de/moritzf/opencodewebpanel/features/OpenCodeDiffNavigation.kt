@@ -66,18 +66,22 @@ internal class OpenCodeDiffNavigation(
         return diffs.filter { matchesFile(it.file, filePath) }.ifEmpty { diffs }
     }
 
+    /** Match relative paths from the DOM against REST diff paths, tolerating separators, a leading
+     *  root/slash, and case (Windows) — both sides come from the same OpenCode session. */
     private fun matchesFile(diffFile: String?, requested: String): Boolean {
         val a = diffFile?.replace('\\', '/')?.trim(' ', '/') ?: return false
         val b = requested.replace('\\', '/').trim(' ', '/')
         if (a.isEmpty() || b.isEmpty()) return false
-        return a == b || a.endsWith("/$b") || b.endsWith("/$a") ||
-            a.substringAfterLast('/') == b.substringAfterLast('/')
+        return a.equals(b, ignoreCase = true) ||
+            a.endsWith("/$b", ignoreCase = true) || b.endsWith("/$a", ignoreCase = true) ||
+            a.substringAfterLast('/').equals(b.substringAfterLast('/'), ignoreCase = true)
     }
 
     private fun buildDiffRequest(diff: OpenCodeServerProtocol.SnapshotFileDiff): DiffRequest? {
         val sides = OpenCodeUnifiedDiff.sides(diff.patch) ?: return null
         val name = diff.file?.takeIf { it.isNotBlank() } ?: "diff"
-        val fileType = FileTypeManager.getInstance().getFileTypeByFileName(name.substringAfterLast('/'))
+        val fileName = name.substringAfterLast('/').substringAfterLast('\\')
+        val fileType = FileTypeManager.getInstance().getFileTypeByFileName(fileName)
         val factory = DiffContentFactory.getInstance()
         return SimpleDiffRequest(
             name,
