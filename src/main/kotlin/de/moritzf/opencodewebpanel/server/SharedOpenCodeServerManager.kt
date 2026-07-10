@@ -153,6 +153,16 @@ class SharedOpenCodeServerManager : Disposable {
     fun isServerRunning(): Boolean = synchronized(lock) { serverRunning }
 
     /**
+     * Whether browser requests and auth challenges may use the current server credentials.
+     *
+     * True when URL and password are known — independent of launcher process liveness, because
+     * on Windows the launcher exits after spawning the real server while the endpoint stays up.
+     */
+    fun isServerReadyForAuth(): Boolean = synchronized(lock) {
+        !serverUrl.isNullOrBlank() && !serverPassword.isNullOrBlank()
+    }
+
+    /**
      * Verifies right now that the server responds. If it does, [onHealthy] runs on the EDT so the
      * caller can reload its page; otherwise the regular health-check recovery (restart with
      * backoff) is triggered immediately instead of waiting for the next periodic check.
@@ -289,7 +299,7 @@ class SharedOpenCodeServerManager : Disposable {
 
     private fun stopResources(resources: ServerResourcesToStop) {
         resources.future?.cancel(true)
-        disposeServerResources(resources.process, resources.serverUrl, resources.serverPassword)
+        disposeServerResources(resources.serverUrl, resources.serverPassword)
         processTerminator.destroy(resources.process, resources.processDescendants)
     }
 
@@ -683,8 +693,10 @@ class SharedOpenCodeServerManager : Disposable {
         stopResources(resources)
     }
 
-    private fun disposeServerResources(process: Process?, serverUrl: String?, password: String?) {
-        if (process?.isAlive != true || serverUrl.isNullOrBlank() || password.isNullOrBlank()) return
+    private fun disposeServerResources(serverUrl: String?, password: String?) {
+        // Dispose via HTTP whenever credentials remain — do not require the launcher process
+        // to still be alive (normal steady state on Windows after the launcher exits).
+        if (serverUrl.isNullOrBlank() || password.isNullOrBlank()) return
         val disposed = OpenCodeServerProtocol.disposeServer(
             serverUrl,
             OpenCodeServerProtocol.buildBasicAuthHeader(password),

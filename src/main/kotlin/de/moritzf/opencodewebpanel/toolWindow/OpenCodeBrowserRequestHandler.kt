@@ -23,7 +23,9 @@ internal class OpenCodeBrowserRequestHandler(
         override fun onBeforeResourceLoad(browser: CefBrowser?, frame: CefFrame?, request: CefRequest?): Boolean {
             val password = serverManager.getServerPassword() ?: return false
             val requestUrl = request?.url ?: return false
-            if (serverManager.getServerProcess()?.isAlive == true &&
+            // Gate on server readiness, not launcher process liveness: on Windows the launcher
+            // exits after spawning the real server while the HTTP endpoint stays up.
+            if (serverManager.isServerReadyForAuth() &&
                 OpenCodeServerProtocol.shouldSendBasicAuthHeader(serverManager.getServerUrl(), requestUrl)
             ) {
                 request.setHeaderByName("Authorization", OpenCodeServerProtocol.buildBasicAuthHeader(password), true)
@@ -73,7 +75,7 @@ internal class OpenCodeBrowserRequestHandler(
         callback: CefAuthCallback?,
     ): Boolean {
         val password = serverManager.getServerPassword() ?: return false
-        if (serverManager.getServerProcess()?.isAlive != true) return false
+        if (!serverManager.isServerReadyForAuth()) return false
         if (!OpenCodeServerProtocol.shouldHandleBasicAuthChallenge(serverManager.getServerUrl(), isProxy, host, port)) {
             return false
         }

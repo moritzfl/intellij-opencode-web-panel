@@ -106,6 +106,29 @@ class OpenCodePluginTest : BasePlatformTestCase() {
         assertEquals(OpenCodeServerLifecycleState.STOPPED, service.getLifecycleState())
     }
 
+    fun testServerReadyForAuthWhenUrlAndPasswordPresentEvenIfLauncherDead() {
+        val service = SharedOpenCodeServerManager.getInstance()
+        val process = RecordingProcess()
+        process.destroy()
+        assertFalse(process.isAlive)
+
+        service.installTestServerState(
+            process = process,
+            url = "http://127.0.0.1:60482",
+            password = "secret-password",
+        )
+        service.setServerRunning(true)
+
+        assertTrue(service.isServerReadyForAuth())
+        assertFalse(service.getServerProcess()?.isAlive == true)
+    }
+
+    fun testServerNotReadyForAuthWithoutCredentials() {
+        val service = SharedOpenCodeServerManager.getInstance()
+        service.stopServer()
+        assertFalse(service.isServerReadyForAuth())
+    }
+
     override fun tearDown() {
         try {
             SharedOpenCodeServerManager.getInstance().stopServer()
