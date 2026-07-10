@@ -74,6 +74,10 @@ class SharedOpenCodeServerManager : Disposable {
     private val scheduler = Executors.newSingleThreadScheduledExecutor { runnable ->
         Thread(runnable, "OpenCode-Server-Checker").apply { isDaemon = true }
     }
+    // Serializes dispose + process kill so settings-driven stop and restart never race on a fixed port.
+    private val stopExecutor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "OpenCode-Server-Stop").apply { isDaemon = true }
+    }
     private val serverLogBuffer = OpenCodeServerLogBuffer()
 
     fun getServerLogFile(): Path? {
@@ -248,7 +252,9 @@ class SharedOpenCodeServerManager : Disposable {
 
             setLifecycleState(OpenCodeServerLifecycleState.STOPPED)
             notifyStartCallbacks(callbacks, success = false)
-            stopResources(resources)
+            // Detach under the caller; kill off the EDT so settings apply never freezes the UI
+            // while dispose + process termination run (can take several seconds).
+            stopResourcesAsync(resources)
         } catch (e: Exception) {
             thisLogger().error("Error stopping OpenCode server: ${e.message}")
         }
@@ -273,8 +279,10 @@ class SharedOpenCodeServerManager : Disposable {
         }
 
         setLifecycleState(OpenCodeServerLifecycleState.RESTARTING)
-        stopResources(resources)
-        startOpenCodeServer(project, basePath, startId)
+        // Wait for the previous process to finish stopping before binding a new one (fixed port).
+        stopResourcesAsync(resources) {
+            startOpenCodeServer(project, basePath, startId)
+        }
     }
 
     private fun detachServerResources(): ServerResourcesToStop {
@@ -303,10 +311,60 @@ class SharedOpenCodeServerManager : Disposable {
         processTerminator.destroy(resources.process, resources.processDescendants)
     }
 
+    /**
+     * Runs [stopResources] off the EDT. Unit tests run it inline so assertions see a finished stop.
+     * Stops are serialized on [stopExecutor] so a settings-driven stop and a following restart
+     * never race on process kill / fixed-port rebind.
+     */
+    private fun stopResourcesAsync(resources: ServerResourcesToStop, after: (() -> Unit)? = null) {
+        val task = Runnable {
+            try {
+                stopResources(resources)
+            } catch (e: Exception) {
+                thisLogger().error("Error stopping OpenCode server resources: ${e.message}")
+            } finally {
+                try {
+                    after?.invoke()
+                } catch (e: Exception) {
+                    thisLogger().error("Error after stopping OpenCode server resources: ${e.message}")
+                }
+            }
+        }
+        val app = ApplicationManager.getApplication()
+        if (app != null && app.isUnitTestMode) {
+            task.run()
+        } else {
+            stopExecutor.execute(task)
+        }
+    }
+
     override fun dispose() {
-        stopServer()
+        try {
+            val resources = synchronized(lock) {
+                startSequence++
+                starting = false
+                pendingStarts.clear()
+                detachServerResources()
+            }
+            setLifecycleState(OpenCodeServerLifecycleState.STOPPED)
+            // On IDE shutdown wait for the kill (bounded) so we do not orphan the server process.
+            val finished = CountDownLatch(1)
+            stopExecutor.execute {
+                try {
+                    stopResources(resources)
+                } finally {
+                    finished.countDown()
+                }
+            }
+            if (!finished.await(15, TimeUnit.SECONDS)) {
+                thisLogger().warn("Timed out waiting for OpenCode server stop during dispose")
+            }
+        } catch (e: Exception) {
+            thisLogger().error("Error disposing OpenCode server manager: ${e.message}")
+        }
         globalEventStream.stop()
         scheduler.shutdownNow()
+        stopExecutor.shutdownNow()
     }
 
     private fun startPeriodicCheck() {
