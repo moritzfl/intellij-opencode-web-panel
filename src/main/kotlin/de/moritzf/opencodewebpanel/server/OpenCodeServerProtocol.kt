@@ -3,6 +3,7 @@ package de.moritzf.opencodewebpanel.server
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import java.io.BufferedReader
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URI
@@ -36,6 +37,8 @@ internal object OpenCodeServerProtocol {
     const val OPEN_CODE_COLOR_SCHEME_STORAGE_KEY = "opencode-color-scheme"
     const val NOTIFICATION_GROUP_ID = "OpenCode Web Panel"
     const val RECENT_SESSION_WINDOW_MILLIS = 5 * 60 * 1000L
+    /** Cap REST response bodies so a large diff/list cannot exhaust heap. */
+    const val MAX_HTTP_RESPONSE_CHARS = 8 * 1024 * 1024
 
     private val secureRandom = SecureRandom()
     fun buildServerRootUrl(serverUrl: String): String {
@@ -1066,6 +1069,7 @@ internal object OpenCodeServerProtocol {
         basicAuthHeader: String?,
         connectTimeoutMillis: Int,
         readTimeoutMillis: Int,
+        maxResponseChars: Int = MAX_HTTP_RESPONSE_CHARS,
     ): String? {
         return try {
             val connection = URI(url).toURL().openConnection() as HttpURLConnection
@@ -1077,13 +1081,32 @@ internal object OpenCodeServerProtocol {
                     connection.setRequestProperty("Authorization", basicAuthHeader)
                 }
                 if (connection.responseCode !in 200..299) return null
-                connection.inputStream.bufferedReader().use { it.readText() }
+                connection.inputStream.bufferedReader().use { reader ->
+                    readBounded(reader, maxResponseChars)
+                }
             } finally {
                 connection.disconnect()
             }
         } catch (_: Exception) {
             null
         }
+    }
+
+    @TestOnly
+    fun readBoundedForTest(text: String, maxChars: Int): String? {
+        return readBounded(text.reader().buffered(), maxChars)
+    }
+
+    private fun readBounded(reader: BufferedReader, maxChars: Int): String? {
+        val buffer = StringBuilder()
+        val chunk = CharArray(8_192)
+        while (true) {
+            val read = reader.read(chunk)
+            if (read < 0) break
+            if (buffer.length + read > maxChars) return null
+            buffer.append(chunk, 0, read)
+        }
+        return buffer.toString()
     }
 
     private fun httpPostJson(

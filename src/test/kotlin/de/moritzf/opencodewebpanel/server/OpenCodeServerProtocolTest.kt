@@ -1484,6 +1484,13 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun readBoundedAcceptsBodiesWithinLimitAndRejectsOversized() {
+        assertEquals("hello", OpenCodeServerProtocol.readBoundedForTest("hello", 10))
+        assertEquals("exact", OpenCodeServerProtocol.readBoundedForTest("exact", 5))
+        assertNull(OpenCodeServerProtocol.readBoundedForTest("too-long", 4))
+    }
+
+    @Test
     fun disposeServerPostsAuthenticatedGlobalDisposeRequest() {
         withSingleRequestHttpServer(
             expectedRequestLine = "POST ${OpenCodeServerProtocol.DISPOSE_PATH} HTTP/1.1",

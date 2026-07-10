@@ -33,6 +33,8 @@ internal class OpenCodeGlobalEventStream(
         private const val RECONNECT_DELAY_MILLIS = 2_000L
         private const val CONNECT_TIMEOUT_MILLIS = 5_000
         private const val READ_TIMEOUT_MILLIS = 10 * 60 * 1_000
+        /** Cap one SSE event block so a stream without blank lines cannot grow without bound. */
+        const val MAX_SSE_BLOCK_CHARS = 1 * 1024 * 1024
 
         /**
          * Extracts the payload of one SSE block: the `data:` lines with the field name
@@ -157,6 +159,11 @@ internal class OpenCodeGlobalEventStream(
                     } else {
                         if (block.isNotEmpty()) block.append('\n')
                         block.append(line)
+                        if (block.length > MAX_SSE_BLOCK_CHARS) {
+                            throw IOException(
+                                "OpenCode event stream block exceeded $MAX_SSE_BLOCK_CHARS characters",
+                            )
+                        }
                     }
                 }
             }

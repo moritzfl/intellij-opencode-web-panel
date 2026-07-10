@@ -148,6 +148,57 @@ class OpenCodeGlobalEventStreamTest {
     }
 
     @Test
+    fun streamReleasesOversizedSseBlockAndReconnects() {
+        val connections = AtomicInteger()
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/global/event") { exchange ->
+            val connectionNumber = connections.incrementAndGet()
+            exchange.responseHeaders.add("Content-Type", "text/event-stream")
+            exchange.sendResponseHeaders(200, 0)
+            exchange.responseBody.use { body ->
+                if (connectionNumber == 1) {
+                    // No blank line: keep appending so the block exceeds the cap and forces reconnect.
+                    body.write("data: ".toByteArray(StandardCharsets.UTF_8))
+                    val chunk = "x".repeat(64 * 1024).toByteArray(StandardCharsets.UTF_8)
+                    repeat((OpenCodeGlobalEventStream.MAX_SSE_BLOCK_CHARS / chunk.size) + 2) {
+                        body.write(chunk)
+                    }
+                    body.flush()
+                } else {
+                    body.write(
+                        (
+                            "data: {\"directory\":\"/tmp/project\",\"payload\":{\"type\":\"session.idle\"," +
+                                "\"properties\":{\"sessionID\":\"ses_ok\"}}}\n\n"
+                            ).toByteArray(StandardCharsets.UTF_8),
+                    )
+                    body.flush()
+                }
+            }
+        }
+        server.start()
+
+        val eventsLatch = CountDownLatch(1)
+        val stream = OpenCodeGlobalEventStream(
+            listener = {
+                object : OpenCodeGlobalEventListener {
+                    override fun eventReceived(event: OpenCodeGlobalEvent) {
+                        if (event.type == "session.idle") eventsLatch.countDown()
+                    }
+                }
+            },
+            reconnectDelayMillis = 50L,
+        )
+        try {
+            stream.start("http://127.0.0.1:${server.address.port}", "Basic dGVzdA==")
+            assertTrue("did not recover after oversized block", eventsLatch.await(10, TimeUnit.SECONDS))
+            assertTrue(connections.get() >= 2)
+        } finally {
+            stream.stop()
+            server.stop(0)
+        }
+    }
+
+    @Test
     fun stopPreventsFurtherReconnects() {
         val connections = AtomicInteger()
         val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
