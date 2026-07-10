@@ -1466,6 +1466,36 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun disposeServerPostsAuthenticatedGlobalDisposeRequest() {
+        withSingleRequestHttpServer(
+            expectedRequestLine = "POST ${OpenCodeServerProtocol.DISPOSE_PATH} HTTP/1.1",
+            expectedAuthorization = "Basic test-token",
+            body = "true",
+        ) { url ->
+            assertTrue(
+                OpenCodeServerProtocol.disposeServer(
+                    url,
+                    basicAuthHeader = "Basic test-token",
+                    connectTimeoutMillis = 1000,
+                    readTimeoutMillis = 1000,
+                ),
+            )
+        }
+    }
+
+    @Test
+    fun disposeServerReturnsFalseForInvalidUrl() {
+        assertFalse(
+            OpenCodeServerProtocol.disposeServer(
+                "not-a-url",
+                basicAuthHeader = "Basic test-token",
+                connectTimeoutMillis = 100,
+                readTimeoutMillis = 100,
+            ),
+        )
+    }
+
+    @Test
     fun startFailureBackoffUsesExponentialDelayWithCap() {
         assertEquals(5_000L, OpenCodeServerProtocol.startFailureBackoffMillis(1))
         assertEquals(10_000L, OpenCodeServerProtocol.startFailureBackoffMillis(2))
@@ -1473,7 +1503,12 @@ class OpenCodeServerProtocolTest {
         assertEquals(60_000L, OpenCodeServerProtocol.startFailureBackoffMillis(10))
     }
 
-    private fun withSingleRequestHttpServer(body: String, block: (String) -> Unit) {
+    private fun withSingleRequestHttpServer(
+        body: String,
+        expectedRequestLine: String = "GET ${OpenCodeServerProtocol.HEALTH_PATH} HTTP/1.1",
+        expectedAuthorization: String? = null,
+        block: (String) -> Unit,
+    ) {
         val serverSocket = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1"))
         val executor = Executors.newSingleThreadExecutor()
         val responseFuture = executor.submit {
@@ -1481,11 +1516,19 @@ class OpenCodeServerProtocolTest {
                 serverSocket.accept().use { socket ->
                     val reader = socket.getInputStream().bufferedReader()
                     val requestLine = reader.readLine()
-                    if (requestLine != "GET ${OpenCodeServerProtocol.HEALTH_PATH} HTTP/1.1") {
+                    if (requestLine != expectedRequestLine) {
                         throw AssertionError("Unexpected request line: $requestLine")
                     }
-                    while (reader.readLine()?.isNotEmpty() == true) {
-                        // Drain request headers before responding.
+                    var authorization: String? = null
+                    while (true) {
+                        val header = reader.readLine() ?: break
+                        if (header.isEmpty()) break
+                        if (header.startsWith("Authorization:", ignoreCase = true)) {
+                            authorization = header.substringAfter(':').trim()
+                        }
+                    }
+                    if (expectedAuthorization != null && authorization != expectedAuthorization) {
+                        throw AssertionError("Unexpected Authorization header: $authorization")
                     }
                     socket.getOutputStream().write(
                         "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ${body.length}\r\nConnection: close\r\n\r\n$body"

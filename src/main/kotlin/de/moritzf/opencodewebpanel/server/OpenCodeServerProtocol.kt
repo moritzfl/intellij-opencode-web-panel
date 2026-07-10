@@ -27,6 +27,7 @@ internal object OpenCodeServerProtocol {
     private const val START_FAILURE_BACKOFF_MAX_MILLIS = 60_000L
     const val HEALTH_PATH = "/api/health"
     const val GLOBAL_HEALTH_PATH = "/global/health"
+    const val DISPOSE_PATH = "/global/dispose"
     const val BASIC_AUTH_USERNAME = "opencode"
     const val DEFAULT_EXECUTABLE = "opencode"
     const val OPEN_FILE_LINK_SCHEME = "opencode-web-panel"
@@ -503,6 +504,30 @@ internal object OpenCodeServerProtocol {
         val body = httpGet(buildServerRootUrl(serverUrl) + GLOBAL_HEALTH_PATH, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)
             ?: return null
         return Regex("\"version\"\\s*:\\s*\"([^\"]+)\"").find(body)?.groupValues?.get(1)
+    }
+
+    fun disposeServer(
+        serverUrl: String,
+        basicAuthHeader: String,
+        connectTimeoutMillis: Int = 2_000,
+        readTimeoutMillis: Int = 5_000,
+    ): Boolean {
+        return try {
+            val connection = URI(buildServerRootUrl(serverUrl) + DISPOSE_PATH).toURL().openConnection() as HttpURLConnection
+            try {
+                connection.connectTimeout = connectTimeoutMillis
+                connection.readTimeout = readTimeoutMillis
+                connection.requestMethod = "POST"
+                connection.setRequestProperty("Authorization", basicAuthHeader)
+                connection.setFixedLengthStreamingMode(0)
+                connection.doOutput = true
+                connection.responseCode in 200..299
+            } finally {
+                connection.disconnect()
+            }
+        } catch (_: Exception) {
+            false
+        }
     }
 
     /**

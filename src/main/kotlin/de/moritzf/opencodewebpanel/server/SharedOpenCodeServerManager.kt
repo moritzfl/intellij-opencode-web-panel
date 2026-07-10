@@ -39,6 +39,8 @@ class SharedOpenCodeServerManager : Disposable {
         val future: ScheduledFuture<*>?,
         val process: Process?,
         val processDescendants: List<ProcessHandle>,
+        val serverUrl: String?,
+        val serverPassword: String?,
     )
 
     private val lock = Any()
@@ -266,7 +268,13 @@ class SharedOpenCodeServerManager : Disposable {
     }
 
     private fun detachServerResources(): ServerResourcesToStop {
-        val resources = ServerResourcesToStop(checkScheduledFuture, serverProcess, serverProcessDescendants)
+        val resources = ServerResourcesToStop(
+            checkScheduledFuture,
+            serverProcess,
+            serverProcessDescendants,
+            serverUrl,
+            serverPassword,
+        )
         checkScheduledFuture = null
         serverProcess = null
         serverProcessDescendants = emptyList()
@@ -281,6 +289,7 @@ class SharedOpenCodeServerManager : Disposable {
 
     private fun stopResources(resources: ServerResourcesToStop) {
         resources.future?.cancel(true)
+        disposeServerResources(resources.process, resources.serverUrl, resources.serverPassword)
         processTerminator.destroy(resources.process, resources.processDescendants)
     }
 
@@ -657,13 +666,34 @@ class SharedOpenCodeServerManager : Disposable {
     }
 
     private fun destroyCurrentProcess() {
-        val (process, descendants) = synchronized(lock) {
-            val detached = serverProcess to serverProcessDescendants
+        val resources = synchronized(lock) {
+            val detached = ServerResourcesToStop(
+                future = null,
+                process = serverProcess,
+                processDescendants = serverProcessDescendants,
+                serverUrl = serverUrl,
+                serverPassword = serverPassword,
+            )
             serverProcess = null
             serverProcessDescendants = emptyList()
+            serverUrl = null
+            serverPassword = null
             detached
         }
-        processTerminator.destroy(process, descendants)
+        stopResources(resources)
+    }
+
+    private fun disposeServerResources(process: Process?, serverUrl: String?, password: String?) {
+        if (process?.isAlive != true || serverUrl.isNullOrBlank() || password.isNullOrBlank()) return
+        val disposed = OpenCodeServerProtocol.disposeServer(
+            serverUrl,
+            OpenCodeServerProtocol.buildBasicAuthHeader(password),
+        )
+        if (disposed) {
+            thisLogger().info("Disposed OpenCode server resources before stopping process")
+        } else {
+            thisLogger().warn("Could not dispose OpenCode server resources gracefully; terminating process")
+        }
     }
 
     private fun setStartedProcess(startId: Long, process: Process, password: String): Boolean {
