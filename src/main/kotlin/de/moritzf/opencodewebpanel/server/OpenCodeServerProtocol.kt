@@ -447,7 +447,21 @@ internal object OpenCodeServerProtocol {
 
     fun parseServerUrl(line: String): String? {
         val match = Regex("opencode server listening on (https?://\\S+)", RegexOption.IGNORE_CASE).find(line)
-        return match?.groupValues?.get(1)?.trimEnd('/')
+        val candidate = match?.groupValues?.get(1)?.trimEnd('/') ?: return null
+        return candidate.takeIf { isLoopbackServerUrl(it) }
+    }
+
+    /** Accept only loopback URLs so a misbehaving binary cannot redirect auth traffic. */
+    fun isLoopbackServerUrl(serverUrl: String): Boolean {
+        return try {
+            val uri = URI(serverUrl)
+            val scheme = uri.scheme?.lowercase()
+            if (scheme != "http" && scheme != "https") return false
+            val host = uri.host?.lowercase() ?: return false
+            host == "127.0.0.1" || host == "localhost" || host == "[::1]" || host == "::1"
+        } catch (_: Exception) {
+            false
+        }
     }
 
     fun buildOpenCodeCommand(port: String = DYNAMIC_PORT, executable: String = DEFAULT_EXECUTABLE): List<String> {

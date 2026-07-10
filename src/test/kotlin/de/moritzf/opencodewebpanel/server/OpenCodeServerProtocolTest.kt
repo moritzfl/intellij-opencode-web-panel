@@ -237,7 +237,24 @@ class OpenCodeServerProtocolTest {
             "http://127.0.0.1:60482",
             OpenCodeServerProtocol.parseServerUrl("OpenCode server listening on http://127.0.0.1:60482/"),
         )
+        assertEquals(
+            "http://localhost:4096",
+            OpenCodeServerProtocol.parseServerUrl("opencode server listening on http://localhost:4096"),
+        )
         assertNull(OpenCodeServerProtocol.parseServerUrl("starting server"))
+    }
+
+    @Test
+    fun parseServerUrlRejectsNonLoopbackHosts() {
+        assertNull(
+            OpenCodeServerProtocol.parseServerUrl("OpenCode server listening on http://192.168.1.10:60482"),
+        )
+        assertNull(
+            OpenCodeServerProtocol.parseServerUrl("OpenCode server listening on http://example.com:60482"),
+        )
+        assertFalse(OpenCodeServerProtocol.isLoopbackServerUrl("http://10.0.0.1:4096"))
+        assertTrue(OpenCodeServerProtocol.isLoopbackServerUrl("http://127.0.0.1:4096"))
+        assertTrue(OpenCodeServerProtocol.isLoopbackServerUrl("http://localhost:4096"))
     }
 
     @Test
@@ -1307,6 +1324,7 @@ class OpenCodeServerProtocolTest {
         assertNull(target.line)
         assertNull(target.column)
     }
+
 
     @Test
     fun buildBasicAuthHeaderUsesOpenCodeUsername() {
