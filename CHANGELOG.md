@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [1.6.2] - 2026-07-10
+
+### Fixed
+
+- Before terminating the bundled OpenCode server — on IDE shutdown or when a server-affecting setting changes — the plugin now asks the server to dispose its resources via its global dispose endpoint, giving OpenCode a chance to shut down cleanly instead of only being force-terminated. If the graceful request fails, the process is stopped as before.
+
 ## [1.6.1] - 2026-07-09
 
 ### Fixed
@@ -268,7 +274,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.6.1...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.6.2...HEAD
+[1.6.2]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.6.1...1.6.2
 [1.6.1]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.6.0...1.6.1
 [1.6.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.5.1...1.6.0
 [1.5.1]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.5.0...1.5.1
