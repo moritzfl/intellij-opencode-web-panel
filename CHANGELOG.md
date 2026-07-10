@@ -4,6 +4,15 @@
 
 ## [Unreleased]
 
+## [1.6.3] - 2026-07-10
+
+### Fixed
+
+- On Windows, browser Basic auth and the graceful server dispose step no longer depend on the launcher process still being alive. After OpenCode's launcher exits (normal there), the panel keeps authenticating and can still ask the server to dispose before force-killing descendants.
+- Stopping the OpenCode server no longer freezes the IDE UI for several seconds: dispose and process kill run off the EDT, restarts wait for the previous stop before rebinding, and IDE shutdown still waits with a bound so the process is not orphaned.
+- Server URLs advertised in process logs are accepted only for loopback hosts, so auth traffic is never sent to a non-local address.
+- Event-stream blocks and REST response bodies are size-capped so a runaway stream or huge diff/list cannot exhaust heap; oversized SSE blocks trigger a reconnect instead.
+
 ## [1.6.2] - 2026-07-10
 
 ### Fixed
@@ -274,7 +283,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.6.2...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.6.3...HEAD
+[1.6.3]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.6.2...1.6.3
 [1.6.2]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.6.1...1.6.2
 [1.6.1]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.6.0...1.6.1
 [1.6.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.5.1...1.6.0
