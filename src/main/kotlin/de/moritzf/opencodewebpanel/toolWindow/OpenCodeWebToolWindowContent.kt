@@ -756,16 +756,25 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
      */
     private fun applyFeature(feature: InjectedFeature, enabled: Boolean) {
         val serverUrl = serverManager.getServerUrl() ?: return
-        if (!isBrowserOnOpenCodeServerPage(serverUrl)) return
-        feature.scheduled = false
-        if (!enabled || !feature.enabledInSettings()) {
-            feature.onDisable()
-            browser.cefBrowser.reload()
-            return
+        val decision = OpenCodeInjectedFeaturePolicy.decide(
+            enabled = enabled,
+            enabledInSettings = feature.enabledInSettings(),
+            onOpenCodePage = isBrowserOnOpenCodeServerPage(serverUrl),
+            script = if (enabled && feature.enabledInSettings()) feature.buildScript() else null,
+        )
+        if (decision.clearScheduled) feature.scheduled = false
+        when (decision.action) {
+            OpenCodeInjectedFeaturePolicy.Action.NONE -> return
+            OpenCodeInjectedFeaturePolicy.Action.RELOAD -> {
+                feature.onDisable()
+                browser.cefBrowser.reload()
+            }
+            OpenCodeInjectedFeaturePolicy.Action.INJECT -> {
+                val script = decision.script ?: return
+                browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
+                if (decision.markScheduled) feature.scheduled = true
+            }
         }
-        val script = feature.buildScript() ?: return
-        browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
-        feature.scheduled = true
     }
 
     private fun scheduleIdeThemeSyncScript() {
