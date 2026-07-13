@@ -41,7 +41,6 @@ class OpenCodeSettingsConfigurable : Configurable {
         toolTipText = "Password used for the local OpenCode web server"
     }
     private val showPasswordButton = JToggleButton(AllIcons.Actions.Show).apply {
-        isFocusable = false
         toolTipText = "Show password"
         accessibleContext.accessibleName = "Show password"
     }
@@ -115,6 +114,7 @@ class OpenCodeSettingsConfigurable : Configurable {
     private var passwordLoading = false
     private var passwordLoadError: String? = null
     private var lifecycleConnection: com.intellij.util.messages.MessageBusConnection? = null
+    private var controlListenersInstalled = false
 
     private data class CheckBoxSettingBinding(
         val checkBox: JBCheckBox,
@@ -148,30 +148,7 @@ class OpenCodeSettingsConfigurable : Configurable {
     override fun getDisplayName(): String = "OpenCode Web Panel"
 
     override fun createComponent(): JComponent {
-        ButtonGroup().apply {
-            add(autoPortRadioButton)
-            add(fixedPortRadioButton)
-        }
-        ButtonGroup().apply {
-            add(autoBinaryRadioButton)
-            add(customBinaryRadioButton)
-        }
-        autoPortRadioButton.addItemListener { updatePortControls() }
-        fixedPortRadioButton.addItemListener { updatePortControls() }
-        autoBinaryRadioButton.addItemListener { updateBinaryControls() }
-        customBinaryRadioButton.addItemListener { updateBinaryControls() }
-        showPasswordButton.addActionListener { updatePasswordVisibility() }
-        copyPasswordButton.addActionListener { copyPassword() }
-        generatePasswordButton.addActionListener {
-            setPasswordText(OpenCodePasswordStore.getInstance().generatePasswordForEditing())
-            updatePasswordHint()
-        }
-        detectBinaryButton.addActionListener { detectBinaryPath() }
-        restartServerButton.addActionListener { restartServer() }
-        viewServerLogButton.addActionListener { showServerLog() }
-        enableServerLogsCheckBox.addItemListener { updateServerLogControls() }
-        openFileLinksInIdeCheckBox.addItemListener { updateUiDependencyControls() }
-        enableSystemNotificationsCheckBox.addItemListener { updateUiDependencyControls() }
+        installControlListenersOnce()
 
         val serverSetupPanel = panel {
             buttonsGroup("OpenCode executable:") {
@@ -430,6 +407,40 @@ class OpenCodeSettingsConfigurable : Configurable {
         passwordLoadGeneration.incrementAndGet()
         lifecycleConnection?.disconnect()
         lifecycleConnection = null
+    }
+
+    /**
+     * The controls are fields of this configurable, so they survive `disposeUIResources()` and
+     * a later `createComponent()`; registering listeners per creation would stack duplicates
+     * that fire actions (e.g. password generation) multiple times per click.
+     */
+    private fun installControlListenersOnce() {
+        if (controlListenersInstalled) return
+        controlListenersInstalled = true
+        ButtonGroup().apply {
+            add(autoPortRadioButton)
+            add(fixedPortRadioButton)
+        }
+        ButtonGroup().apply {
+            add(autoBinaryRadioButton)
+            add(customBinaryRadioButton)
+        }
+        autoPortRadioButton.addItemListener { updatePortControls() }
+        fixedPortRadioButton.addItemListener { updatePortControls() }
+        autoBinaryRadioButton.addItemListener { updateBinaryControls() }
+        customBinaryRadioButton.addItemListener { updateBinaryControls() }
+        showPasswordButton.addActionListener { updatePasswordVisibility() }
+        copyPasswordButton.addActionListener { copyPassword() }
+        generatePasswordButton.addActionListener {
+            setPasswordText(OpenCodePasswordStore.getInstance().generatePasswordForEditing())
+            updatePasswordHint()
+        }
+        detectBinaryButton.addActionListener { detectBinaryPath() }
+        restartServerButton.addActionListener { restartServer() }
+        viewServerLogButton.addActionListener { showServerLog() }
+        enableServerLogsCheckBox.addItemListener { updateServerLogControls() }
+        openFileLinksInIdeCheckBox.addItemListener { updateUiDependencyControls() }
+        enableSystemNotificationsCheckBox.addItemListener { updateUiDependencyControls() }
     }
 
     private fun subscribeToLifecycleChanges() {
