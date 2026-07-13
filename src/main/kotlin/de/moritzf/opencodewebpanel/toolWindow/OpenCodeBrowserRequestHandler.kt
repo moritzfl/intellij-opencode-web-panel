@@ -42,14 +42,32 @@ internal class OpenCodeBrowserRequestHandler(
         isRedirect: Boolean,
     ): Boolean {
         val requestUrl = request?.url ?: return false
-        if (!OpenCodeServerProtocol.isOpenFileLinkRequest(requestUrl)) return false
-        if (OpenCodeSettingsState.getInstance().openFileLinksInIde) {
-            ideNavigation.openFileLinkInIde(
-                OpenCodeServerProtocol.openFileLinkHref(requestUrl),
-                OpenCodeServerProtocol.openFileLinkBase(requestUrl),
-            )
+        if (OpenCodeServerProtocol.isOpenFileLinkRequest(requestUrl)) {
+            // Only the embedded OpenCode page may drive IDE file navigation: after the user
+            // deliberately navigated the panel elsewhere, foreign content must not be able to
+            // open files in the IDE through the custom scheme.
+            if (OpenCodeSettingsState.getInstance().openFileLinksInIde &&
+                OpenCodeServerProtocol.isOpenCodeServerPage(serverManager.getServerUrl(), browser?.url)
+            ) {
+                ideNavigation.openFileLinkInIde(
+                    OpenCodeServerProtocol.openFileLinkHref(requestUrl),
+                    OpenCodeServerProtocol.openFileLinkBase(requestUrl),
+                )
+            }
+            return true
         }
-        return true
+        // JVM-side counterpart of the injected external-link click handler: forms, redirects,
+        // and scripted navigation never pass through DOM click listeners, so the main frame is
+        // also kept on the OpenCode origin at the browser boundary. Same setting, same policy:
+        // external http(s) targets open in the system browser instead of the panel.
+        if (frame?.isMain == true &&
+            OpenCodeSettingsState.getInstance().openExternalLinksInBrowser &&
+            OpenCodeServerProtocol.externalHttpUrl(requestUrl, serverManager.getServerUrl()) != null
+        ) {
+            ideNavigation.openExternalLinkInBrowser(requestUrl)
+            return true
+        }
+        return false
     }
 
     override fun getResourceRequestHandler(

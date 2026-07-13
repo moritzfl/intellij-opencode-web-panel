@@ -62,7 +62,9 @@ internal object OpenCodeServerProtocol {
         return "file:$relativePath"
     }
 
-    fun externalHttpUrl(href: String?, serverUrl: String): String? {
+    // A null serverUrl treats every http(s) target as external: with no server to stay on,
+    // the embedded panel has no legitimate http destination of its own.
+    fun externalHttpUrl(href: String?, serverUrl: String?): String? {
         val text = href?.trim()?.takeIf { it.isNotBlank() } ?: return null
         return try {
             val uri = URI(text)
