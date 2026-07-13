@@ -507,7 +507,9 @@ class SharedOpenCodeServerManager : Disposable {
                 try {
                     reader.useLines { lines ->
                         lines.forEach { line ->
-                            thisLogger().info(line)
+                            // Server output goes to the dedicated log file; keep the IDE log
+                            // at debug so idea.log does not mirror every server line.
+                            thisLogger().debug(line)
                             serverLogBuffer.append(line)
                             OpenCodeServerProtocol.parseServerUrl(line)?.let { url ->
                                 if (setServerUrlForStart(startId, url)) {

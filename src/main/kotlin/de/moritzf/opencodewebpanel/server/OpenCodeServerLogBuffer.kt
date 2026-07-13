@@ -5,6 +5,7 @@ import com.intellij.openapi.diagnostic.thisLogger
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
 import java.io.IOException
 import java.nio.charset.StandardCharsets
+import java.nio.file.FileAlreadyExistsException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardOpenOption
@@ -16,10 +17,12 @@ internal class OpenCodeServerLogBuffer(
     private val logDir: Path = defaultLogDir(),
     private val maxLogFiles: Int = 20,
     private val maxLogAge: Duration = Duration.ofDays(7),
+    private val maxLogFileBytes: Long = DEFAULT_MAX_LOG_FILE_BYTES,
     private val enabled: () -> Boolean = { OpenCodeSettingsState.getInstance().enableServerLogs },
 ) {
     private val fileLock = Any()
     private var currentLogFile: Path? = null
+    private var currentLogFileBytes = 0L
 
     fun startNewFile(startedAt: Instant = Instant.now()): Path? {
         return synchronized(fileLock) {
@@ -28,9 +31,11 @@ internal class OpenCodeServerLogBuffer(
                 return@synchronized null
             }
             pruneOldLogs()
-            currentLogFile = createLogFile(
-                "========== OpenCode server start/restart via OpenCode Web Panel at $startedAt ==========" +
-                    System.lineSeparator(),
+            setCurrentFile(
+                createLogFile(
+                    "========== OpenCode server start/restart via OpenCode Web Panel at $startedAt ==========" +
+                        System.lineSeparator(),
+                ),
             )
             currentLogFile
         }
@@ -89,17 +94,27 @@ internal class OpenCodeServerLogBuffer(
     private fun createLogFile(initialContent: String = ""): Path? {
         return try {
             Files.createDirectories(logDir)
-            // The millisecond timestamp is unique enough for one server manager per IDE; on the
-            // freak collision CREATE_NEW fails, we warn, and the next append recreates the file.
-            val file = logDir.resolve("opencode-server-${Instant.now().toEpochMilli()}$LOG_FILE_EXTENSION")
-            Files.writeString(
-                file,
-                initialContent,
-                StandardCharsets.UTF_8,
-                StandardOpenOption.CREATE_NEW,
-                StandardOpenOption.WRITE,
-            )
-            file
+            // Millisecond timestamps can collide when a size rotation happens right after the
+            // start header; a numeric suffix keeps the name unique in that case.
+            val baseName = "opencode-server-${Instant.now().toEpochMilli()}"
+            for (attempt in 0..MAX_NAME_COLLISION_RETRIES) {
+                val name = if (attempt == 0) baseName else "$baseName-$attempt"
+                val file = logDir.resolve(name + LOG_FILE_EXTENSION)
+                try {
+                    Files.writeString(
+                        file,
+                        initialContent,
+                        StandardCharsets.UTF_8,
+                        StandardOpenOption.CREATE_NEW,
+                        StandardOpenOption.WRITE,
+                    )
+                    return file
+                } catch (_: FileAlreadyExistsException) {
+                    // try the next suffix
+                }
+            }
+            thisLogger().warn("Failed to create OpenCode server log file: too many name collisions")
+            null
         } catch (exception: IOException) {
             thisLogger().warn("Failed to create OpenCode server log file: ${exception.message}")
             null
@@ -107,10 +122,28 @@ internal class OpenCodeServerLogBuffer(
     }
 
     private fun appendToCurrentFile(line: String) {
+        val lineBytes = line.toByteArray(StandardCharsets.UTF_8).size + System.lineSeparator().length
         val file = synchronized(fileLock) {
-            currentLogFile ?: createLogFile()?.also { currentLogFile = it }
+            var target = currentLogFile ?: setCurrentFile(createLogFile())
+            // A single long-running server process would otherwise grow one file without
+            // bound; age/count retention only ever sees whole files.
+            if (target != null && currentLogFileBytes + lineBytes > maxLogFileBytes) {
+                val rotationHeader = "========== log continues (size limit reached) ==========" + System.lineSeparator()
+                // On a failed rotation (e.g. same-millisecond name collision) keep the old
+                // file rather than dropping output; the next append retries.
+                createLogFile(rotationHeader)?.let { target = setCurrentFile(it) }
+            }
+            currentLogFileBytes += lineBytes
+            target
         } ?: return
         writeLine(file, line)
+    }
+
+    /** Must be called under [fileLock]; tracks the byte budget of the active file. */
+    private fun setCurrentFile(file: Path?): Path? {
+        currentLogFile = file
+        currentLogFileBytes = file?.let { runCatching { Files.size(it) }.getOrDefault(0L) } ?: 0L
+        return file
     }
 
     private fun writeLine(file: Path, line: String) {
@@ -153,6 +186,8 @@ internal class OpenCodeServerLogBuffer(
     companion object {
         private const val LOG_FILE_EXTENSION = ".log"
         private const val TAIL_MAX_BYTES = 64 * 1024
+        private const val DEFAULT_MAX_LOG_FILE_BYTES = 50L * 1024 * 1024
+        private const val MAX_NAME_COLLISION_RETRIES = 9
 
         private fun defaultLogDir(): Path {
             return Path.of(PathManager.getLogPath(), "opencode-web-panel", "server")

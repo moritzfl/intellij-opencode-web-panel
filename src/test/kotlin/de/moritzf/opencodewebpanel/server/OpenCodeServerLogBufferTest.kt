@@ -38,6 +38,34 @@ class OpenCodeServerLogBufferTest {
     }
 
     @Test
+    fun rotatesToANewFileWhenSizeLimitIsReached() {
+        val dir = Files.createTempDirectory("opencode-server-log-rotation")
+        try {
+            val buffer = OpenCodeServerLogBuffer(
+                logDir = dir,
+                maxLogFiles = 20,
+                maxLogAge = Duration.ofDays(7),
+                maxLogFileBytes = 200,
+                enabled = { true },
+            )
+            val firstFile = buffer.startNewFile(Instant.parse("2026-06-21T12:00:00Z"))!!
+
+            repeat(20) { index -> buffer.append("line-$index-padding-padding-padding") }
+
+            val files = Files.list(dir).use { stream -> stream.sorted().toList() }
+            assertTrue("expected a rotated second file, got ${files.size}", files.size >= 2)
+            assertTrue(Files.size(firstFile) > 0)
+            // The most recent file is the active one and keeps receiving appends.
+            buffer.append("after-rotation")
+            val latest = buffer.currentOrLatestFile()!!
+            assertTrue(latest != firstFile)
+            assertTrue(Files.readString(latest).contains("after-rotation"))
+        } finally {
+            deleteRecursively(dir)
+        }
+    }
+
+    @Test
     fun doesNotCreateOrAppendLogFileWhenDisabled() {
         val dir = Files.createTempDirectory("opencode-server-log-disabled")
         try {
