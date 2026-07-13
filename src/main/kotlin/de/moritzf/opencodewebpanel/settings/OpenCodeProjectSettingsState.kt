@@ -7,6 +7,9 @@ import com.intellij.openapi.components.Storage
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.io.FileUtil
 
+// Deliberately a shareable .idea file: pointing OpenCode at a subfolder of the checked-out
+// project is team configuration, and the path-macro substitution in project storage keeps
+// project-relative paths portable across machines.
 @State(name = "OpenCodeWebPanelProjectSettings", storages = [Storage("opencode-web-panel-project.xml")])
 @Service(Service.Level.PROJECT)
 class OpenCodeProjectSettingsState : PersistentStateComponent<OpenCodeProjectSettingsState> {

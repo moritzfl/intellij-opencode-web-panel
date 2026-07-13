@@ -2,12 +2,16 @@ package de.moritzf.opencodewebpanel.settings
 
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.PersistentStateComponent
+import com.intellij.openapi.components.RoamingType
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 
-@State(name = "OpenCodeWebPanelSettings", storages = [Storage("opencode-web-panel.xml")])
+// Roaming is disabled deliberately: the state mixes machine-specific values (binary path,
+// fixed port) and the mirrored OpenCode web-session snapshot (up to 2 MB of local browser
+// state), none of which belong in Settings Sync or exported settings.
+@State(name = "OpenCodeWebPanelSettings", storages = [Storage("opencode-web-panel.xml", roamingType = RoamingType.DISABLED)])
 @Service(Service.Level.APP)
 class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
     var portMode: String = OpenCodePortMode.AUTO.name
