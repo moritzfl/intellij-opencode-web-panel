@@ -5,6 +5,7 @@ import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.awt.Color
@@ -53,6 +54,18 @@ class OpenCodeFileDropHandlerTest {
         val decoded = ImageIO.read(ByteArrayInputStream(bytes))
         assertEquals(4, decoded.width)
         assertEquals(3, decoded.height)
+    }
+
+    @Test
+    fun encodeImageToPngRejectsAbsurdPixelCounts() {
+        // A reported size beyond the pixel cap must be rejected before any buffer allocation;
+        // this image lies about its size, which is exactly the point — decoding never starts.
+        val hugeImage = object : BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB) {
+            override fun getWidth(observer: java.awt.image.ImageObserver?): Int = 100_000
+            override fun getHeight(observer: java.awt.image.ImageObserver?): Int = 100_000
+        }
+
+        assertNull(OpenCodeFileDropHandler.encodeImageToPng(hugeImage))
     }
 
     @Test

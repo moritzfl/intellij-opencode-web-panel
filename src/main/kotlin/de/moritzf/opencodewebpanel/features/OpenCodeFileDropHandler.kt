@@ -47,6 +47,14 @@ internal class OpenCodeFileDropHandler(
         private const val MAX_DROPPED_FILES_TOTAL_BYTES = 10L * 1024L * 1024L
         private const val BROWSER_PASTE_SUPPRESSION_MILLIS = 1_500L
 
+        // Bound for text clipboard/drop flavors: beyond this the payload cannot be a sane chat
+        // input, and reading it fully would allocate without limit.
+        internal const val MAX_DROPPED_TEXT_CHARS = 2_000_000
+
+        // Bound for clipboard images before decoding into an ARGB buffer (4 bytes per pixel):
+        // covers even large retina screenshots while keeping the transient buffer ~100 MB.
+        internal const val MAX_IMAGE_PIXELS = 25_000_000L
+
         fun isPasteShortcut(keyCode: Int, modifiers: Int, character: Char = 0.toChar(), unmodifiedCharacter: Char = 0.toChar()): Boolean {
             val hasCommand = modifiers and EventFlags.EVENTFLAG_COMMAND_DOWN != 0
             val hasControl = modifiers and EventFlags.EVENTFLAG_CONTROL_DOWN != 0
@@ -62,6 +70,12 @@ internal class OpenCodeFileDropHandler(
         }
 
         internal fun encodeImageToPng(image: Image): ByteArray? {
+            // Reject absurd dimensions before allocating the ARGB buffer / PNG encoder input;
+            // the compressed-size check downstream comes far too late for that.
+            val width = image.getWidth(null)
+            val height = image.getHeight(null)
+            if (width <= 0 || height <= 0) return null
+            if (width.toLong() * height.toLong() > MAX_IMAGE_PIXELS) return null
             val bufferedImage = (image as? BufferedImage) ?: toBufferedImage(image) ?: return null
             return runCatching {
                 ByteArrayOutputStream().use { stream ->
@@ -343,9 +357,26 @@ internal class OpenCodeFileDropHandler(
             .filter { it.isFlavorTextType }
             .firstNotNullOfOrNull { flavor ->
                 runCatching {
-                    flavor.getReaderForText(transferable).use { it.readText() }
+                    flavor.getReaderForText(transferable).use { readTextBounded(it) }
                 }.getOrNull()?.takeIf { it.isNotBlank() }
             }
+    }
+
+    /**
+     * Reads clipboard/drop text up to [MAX_DROPPED_TEXT_CHARS]; oversized payloads yield null
+     * so the paste falls through to the browser's native handling instead of allocating an
+     * arbitrarily large string here.
+     */
+    private fun readTextBounded(reader: java.io.Reader): String? {
+        val buffer = StringBuilder()
+        val chunk = CharArray(8_192)
+        while (true) {
+            val read = reader.read(chunk)
+            if (read < 0) break
+            if (buffer.length + read > MAX_DROPPED_TEXT_CHARS) return null
+            buffer.append(chunk, 0, read)
+        }
+        return buffer.toString()
     }
 
     private fun showFileDropWarning(rejectionMessages: List<String>) {
@@ -374,11 +405,17 @@ internal class OpenCodeFileDropHandler(
     private fun droppedFilePayload(file: File): OpenCodeServerProtocol.DroppedFilePayload? {
         return runCatching {
             val path = file.toPath()
+            // Re-check the limit while reading: the file may have grown (e.g. an active log
+            // file) between the size pre-check in selectDroppedFiles and this read.
+            val bytes = Files.newInputStream(path).use { stream ->
+                stream.readNBytes(MAX_DROPPED_FILE_BYTES.toInt() + 1)
+            }
+            if (bytes.size > MAX_DROPPED_FILE_BYTES) return null
             OpenCodeServerProtocol.DroppedFilePayload(
                 name = file.name,
                 mime = Files.probeContentType(path) ?: "application/octet-stream",
                 lastModified = file.lastModified(),
-                base64 = Base64.getEncoder().encodeToString(Files.readAllBytes(path)),
+                base64 = Base64.getEncoder().encodeToString(bytes),
             )
         }.getOrNull()
     }
