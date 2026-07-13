@@ -409,8 +409,6 @@ class OpenCodeServerProtocolTest {
         val script = OpenCodeBrowserSnippets.buildFileLinkHandlerScript("/tmp/project", enabled = true)!!
 
         assertTrue(script.contains("window.__opencodeIntellijFileLinksInstalled"))
-        assertTrue(script.contains("FILE_LINKS_VERSION = 3"))
-        assertTrue(script.contains("window.__opencodeIntellijFileLinksInstalledVersion"))
         assertTrue(script.contains("target.closest('a')"))
         assertTrue(script.contains("inferredFileLink(link)"))
         assertTrue(script.contains("changedFileButtonLink(target)"))
@@ -986,8 +984,8 @@ class OpenCodeServerProtocolTest {
         val script = OpenCodeBrowserSnippets.buildCodeNavigationScript(enabled = true, openCodeCallback = "window.intellijOpenCodeRef(ref)")!!
 
         assertTrue(script.contains("window.__opencodeIntellijCodeNavInstalled"))
-        assertTrue(script.contains("window.__opencodeIntellijCodeNavInstalledVersion"))
         assertTrue(script.contains("event.target.closest('code')"))
+        assertTrue(script.contains("isSnakeCase"))
         assertTrue(script.contains("data-opencode-intellij-pointer"))
         assertTrue(script.contains("cursor: pointer !important"))
         assertTrue(script.contains("document.addEventListener('mouseover'"))

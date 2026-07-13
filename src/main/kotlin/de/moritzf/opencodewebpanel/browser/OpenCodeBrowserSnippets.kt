@@ -422,10 +422,8 @@ internal object OpenCodeBrowserSnippets {
         @Language("JavaScript")
         val script = """
             (() => {
-              const CODE_NAV_VERSION = 2;
-              if ((window.__opencodeIntellijCodeNavInstalledVersion || 0) >= CODE_NAV_VERSION) return;
+              if (window.__opencodeIntellijCodeNavInstalled) return;
               window.__opencodeIntellijCodeNavInstalled = true;
-              window.__opencodeIntellijCodeNavInstalledVersion = CODE_NAV_VERSION;
               const hasExtension = /\.[a-zA-Z][a-zA-Z0-9]{0,8}(?::\d+)?${'$'}/;
               const hasPathSeparator = /[\\/]/;
               const isPascalCase = /^[A-Z][a-zA-Z0-9_]*${'$'}/;
@@ -439,7 +437,7 @@ internal object OpenCodeBrowserSnippets {
                 if (hasPathSeparator.test(t) && /:\d+${'$'}/.test(t)) return true;
                 if (isPascalCase.test(t)) return true;
                 if (isQualifiedClass.test(t)) return true;
-                if (isSnakeCase.test(t) && /[A-Z]/.test(t)) return true;
+                if (isSnakeCase.test(t)) return true;
                 return false;
               };
               const extractRef = (codeEl) => {
@@ -812,10 +810,8 @@ internal object OpenCodeBrowserSnippets {
         @Language("JavaScript")
         val script = """
             (() => {
-              const FILE_LINKS_VERSION = 3;
-              if ((window.__opencodeIntellijFileLinksInstalledVersion || 0) >= FILE_LINKS_VERSION) return;
+              if (window.__opencodeIntellijFileLinksInstalled) return;
               window.__opencodeIntellijFileLinksInstalled = true;
-              window.__opencodeIntellijFileLinksInstalledVersion = FILE_LINKS_VERSION;
               const directory = '$directory';
               const unsupportedProtocol = /^(https?|mailto|tel|data|blob|javascript):/i;
               const absoluteFilePath = /^(\/|[A-Za-z]:[\\/])/;
