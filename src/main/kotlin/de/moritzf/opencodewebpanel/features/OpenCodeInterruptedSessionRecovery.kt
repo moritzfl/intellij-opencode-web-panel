@@ -65,6 +65,11 @@ internal class OpenCodeInterruptedSessionRecovery(
         // still-unsettled turns for a bounded time instead of deciding at wake instant.
         private const val SEVERED_SETTLE_POLL_INTERVAL_MILLIS = 20_000L
         private const val SEVERED_SETTLE_POLL_ATTEMPTS = 6
+
+        // The session listing is creation-ordered and includes subagent child sessions (see
+        // OpenCodeServerProtocol.fetchRecentSessions), so a burst of later-created children
+        // could push a still-active parent out of a small page.
+        private const val SESSION_FETCH_LIMIT = 100
     }
 
     private data class SuspendResume(val lastAliveMillis: Long, val resumedAtMillis: Long)
@@ -91,9 +96,13 @@ internal class OpenCodeInterruptedSessionRecovery(
                     authHeader,
                     directory,
                     maxAgeMillis = OpenCodeServerProtocol.RECENT_SESSION_WINDOW_MILLIS + recentSuspendGapMillis(),
+                    limit = SESSION_FETCH_LIMIT,
                 )
                 if (sessions.isEmpty()) return@executeOnPooledThread
                 for (session in sessions) {
+                    // Subagent child sessions are driven by their parent turn; prompting them
+                    // directly would start work no parent is waiting for.
+                    if (session.parentID != null) continue
                     val lastMessage = OpenCodeServerProtocol.fetchLastMessageJson(serverUrl, authHeader, session.id)
                         ?: continue
                     if (!OpenCodeServerProtocol.isInterruptedLastMessage(lastMessage)) continue
@@ -134,8 +143,9 @@ internal class OpenCodeInterruptedSessionRecovery(
                     authHeader,
                     directory,
                     maxAgeMillis = OpenCodeServerProtocol.RECENT_SESSION_WINDOW_MILLIS + (resumedAtMillis - lastAliveMillis),
+                    limit = SESSION_FETCH_LIMIT,
                 )
-                var candidates = sessions.map { it.id }
+                var candidates = sessions.filter { it.parentID == null }.map { it.id }
                 var attempt = 0
                 while (candidates.isNotEmpty() && attempt <= SEVERED_SETTLE_POLL_ATTEMPTS && !project.isDisposed) {
                     if (attempt > 0) Thread.sleep(SEVERED_SETTLE_POLL_INTERVAL_MILLIS)
