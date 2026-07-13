@@ -5,6 +5,7 @@ import com.google.gson.JsonParser
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.thisLogger
 import java.io.IOException
+import java.io.Reader
 import java.net.HttpURLConnection
 import java.net.URI
 import java.nio.charset.StandardCharsets
@@ -150,9 +151,10 @@ internal class OpenCodeGlobalEventStream(
             }
             dispatchConnected(myGeneration)
             newConnection.inputStream.bufferedReader(StandardCharsets.UTF_8).use { reader ->
+                val lineReader = BoundedLineReader(reader, MAX_SSE_BLOCK_CHARS)
                 val block = StringBuilder()
                 while (isCurrent(myGeneration)) {
-                    val line = reader.readLine() ?: break
+                    val line = lineReader.readLine() ?: break
                     if (line.isEmpty()) {
                         dispatchBlock(myGeneration, block.toString())
                         block.setLength(0)
@@ -192,6 +194,48 @@ internal class OpenCodeGlobalEventStream(
             listener().eventReceived(event)
         } catch (e: Exception) {
             thisLogger().warn("OpenCode event listener failed for ${event.type}: ${e.message}")
+        }
+    }
+}
+
+/**
+ * Line reader with a hard per-line cap. [java.io.BufferedReader.readLine] materializes the
+ * whole line before any caller-side size check can run, so a malformed server emitting one
+ * enormous line without terminators could exhaust memory despite the SSE block cap; this
+ * reader fails the connection as soon as one line exceeds [maxChars]. Recognizes `\n`,
+ * `\r\n`, and `\r` line terminators like `readLine()` does.
+ */
+internal class BoundedLineReader(private val reader: Reader, private val maxChars: Int) {
+    private var skipNextLineFeed = false
+
+    /** Returns the next line without its terminator, or null at the end of the stream. */
+    fun readLine(): String? {
+        val line = StringBuilder()
+        var sawAnyChar = false
+        while (true) {
+            val read = reader.read()
+            if (read < 0) {
+                return if (sawAnyChar) line.toString() else null
+            }
+            val char = read.toChar()
+            if (skipNextLineFeed) {
+                skipNextLineFeed = false
+                if (char == '\n') continue
+            }
+            sawAnyChar = true
+            when (char) {
+                '\n' -> return line.toString()
+                '\r' -> {
+                    skipNextLineFeed = true
+                    return line.toString()
+                }
+                else -> {
+                    line.append(char)
+                    if (line.length > maxChars) {
+                        throw IOException("OpenCode event stream line exceeded $maxChars characters")
+                    }
+                }
+            }
         }
     }
 }

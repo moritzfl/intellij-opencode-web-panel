@@ -4,6 +4,7 @@ import com.sun.net.httpserver.HttpServer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 import java.net.InetSocketAddress
 import java.nio.charset.StandardCharsets
@@ -74,6 +75,36 @@ class OpenCodeGlobalEventStreamTest {
 
         assertEquals("", event.recordId)
         assertEquals(0, event.properties.size())
+    }
+
+    @Test
+    fun boundedLineReaderSplitsAllLineTerminators() {
+        val reader = BoundedLineReader("a\nb\r\nc\rd\n\ne".reader(), 100)
+        assertEquals("a", reader.readLine())
+        assertEquals("b", reader.readLine())
+        assertEquals("c", reader.readLine())
+        assertEquals("d", reader.readLine())
+        assertEquals("", reader.readLine())
+        assertEquals("e", reader.readLine())
+        assertNull(reader.readLine())
+    }
+
+    @Test
+    fun boundedLineReaderReturnsTrailingLineWithoutTerminator() {
+        val reader = BoundedLineReader("tail".reader(), 100)
+        assertEquals("tail", reader.readLine())
+        assertNull(reader.readLine())
+    }
+
+    @Test
+    fun boundedLineReaderFailsInsteadOfBufferingAnEndlessLine() {
+        val reader = BoundedLineReader("x".repeat(101).reader(), 100)
+        try {
+            reader.readLine()
+            fail("expected IOException for an oversized line")
+        } catch (expected: java.io.IOException) {
+            assertTrue(expected.message.orEmpty().contains("exceeded"))
+        }
     }
 
     @Test
