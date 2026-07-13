@@ -22,6 +22,7 @@ import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
 import com.intellij.openapi.util.text.StringUtil
+import com.intellij.util.concurrency.AppExecutorUtil
 import java.awt.Frame
 import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicBoolean
@@ -181,28 +182,40 @@ internal class OpenCodeSystemNotifications(
         private val globalEventSubscriptionInstalled = AtomicBoolean()
         private val eventProcessor = OpenCodeNotificationEventProcessor(::fetchSessionForNotification)
 
+        // Single-threaded so events are processed in stream order: a slow session lookup for
+        // "permission.asked" must not finish after the matching "permission.replied" dismissal,
+        // which would re-create an already-answered actionable notification.
+        private val eventExecutor = AppExecutorUtil.createBoundedApplicationPoolExecutor(
+            "OpenCode Notification Events",
+            1,
+        )
+
         /**
-         * Installs the single application-wide consumer of the Kotlin event stream. Kept for
-         * the application's lifetime: routing and the notifications setting are re-checked
-         * per event, so an orphaned subscription cannot show stale notifications.
+         * Installs the single application-wide consumer of the Kotlin event stream. Bound to
+         * the [SharedOpenCodeServerManager] service so the connection is released on plugin
+         * unload; routing and the notifications setting are re-checked per event, so an
+         * orphaned subscription cannot show stale notifications.
          */
         private fun ensureGlobalEventSubscription() {
             if (!globalEventSubscriptionInstalled.compareAndSet(false, true)) return
-            ApplicationManager.getApplication().messageBus.connect().subscribe(
-                OpenCodeGlobalEventListener.TOPIC,
-                object : OpenCodeGlobalEventListener {
-                    override fun eventReceived(event: OpenCodeGlobalEvent) {
-                        handleGlobalEvent(event)
-                    }
-                },
-            )
+            ApplicationManager.getApplication().messageBus
+                .connect(SharedOpenCodeServerManager.getInstance())
+                .subscribe(
+                    OpenCodeGlobalEventListener.TOPIC,
+                    object : OpenCodeGlobalEventListener {
+                        override fun eventReceived(event: OpenCodeGlobalEvent) {
+                            handleGlobalEvent(event)
+                        }
+                    },
+                )
         }
 
         private fun handleGlobalEvent(event: OpenCodeGlobalEvent) {
             if (event.type !in OpenCodeNotificationEventProcessor.RELEVANT_EVENT_TYPES) return
             if (!OpenCodeSettingsState.getInstance().enableSystemNotifications) return
-            // The processor may fetch the session via REST; keep that off the stream thread.
-            ApplicationManager.getApplication().executeOnPooledThread {
+            // The processor may fetch the session via REST; keep that off the stream thread —
+            // but keep events strictly ordered on the single-threaded executor.
+            eventExecutor.execute {
                 when (val outcome = eventProcessor.process(event)) {
                     is OpenCodeNotificationEventProcessor.Outcome.Dismiss -> dismissByKey(outcome.key)
                     is OpenCodeNotificationEventProcessor.Outcome.Notify -> show(outcome.payload)
