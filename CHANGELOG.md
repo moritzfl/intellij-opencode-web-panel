@@ -4,6 +4,25 @@
 
 ## [Unreleased]
 
+## [1.6.4] - 2026-07-13
+
+### Fixed
+
+- Permission and question notifications can no longer reappear after they were already answered: OpenCode events are now processed strictly in order.
+- "Automatically continue interrupted conversations" no longer sends prompts to subagent child sessions, and it now finds a still-active conversation even when many subagent sessions were created after it.
+- A server restart that was superseded by another stop or restart can no longer briefly launch an extra server process — on Windows this could leave an orphaned server behind.
+- The embedded panel now reliably stays on OpenCode: pages reached through redirects, forms, or scripts open in the system browser just like clicked links (controlled by the same setting), and IDE file-open links are only accepted while the panel is showing OpenCode itself.
+- Dragging or pasting very large clipboard content into chat no longer risks freezing the IDE: text, images, and files are size-checked before they are processed. A malformed server emitting an endless event line can no longer exhaust memory either.
+- Changing the OpenCode project directory of one project no longer restarts the shared server for every open project; only the changed project's panel reloads.
+- The agent-status badge no longer misses busy/attention changes that happened exactly while it was refreshing after a reconnect.
+- snake_case code references in chat are now clickable for IDE navigation; previously this never worked.
+- The settings page no longer stacks duplicate handlers when it is reopened (for example, "Generate" no longer produces two passwords per click), and the show-password toggle is reachable with the keyboard again.
+
+### Changed
+
+- Server log files now rotate once they reach 50 MB, and OpenCode's server output no longer fills the IDE's own log file.
+- Plugin settings no longer roam through Settings Sync, since they contain machine-specific paths and local browser state. The per-project OpenCode directory stays shareable with your team as before.
+
 ## [1.6.3] - 2026-07-10
 
 ### Fixed
@@ -283,7 +302,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.6.3...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.6.4...HEAD
+[1.6.4]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.6.3...1.6.4
 [1.6.3]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.6.2...1.6.3
 [1.6.2]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.6.1...1.6.2
 [1.6.1]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.6.0...1.6.1
