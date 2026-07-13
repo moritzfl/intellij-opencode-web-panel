@@ -96,6 +96,15 @@ internal class OpenCodeAgentStatusTracker(
     private val state = OpenCodeAgentStatusState()
     private var lastReportedState = OpenCodeAgentStatusState.IDLE
 
+    // Bumped on every state-affecting event so an in-flight REST seed can detect that its
+    // snapshot went stale (an event raced past it) and fetch a fresh one instead of
+    // overwriting newer event-derived state with older REST data.
+    private var stateRevision = 0L
+
+    private companion object {
+        private const val MAX_SEED_ATTEMPTS = 3
+    }
+
     override fun connected() {
         seed()
     }
@@ -106,6 +115,7 @@ internal class OpenCodeAgentStatusTracker(
         if (!OpenCodeServerProtocol.isSameFilesystemPath(event.directory, directory)) return
         val transition = synchronized(lock) {
             if (!state.applyEvent(event.type, event.properties)) return
+            stateRevision++
             reportableTransition()
         } ?: return
         onStateChanged(transition)
@@ -117,11 +127,16 @@ internal class OpenCodeAgentStatusTracker(
      * because events that occurred before then never reached this tracker.
      */
     fun seed() {
+        seed(attempt = 1)
+    }
+
+    private fun seed(attempt: Int) {
         if (!enabled()) return
         val directory = projectDirectory() ?: return
         val serverUrl = serverManager.getServerUrl() ?: return
         val password = serverManager.getServerPassword() ?: return
         val authHeader = OpenCodeServerProtocol.buildBasicAuthHeader(password)
+        val revisionAtRequest = synchronized(lock) { stateRevision }
         ApplicationManager.getApplication().executeOnPooledThread {
             val busySessionIds = OpenCodeServerProtocol.fetchBusySessionIds(serverUrl, authHeader, directory)
             val permissions = OpenCodeServerProtocol.fetchPendingRequestIds(
@@ -135,11 +150,24 @@ internal class OpenCodeAgentStatusTracker(
             } else {
                 permissions.orEmpty() + questions.orEmpty()
             }
+            var retry = false
             val transition = synchronized(lock) {
-                state.seed(busySessionIds, pendingRequestIds)
-                reportableTransition()
-            } ?: return@executeOnPooledThread
-            onStateChanged(transition)
+                if (stateRevision != revisionAtRequest && attempt < MAX_SEED_ATTEMPTS) {
+                    // Events raced past this snapshot while it was in flight; a fresh fetch
+                    // reflects them server-side. On the last attempt the (at most ms-stale)
+                    // snapshot is still better than keeping possibly long-stale state.
+                    retry = true
+                    null
+                } else {
+                    state.seed(busySessionIds, pendingRequestIds)
+                    reportableTransition()
+                }
+            }
+            if (retry) {
+                seed(attempt + 1)
+                return@executeOnPooledThread
+            }
+            transition?.let(onStateChanged)
         }
     }
 
