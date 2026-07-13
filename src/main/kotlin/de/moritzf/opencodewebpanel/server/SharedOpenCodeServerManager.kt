@@ -47,6 +47,7 @@ class SharedOpenCodeServerManager : Disposable {
     private val pendingStarts = mutableListOf<StartCallback>()
     private var startSequence = 0L
     private var starting = false
+    private var disposed = false
     private var serverRunning = false
     private var lifecycleState = OpenCodeServerLifecycleState.STOPPED
     private var serverProcess: Process? = null
@@ -93,6 +94,10 @@ class SharedOpenCodeServerManager : Disposable {
     ) {
         val basePath = rememberBasePath(projectBasePath)
         val callback = StartCallback(callbackActive, onStarted, onFailed)
+        if (isDisposed()) {
+            notifyStartCallbacks(listOf(callback), success = false)
+            return
+        }
 
         val url = getServerUrl()
         if (url != null) {
@@ -269,6 +274,10 @@ class SharedOpenCodeServerManager : Disposable {
     ) {
         val basePath = rememberBasePath(projectBasePath)
         val callback = StartCallback(callbackActive, onStarted, onFailed)
+        if (isDisposed()) {
+            notifyStartCallbacks(listOf(callback), success = false)
+            return
+        }
         val resources: ServerResourcesToStop
         val startId = synchronized(lock) {
             pendingStarts.add(callback)
@@ -281,7 +290,11 @@ class SharedOpenCodeServerManager : Disposable {
         setLifecycleState(OpenCodeServerLifecycleState.RESTARTING)
         // Wait for the previous process to finish stopping before binding a new one (fixed port).
         stopResourcesAsync(resources) {
-            startOpenCodeServer(project, basePath, startId)
+            // The queued start may have been superseded (stopServer, dispose, another restart)
+            // while the previous process was still stopping; a stale start must not launch.
+            if (isCurrentStart(startId)) {
+                startOpenCodeServer(project.takeUnless { it.isDisposed }, basePath, startId)
+            }
         }
     }
 
@@ -338,9 +351,12 @@ class SharedOpenCodeServerManager : Disposable {
         }
     }
 
+    private fun isDisposed(): Boolean = synchronized(lock) { disposed }
+
     override fun dispose() {
         try {
             val resources = synchronized(lock) {
+                disposed = true
                 startSequence++
                 starting = false
                 pendingStarts.clear()
@@ -467,6 +483,11 @@ class SharedOpenCodeServerManager : Disposable {
         var capturedDescendants: List<ProcessHandle> = emptyList()
         try {
             if (!waitForIntellijMcpServerIfNeeded(startId)) return
+            // Last check before actually spawning: a start superseded while queued or waiting
+            // (stop, dispose, newer restart) must not launch a process at all — especially on
+            // Windows, where the launcher can detach the real server before a post-launch
+            // rejection captures its descendants for cleanup.
+            if (!isCurrentStart(startId)) return
             val password = OpenCodePasswordStore.getInstance().ensurePasswordBlocking()
             val settings = OpenCodeSettingsState.getInstance()
             val port = settings.portArgument()
