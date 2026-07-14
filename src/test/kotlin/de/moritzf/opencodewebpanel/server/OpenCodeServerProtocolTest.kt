@@ -312,6 +312,23 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun buildOpenProjectScriptCorrectsDirectorylessRoutesShowingAnotherProject() {
+        val script = OpenCodeBrowserSnippets.buildOpenProjectScript("/tmp/project", "http://127.0.0.1:60482/")!!
+
+        // The SPA's pre-seed lastProject is the only trace of which project a directoryless
+        // route (/server/<id>/session..., /new-session) shows; it must be captured before the
+        // seeding overwrites it, and a mismatch must fall through to the navigation below.
+        assertTrue(script.contains("let directorylessProject = ''"))
+        val captureIndex = script.indexOf("if (typeof lastProject === 'string') directorylessProject = lastProject")
+        val seedIndex = script.indexOf("state.lastProject[scope] = directory")
+        assertTrue(captureIndex in 0 until seedIndex)
+        assertTrue(script.contains("const onDirectorylessSessionRoute ="))
+        assertTrue(script.contains("""/^\/server\/[^\/]+\/session(?:\/|$)/"""))
+        assertTrue(script.contains("""/^\/new-session(?:\/|$)/"""))
+        assertTrue(script.contains("pathKey(directorylessProject) === pathKey(directory)"))
+    }
+
+    @Test
     fun buildOpenProjectScriptCanOpenMostRecentProjectConversation() {
         val script = OpenCodeBrowserSnippets.buildOpenProjectScript(
             "/tmp/project",
@@ -544,18 +561,6 @@ class OpenCodeServerProtocolTest {
         assertTrue(OpenCodeServerProtocol.logIndicatesPortConflict(listOf("Error: Unexpected error", "ServeError")))
         assertFalse(OpenCodeServerProtocol.logIndicatesPortConflict(listOf("opencode server listening on http://127.0.0.1:4096")))
         assertFalse(OpenCodeServerProtocol.logIndicatesPortConflict(emptyList()))
-    }
-
-    @Test
-    fun directorylessSessionRoutesAreRecognized() {
-        assertTrue(OpenCodeServerProtocol.isDirectorylessSessionRouteUrl("http://127.0.0.1:4096/server/abc123/session/ses_1"))
-        assertTrue(OpenCodeServerProtocol.isDirectorylessSessionRouteUrl("http://127.0.0.1:4096/server/abc123/session"))
-        assertTrue(OpenCodeServerProtocol.isDirectorylessSessionRouteUrl("http://127.0.0.1:4096/new-session"))
-        assertTrue(OpenCodeServerProtocol.isDirectorylessSessionRouteUrl("http://127.0.0.1:4096/new-session?draftId=d1"))
-        assertFalse(OpenCodeServerProtocol.isDirectorylessSessionRouteUrl("http://127.0.0.1:4096/"))
-        assertFalse(OpenCodeServerProtocol.isDirectorylessSessionRouteUrl("http://127.0.0.1:4096/L1VzZXJz/session"))
-        assertFalse(OpenCodeServerProtocol.isDirectorylessSessionRouteUrl("http://127.0.0.1:4096/server"))
-        assertFalse(OpenCodeServerProtocol.isDirectorylessSessionRouteUrl(null))
     }
 
     @Test

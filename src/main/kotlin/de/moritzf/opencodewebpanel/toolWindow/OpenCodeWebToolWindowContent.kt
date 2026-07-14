@@ -652,7 +652,12 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         val serverUrl = serverManager.getServerUrl() ?: return false
         if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, frameUrl)) return false
         val projectDirectory = openCodeProjectDirectory()?.takeIf { it.isNotBlank() } ?: return true
-        if (OpenCodeServerProtocol.isDirectorylessSessionRouteUrl(frameUrl)) return true
+        // Directoryless routes (/server/<id>/session..., /new-session) do not reveal which
+        // project they show, so they are NOT accepted as a destination here: the open-project
+        // script must keep running and decide in-page against the SPA's own project state.
+        // Blanket-accepting them stranded panels on another project's workspace, e.g. after a
+        // project-directory rename or when another IDE project used the shared browser
+        // profile last.
         return OpenCodeServerProtocol.isSameFilesystemPath(
             OpenCodeServerProtocol.routeDirectoryFromUrl(frameUrl),
             projectDirectory

@@ -219,6 +219,21 @@ internal object OpenCodeBrowserSnippets {
                 }
               };
               $originGuard
+              // The redesigned layout uses directoryless routes (/server/<id>/session...,
+              // /new-session) whose project is the SPA's own current project. Its only
+              // pre-navigation trace is the persisted lastProject entry - capture it before
+              // the seeding below overwrites it, so a panel can tell whether such a route
+              // already shows its project or a stale/foreign one (e.g. after a directory
+              // rename or when another IDE project seeded the shared browser profile last).
+              let directorylessProject = '';
+              try {
+                const rawServerState = window.localStorage.getItem(storageKey);
+                const serverState = rawServerState ? JSON.parse(rawServerState) : undefined;
+                const lastProject = serverState && serverState.lastProject && typeof serverState.lastProject === 'object'
+                  ? serverState.lastProject[scope]
+                  : undefined;
+                if (typeof lastProject === 'string') directorylessProject = lastProject;
+              } catch (_) {}
               try {
                 const raw = window.localStorage.getItem(storageKey);
                 const state = raw ? JSON.parse(raw) : { list: [], projects: {}, lastProject: {} };
@@ -254,6 +269,21 @@ internal object OpenCodeBrowserSnippets {
                 // the user between scheduled runs of this script) - never navigate away from it.
                 setNavigationState(window.location.pathname);
                 return;
+              }
+              const onDirectorylessSessionRoute =
+                /^\/server\/[^\/]+\/session(?:\/|${'$'})/.test(window.location.pathname) ||
+                /^\/new-session(?:\/|${'$'})/.test(window.location.pathname);
+              const onDirectorylessConversation =
+                /^\/server\/[^\/]+\/session\/[^\/?#]/.test(window.location.pathname) ||
+                /^\/new-session(?:\/|${'$'})/.test(window.location.pathname);
+              if (onDirectorylessSessionRoute && directorylessProject && pathKey(directorylessProject) === pathKey(directory)) {
+                // The directoryless route already shows this panel's project: stay on a viewed
+                // conversation or new-session composer; from the bare project root, still move
+                // to the most recent conversation once one is known.
+                if (onDirectorylessConversation || !foundRecentSession) {
+                  setNavigationState(window.location.pathname);
+                  return;
+                }
               }
               if (window.location.pathname !== path) {
                 if (!keepWaitingForRecentSession) setNavigationState(path);
