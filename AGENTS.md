@@ -66,6 +66,17 @@ The Alt+Click "open diff in IDE" feature (`OpenCodeBrowserSnippets.buildDiffNavi
 
 The file-link handler (`buildFileLinkHandlerScript`) early-returns on `event.altKey`, reserving Alt for this gesture. These selectors were validated against both the classic layout and the redesigned one (`body[data-new-layout]`, the "New layout and designs" setting).
 
+### Open-project navigation contract (redesigned layout)
+
+Verified live vs opencode 1.17.18. The redesigned layout (`settings.v3` → `general.newLayoutDesigns`, `body[data-new-layout]`) uses **directoryless routes**: `/server/<base64url(origin)>/session/<ses_...>` and `/new-session?draftId=...`. Directory routes (`/<base64url(dir)>/session[...]`) are accepted on a cold document load — and win over the SPA's own state — but are quickly rewritten to the directoryless form. Which project such a route shows is visible only in the SPA's `opencode.global.dat:server` localStorage (`lastProject`/`projects`), which the SPA does **not** update when it boots from a direct directory route. Consequences, each load-bearing in `buildOpenProjectScript` / `OpenCodeWebToolWindowContent`:
+
+- Panels must load `buildProjectUrl(...)` (the directory route) directly — never the server root, where the SPA restores its own last project from the **application-shared, persistent** JCEF profile (another IDE project's directory, or a stale path after a project-directory rename).
+- Never blanket-accept directoryless routes as "already at the destination" JVM-side (`isOpenCodeProjectDestination`); the open-project script must keep running and decide in-page by comparing the **pre-seed** `lastProject` against the panel's directory (the seed itself overwrites it).
+- The script must keep seeding `opencode.global.dat:server` because the SPA does not maintain `lastProject` for route-derived project switches.
+- A directory absent from that store boots into an **unbound "new project" composer** even on its own directory route (first use of a fresh profile or a new project). Accepted: the open-project script seeds the store and re-navigates, which binds it after one corrective reload. An `onLoadStart` pre-seed was tried and dropped — cosmetic gain only, and it overwrites the pre-seed `lastProject` the script's directoryless check relies on.
+- The script's sessionStorage navigation guard (`opencode.intellij.project.opened:<dir>`) is per JCEF tab and deliberately makes the open-project navigation once-per-tab-session: after the initial open, the user may switch projects inside the panel without being dragged back.
+- A renamed project directory that keeps showing its **old path/name** despite all of the above is opencode's server-side stale `project.worktree` (anomalyco/opencode#35240) — visible in every client, not fixable from the plugin. Workaround: update `project.worktree` (and old sessions' `directory`/`path`) in `~/.local/share/opencode/opencode.db` while no opencode instance runs.
+
 ## Validating Against a Real Server
 
 Injection fixes and wire-contract checks must be validated against a live server — not `about:blank`, synthetic pages, or unit tests. Getting **auth** wrong has repeatedly cost debugging loops.
