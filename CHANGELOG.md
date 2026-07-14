@@ -4,6 +4,18 @@
 
 ## [Unreleased]
 
+## [1.6.5] - 2026-07-14
+
+### Fixed
+
+- With several IDE projects open, a panel could show another project's OpenCode workspace, because the embedded OpenCode restored its own last-used project from the shared browser profile. Each panel now opens directly on its configured project directory instead of the server home.
+- With OpenCode's "New layout and designs" enabled, the panel could stay on the wrong project after OpenCode rewrote the address to its directoryless form. The panel now detects this and re-opens the configured project.
+- After a manual restart of the OpenCode server, every open project's panel reliably returns to its own project.
+
+### Note
+
+- If a project keeps opening under its **old path after you renamed its folder on disk**, that is a server-side OpenCode bug ([anomalyco/opencode#35240](https://github.com/anomalyco/opencode/issues/35240)) — OpenCode keeps serving the old project location to every client, so no IDE plugin can correct it. Until it is fixed upstream, repoint the project in OpenCode's own database while no OpenCode instance is running.
+
 ## [1.6.4] - 2026-07-13
 
 ### Fixed
@@ -302,7 +314,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.6.4...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.6.5...HEAD
+[1.6.5]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.6.4...1.6.5
 [1.6.4]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.6.3...1.6.4
 [1.6.3]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.6.2...1.6.3
 [1.6.2]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.6.1...1.6.2
