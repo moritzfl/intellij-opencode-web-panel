@@ -609,7 +609,14 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     private fun loadProjectPage() {
         if (isContentDisposed()) return
         val serverUrl = serverManager.getServerUrl() ?: return
-        val url = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
+        // Load the project's directory route directly instead of the server root: at the root
+        // the SPA restores its own last project from the (application-shared, persistent)
+        // browser profile, which is another IDE project's directory when several projects are
+        // open - or a stale path after the project directory was renamed. Verified live: a
+        // cold document load on the directory route wins over the SPA's own stale state.
+        // The open-project script then only refines the destination (most recent
+        // conversation, seeding).
+        val url = OpenCodeServerProtocol.buildProjectUrl(serverUrl, openCodeProjectDirectory())
 
         thisLogger().info("Loading OpenCode project page")
         showCenterCard(BROWSER_CARD)
