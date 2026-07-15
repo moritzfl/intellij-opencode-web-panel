@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [1.6.6] - 2026-07-15
+
+### Fixed
+
+- Clicking the file name in OpenCode's redesigned review panel (desktop layout, when "Lock to compact view" is off) now opens that file in the IDE. The classic compact review panel already had an open-in-IDE control; the redesigned panel did not.
+
 ## [1.6.5] - 2026-07-14
 
 ### Fixed
@@ -314,7 +320,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.6.5...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.6.6...HEAD
+[1.6.6]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.6.5...1.6.6
 [1.6.5]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.6.4...1.6.5
 [1.6.4]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.6.3...1.6.4
 [1.6.3]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.6.2...1.6.3
