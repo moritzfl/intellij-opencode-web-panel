@@ -453,6 +453,23 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun buildFileLinkHandlerScriptSupportsRedesignedReviewPanelPreviewHeader() {
+        val script = OpenCodeBrowserSnippets.buildFileLinkHandlerScript("/tmp/project", enabled = true)!!
+
+        // The redesigned (v2) review panel — shown on desktop when forceCompactLayout is off —
+        // exposes the changed file only through its preview header spans, so the "open in IDE"
+        // gesture must resolve the path from there.
+        assertTrue(script.contains("reviewV2FileLink(target)"))
+        assertTrue(script.contains("session-review-v2-file-title"))
+        assertTrue(script.contains("session-review-v2-file-name"))
+        assertTrue(script.contains("session-review-v2-file-path"))
+        assertTrue(script.contains("session-review-v2-file-header"))
+        // The sidebar tree rows are the SPA's own preview navigation; hijacking them would break
+        // in-app review, so they must never be an intercept target.
+        assertFalse(script.contains("session-review-v2-sidebar-tree"))
+    }
+
+    @Test
     fun buildFileLinkHandlerScriptIsMissingWhenDisabled() {
         assertNull(OpenCodeBrowserSnippets.buildFileLinkHandlerScript("/tmp/project", enabled = false))
     }

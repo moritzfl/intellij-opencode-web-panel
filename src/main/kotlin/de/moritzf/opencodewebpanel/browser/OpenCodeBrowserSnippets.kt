@@ -898,6 +898,22 @@ internal object OpenCodeBrowserSnippets {
                 if (!fileName) return '';
                 return directory ? directory.replace(/[\\/]?${'$'}/, '/') + fileName : fileName;
               };
+              // The redesigned (v2) review panel (default new layout on desktop, i.e. when
+              // forceCompactLayout is off) drops the per-file "open" button for an in-app sidebar
+              // tree + preview. The sidebar rows (button[data-path]) are the SPA's own preview
+              // navigation, so hijacking them would break it; the safe "open in IDE" surface is the
+              // non-interactive preview header file name/path (session-review-v2-file-*).
+              const reviewV2FileButtonSelector = '[data-slot="session-review-v2-file-title"]';
+              const reviewV2FileSelector = reviewV2FileButtonSelector + ', [data-slot="session-review-v2-file-name"], [data-slot="session-review-v2-file-path"]';
+              const reviewV2FileLink = (target) => {
+                const title = target && target.closest ? target.closest(reviewV2FileSelector) : null;
+                if (!title) return '';
+                const header = (title.closest && title.closest('[data-slot="session-review-v2-file-header"]')) || title;
+                const fileName = cleanDisplayedPath(header.querySelector ? header.querySelector('[data-slot="session-review-v2-file-name"]')?.textContent : '');
+                if (!fileName) return '';
+                const directory = cleanDisplayedPath(header.querySelector ? header.querySelector('[data-slot="session-review-v2-file-path"]')?.textContent : '');
+                return directory ? directory.replace(/[\\/]?${'$'}/, '/') + fileName : fileName;
+              };
               const isLocalFileLink = (href) => {
                 if (!href || href.startsWith('#')) return false;
                 if (isOpenCodeAppRoute(href)) return false;
@@ -915,11 +931,15 @@ internal object OpenCodeBrowserSnippets {
               };
               const resolveFileOpenTarget = (target, changedButtonOnly) => {
                 const changedFileHref = changedFileButtonLink(target);
-                if (changedButtonOnly && !changedFileHref) return null;
-                const link = !changedFileHref && target && target.closest ? target.closest('a') : null;
-                const rawHref = changedFileHref || (link ? (link.getAttribute('href') || inferredFileLink(link)) : '');
+                const reviewV2Href = changedFileHref ? '' : reviewV2FileLink(target);
+                if (changedButtonOnly && !changedFileHref && !reviewV2Href) return null;
+                const link = !changedFileHref && !reviewV2Href && target && target.closest ? target.closest('a') : null;
+                const rawHref = changedFileHref || reviewV2Href || (link ? (link.getAttribute('href') || inferredFileLink(link)) : '');
                 if (!isLocalFileLink(rawHref)) return null;
-                return { element: changedFileHref ? target.closest(changedFileButtonSelector) : link, href: rawHref };
+                const element = changedFileHref
+                  ? target.closest(changedFileButtonSelector)
+                  : (reviewV2Href ? target.closest(reviewV2FileButtonSelector) : link);
+                return { element: element, href: rawHref };
               };
               const handleFileOpenEvent = (event, changedButtonOnly) => {
                 if (event.defaultPrevented) return;
