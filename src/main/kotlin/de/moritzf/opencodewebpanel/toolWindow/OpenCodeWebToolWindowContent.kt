@@ -661,29 +661,45 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     private fun loadProjectPage() {
         if (isContentDisposed()) return
         val serverUrl = serverManager.getServerUrl() ?: return
-        // Boot on the native 1.18 server session route (/server/<serverKey>/session), not the
+        // Boot on the native 1.18 server session route (/server/<serverKey>/session[/<id>]), not the
         // legacy project directory route (/<encodedDir>/session). Cold-loading the bare directory
-        // route crashes opencode 1.18.x's application error boundary (it redirects to /new-session
-        // and throws), which leaves the SPA session store uninitialized so every later "send"
-        // fails with "Unable to retrieve session". The server route loads cleanly; the open-project
-        // script seeds this project and navigates to the most recent conversation when one exists.
-        val url = OpenCodeServerProtocol.buildServerSessionUrl(serverUrl)
-
+        // route crashes opencode 1.18.x's application error boundary. Prefer a concrete session id
+        // when "open most recent" is on — the SPA route requires :id; the bare .../session URL is
+        // only a temporary shell until the open-project script navigates.
         thisLogger().info("Loading OpenCode project page")
         showCenterCard(BROWSER_CARD)
-        loadedServerRootUrl = url
         openProjectScriptScheduled = false
         injectedFeatures.forEach { it.scheduled = false }
         compactLayoutScriptScheduled = false
         ideThemeSyncScriptScheduled = false
         openProjectAlarm.cancelAllRequests()
         applyBrowserZoom()
-        browser.loadURL(url)
-        scheduleOpenProjectScript()
         injectedFeatures.forEach(::scheduleFeatureScript)
         scheduleIdeThemeSyncScript()
         // Events that fired before this panel started caring never reached the tracker.
         agentStatusTracker.seed()
+
+        val openMostRecent = OpenCodeSettingsState.getInstance().openMostRecentConversationOnStartup
+        val projectDirectory = openCodeProjectDirectory()?.takeIf { it.isNotBlank() }
+        if (openMostRecent && projectDirectory != null) {
+            ApplicationManager.getApplication().executeOnPooledThread {
+                val sessionId = fetchMostRecentSessionId(serverUrl, projectDirectory)
+                ApplicationManager.getApplication().invokeLater {
+                    if (isContentDisposed()) return@invokeLater
+                    loadProjectPageAt(serverUrl, sessionId)
+                }
+            }
+            return
+        }
+        loadProjectPageAt(serverUrl, sessionId = null)
+    }
+
+    private fun loadProjectPageAt(serverUrl: String, sessionId: String?) {
+        if (isContentDisposed()) return
+        val url = OpenCodeServerProtocol.buildServerSessionUrl(serverUrl, sessionId)
+        loadedServerRootUrl = url
+        browser.loadURL(url)
+        scheduleOpenProjectScript()
     }
 
     private fun clearStaleBrowserPage(state: OpenCodeServerLifecycleState) {
@@ -723,13 +739,16 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     }
 
     /**
-     * True when the browser is on the project root route (e.g. /encodedDir/session),
-     * as opposed to a specific session route (e.g. /encodedDir/session/ses_xxx).
-     * The open-project script needs to keep running on the project root route so it
-     * can notice when lastProjectSession becomes available and navigate to it.
+     * True when the browser is on a session-less project shell (legacy `/encodedDir/session` or
+     * 1.18 `/server/<key>/session` without an id). The open-project script must keep running there
+     * so it can seed the project and navigate to a concrete session when one is known.
      */
     private fun isOpenCodeProjectRootRoute(frameUrl: String?): Boolean {
         val serverUrl = serverManager.getServerUrl() ?: return false
+        if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, frameUrl)) return false
+        if (OpenCodeServerProtocol.sessionIdFromUrl(frameUrl) != null) return false
+        val path = runCatching { java.net.URI(frameUrl).path?.trimEnd('/') }.getOrNull().orEmpty()
+        if (path.endsWith("/session") && path.contains("/server/")) return true
         val projectDirectory = openCodeProjectDirectory()?.takeIf { it.isNotBlank() } ?: return false
         val projectUrl = OpenCodeServerProtocol.buildProjectUrl(serverUrl, projectDirectory)
         return frameUrl?.trimEnd('/') == projectUrl.trimEnd('/')
