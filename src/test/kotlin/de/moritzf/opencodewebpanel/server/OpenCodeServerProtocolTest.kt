@@ -425,6 +425,9 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("unsupportedProtocol"))
         assertTrue(script.contains("decodeRouteDirectory"))
         assertTrue(script.contains("isOpenCodeAppRoute(href)"))
+        // Subagent/task cards link to /server/<key>/session/<id>; that must not be treated as a file path.
+        assertTrue(script.contains("/server/"))
+        assertTrue(script.contains("new-session"))
         assertTrue(script.contains("href.startsWith('/')"))
         assertTrue(script.contains("!href.includes('://')"))
         assertTrue(script.contains("${OpenCodeServerProtocol.OPEN_FILE_LINK_SCHEME}://${OpenCodeServerProtocol.OPEN_FILE_LINK_HOST}"))
@@ -1265,9 +1268,14 @@ class OpenCodeServerProtocolTest {
     @Test
     fun isOpenCodeSessionRouteHrefDetectsOpenCodeAppSessionRoutes() {
         val projectRoute = "/${OpenCodeServerProtocol.encodeDirectory("/tmp/project")}/session/session-id"
+        val serverRoute = "/server/aHR0cDovLzEyNy4wLjAuMTo2MDQ4Mg/session/ses_child"
 
         assertTrue(OpenCodeServerProtocol.isOpenCodeSessionRouteHref(projectRoute))
         assertTrue(OpenCodeServerProtocol.isOpenCodeSessionRouteHref("http://127.0.0.1:60482$projectRoute"))
+        assertTrue(OpenCodeServerProtocol.isOpenCodeSessionRouteHref(serverRoute))
+        assertTrue(OpenCodeServerProtocol.isOpenCodeSessionRouteHref("http://127.0.0.1:60482$serverRoute"))
+        assertTrue(OpenCodeServerProtocol.isOpenCodeSessionRouteHref("/new-session"))
+        assertTrue(OpenCodeServerProtocol.isOpenCodeSessionRouteHref("/new-session?draftId=abc"))
         assertFalse(OpenCodeServerProtocol.isOpenCodeSessionRouteHref("/tmp/session/readme.md"))
         assertFalse(OpenCodeServerProtocol.isOpenCodeSessionRouteHref("license.md"))
     }
@@ -1276,8 +1284,10 @@ class OpenCodeServerProtocolTest {
     fun resolveFileLinkIgnoresOpenCodeAppSessionRoutes() {
         val projectDir = Files.createTempDirectory("opencode-file-link-test")
         val route = "/${OpenCodeServerProtocol.encodeDirectory(projectDir.toString())}/session/session-id"
+        val serverRoute = "/server/aHR0cDovLzEyNy4wLjAuMTo2MDQ4Mg/session/ses_child"
 
         assertNull(OpenCodeServerProtocol.resolveFileLink(route, projectDir.toString()))
+        assertNull(OpenCodeServerProtocol.resolveFileLink(serverRoute, projectDir.toString()))
     }
 
     @Test
