@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- The panel no longer crashes on IntelliJ IDEA 2026.2 with `NoClassDefFoundError: JBCefBrowser`. JetBrains moved the embedded browser (JCEF) into a separate **Web Browser (JCEF)** plugin; the panel now declares that dependency so the browser classes load again.
+
+### Changed
+
+- Minimum supported IDE version is now **2025.3** (was 2025.2), because the JCEF module dependency is only available from 2025.3.1 onward.
+
 ## [1.7.0] - 2026-07-16
 
 ### Added

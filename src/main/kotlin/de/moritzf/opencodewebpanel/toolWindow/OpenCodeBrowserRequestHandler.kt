@@ -101,7 +101,12 @@ internal class OpenCodeBrowserRequestHandler(
         return callback != null
     }
 
-    override fun onRenderProcessTerminated(browser: CefBrowser?, status: TerminationStatus?) {
+    override fun onRenderProcessTerminated(
+        browser: CefBrowser?,
+        status: TerminationStatus?,
+        errorCode: Int,
+        errorMsg: String?,
+    ) {
         onRenderProcessCrash()
     }
 }

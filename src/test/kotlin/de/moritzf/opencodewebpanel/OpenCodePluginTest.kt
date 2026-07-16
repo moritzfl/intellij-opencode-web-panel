@@ -29,6 +29,8 @@ class OpenCodePluginTest : BasePlatformTestCase() {
 
         assertTrue(pluginXml.contains("<id>de.moritzf.opencodewebpanel</id>"))
         assertTrue(pluginXml.contains("<name>OpenCode Web Panel</name>"))
+        assertTrue(pluginXml.contains("<depends>com.intellij.modules.platform</depends>"))
+        assertTrue(pluginXml.contains("<depends>com.intellij.modules.jcef</depends>"))
         assertTrue(pluginXml.contains("id=\"OpenCode Web Panel\""))
         assertTrue(pluginXml.contains("anchor=\"right\""))
         assertTrue(pluginXml.contains("icon=\"/icons/opencode.svg\""))
