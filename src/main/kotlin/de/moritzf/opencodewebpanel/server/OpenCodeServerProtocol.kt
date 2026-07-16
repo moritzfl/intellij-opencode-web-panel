@@ -146,12 +146,14 @@ internal object OpenCodeServerProtocol {
     fun routeDirectoryFromUrl(frameUrl: String?): String? {
         if (frameUrl.isNullOrBlank()) return null
         return try {
-            val encodedDirectory = URI(frameUrl).path
-                ?.trimStart('/')
-                ?.substringBefore('/')
-                ?.takeIf { it.isNotBlank() }
-                ?: return null
-            decodeDirectory(encodedDirectory)
+            val path = URI(frameUrl).path?.takeIf { it.isNotBlank() } ?: return null
+            // Directoryless 1.18 routes never encode a project directory.
+            if (path == "/new-session" || path.startsWith("/new-session/") || path.startsWith("/server/")) {
+                return null
+            }
+            val encodedDirectory = path.trimStart('/').substringBefore('/').takeIf { it.isNotBlank() } ?: return null
+            val directory = decodeDirectory(encodedDirectory) ?: return null
+            directory.takeIf(::looksLikeAbsoluteFilesystemPath)
         } catch (_: Exception) {
             null
         }
@@ -159,16 +161,27 @@ internal object OpenCodeServerProtocol {
 
     fun isOpenCodeRouteAlreadyOpen(serverUrl: String?, currentUrl: String?, route: String?): Boolean {
         if (!isOpenCodeServerPage(serverUrl, currentUrl)) return false
-        val targetRoute = normalizedRoute(route) ?: return false
-        val currentRoute = normalizedRoute(runCatching { URI(currentUrl).rawPathWithQuery() }.getOrNull()) ?: return false
-        return currentRoute == targetRoute
+        val targetRoute = normalizedRoute(route)
+            ?: normalizedRoute(runCatching { URI(route).rawPathWithQuery() }.getOrNull())
+        val currentRoute = normalizedRoute(runCatching { URI(currentUrl).rawPathWithQuery() }.getOrNull())
+        if (targetRoute != null && currentRoute != null && targetRoute == currentRoute) {
+            return true
+        }
+        // Same session under different path shapes (legacy directory route vs /server/.../session)
+        // still counts as already open — notification clicks must not force a reload. A target that
+        // pins a query (e.g. ?tab=) still requires an exact route match above.
+        if (targetRoute?.contains('?') == true) return false
+        val targetSession = sessionIdFromUrl(route) ?: sessionIdFromUrl(absoluteRouteUrl(serverUrl, route))
+        val currentSession = sessionIdFromUrl(currentUrl)
+        return targetSession != null && currentSession != null && targetSession == currentSession
     }
 
-    /**
-     * Session routes of OpenCode's new layout (`/server/<key>/session/...`, `/new-session`) do not
-     * encode the project directory, so a directory match cannot be verified for them. Callers use
-     * this to treat such routes as valid destinations instead of waiting for a timeout.
-     */
+    private fun absoluteRouteUrl(serverUrl: String?, route: String?): String? {
+        val path = route?.trim()?.takeIf { it.startsWith('/') } ?: return null
+        val root = serverUrl?.let(::buildServerRootUrl) ?: return null
+        return root + path
+    }
+
     fun resolveFileLink(href: String?, projectBasePath: String?): FileLinkTarget? {
         return resolveFileLink(href, projectBasePath, routeBasePath = null)
     }
@@ -864,11 +877,24 @@ internal object OpenCodeServerProtocol {
         return results
     }
 
-    /** Builds the SPA route for a project directory, or one of its sessions if [sessionID] is set. */
-    fun buildSessionRoute(directory: String, sessionID: String?): String {
+    /**
+     * Path-only SPA route for opening a session from a notification.
+     * Prefer the 1.18 `/server/<key>/session/<id>` form when [serverUrl] is known; fall back to the
+     * legacy directory-encoded route only when the origin cannot be derived.
+     */
+    fun buildSessionRoute(serverUrl: String?, directory: String, sessionID: String?): String {
+        if (!serverUrl.isNullOrBlank()) {
+            val path = runCatching { URI(buildServerSessionUrl(serverUrl, sessionID?.takeIf(::isOpenCodeRecordId))).rawPath }
+                .getOrNull()
+            if (!path.isNullOrBlank()) return path
+        }
         val root = "/" + encodeDirectory(directory)
-        if (sessionID.isNullOrBlank()) return root
+        if (sessionID.isNullOrBlank() || !isOpenCodeRecordId(sessionID)) return root
         return root + "/session/" + java.net.URLEncoder.encode(sessionID, StandardCharsets.UTF_8)
+    }
+
+    fun buildSessionRoute(directory: String, sessionID: String?): String {
+        return buildSessionRoute(serverUrl = null, directory = directory, sessionID = sessionID)
     }
 
     /**

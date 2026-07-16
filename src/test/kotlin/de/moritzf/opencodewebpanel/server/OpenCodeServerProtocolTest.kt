@@ -1046,6 +1046,16 @@ class OpenCodeServerProtocolTest {
             "$root/session/ses_1",
             OpenCodeServerProtocol.buildSessionRoute("/tmp/project", "ses_1"),
         )
+        // With a server URL, prefer the 1.18 directoryless route the SPA actually uses.
+        val serverRoute = OpenCodeServerProtocol.buildSessionRoute(
+            "http://127.0.0.1:60482",
+            "/tmp/project",
+            "ses_1",
+        )
+        assertEquals(
+            "/server/${OpenCodeServerProtocol.encodeDirectory("http://127.0.0.1:60482")}/session/ses_1",
+            serverRoute,
+        )
     }
 
     @Test
@@ -1245,6 +1255,13 @@ class OpenCodeServerProtocolTest {
         val url = "http://127.0.0.1:57099/${OpenCodeServerProtocol.encodeDirectory(directory)}/session/license.md"
 
         assertEquals(directory, OpenCodeServerProtocol.routeDirectoryFromUrl(url))
+        // Directoryless 1.18 routes must not invent a project directory from the "server" segment.
+        assertNull(
+            OpenCodeServerProtocol.routeDirectoryFromUrl(
+                "http://127.0.0.1:57099/server/aHR0cDovLzEyNy4wLjAuMTo1NzA5OQ/session/ses_1",
+            ),
+        )
+        assertNull(OpenCodeServerProtocol.routeDirectoryFromUrl("http://127.0.0.1:57099/new-session"))
     }
 
     @Test
@@ -1377,6 +1394,21 @@ class OpenCodeServerProtocolTest {
                 "http://127.0.0.1:60482",
                 "http://127.0.0.1:60482/L3RtcC9wcm9qZWN0/session/ses_123",
                 "/L3RtcC9wcm9qZWN0/session/ses_123",
+            ),
+        )
+        // Same session under the 1.18 server route vs a legacy directory route is already open.
+        assertTrue(
+            OpenCodeServerProtocol.isOpenCodeRouteAlreadyOpen(
+                "http://127.0.0.1:60482",
+                "http://127.0.0.1:60482/server/abc/session/ses_123",
+                "/L3RtcC9wcm9qZWN0/session/ses_123",
+            ),
+        )
+        assertTrue(
+            OpenCodeServerProtocol.isOpenCodeRouteAlreadyOpen(
+                "http://127.0.0.1:60482",
+                "http://127.0.0.1:60482/server/abc/session/ses_123",
+                OpenCodeServerProtocol.buildServerSessionUrl("http://127.0.0.1:60482", "ses_123"),
             ),
         )
     }
