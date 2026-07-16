@@ -107,6 +107,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     private var openProjectScriptScheduled = false
     private var compactLayoutScriptScheduled = false
     private var ideThemeSyncScriptScheduled = false
+    private var hideWebsiteButtonScriptScheduled = false
 
     /**
      * A UI-behavior enhancement injected into the OpenCode page as JavaScript. Instances bundle
@@ -209,6 +210,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                 injectedFeatures.forEach { it.scheduled = false }
                 compactLayoutScriptScheduled = false
                 ideThemeSyncScriptScheduled = false
+                hideWebsiteButtonScriptScheduled = false
                 if (OpenCodeServerProtocol.isOpenCodeServerPage(serverManager.getServerUrl(), frame.url)) {
                     // Also reset the open-project flag: if the initial HTML load outlived all retry
                     // delays scheduled by loadProjectPage, onLoadEnd must be able to reschedule it.
@@ -217,6 +219,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                     localStorageBridge.installSync(frame.url)
                     injectIdeThemeSyncEarly()
                     injectCompactLayoutEarly()
+                    injectHideWebsiteButtonEarly()
                 }
             }
         }
@@ -914,6 +917,22 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         // Re-inject on delays in case the early injection ran before JS context was ready
         scriptScheduler.schedule(script, rootUrl, early = true) {
             OpenCodeSettingsState.getInstance().forceCompactLayout && isBrowserOnOpenCodeServerPage(serverUrl)
+        }
+    }
+
+    private fun injectHideWebsiteButtonEarly() {
+        if (hideWebsiteButtonScriptScheduled) return
+
+        val serverUrl = serverManager.getServerUrl() ?: return
+        val script = OpenCodeBrowserSnippets.buildHideWebsiteButtonScript(enabled = true) ?: return
+        val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
+        hideWebsiteButtonScriptScheduled = true
+
+        // Inject immediately (onLoadStart — before SPA bundle executes)
+        browser.cefBrowser.executeJavaScript(script, rootUrl, 0)
+        // Re-inject on delays in case the early injection ran before JS context was ready
+        scriptScheduler.schedule(script, rootUrl, early = true) {
+            isBrowserOnOpenCodeServerPage(serverUrl)
         }
     }
 

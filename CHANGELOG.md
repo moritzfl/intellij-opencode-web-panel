@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- OpenCode's floating "open the website" button (the circled question mark pinned to the bottom-right corner) is now hidden inside the panel, where it only overlapped the message box and linked out to the website.
+
 ## [1.6.6] - 2026-07-15
 
 ### Fixed

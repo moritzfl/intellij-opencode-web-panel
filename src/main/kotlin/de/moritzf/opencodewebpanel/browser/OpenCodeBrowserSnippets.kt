@@ -541,6 +541,38 @@ internal object OpenCodeBrowserSnippets {
         return script.trimIndent()
     }
 
+    /**
+     * Hides OpenCode's floating "open the website" button (a circled question mark pinned to the
+     * bottom-right corner). Inside the embedded IDE panel it only overlaps the composer and links
+     * out to opencode.ai, so it is always suppressed. The style is re-attached via a
+     * MutationObserver because the SPA can replace the head after the early injection.
+     */
+    fun buildHideWebsiteButtonScript(enabled: Boolean): String? {
+        if (!enabled) return null
+        @Language("JavaScript")
+        val script = """
+            (() => {
+              if (window.__opencodeIntellijHideWebsiteButtonInstalled) return;
+              window.__opencodeIntellijHideWebsiteButtonInstalled = true;
+              const style = document.createElement('style');
+              style.id = 'opencode-intellij-hide-website-button';
+              style.textContent = 'a[data-component="icon-button-v2"][href="https://opencode.ai"] { display: none !important; }';
+              const ensureStyle = () => {
+                const parent = document.head || document.documentElement;
+                if (!parent) return false;
+                if (!style.isConnected) parent.appendChild(style);
+                return true;
+              };
+              if (!ensureStyle()) {
+                const observer = new MutationObserver(() => { if (ensureStyle()) observer.disconnect(); });
+                observer.observe(document, { childList: true, subtree: true });
+              }
+              document.addEventListener('DOMContentLoaded', ensureStyle, { once: true });
+            })();
+        """
+        return script.trimIndent()
+    }
+
     fun buildIdeThemeSyncScript(enabled: Boolean, dark: Boolean): String? {
         if (!enabled) return null
         val darkLiteral = dark.toString()
