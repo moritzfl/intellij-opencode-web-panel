@@ -51,6 +51,18 @@ internal object OpenCodeServerProtocol {
         return "$root/${encodeDirectory(projectBasePath)}/session"
     }
 
+    /**
+     * The opencode 1.18 web UI routes sessions under `/server/<serverKey>/session[/<id>]`, where
+     * `serverKey` is the base64url (no padding) of the server origin — the SPA computes it exactly
+     * like [encodeDirectory]. This is the route the plugin boots and navigates to; the older
+     * `/<encodedDir>/session` project route is only kept as a redirect by the SPA and, without a
+     * session id, crashes its error boundary, so the plugin no longer uses it.
+     */
+    fun buildServerSessionUrl(serverUrl: String, sessionId: String? = null): String {
+        val base = "${buildServerRootUrl(serverUrl)}/server/${encodeDirectory(buildOrigin(serverUrl))}/session"
+        return if (sessionId.isNullOrBlank()) base else "$base/$sessionId"
+    }
+
     fun localFileDropText(file: File, projectBasePath: String?): String? {
         val projectRoot = projectBasePath?.takeIf { it.isNotBlank() }?.let { Path.of(it).toAbsolutePath().normalize() }
             ?: return null

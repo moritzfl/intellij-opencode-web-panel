@@ -14,6 +14,7 @@
 
 ### Fixed
 
+- Fixed frequent "Failed to send prompt / Unable to retrieve session" errors with OpenCode 1.18. The panel was opening on a route that crashes OpenCode 1.18's web UI on load, which left it unable to send messages; the panel now opens on the route OpenCode 1.18 expects and reliably lands on your most recent conversation.
 - The IDE now reliably refreshes its files and version-control view after OpenCode edits, patches, or commits — including after a commit, which previously often left the Changes/Local Changes view stale until a manual refresh. Updates are debounced, so a burst of edits in one turn no longer triggers repeated refreshes.
 - This refresh no longer depends on the "Show agent status on the tool window icon" setting; it now works even with that badge turned off.
 

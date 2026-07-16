@@ -642,14 +642,13 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     private fun loadProjectPage() {
         if (isContentDisposed()) return
         val serverUrl = serverManager.getServerUrl() ?: return
-        // Load the project's directory route directly instead of the server root: at the root
-        // the SPA restores its own last project from the (application-shared, persistent)
-        // browser profile, which is another IDE project's directory when several projects are
-        // open - or a stale path after the project directory was renamed. Verified live: a
-        // cold document load on the directory route wins over the SPA's own stale state.
-        // The open-project script then only refines the destination (most recent
-        // conversation, seeding).
-        val url = OpenCodeServerProtocol.buildProjectUrl(serverUrl, openCodeProjectDirectory())
+        // Boot on the native 1.18 server session route (/server/<serverKey>/session), not the
+        // legacy project directory route (/<encodedDir>/session). Cold-loading the bare directory
+        // route crashes opencode 1.18.x's application error boundary (it redirects to /new-session
+        // and throws), which leaves the SPA session store uninitialized so every later "send"
+        // fails with "Unable to retrieve session". The server route loads cleanly; the open-project
+        // script seeds this project and navigates to the most recent conversation when one exists.
+        val url = OpenCodeServerProtocol.buildServerSessionUrl(serverUrl)
 
         thisLogger().info("Loading OpenCode project page")
         showCenterCard(BROWSER_CARD)

@@ -282,27 +282,40 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
-    fun buildOpenProjectScriptSeedsProjectStateAndNavigatesToSessionRoute() {
+    fun buildServerSessionUrlBuildsTheNativeServerRoute() {
+        // serverKey is base64url (no padding) of the origin - the same encoding the SPA uses.
+        assertEquals(
+            "http://127.0.0.1:60482/server/aHR0cDovLzEyNy4wLjAuMTo2MDQ4Mg/session",
+            OpenCodeServerProtocol.buildServerSessionUrl("http://127.0.0.1:60482/"),
+        )
+        assertEquals(
+            "http://127.0.0.1:60482/server/aHR0cDovLzEyNy4wLjAuMTo2MDQ4Mg/session/ses_abc123",
+            OpenCodeServerProtocol.buildServerSessionUrl("http://127.0.0.1:60482/", "ses_abc123"),
+        )
+    }
+
+    @Test
+    fun buildOpenProjectScriptSeedsProjectState() {
         val script = OpenCodeBrowserSnippets.buildOpenProjectScript("/tmp/my 'project'", "http://127.0.0.1:60482/")!!
 
         assertTrue(script.contains("if (window.location.origin !== 'http://127.0.0.1:60482') return;"))
         assertTrue(script.contains("opencode.global.dat:server"))
-        assertTrue(script.contains("opencode.global.dat:layout.page"))
         assertTrue(script.contains("opencode.intellij.project.opened:"))
-        assertTrue(script.contains("const openMostRecentConversation = false"))
-        assertTrue(script.contains("const setNavigationState = (value)"))
-        assertTrue(script.contains("if (getNavigationState() === path && !keepWaitingForRecentSession) return"))
         assertTrue(script.contains("state.projects[scope]"))
         assertTrue(script.contains("state.lastProject[scope] = directory"))
-        assertTrue(script.contains("if (window.location.pathname !== path)"))
-        assertTrue(script.contains("window.location.assign(path)"))
-        assertTrue(script.contains("const onProjectSessionRoute = window.location.pathname === projectPath"))
-        assertFalse(script.contains("window.location.reload()"))
-        assertTrue(script.contains("const projectPath = '/L3RtcC9teSAncHJvamVjdCc/session'"))
+        assertTrue(script.contains("{ worktree: directory, expanded: true }"))
         assertTrue(script.contains("const directory = '/tmp/my \\'project\\''"))
-        assertTrue(script.contains("onSameProjectRoute"))
-        assertTrue(script.contains("decodeRouteDirectory"))
-        assertTrue(script.contains("comparableDirectory"))
+        // Without a resolved recent session the injected id is empty, so the runtime guard skips
+        // navigation and the script only seeds.
+        assertTrue(script.contains("const sessionId = ''"))
+        assertTrue(script.contains("if (!sessionId) return;"))
+        assertFalse(script.contains("window.location.reload()"))
+        // The legacy directory-route machinery is gone (only the 1.18 server route is used).
+        assertFalse(script.contains("projectPath"))
+        assertFalse(script.contains("findLastProjectSession"))
+        assertFalse(script.contains("directorylessProject"))
+        assertFalse(script.contains("shouldKeepWaitingForRecentSession"))
+        assertFalse(script.contains("onSameProjectRoute"))
     }
 
     @Test
@@ -312,41 +325,7 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
-    fun buildOpenProjectScriptCorrectsDirectorylessRoutesShowingAnotherProject() {
-        val script = OpenCodeBrowserSnippets.buildOpenProjectScript("/tmp/project", "http://127.0.0.1:60482/")!!
-
-        // The SPA's pre-seed lastProject is the only trace of which project a directoryless
-        // route (/server/<id>/session..., /new-session) shows; it must be captured before the
-        // seeding overwrites it, and a mismatch must fall through to the navigation below.
-        assertTrue(script.contains("let directorylessProject = ''"))
-        val captureIndex = script.indexOf("if (typeof lastProject === 'string') directorylessProject = lastProject")
-        val seedIndex = script.indexOf("state.lastProject[scope] = directory")
-        assertTrue(captureIndex in 0 until seedIndex)
-        assertTrue(script.contains("const onDirectorylessSessionRoute ="))
-        assertTrue(script.contains("""/^\/server\/[^\/]+\/session(?:\/|$)/"""))
-        assertTrue(script.contains("""/^\/new-session(?:\/|$)/"""))
-        assertTrue(script.contains("pathKey(directorylessProject) === pathKey(directory)"))
-    }
-
-    @Test
-    fun buildOpenProjectScriptCanOpenMostRecentProjectConversation() {
-        val script = OpenCodeBrowserSnippets.buildOpenProjectScript(
-            "/tmp/project",
-            "http://127.0.0.1:60482/",
-            openMostRecentConversation = true,
-        )!!
-
-        assertTrue(script.contains("const openMostRecentConversation = true"))
-        assertTrue(script.contains("let foundRecentSession = false"))
-        assertTrue(script.contains("foundRecentSession = true"))
-        assertTrue(script.contains("const findLastProjectSession = (layout)"))
-        assertTrue(script.contains("layout.lastProjectSession[directory]"))
-        assertTrue(script.contains("Object.entries(layout.lastProjectSession)"))
-        assertTrue(script.contains("'/session/' + encodeURIComponent(session.id)"))
-    }
-
-    @Test
-    fun buildOpenProjectScriptPrefersServerResolvedMostRecentSession() {
+    fun buildOpenProjectScriptNavigatesToTheNativeServerSessionRoute() {
         val script = OpenCodeBrowserSnippets.buildOpenProjectScript(
             "/tmp/project",
             "http://127.0.0.1:60482/",
@@ -354,11 +333,30 @@ class OpenCodeServerProtocolTest {
             mostRecentSessionId = "ses_abc123",
         )!!
 
-        assertTrue(script.contains("const providedSessionId = 'ses_abc123'"))
-        assertTrue(script.contains("if (openMostRecentConversation && providedSessionId)"))
-        assertTrue(script.contains("'/session/' + encodeURIComponent(providedSessionId)"))
-        // The localStorage layout lookup stays available as the fallback path.
-        assertTrue(script.contains("const findLastProjectSession = (layout)"))
+        assertTrue(script.contains("const sessionId = 'ses_abc123'"))
+        assertTrue(script.contains("const encodeServerKey = (value)"))
+        assertTrue(script.contains("btoa(binary).replace(/\\+/g, '-').replace(/\\//g, '_')"))
+        assertTrue(
+            script.contains(
+                "const target = '/server/' + encodeServerKey(window.location.origin) + '/session/' + encodeURIComponent(sessionId)",
+            ),
+        )
+        assertTrue(script.contains("window.location.assign(target)"))
+        // The delayed re-runs must not yank the user out of a conversation they are viewing.
+        assertTrue(script.contains("""const onConversation = /\/session\/[^/?#]/.test(window.location.pathname)"""))
+    }
+
+    @Test
+    fun buildOpenProjectScriptDoesNotNavigateWithoutARecentSession() {
+        val script = OpenCodeBrowserSnippets.buildOpenProjectScript(
+            "/tmp/project",
+            "http://127.0.0.1:60482/",
+            openMostRecentConversation = true,
+        )!!
+
+        // No resolved session id => the runtime guard returns before the navigation block runs.
+        assertTrue(script.contains("const sessionId = ''"))
+        assertTrue(script.contains("if (!sessionId) return;"))
     }
 
     @Test
@@ -370,55 +368,22 @@ class OpenCodeServerProtocolTest {
             mostRecentSessionId = "ses_'; alert(1); '",
         )!!
 
-        assertTrue(script.contains("const providedSessionId = ''"))
+        assertTrue(script.contains("const sessionId = ''"))
         assertFalse(script.contains("alert(1)"))
     }
 
     @Test
-    fun buildOpenProjectScriptRetriesUntilRecentSessionIsRestored() {
+    fun buildOpenProjectScriptOnlyOpensRecentConversationWhenEnabled() {
+        // A valid id is ignored unless opening the most recent conversation is enabled.
         val script = OpenCodeBrowserSnippets.buildOpenProjectScript(
             "/tmp/project",
             "http://127.0.0.1:60482/",
-            openMostRecentConversation = true,
+            openMostRecentConversation = false,
+            mostRecentSessionId = "ses_abc123",
         )!!
 
-        assertTrue(script.contains("const navigationPendingUntilKey = navigationKey + ':pending-until'"))
-        assertTrue(script.contains("pendingUntil = now + 10000"))
-        assertTrue(script.contains("const keepWaitingForRecentSession = shouldKeepWaitingForRecentSession()"))
-        assertTrue(script.contains("if (!keepWaitingForRecentSession) setNavigationState(path)"))
-        assertFalse(script.contains("getNavigationState() === 'complete'"))
-        assertFalse(script.contains("setNavigationState('complete')"))
-    }
-
-    @Test
-    fun buildOpenProjectScriptNeverNavigatesAwayFromAnOpenConversation() {
-        val script = OpenCodeBrowserSnippets.buildOpenProjectScript(
-            "/tmp/project",
-            "http://127.0.0.1:60482/",
-            openMostRecentConversation = true,
-        )!!
-
-        // The stay-on-conversation guard must apply even when a most-recent session is known;
-        // otherwise the delayed script runs yank the user out of a conversation they opened.
-        assertTrue(script.contains("if (window.location.pathname !== projectPath && onProjectSessionRoute) {"))
-        assertFalse(script.contains("onProjectSessionRoute && !foundRecentSession"))
-    }
-
-    @Test
-    fun buildOpenProjectScriptNormalizesLastProjectSessionLookupKey() {
-        val script = OpenCodeBrowserSnippets.buildOpenProjectScript(
-            "/tmp/project",
-            "http://127.0.0.1:60482/",
-            openMostRecentConversation = true,
-        )!!
-
-        assertTrue(script.contains("const pathKey = (value)"))
-        assertTrue(script.contains("text.startsWith('\\\\\\\\')"))
-        assertTrue(script.contains("text.replace(/\\\\/g, '/')"))
-        assertTrue(script.contains("pathKey(key) === targetKey"))
-        // The stored session's own directory must match the panel's project, so a stale
-        // layout entry can never navigate the panel to another project's session.
-        assertTrue(script.contains("pathKey(value.directory) === targetKey"))
+        assertTrue(script.contains("const sessionId = ''"))
+        assertFalse(script.contains("ses_abc123"))
     }
 
     @Test

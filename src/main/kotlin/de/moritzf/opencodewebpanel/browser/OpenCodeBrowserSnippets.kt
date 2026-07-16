@@ -98,6 +98,16 @@ internal object OpenCodeBrowserSnippets {
         }
     }
 
+    /**
+     * Seeds the opencode SPA's project state for [projectBasePath] and, when the IDE resolved the
+     * most recent conversation, navigates the panel to it once.
+     *
+     * This targets only the opencode 1.18 UI. Sessions live under `/server/<serverKey>/session/<id>`
+     * (the SPA derives `serverKey` from its own origin exactly like this script does), so the panel
+     * navigates straight there. The legacy `/<encodedDir>/session` project route is deliberately not
+     * used: without a session id it crashes the SPA's error boundary, which then leaves every "send"
+     * failing with "Unable to retrieve session".
+     */
     fun buildOpenProjectScript(
         projectBasePath: String?,
         serverUrl: String? = null,
@@ -107,10 +117,9 @@ internal object OpenCodeBrowserSnippets {
         if (projectBasePath.isNullOrBlank()) return null
         val directory = escapeJavaScript(projectBasePath)
         val providedSessionId = mostRecentSessionId
-            ?.takeIf { OpenCodeServerProtocol.isOpenCodeRecordId(it) }
+            ?.takeIf { openMostRecentConversation && OpenCodeServerProtocol.isOpenCodeRecordId(it) }
             ?.let(::escapeJavaScript)
             .orEmpty()
-        val escapedProjectPath = escapeJavaScript("/${OpenCodeServerProtocol.encodeDirectory(projectBasePath)}/session")
         val originGuard = serverUrl?.let(OpenCodeServerProtocol::buildOrigin)
             ?.let(::escapeJavaScript)
             ?.let {
@@ -119,122 +128,18 @@ internal object OpenCodeBrowserSnippets {
                 guard
             }
             .orEmpty()
-        val openMostRecentConversationLiteral = openMostRecentConversation.toString()
         @Language("JavaScript")
         val script = """
             (() => {
               const directory = '$directory';
-              const projectPath = '$escapedProjectPath';
-              let path = projectPath;
-              const storageKey = 'opencode.global.dat:server';
-              const layoutStorageKey = 'opencode.global.dat:layout.page';
+              const sessionId = '$providedSessionId';
               const scope = 'local';
-              const openMostRecentConversation = $openMostRecentConversationLiteral;
-              let foundRecentSession = false;
-              const routeDirectory = (value) => {
-                const bytes = new TextEncoder().encode(value);
-                let binary = '';
-                bytes.forEach((byte) => binary += String.fromCharCode(byte));
-                return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+${'$'}/g, '');
-              };
-              $DECODE_ROUTE_DIRECTORY_JS
-              const comparableDirectory = (value) => {
-                const normalized = String(value || '').trim().replace(/\\/g, '/').replace(/\/+$/, '');
-                return /^[A-Za-z]:\//.test(normalized) ? normalized[0].toLowerCase() + normalized.slice(1) : normalized;
-              };
-              const pathKey = (value) => {
-                const text = String(value || '');
-                const isWindows = (text.length >= 2 && text.charAt(1) === ':') || text.startsWith('\\\\');
-                let normalized = isWindows ? text.replace(/\\/g, '/') : text;
-                while (normalized.endsWith('/')) normalized = normalized.slice(0, -1);
-                if (!normalized && text.startsWith('/')) return '/';
-                if (/^[A-Za-z]:$/.test(normalized)) return normalized + '/';
-                return normalized;
-              };
-              const findLastProjectSession = (layout) => {
-                if (!layout || typeof layout.lastProjectSession !== 'object' || layout.lastProjectSession === null) return undefined;
-                const targetKey = pathKey(directory);
-                // The session's own directory must also match this panel's project: the value is
-                // the navigation target, and a stale or inconsistent entry must never send the
-                // panel to another project's session.
-                const isUsable = (value) => value && typeof value.directory === 'string' && typeof value.id === 'string' && pathKey(value.directory) === targetKey;
-                const raw = layout.lastProjectSession[directory];
-                if (isUsable(raw)) return raw;
-                for (const [key, value] of Object.entries(layout.lastProjectSession)) {
-                  if (pathKey(key) === targetKey && isUsable(value)) {
-                    return value;
-                  }
-                }
-                return undefined;
-              };
-              const currentRouteDirectory = () => {
-                const match = /^\/([^/?#]+)\/session(?:[/?#]|${'$'})/.exec(window.location.pathname);
-                return match ? decodeRouteDirectory(match[1]) : '';
-              };
-              const onSameProjectRoute = () => comparableDirectory(currentRouteDirectory()) === comparableDirectory(directory);
-              // The session with the newest message, resolved server-side by the IDE. The
-              // localStorage layout below only knows the session this panel viewed last and
-              // serves as the fallback when the server lookup failed.
-              const providedSessionId = '$providedSessionId';
-              if (openMostRecentConversation && providedSessionId) {
-                foundRecentSession = true;
-                path = '/' + routeDirectory(directory) + '/session/' + encodeURIComponent(providedSessionId);
-              } else if (openMostRecentConversation) {
-                try {
-                  const rawLayout = window.localStorage.getItem(layoutStorageKey);
-                  const layout = rawLayout ? JSON.parse(rawLayout) : undefined;
-                  const session = findLastProjectSession(layout);
-                  if (session) {
-                    foundRecentSession = true;
-                    path = '/' + routeDirectory(session.directory) + '/session/' + encodeURIComponent(session.id);
-                  }
-                } catch (_) {}
-              }
-              const navigationKey = 'opencode.intellij.project.opened:' + directory;
-              const navigationPendingUntilKey = navigationKey + ':pending-until';
-              const getNavigationState = () => {
-                try {
-                  return window.sessionStorage.getItem(navigationKey);
-                } catch (_) {
-                  return undefined;
-                }
-              };
-              const setNavigationState = (value) => {
-                try {
-                  window.sessionStorage.setItem(navigationKey, value);
-                } catch (_) {}
-              };
-              const shouldKeepWaitingForRecentSession = () => {
-                if (!openMostRecentConversation || foundRecentSession) return false;
-                try {
-                  let pendingUntil = Number(window.sessionStorage.getItem(navigationPendingUntilKey) || '0');
-                  const now = Date.now();
-                  if (!Number.isFinite(pendingUntil) || pendingUntil <= 0) {
-                    pendingUntil = now + 10000;
-                    window.sessionStorage.setItem(navigationPendingUntilKey, String(pendingUntil));
-                  }
-                  return now < pendingUntil;
-                } catch (_) {
-                  return false;
-                }
-              };
               $originGuard
-              // The redesigned layout uses directoryless routes (/server/<id>/session...,
-              // /new-session) whose project is the SPA's own current project. Its only
-              // pre-navigation trace is the persisted lastProject entry - capture it before
-              // the seeding below overwrites it, so a panel can tell whether such a route
-              // already shows its project or a stale/foreign one (e.g. after a directory
-              // rename or when another IDE project seeded the shared browser profile last).
-              let directorylessProject = '';
+              // The panel's browser profile is shared by every IDE project, so seed this project as
+              // the last-opened one. That scopes the SPA's directoryless (/server/<key>/session)
+              // routes to this project and lists it, without disturbing the other projects.
               try {
-                const rawServerState = window.localStorage.getItem(storageKey);
-                const serverState = rawServerState ? JSON.parse(rawServerState) : undefined;
-                const lastProject = serverState && serverState.lastProject && typeof serverState.lastProject === 'object'
-                  ? serverState.lastProject[scope]
-                  : undefined;
-                if (typeof lastProject === 'string') directorylessProject = lastProject;
-              } catch (_) {}
-              try {
+                const storageKey = 'opencode.global.dat:server';
                 const raw = window.localStorage.getItem(storageKey);
                 const state = raw ? JSON.parse(raw) : { list: [], projects: {}, lastProject: {} };
                 state.list = Array.isArray(state.list) ? state.list : [];
@@ -252,45 +157,28 @@ internal object OpenCodeBrowserSnippets {
                   window.console.warn('Failed to seed OpenCode project state', error);
                 }
               }
-              const projectSessionPrefix = projectPath + '/';
-              const onProjectSessionRoute = window.location.pathname === projectPath || window.location.pathname.startsWith(projectSessionPrefix);
-              const keepWaitingForRecentSession = shouldKeepWaitingForRecentSession();
-              if (getNavigationState() === path && !keepWaitingForRecentSession) return;
-              if (onSameProjectRoute() && !keepWaitingForRecentSession && !foundRecentSession) {
-                setNavigationState(window.location.pathname);
+              // Open the IDE-resolved most recent conversation, once. The serverKey is base64url of
+              // the origin (no padding) - the exact encoding the SPA uses for these routes.
+              if (!sessionId) return;
+              const encodeServerKey = (value) => {
+                const bytes = new TextEncoder().encode(value);
+                let binary = '';
+                bytes.forEach((byte) => binary += String.fromCharCode(byte));
+                return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+${'$'}/g, '');
+              };
+              const target = '/server/' + encodeServerKey(window.location.origin) + '/session/' + encodeURIComponent(sessionId);
+              const navigationKey = 'opencode.intellij.project.opened:' + directory;
+              let alreadyOpened = false;
+              try { alreadyOpened = window.sessionStorage.getItem(navigationKey) === target; } catch (_) {}
+              // The script re-runs on a delay; never yank the user out of a conversation they are
+              // already viewing, and navigate at most once.
+              const onConversation = /\/session\/[^/?#]/.test(window.location.pathname);
+              if (alreadyOpened || window.location.pathname === target || onConversation) {
+                try { window.sessionStorage.setItem(navigationKey, target); } catch (_) {}
                 return;
               }
-              if (window.location.pathname === path) {
-                if (!keepWaitingForRecentSession) setNavigationState(path);
-                return;
-              }
-              if (window.location.pathname !== projectPath && onProjectSessionRoute) {
-                // Already viewing a specific conversation of this project (possibly opened by
-                // the user between scheduled runs of this script) - never navigate away from it.
-                setNavigationState(window.location.pathname);
-                return;
-              }
-              const onDirectorylessSessionRoute =
-                /^\/server\/[^\/]+\/session(?:\/|${'$'})/.test(window.location.pathname) ||
-                /^\/new-session(?:\/|${'$'})/.test(window.location.pathname);
-              const onDirectorylessConversation =
-                /^\/server\/[^\/]+\/session\/[^\/?#]/.test(window.location.pathname) ||
-                /^\/new-session(?:\/|${'$'})/.test(window.location.pathname);
-              if (onDirectorylessSessionRoute && directorylessProject && pathKey(directorylessProject) === pathKey(directory)) {
-                // The directoryless route already shows this panel's project: stay on a viewed
-                // conversation or new-session composer; from the bare project root, still move
-                // to the most recent conversation once one is known.
-                if (onDirectorylessConversation || !foundRecentSession) {
-                  setNavigationState(window.location.pathname);
-                  return;
-                }
-              }
-              if (window.location.pathname !== path) {
-                if (!keepWaitingForRecentSession) setNavigationState(path);
-                window.location.assign(path);
-                return;
-              }
-              if (!keepWaitingForRecentSession) setNavigationState(path);
+              try { window.sessionStorage.setItem(navigationKey, target); } catch (_) {}
+              window.location.assign(target);
             })();
         """
         return script.trimIndent()
