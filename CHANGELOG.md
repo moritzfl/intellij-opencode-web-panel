@@ -11,7 +11,7 @@
 
 ### Changed
 
-- OpenCode's floating "open the website" button (the circled question mark pinned to the bottom-right corner) is now hidden inside the panel, where it only overlapped the message box and linked out to the website.
+- OpenCode's floating "open the website" button (the circled question mark pinned to the bottom-right corner) is now hidden inside the panel, where it only overlapped the message box and linked out to the website. The hide rule is re-applied if OpenCode's SPA replaces the page head, so the button no longer reappears after navigation.
 
 ### Fixed
 

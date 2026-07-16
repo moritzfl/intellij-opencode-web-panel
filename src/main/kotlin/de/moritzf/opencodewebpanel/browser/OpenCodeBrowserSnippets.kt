@@ -432,8 +432,11 @@ internal object OpenCodeBrowserSnippets {
     /**
      * Hides OpenCode's floating "open the website" button (a circled question mark pinned to the
      * bottom-right corner). Inside the embedded IDE panel it only overlaps the composer and links
-     * out to opencode.ai, so it is always suppressed. The style is re-attached via a
-     * MutationObserver because the SPA can replace the head after the early injection.
+     * out to opencode.ai, so it is always suppressed.
+     *
+     * Matches both the exact HelpButton markup (`aria-label` / `data-component` / href) and a
+     * position-based fallback. Style is kept alive with a permanent MutationObserver because the
+     * SPA can replace `<head>` after early injection (a one-shot observer is not enough).
      */
     fun buildHideWebsiteButtonScript(enabled: Boolean): String? {
         if (!enabled) return null
@@ -442,20 +445,41 @@ internal object OpenCodeBrowserSnippets {
             (() => {
               if (window.__opencodeIntellijHideWebsiteButtonInstalled) return;
               window.__opencodeIntellijHideWebsiteButtonInstalled = true;
-              const style = document.createElement('style');
-              style.id = 'opencode-intellij-hide-website-button';
-              style.textContent = 'a[data-component="icon-button-v2"][href="https://opencode.ai"] { display: none !important; }';
+              const STYLE_ID = 'opencode-intellij-hide-website-button';
+              const CSS = [
+                'a[aria-label="Open the OpenCode website"]',
+                'a[data-component="icon-button-v2"][href^="https://opencode.ai"]',
+                'a[href="https://opencode.ai"].fixed.bottom-5.right-5',
+                'a[href="https://opencode.ai/"].fixed.bottom-5.right-5',
+              ].join(', ') + ' { display: none !important; visibility: hidden !important; pointer-events: none !important; }';
               const ensureStyle = () => {
                 const parent = document.head || document.documentElement;
                 if (!parent) return false;
+                let style = document.getElementById(STYLE_ID);
+                if (!style) {
+                  style = document.createElement('style');
+                  style.id = STYLE_ID;
+                  style.textContent = CSS;
+                }
                 if (!style.isConnected) parent.appendChild(style);
+                else if (style.textContent !== CSS) style.textContent = CSS;
                 return true;
               };
-              if (!ensureStyle()) {
-                const observer = new MutationObserver(() => { if (ensureStyle()) observer.disconnect(); });
-                observer.observe(document, { childList: true, subtree: true });
-              }
-              document.addEventListener('DOMContentLoaded', ensureStyle, { once: true });
+              const hideNodes = () => {
+                document.querySelectorAll(
+                  'a[aria-label="Open the OpenCode website"], a[data-component="icon-button-v2"][href^="https://opencode.ai"]'
+                ).forEach((el) => {
+                  el.style.setProperty('display', 'none', 'important');
+                  el.style.setProperty('visibility', 'hidden', 'important');
+                  el.style.setProperty('pointer-events', 'none', 'important');
+                });
+              };
+              const apply = () => { ensureStyle(); hideNodes(); };
+              apply();
+              const observer = new MutationObserver(apply);
+              const root = document.documentElement || document;
+              observer.observe(root, { childList: true, subtree: true });
+              document.addEventListener('DOMContentLoaded', apply, { once: true });
             })();
         """
         return script.trimIndent()
