@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [1.7.1] - 2026-07-16
+
 ### Fixed
 
 - The panel no longer crashes on IntelliJ IDEA 2026.2 with `NoClassDefFoundError: JBCefBrowser`. JetBrains moved the embedded browser (JCEF) into a separate **Web Browser (JCEF)** plugin; the panel now declares that dependency so the browser classes load again.
@@ -349,7 +351,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.7.0...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.7.1...HEAD
+[1.7.1]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.7.0...1.7.1
 [1.7.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.6.6...1.7.0
 [1.6.6]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.6.5...1.6.6
 [1.6.5]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.6.4...1.6.5
