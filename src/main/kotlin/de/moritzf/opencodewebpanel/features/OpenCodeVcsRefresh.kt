@@ -8,12 +8,15 @@ import com.intellij.openapi.vfs.VfsUtil
 import java.nio.file.Path
 
 /**
- * Refreshes the IDE's virtual file system and VCS change detection after the OpenCode agent
- * finishes a turn, so that file modifications and commits made by the agent are reflected in
- * the project view and VCS changelists without a manual refresh.
+ * Refreshes the IDE's virtual file system after the OpenCode agent touches the working tree, so
+ * file modifications, patches, and commits made by the agent are reflected in the project view and
+ * the VCS view without a manual refresh. Driven (debounced) by [OpenCodeWorkspaceRefreshCoordinator].
  *
- * Uses only platform-level APIs (async VFS refresh) so no VCS plugin dependency is required.
- * In IDEs with VCS support, the refresh triggers VCS file listeners and changelist updates.
+ * The recursive refresh marks the project subtree dirty and reloads directory contents, which
+ * includes `.git` — so an edit changes a working-tree file's content and a commit changes
+ * `.git` (index/HEAD/refs). The IDE's VCS integration watches those VFS changes and refreshes its
+ * own view automatically, so this class needs only the platform VFS API and takes no dependency
+ * on any VCS plugin.
  */
 internal class OpenCodeVcsRefresh(private val project: Project) {
 
@@ -27,10 +30,12 @@ internal class OpenCodeVcsRefresh(private val project: Project) {
                 val virtualFile = LocalFileSystem.getInstance().findFileByNioFile(basePath) ?: return@invokeLater
                 // async = true: a synchronous recursive refresh of the whole project would
                 // block the EDT for seconds on large projects after every agent turn.
+                // recursive + reloadChildren so `.git` is refreshed too, letting the IDE's VCS
+                // integration pick up commits (which change no working-tree file) on its own.
                 VfsUtil.markDirtyAndRefresh(true, true, true, virtualFile)
-                thisLogger().info("Scheduled project files refresh after OpenCode agent turn")
+                thisLogger().info("Scheduled project files refresh after OpenCode workspace change")
             } catch (e: Exception) {
-                thisLogger().warn("Failed to refresh project files after OpenCode agent turn", e)
+                thisLogger().warn("Failed to refresh project files after OpenCode workspace change", e)
             }
         }
     }
