@@ -108,6 +108,9 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     private val openProjectAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
     private val scriptScheduler = OpenCodeBrowserScriptScheduler(project, browser, openProjectAlarm)
     private var openProjectScriptScheduled = false
+    /** Most-recent session resolved for the current page load (avoids a second REST fetch). */
+    private var pendingMostRecentSessionId: String? = null
+    private var pendingOpenMostRecentConversation = false
     private var compactLayoutScriptScheduled = false
     private var ideThemeSyncScriptScheduled = false
     private var hideWebsiteButtonScriptScheduled = false
@@ -218,8 +221,9 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                 ideThemeSyncScriptScheduled = false
                 hideWebsiteButtonScriptScheduled = false
                 if (OpenCodeServerProtocol.isOpenCodeServerPage(serverManager.getServerUrl(), frame.url)) {
-                    // Also reset the open-project flag: if the initial HTML load outlived all retry
-                    // delays scheduled by loadProjectPage, onLoadEnd must be able to reschedule it.
+                    // Drop any previous open-project delay series so navigations do not stack injects.
+                    // Reset the flag so onLoadEnd can schedule a fresh series for this document.
+                    openProjectAlarm.cancelAllRequests()
                     openProjectScriptScheduled = false
                     localStorageBridge.restore(frame.url)
                     localStorageBridge.installSync(frame.url)
@@ -669,6 +673,8 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         thisLogger().info("Loading OpenCode project page")
         showCenterCard(BROWSER_CARD)
         openProjectScriptScheduled = false
+        pendingMostRecentSessionId = null
+        pendingOpenMostRecentConversation = false
         injectedFeatures.forEach { it.scheduled = false }
         compactLayoutScriptScheduled = false
         ideThemeSyncScriptScheduled = false
@@ -681,11 +687,13 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
 
         val openMostRecent = OpenCodeSettingsState.getInstance().openMostRecentConversationOnStartup
         val projectDirectory = openCodeProjectDirectory()?.takeIf { it.isNotBlank() }
+        pendingOpenMostRecentConversation = openMostRecent
         if (openMostRecent && projectDirectory != null) {
             ApplicationManager.getApplication().executeOnPooledThread {
                 val sessionId = fetchMostRecentSessionId(serverUrl, projectDirectory)
                 ApplicationManager.getApplication().invokeLater {
                     if (isContentDisposed()) return@invokeLater
+                    pendingMostRecentSessionId = sessionId
                     loadProjectPageAt(serverUrl, sessionId)
                 }
             }
@@ -698,8 +706,8 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         if (isContentDisposed()) return
         val url = OpenCodeServerProtocol.buildServerSessionUrl(serverUrl, sessionId)
         loadedServerRootUrl = url
+        // Open-project inject is scheduled from onLoadEnd so it is not stacked with a pre-load series.
         browser.loadURL(url)
-        scheduleOpenProjectScript()
     }
 
     private fun clearStaleBrowserPage(state: OpenCodeServerLifecycleState) {
@@ -761,18 +769,26 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         val projectDirectory = openCodeProjectDirectory()?.takeIf { it.isNotBlank() } ?: return
         openProjectScriptScheduled = true
 
-        if (!OpenCodeSettingsState.getInstance().openMostRecentConversationOnStartup) {
+        val openMostRecent = pendingOpenMostRecentConversation ||
+            OpenCodeSettingsState.getInstance().openMostRecentConversationOnStartup
+        if (!openMostRecent) {
             scheduleOpenProjectScript(serverUrl, projectDirectory, openMostRecentConversation = false, mostRecentSessionId = null)
             return
         }
-        // "Most recent conversation" means the session with the newest message, which only the
-        // server knows (`time.updated`); the mirrored localStorage only remembers the session
-        // this panel viewed last. Resolve it off the EDT, then fall back to the localStorage
-        // lookup inside the script when the fetch failed.
+        // Prefer the id resolved for this page load (boot already fetched it). Only re-fetch when
+        // a plain reload left the pending id unset (e.g. user turned the setting on mid-session).
+        val pendingId = pendingMostRecentSessionId
+        if (pendingId != null || pendingOpenMostRecentConversation) {
+            scheduleOpenProjectScript(serverUrl, projectDirectory, openMostRecentConversation = true, mostRecentSessionId = pendingId)
+            return
+        }
         ApplicationManager.getApplication().executeOnPooledThread {
             val sessionId = fetchMostRecentSessionId(serverUrl, projectDirectory)
             ApplicationManager.getApplication().invokeLater {
                 if (isContentDisposed()) return@invokeLater
+                pendingMostRecentSessionId = sessionId
+                // loadStart may have cleared the flag for a newer document; onLoadEnd will reschedule.
+                if (!openProjectScriptScheduled) return@invokeLater
                 scheduleOpenProjectScript(serverUrl, projectDirectory, openMostRecentConversation = true, mostRecentSessionId = sessionId)
             }
         }
@@ -809,10 +825,18 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
 
         scriptScheduler.schedule(script, rootUrl) {
-            val onServerPage = isBrowserOnOpenCodeServerPage(serverUrl)
-            val onProjectRootRoute = isOpenCodeProjectRootRoute(browser.cefBrowser.url)
-            val onProjectDestination = isOpenCodeProjectDestination(browser.cefBrowser.url)
-            onServerPage && (!onProjectDestination || onProjectRootRoute)
+            if (!isBrowserOnOpenCodeServerPage(serverUrl)) return@schedule false
+            val frameUrl = browser.cefBrowser.url
+            // Once the target session is open, further delayed injects only re-seed lastProject.
+            // Keep running on the id-less shell and on legacy directory destinations that still
+            // need the script; stop once we are on the requested session (or any session when we
+            // were only seeding).
+            if (openMostRecentConversation && mostRecentSessionId != null) {
+                return@schedule OpenCodeServerProtocol.sessionIdFromUrl(frameUrl) != mostRecentSessionId
+            }
+            val onProjectRootRoute = isOpenCodeProjectRootRoute(frameUrl)
+            val onProjectDestination = isOpenCodeProjectDestination(frameUrl)
+            !onProjectDestination || onProjectRootRoute
         }
     }
 

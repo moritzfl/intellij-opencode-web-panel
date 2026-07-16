@@ -170,10 +170,12 @@ internal object OpenCodeBrowserSnippets {
               const navigationKey = 'opencode.intellij.project.opened:' + directory;
               let alreadyOpened = false;
               try { alreadyOpened = window.sessionStorage.getItem(navigationKey) === target; } catch (_) {}
-              // The script re-runs on a delay; never yank the user out of a conversation they are
-              // already viewing, and navigate at most once.
-              const onConversation = /\/session\/[^/?#]/.test(window.location.pathname);
-              if (alreadyOpened || window.location.pathname === target || onConversation) {
+              // Navigate at most once per tab session. Skip only when already on the *target*
+              // session — not any /session/<id> (SPA may have restored a different conversation
+              // from the shared profile before this script ran).
+              const currentMatch = window.location.pathname.match(/\/session\/([^/?#]+)/);
+              const currentSessionId = currentMatch ? decodeURIComponent(currentMatch[1]) : '';
+              if (alreadyOpened || window.location.pathname === target || currentSessionId === sessionId) {
                 try { window.sessionStorage.setItem(navigationKey, target); } catch (_) {}
                 return;
               }
