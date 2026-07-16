@@ -208,11 +208,12 @@ internal object OpenCodeServerProtocol {
             else -> return false
         }
         val path = routePath.substringBefore('?').substringBefore('#')
-        // 1.18 directoryless layout (subagent/task cards link here).
-        if (Regex("""^/server/[^/]+/session(?:/|$)""").containsMatchIn(path)) return true
-        if (Regex("""^/new-session(?:/|$)""").containsMatchIn(path)) return true
-        // Legacy directory-encoded route: first segment must decode to an absolute path.
-        val match = Regex("""^/([^/]+)/session(?:/|$)""").find(path) ?: return false
+        // Keep in sync with isOpenCodeAppRoute in OpenCodeBrowserSnippets (file-link exclusions).
+        if (path == "/" || path.isEmpty()) return true
+        if (path == "/new-session" || path.startsWith("/new-session/")) return true
+        if (path == "/server" || path.startsWith("/server/")) return true
+        // Legacy directory-encoded project root or session: first segment decodes to an abs path.
+        val match = Regex("""^/([^/]+)(?:/session(?:/|$)|$)""").find(path) ?: return false
         val directory = decodeDirectory(match.groupValues[1]) ?: return false
         return looksLikeAbsoluteFilesystemPath(directory)
     }

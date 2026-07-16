@@ -355,8 +355,10 @@ class OpenCodeServerProtocolTest {
             ),
         )
         assertTrue(script.contains("window.location.assign(target)"))
-        // The delayed re-runs must not yank the user out of a conversation they are viewing.
-        assertTrue(script.contains("""const onConversation = /\/session\/[^/?#]/.test(window.location.pathname)"""))
+        // Only the *target* session counts as already open — not an arbitrary /session/<id>
+        // the SPA may have restored from the shared profile.
+        assertTrue(script.contains("currentSessionId === sessionId"))
+        assertFalse(script.contains("const onConversation ="))
     }
 
     @Test
@@ -1293,8 +1295,16 @@ class OpenCodeServerProtocolTest {
         assertTrue(OpenCodeServerProtocol.isOpenCodeSessionRouteHref("http://127.0.0.1:60482$serverRoute"))
         assertTrue(OpenCodeServerProtocol.isOpenCodeSessionRouteHref("/new-session"))
         assertTrue(OpenCodeServerProtocol.isOpenCodeSessionRouteHref("/new-session?draftId=abc"))
+        assertTrue(OpenCodeServerProtocol.isOpenCodeSessionRouteHref("/"))
+        assertTrue(OpenCodeServerProtocol.isOpenCodeSessionRouteHref("/server/abc"))
+        assertTrue(
+            OpenCodeServerProtocol.isOpenCodeSessionRouteHref(
+                "/${OpenCodeServerProtocol.encodeDirectory("/tmp/project")}",
+            ),
+        )
         assertFalse(OpenCodeServerProtocol.isOpenCodeSessionRouteHref("/tmp/session/readme.md"))
         assertFalse(OpenCodeServerProtocol.isOpenCodeSessionRouteHref("license.md"))
+        assertFalse(OpenCodeServerProtocol.isOpenCodeSessionRouteHref("/src/Main.kt"))
     }
 
     @Test
