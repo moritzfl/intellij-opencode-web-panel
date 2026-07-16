@@ -31,6 +31,7 @@ Project-specific guidance for future implementation work.
 
 ## OpenCode Server
 
+- **Minimum supported OpenCode version: 1.18.0** (`OpenCodeServerProtocol.MINIMUM_SUPPORTED_OPENCODE_VERSION`). Below that, warn once; do not invent compatibility shims for pre-1.18 routes.
 - Launch: `opencode serve --hostname 127.0.0.1 --port <port> --print-logs`. Default host `127.0.0.1`; basic-auth username is always `opencode`.
 - Port: default mode `Auto select` (`--port 0`); fixed mode sanitizes to `1..65535`, default fixed port `4096`.
 - When settings that affect the process change, stop the server and let the next tool-window load restart it.
@@ -75,16 +76,35 @@ Two review panels exist, selected by width: the plugin's default forced-compact 
 
 Diff Alt+Click from either review panel is inherently empty (session-scoped, no `[data-message-id]` ancestor); the meaningful diff nav is the chat timeline.
 
-### Open-project navigation contract
+**SPA routes are not files.** The capture-phase file-link handler treats many `href`s that start with `/` as local paths. Keep `isOpenCodeAppRoute` (JS) and `isOpenCodeSessionRouteHref` (JVM) in sync and exclude at least:
 
-The redesigned layout (`settings.v3` → `general.newLayoutDesigns`, `body[data-new-layout]`) uses **directoryless routes**: `/server/<base64url(origin)>/session/<ses_...>` and `/new-session?draftId=...`. Directory routes (`/<base64url(dir)>/session[...]`) are accepted on a cold document load — and win over the SPA's own state — but are quickly rewritten to the directoryless form. Which project such a route shows is visible only in the SPA's `opencode.global.dat:server` localStorage (`lastProject`/`projects`), which the SPA does **not** update when it boots from a direct directory route. Consequences in `buildOpenProjectScript` / `OpenCodeWebToolWindowContent`:
+- `/server/<key>/session[/<id>]` — 1.18 session routes (task/subagent cards, notifications, boot)
+- `/new-session…`
+- `/` and bare `/<base64url(dir)>` project roots when the segment decodes to an absolute filesystem path
+- legacy `/<base64url(dir)>/session[/<id>]` when the segment decodes to an absolute path
 
-- Panels must load `buildProjectUrl(...)` (the directory route) directly — never the server root, where the SPA restores its own last project from the **application-shared, persistent** JCEF profile (another IDE project's directory, or a stale path after a project-directory rename).
-- Never blanket-accept directoryless routes as "already at the destination" JVM-side (`isOpenCodeProjectDestination`); the open-project script must keep running and decide in-page by comparing the **pre-seed** `lastProject` against the panel's directory (the seed itself overwrites it).
-- The script must keep seeding `opencode.global.dat:server` because the SPA does not maintain `lastProject` for route-derived project switches.
-- A directory absent from that store boots into an **unbound "new project" composer** even on its own directory route (first use of a fresh profile or a new project); the script's seed + re-navigate binds it after one corrective reload. (Don't move the seed to `onLoadStart`: it would overwrite the pre-seed `lastProject` the directoryless check relies on.)
-- The script's sessionStorage navigation guard (`opencode.intellij.project.opened:<dir>`) is per JCEF tab and deliberately makes the open-project navigation once-per-tab-session: after the initial open, the user may switch projects inside the panel without being dragged back.
-- A renamed project directory that keeps showing its **old path/name** despite all of the above is opencode's server-side stale `project.worktree` (anomalyco/opencode#35240) — visible in every client, not fixable from the plugin. Workaround: update `project.worktree` (and old sessions' `directory`/`path`) in `~/.local/share/opencode/opencode.db` while no opencode instance runs.
+Missing an exclusion → subagent cards and sidebar session links get `preventDefault` and never navigate.
+
+### Open-project navigation contract (OpenCode 1.18+)
+
+OpenCode 1.18's SPA is **directoryless** for sessions. Canonical routes:
+
+| Route | Role |
+|---|---|
+| `/server/<base64url(origin)>/session/<ses_…>` | Real session (SPA route requires `:id`) |
+| `/server/<base64url(origin)>/session` | Id-less shell only — not a lasting SPA destination |
+| `/new-session?draftId=…` | Draft composer |
+| `/<base64url(dir)>/session[/<id>]` | Legacy; SPA may still emit it (sidebar/notifications) and redirects to the server form |
+
+Which project a directoryless URL shows is **not** in the path — only in the SPA's `opencode.global.dat:server` localStorage (`lastProject` / `projects`), which lives in the **application-shared, persistent** JCEF profile. Cold-loading the legacy bare directory route **without** a session id crashes the SPA error boundary ("Unable to retrieve session" on every send). Consequences in `buildOpenProjectScript` / `OpenCodeWebToolWindowContent` / `OpenCodeServerProtocol`:
+
+- **Boot URL** — `buildServerSessionUrl(serverUrl, sessionId?)`, never `buildProjectUrl` (legacy directory route) and never the bare server root alone.
+- **Most recent conversation** — when the setting is on, resolve the latest **parent** session via `GET /api/session` (`max(time.updated)`, skip `parentID`) **before** the first load when possible, boot with that id, and pass the same id into the open-project script (do not re-fetch for the same page load).
+- **Open-project script** — always seeds `opencode.global.dat:server` (`lastProject` + `projects` for this panel's directory). If a session id was provided, navigate **once** to `/server/<key>/session/<id>`. Skip navigation only when already on that **target** session (or the sessionStorage guard `opencode.intellij.project.opened:<dir>` already records that target) — **not** when any `/session/<otherId>` is open (the SPA may have restored a different conversation from the shared profile).
+- **Schedule from `onLoadEnd`** only; cancel prior open-project delay series on `onLoadStart` so navigations do not stack injects. Stop retrying once the target session id is in the URL.
+- **Never** treat every `/server/…` URL as "already at the destination" JVM-side for project identity (`routeDirectoryFromUrl` returns null for directoryless routes; `isOpenCodeProjectDestination` only matches legacy directory-encoded paths). Project binding is the seed, not the path.
+- **Notifications "Show in OpenCode"** — open via `buildServerSessionUrl(serverUrl, sessionID)`; `isOpenCodeRouteAlreadyOpen` treats the same `ses_…` under legacy vs server path shapes as already open (unless the target pins a different query).
+- A renamed project directory that keeps showing its **old path/name** is opencode's server-side stale `project.worktree` ([anomalyco/opencode#35240](https://github.com/anomalyco/opencode/issues/35240)) — not fixable from the plugin. Workaround: update `project.worktree` (and old sessions' `directory`/`path`) in `~/.local/share/opencode/opencode.db` while no opencode instance runs.
 
 ## Validating Against a Real Server
 
@@ -94,7 +114,8 @@ Injection fixes and wire-contract checks must be validated against a live server
 - **Basic auth covers everything** — the SPA's static assets (`/assets/*.js|css`) and all API routes; only `/site.webmanifest` and the web-app-manifest PNGs are public.
 - Do **not** use the `?auth_token=<base64(user:pass)>` query param: it authenticates only the initial HTML, so asset requests then hang forever in headless Playwright (symptom: navigation times out, title is `OpenCode`, `#root` stays empty, no console errors — looks like a broken SPA but is pure auth). Instead send the `Authorization` header on **every** request (what the plugin does via `onBeforeResourceLoad`): `page.setExtraHTTPHeaders({ Authorization: 'Basic ' + btoa('opencode:testpw123') })` (or `httpCredentials`), set **before** the first `goto`. For `opencode:testpw123` the header is `Basic b3BlbmNvZGU6dGVzdHB3MTIz`.
 - Early-injection scripts: `page.addInitScript(script)` before `goto` (mirrors `onLoadStart`); post-load: `page.evaluate(script)` after mount (mirrors `onLoadEnd`).
-- Session route: `/<base64url(dir)>/session` — encode with `printf '%s' "<dir>" | base64 | tr '+/' '-_' | tr -d '='`.
+- **Session route (1.18):** `/server/<base64url(origin)>/session/<ses_…>` — `serverKey` is base64url of the origin (no padding), same encoding as `encodeDirectory`. Example: origin `http://127.0.0.1:4096` → path `/server/<key>/session/ses_…`. Prefer this over the legacy `/<base64url(dir)>/session[/<id>]` form (still accepted by the SPA as a redirect).
+- Encode helper: `printf '%s' "<value>" | base64 | tr '+/' '-_' | tr -d '='`.
 - The served UI is localized (e.g. German labels on a German system); don't assert English-only UI strings.
 
 ## Event & REST Contract
