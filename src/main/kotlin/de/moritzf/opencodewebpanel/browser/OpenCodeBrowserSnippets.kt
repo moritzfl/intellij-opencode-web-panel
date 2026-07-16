@@ -801,15 +801,17 @@ internal object OpenCodeBrowserSnippets {
                   return '';
                 }
               };
-              // SPA session routes must never be treated as local files. The 1.18 layout uses
+              // SPA routes must never be treated as local files. The 1.18 layout uses
               // /server/<key>/session/<id> (e.g. task/subagent cards); the legacy layout uses a
-              // base64url-encoded project directory as the first segment.
+              // base64url-encoded project directory as the first segment. Bare project roots and
+              // "/" are also SPA destinations (home / project switch), not filesystem paths.
               const isOpenCodeAppRoute = (value) => {
                 const path = openCodeRoutePath(value);
                 if (!path) return false;
-                if (/^\/server\/[^/?#]+\/session(?:\/|[/?#]|${'$'})/.test(path)) return true;
+                if (path === '/' || path === '') return true;
+                if (/^\/server(?:\/|[/?#]|${'$'})/.test(path)) return true;
                 if (/^\/new-session(?:\/|[/?#]|${'$'})/.test(path)) return true;
-                const match = /^\/([^/?#]+)\/session(?:[/?#]|${'$'})/.exec(path);
+                const match = /^\/([^/?#]+)(?:\/session(?:[/?#]|${'$'})|[/?#]|${'$'})/.exec(path);
                 if (!match) return false;
                 return absoluteFilePath.test(decodeRouteDirectory(match[1]));
               };
