@@ -146,7 +146,7 @@ internal class OpenCodeSystemNotifications(
         }
     }
 
-    private fun openRoute(route: String) {
+    private fun openSession(sessionID: String) {
         val serverUrl = serverManager.getServerUrl() ?: return
         if (!isProjectOpen()) return
         val frame = WindowManager.getInstance().getFrame(project)
@@ -157,15 +157,21 @@ internal class OpenCodeSystemNotifications(
             frame.toFront()
             frame.requestFocus()
         }
+        // Always use the 1.18 server session URL. Legacy directory routes force a reload/redirect
+        // even when the panel is already on the same session under /server/.../session/<id>.
+        val targetUrl = OpenCodeServerProtocol.buildServerSessionUrl(
+            serverUrl,
+            sessionID.takeIf(OpenCodeServerProtocol::isOpenCodeRecordId),
+        )
         toolWindow.activate({
             if (project.isDisposed) return@activate
-            if (!OpenCodeServerProtocol.isOpenCodeRouteAlreadyOpen(serverUrl, browser.cefBrowser.url, route)) {
-                browser.loadURL(OpenCodeServerProtocol.buildServerRootUrl(serverUrl) + route)
+            if (!OpenCodeServerProtocol.isOpenCodeRouteAlreadyOpen(serverUrl, browser.cefBrowser.url, targetUrl)) {
+                browser.loadURL(targetUrl)
             }
             browser.component.requestFocusInWindow()
             // The user is now looking at the notified session; its other notifications
             // (e.g. an earlier "response ready") are obsolete too.
-            OpenCodeServerProtocol.sessionIdFromUrl(route)?.let { dismissByKey("session:$it") }
+            sessionID.takeIf(OpenCodeServerProtocol::isOpenCodeRecordId)?.let { dismissByKey("session:$it") }
         }, true)
     }
 
@@ -272,7 +278,7 @@ internal class OpenCodeSystemNotifications(
                 ideNotification.addAction(object : NotificationAction("Show in OpenCode") {
                     override fun actionPerformed(e: AnActionEvent, notification: Notification) {
                         notification.expire()
-                        target.openRoute(openCodeNotification.route)
+                        target.openSession(openCodeNotification.sessionID)
                     }
                 })
                 OpenCodeServerProtocol.notificationDismissKeys(openCodeNotification).forEach { key ->

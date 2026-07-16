@@ -121,6 +121,7 @@ internal class OpenCodeNotificationEventProcessor(
             OpenCodeServerProtocol.SystemNotificationPayload(
                 id = id,
                 directory = directory,
+                // Navigation uses sessionID via buildServerSessionUrl; route stays a path hint.
                 route = OpenCodeServerProtocol.buildSessionRoute(directory, sessionID.takeIf { it.isNotBlank() }),
                 title = title,
                 body = body,
