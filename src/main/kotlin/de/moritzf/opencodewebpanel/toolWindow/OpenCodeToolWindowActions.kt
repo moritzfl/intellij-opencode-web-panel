@@ -3,6 +3,7 @@ package de.moritzf.opencodewebpanel.toolWindow
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
+import com.intellij.openapi.actionSystem.PlatformDataKeys
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
@@ -12,6 +13,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.MessageDialogBuilder
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.vfs.LocalFileSystem
+import com.intellij.openapi.wm.ToolWindowManager
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState
 import de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable
@@ -107,6 +109,35 @@ internal class OpenCodeRestartServerAction : DumbAwareAction(
     }
 
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+}
+
+internal class OpenCodeReloadPageAction : DumbAwareAction(
+    "Reload OpenCode Page",
+    "Reload the OpenCode web UI without restarting the server",
+    AllIcons.Actions.Refresh,
+) {
+    override fun actionPerformed(e: AnActionEvent) {
+        openCodePanelContent(e)?.reloadOpenCodePage()
+    }
+
+    override fun update(e: AnActionEvent) {
+        e.presentation.isEnabled = e.project != null
+    }
+
+    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+}
+
+/**
+ * Resolves the OpenCode panel content for the invoking tool window, so a reload targets only the
+ * panel the user clicked instead of every project's panel. Prefers the tool window carried by the
+ * action event (title-bar invocation) and falls back to a lookup by ID (gear menu).
+ */
+private fun openCodePanelContent(e: AnActionEvent): OpenCodeWebToolWindowContent? {
+    val toolWindow = e.getData(PlatformDataKeys.TOOL_WINDOW)
+        ?: e.project?.let { ToolWindowManager.getInstance(it).getToolWindow(OPEN_CODE_TOOL_WINDOW_ID) }
+        ?: return null
+    return toolWindow.contentManager.contents
+        .firstNotNullOfOrNull { it.disposer as? OpenCodeWebToolWindowContent }
 }
 
 /**

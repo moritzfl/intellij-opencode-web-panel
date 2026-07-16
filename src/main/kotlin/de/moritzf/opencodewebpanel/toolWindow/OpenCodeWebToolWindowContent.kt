@@ -564,6 +564,27 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     }
 
     /**
+     * Reloads the embedded OpenCode web UI (the SPA) in place without touching the shared server,
+     * so a glitchy or stale page can be refreshed without interrupting sessions in this or any
+     * other project's panel. Falls back to a full load when nothing valid is currently shown (the
+     * server was down or the page was cleared to about:blank).
+     */
+    fun reloadOpenCodePage() {
+        if (isContentDisposed()) return
+        val serverUrl = serverManager.getServerUrl()
+        if (serverUrl == null ||
+            loadedServerRootUrl == null ||
+            !OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)
+        ) {
+            checkAndLoadContent()
+            return
+        }
+        thisLogger().info("Reloading OpenCode page")
+        applyBrowserZoom()
+        browser.cefBrowser.reload()
+    }
+
+    /**
      * Reloads the OpenCode page after the shared server recovered without this panel's involvement,
      * e.g. an automatic health-check restart or a restart initiated from another project window.
      * Without this, the panel would stay on the blank page installed by [clearStaleBrowserPage].

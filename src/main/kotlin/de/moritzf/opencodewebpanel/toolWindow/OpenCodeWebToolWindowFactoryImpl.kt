@@ -9,6 +9,9 @@ import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.ui.content.ContentFactory
 import kotlin.jvm.JvmDefaultWithoutCompatibility
 
+/** Must match the `toolWindow id` declared in plugin.xml. */
+internal const val OPEN_CODE_TOOL_WINDOW_ID = "OpenCode Web Panel"
+
 @JvmDefaultWithoutCompatibility
 class OpenCodeWebToolWindowFactoryImpl : ToolWindowFactory, DumbAware {
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
@@ -29,6 +32,7 @@ class OpenCodeWebToolWindowFactoryImpl : ToolWindowFactory, DumbAware {
             listOf(
                 OpenCodeZoomOutAction(),
                 OpenCodeZoomInAction(),
+                OpenCodeReloadPageAction(),
                 OpenCodeRestartServerAction(),
             ),
         )
@@ -37,6 +41,7 @@ class OpenCodeWebToolWindowFactoryImpl : ToolWindowFactory, DumbAware {
                 OpenCodeZoomOutAction(),
                 OpenCodeZoomInAction(),
                 OpenCodeResetZoomAction(),
+                OpenCodeReloadPageAction(),
                 OpenCodeRestartServerAction(),
                 OpenCodeViewServerLogAction(),
                 OpenCodeOpenSettingsAction(),
