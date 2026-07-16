@@ -7,6 +7,7 @@
 ### Added
 
 - A **Reload** button in the panel's title bar and gear menu that refreshes the OpenCode web UI without restarting the server, so you can recover from a stuck or glitchy page without interrupting running sessions. Unlike **Restart Server**, it only reloads the panel you triggered it from.
+- A warning now explains when the installed OpenCode version is too old for the panel, including the minimum version required.
 
 ### Changed
 

@@ -295,6 +295,19 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun unsupportedOpenCodeVersionsAreDetectedAgainstTheCentralMinimum() {
+        assertEquals("1.18.0", OpenCodeServerProtocol.MINIMUM_SUPPORTED_OPENCODE_VERSION)
+        assertTrue(OpenCodeServerProtocol.isOpenCodeVersionUnsupported("1.17.9"))
+        assertTrue(OpenCodeServerProtocol.isOpenCodeVersionUnsupported("v1.17.9"))
+        assertTrue(OpenCodeServerProtocol.isOpenCodeVersionUnsupported("1.18.0-rc.1"))
+        assertFalse(OpenCodeServerProtocol.isOpenCodeVersionUnsupported("1.18.0"))
+        assertFalse(OpenCodeServerProtocol.isOpenCodeVersionUnsupported("1.18.1"))
+        assertFalse(OpenCodeServerProtocol.isOpenCodeVersionUnsupported("2.0.0"))
+        assertFalse(OpenCodeServerProtocol.isOpenCodeVersionUnsupported("development"))
+        assertFalse(OpenCodeServerProtocol.isOpenCodeVersionUnsupported(null))
+    }
+
+    @Test
     fun buildOpenProjectScriptSeedsProjectState() {
         val script = OpenCodeBrowserSnippets.buildOpenProjectScript("/tmp/my 'project'", "http://127.0.0.1:60482/")!!
 

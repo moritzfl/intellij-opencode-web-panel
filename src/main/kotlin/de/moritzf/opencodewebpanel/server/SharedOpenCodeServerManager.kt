@@ -54,6 +54,7 @@ class SharedOpenCodeServerManager : Disposable {
     private var serverUrl: String? = null
     private var serverPassword: String? = null
     private var serverVersion: String? = null
+    private var unsupportedVersionWarningShownFor: String? = null
     private var serverGeneration = 0L
     private var launcherExitNoticeLogged = false
 
@@ -210,6 +211,16 @@ class SharedOpenCodeServerManager : Disposable {
     fun getServerPassword(): String? = synchronized(lock) { serverPassword }
 
     fun getServerVersion(): String? = synchronized(lock) { serverVersion }
+
+    /** Returns an unsupported version once, so several open panels do not show duplicate warnings. */
+    fun consumeUnsupportedServerVersionWarning(): String? = synchronized(lock) {
+        val version = serverVersion?.trim()?.takeIf { it.isNotEmpty() } ?: return@synchronized null
+        if (!OpenCodeServerProtocol.isOpenCodeVersionUnsupported(version) || unsupportedVersionWarningShownFor == version) {
+            return@synchronized null
+        }
+        unsupportedVersionWarningShownFor = version
+        version
+    }
 
     /**
      * Increments each time a new server process is launched (0 while none was ever started).

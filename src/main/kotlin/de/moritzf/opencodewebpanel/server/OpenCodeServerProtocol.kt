@@ -3,6 +3,7 @@ package de.moritzf.opencodewebpanel.server
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import com.intellij.util.text.SemVer
 import java.io.BufferedReader
 import java.io.File
 import java.net.HttpURLConnection
@@ -31,6 +32,8 @@ internal object OpenCodeServerProtocol {
     const val DISPOSE_PATH = "/global/dispose"
     const val BASIC_AUTH_USERNAME = "opencode"
     const val DEFAULT_EXECUTABLE = "opencode"
+    /** Bump this when the plugin requires a newer OpenCode release. */
+    const val MINIMUM_SUPPORTED_OPENCODE_VERSION = "1.18.0"
     const val OPEN_FILE_LINK_SCHEME = "opencode-web-panel"
     const val OPEN_FILE_LINK_HOST = "open-file"
     const val OPEN_CODE_THEME_ID_STORAGE_KEY = "opencode-theme-id"
@@ -41,6 +44,7 @@ internal object OpenCodeServerProtocol {
     const val MAX_HTTP_RESPONSE_CHARS = 8 * 1024 * 1024
 
     private val secureRandom = SecureRandom()
+    private val minimumSupportedOpenCodeVersion = requireNotNull(SemVer.parseFromText(MINIMUM_SUPPORTED_OPENCODE_VERSION))
     fun buildServerRootUrl(serverUrl: String): String {
         return serverUrl.trimEnd('/')
     }
@@ -516,7 +520,7 @@ internal object OpenCodeServerProtocol {
 
     /**
      * Reads the OpenCode version from `/global/health` (`{"healthy":true,"version":"..."}`).
-     * Returns null when the endpoint is unavailable; the version is informational only.
+     * Returns null when the endpoint is unavailable; an unavailable version never blocks startup.
      */
     fun fetchServerVersion(
         serverUrl: String,
@@ -527,6 +531,21 @@ internal object OpenCodeServerProtocol {
         val body = httpGet(buildServerRootUrl(serverUrl) + GLOBAL_HEALTH_PATH, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)
             ?: return null
         return Regex("\"version\"\\s*:\\s*\"([^\"]+)\"").find(body)?.groupValues?.get(1)
+    }
+
+    /**
+     * Unknown version formats are not treated as unsupported, avoiding a false update warning
+     * when the health endpoint cannot report a normal semantic version.
+     */
+    fun isOpenCodeVersionUnsupported(version: String?): Boolean {
+        val parsedVersion = version
+            ?.trim()
+            ?.removePrefix("v")
+            ?.removePrefix("V")
+            ?.takeIf { it.isNotEmpty() }
+            ?.let { SemVer.parseFromText(it) }
+            ?: return false
+        return parsedVersion < minimumSupportedOpenCodeVersion
     }
 
     fun disposeServer(

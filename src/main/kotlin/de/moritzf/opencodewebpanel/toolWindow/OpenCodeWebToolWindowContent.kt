@@ -3,11 +3,14 @@ package de.moritzf.opencodewebpanel.toolWindow
 import com.intellij.ide.AppLifecycleListener
 import com.intellij.ide.ui.LafManager
 import com.intellij.ide.ui.LafManagerListener
+import com.intellij.notification.NotificationGroupManager
+import com.intellij.notification.NotificationType
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.IconLoader
+import com.intellij.openapi.util.text.StringUtil
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.ui.BadgeIconSupplier
 import com.intellij.ui.jcef.JBCefBrowser
@@ -535,6 +538,20 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         contentPanel.repaint()
     }
 
+    private fun warnIfOpenCodeVersionIsUnsupported() {
+        if (project.isDisposed) return
+        val group = NotificationGroupManager.getInstance()
+            .getNotificationGroup(OpenCodeServerProtocol.NOTIFICATION_GROUP_ID)
+            ?: return
+        val installedVersion = serverManager.consumeUnsupportedServerVersionWarning() ?: return
+        group.createNotification(
+            "OpenCode update required",
+            "OpenCode Web Panel requires OpenCode ${OpenCodeServerProtocol.MINIMUM_SUPPORTED_OPENCODE_VERSION} or later. " +
+                "Installed version: ${StringUtil.escapeXmlEntities(installedVersion)}.",
+            NotificationType.WARNING,
+        ).notify(project)
+    }
+
     private fun restartOpenCodeServer() {
         if (isContentDisposed()) return
         lifecycleStatusPanel.setRetryEnabled(false)
@@ -545,6 +562,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             callbackActive = { !isContentDisposed() },
             onStarted = {
                 pendingServerStartRequest = false
+                warnIfOpenCodeVersionIsUnsupported()
                 loadProjectPage()
             },
             onFailed = {
@@ -563,6 +581,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             callbackActive = { !isContentDisposed() },
             onStarted = {
                 pendingServerStartRequest = false
+                warnIfOpenCodeVersionIsUnsupported()
                 loadProjectPage()
             },
             onFailed = {
