@@ -12,6 +12,11 @@
 
 - OpenCode's floating "open the website" button (the circled question mark pinned to the bottom-right corner) is now hidden inside the panel, where it only overlapped the message box and linked out to the website.
 
+### Fixed
+
+- The IDE now reliably refreshes its files and version-control view after OpenCode edits, patches, or commits — including after a commit, which previously often left the Changes/Local Changes view stale until a manual refresh. Updates are debounced, so a burst of edits in one turn no longer triggers repeated refreshes.
+- This refresh no longer depends on the "Show agent status on the tool window icon" setting; it now works even with that badge turned off.
+
 ## [1.6.6] - 2026-07-15
 
 ### Fixed

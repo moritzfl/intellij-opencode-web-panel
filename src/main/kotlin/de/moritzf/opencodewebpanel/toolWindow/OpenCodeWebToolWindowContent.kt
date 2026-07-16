@@ -26,7 +26,7 @@ import de.moritzf.opencodewebpanel.features.OpenCodeIdeNavigation
 import de.moritzf.opencodewebpanel.features.OpenCodeInterruptedSessionRecovery
 import de.moritzf.opencodewebpanel.features.OpenCodeLocalStorageBridge
 import de.moritzf.opencodewebpanel.features.OpenCodeSystemNotifications
-import de.moritzf.opencodewebpanel.features.OpenCodeVcsRefresh
+import de.moritzf.opencodewebpanel.features.OpenCodeWorkspaceRefreshCoordinator
 import de.moritzf.opencodewebpanel.server.OpenCodeGlobalEvent
 import de.moritzf.opencodewebpanel.server.OpenCodeGlobalEventListener
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleListener
@@ -187,8 +187,11 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         projectSwitchPromptSuppressionFeature,
         cursorMirrorFeature,
     )
-    private var lastAgentStatus = OpenCodeAgentStatusState.IDLE
-    private val vcsRefresh = OpenCodeVcsRefresh(project)
+    private val workspaceRefreshCoordinator = OpenCodeWorkspaceRefreshCoordinator(
+        project,
+        ::openCodeProjectDirectory,
+        parentDisposable = this,
+    )
     private val agentStatusTracker = OpenCodeAgentStatusTracker(
         serverManager,
         ::openCodeProjectDirectory,
@@ -325,6 +328,12 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         ApplicationManager.getApplication().messageBus.connect(this).subscribe(
             OpenCodeGlobalEventListener.TOPIC,
             agentStatusTracker,
+        )
+        // Keeps the IDE's files/VCS in sync with the agent's edits, patches, branch changes, and
+        // commits. Independent of the agent-status badge, and debounced against event bursts.
+        ApplicationManager.getApplication().messageBus.connect(this).subscribe(
+            OpenCodeGlobalEventListener.TOPIC,
+            workspaceRefreshCoordinator,
         )
         // Permission/question sections appear in-place, without an address change, so the
         // onAddressChange repaint hook never sees them. Nudge the compositor from the JVM-side
@@ -827,17 +836,13 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     }
 
     /**
-     * Applies a status transition reported by [agentStatusTracker]. Runs on the event-stream
-     * reader thread or a pooled thread; the badge update and VCS refresh dispatch to the EDT
-     * themselves.
+     * Applies a status transition reported by [agentStatusTracker] to the tool-window badge. Runs
+     * on the event-stream reader thread or a pooled thread; the badge update dispatches to the EDT
+     * itself. File/VCS refresh is handled separately by [workspaceRefreshCoordinator] so it works
+     * even when the badge is disabled.
      */
     private fun onAgentStatusChanged(state: String) {
-        val previousState = lastAgentStatus
-        lastAgentStatus = state
         updateAgentStatusBadge(state)
-        if (previousState != OpenCodeAgentStatusState.IDLE && state == OpenCodeAgentStatusState.IDLE) {
-            vcsRefresh.refreshProjectFiles(openCodeProjectDirectory())
-        }
     }
 
     /**
@@ -861,7 +866,6 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     private fun resetAgentStatusBadge() {
         if (isContentDisposed()) return
         agentStatusTracker.reset()
-        lastAgentStatus = OpenCodeAgentStatusState.IDLE
         toolWindow.setIcon(toolWindowIconSupplier.originalIcon)
     }
 
