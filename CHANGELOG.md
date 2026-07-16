@@ -4,10 +4,12 @@
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-07-16
+
 ### Added
 
 - A **Reload** button in the panel's title bar and gear menu that refreshes the OpenCode web UI without restarting the server, so you can recover from a stuck or glitchy page without interrupting running sessions. Unlike **Restart Server**, it only reloads the panel you triggered it from.
-- A warning now explains when the installed OpenCode version is too old for the panel, including the minimum version required.
+- A warning now explains when the installed OpenCode version is too old for the panel, including the minimum version required (**OpenCode 1.18.0** or newer).
 
 ### Changed
 
@@ -16,6 +18,10 @@
 ### Fixed
 
 - Fixed frequent "Failed to send prompt / Unable to retrieve session" errors with OpenCode 1.18. The panel was opening on a route that crashes OpenCode 1.18's web UI on load, which left it unable to send messages; the panel now opens on the route OpenCode 1.18 expects and reliably lands on your most recent conversation.
+- When "Open the most recent conversation on startup" is enabled, the panel boots on that conversation's 1.18 session URL and navigates to it even if the shared browser profile had restored a different session first.
+- Clicking a subagent or task card in chat now opens that session. OpenCode 1.18 links these as `/server/.../session/...` routes; the panel was treating those as local file paths and blocking navigation.
+- "Show in OpenCode" on IDE notifications opens the 1.18 session route and no longer force-reloads the panel when you are already viewing that session.
+- Sidebar, home, and other in-app SPA links that are not real files are no longer intercepted as IDE file opens.
 - The IDE now reliably refreshes its files and version-control view after OpenCode edits, patches, or commits — including after a commit, which previously often left the Changes/Local Changes view stale until a manual refresh. Updates are debounced, so a burst of edits in one turn no longer triggers repeated refreshes.
 - This refresh no longer depends on the "Show agent status on the tool window icon" setting; it now works even with that badge turned off.
 
@@ -335,7 +341,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.6.6...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.7.0...HEAD
+[1.7.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.6.6...1.7.0
 [1.6.6]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.6.5...1.6.6
 [1.6.5]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.6.4...1.6.5
 [1.6.4]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.6.3...1.6.4
