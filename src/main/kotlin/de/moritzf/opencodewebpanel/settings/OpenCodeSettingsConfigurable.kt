@@ -219,7 +219,7 @@ class OpenCodeSettingsConfigurable : Configurable {
             group("Project Startup") {
                 row {
                     cell(openMostRecentConversationCheckBox)
-                        .comment("When the tool window opens, restore the project's most recent OpenCode conversation instead of opening a new conversation.")
+                        .comment("When the panel opens, ask the OpenCode server for this project's latest conversation (by last activity) and open it. When off, only bind the project directory and leave the session choice to OpenCode.")
                 }
             }
             group("Browser Appearance") {
@@ -229,7 +229,7 @@ class OpenCodeSettingsConfigurable : Configurable {
                 }
                 row {
                     cell(forceCompactLayoutCheckBox)
-                        .comment("Prevent the OpenCode UI from switching to a wide desktop layout when the panel is enlarged.")
+                        .comment("Keep the compact mobile layout even when the panel is wide. On: classic review panel. Off: OpenCode's redesigned desktop review panel.")
                 }
                 row {
                     cell(syncThemeWithIdeCheckBox)
