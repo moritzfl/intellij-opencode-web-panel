@@ -1322,8 +1322,23 @@ class OpenCodeServerProtocolTest {
 
     @Test
     fun isSameFilesystemPathTreatsWindowsSeparatorsAndDriveCaseAsEquivalent() {
-        assertTrue(OpenCodeServerProtocol.isSameFilesystemPath("C:\\Source\\Project", "c:/Source/Project/"))
+        assertTrue(OpenCodeServerProtocol.isSameFilesystemPath("C:\\Source\\Project", "c:/source/project/"))
+        assertTrue(OpenCodeServerProtocol.isSameFilesystemPath("\\\\SERVER\\Share\\Project", "//server/share/project/"))
         assertFalse(OpenCodeServerProtocol.isSameFilesystemPath("C:\\Source\\Project", "C:/Source/Other"))
+    }
+
+    @Test
+    fun isSameFilesystemPathResolvesSymlinkAliasesWhenAvailable() {
+        val root = Files.createTempDirectory("opencode-path-alias")
+        try {
+            val target = Files.createDirectory(root.resolve("target"))
+            val link = root.resolve("link")
+            if (runCatching { Files.createSymbolicLink(link, target) }.isSuccess) {
+                assertTrue(OpenCodeServerProtocol.isSameFilesystemPath(link.toString(), target.toString()))
+            }
+        } finally {
+            root.toFile().deleteRecursively()
+        }
     }
 
     @Test

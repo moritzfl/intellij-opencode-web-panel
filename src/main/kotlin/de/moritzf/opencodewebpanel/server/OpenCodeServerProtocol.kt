@@ -14,6 +14,8 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.Path
 import java.security.SecureRandom
 import java.util.Base64
+import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.ln
 import org.jetbrains.annotations.TestOnly
 
@@ -224,12 +226,18 @@ internal object OpenCodeServerProtocol {
         return left == right
     }
 
+    private val canonicalPathCache = ConcurrentHashMap<String, String>()
+
     private fun normalizeFilesystemPathForComparison(path: String?): String? {
-        val text = path?.trim()?.replace('\\', '/')?.trimEnd('/')?.takeIf { it.isNotBlank() } ?: return null
-        return if (Regex("^[A-Za-z]:/").containsMatchIn(text)) {
-            text.replaceFirstChar { it.lowercase() }
-        } else {
-            text
+        val raw = path?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        return canonicalPathCache.computeIfAbsent(raw) {
+            val lexical = raw.replace('\\', '/').trimEnd('/')
+            if (Regex("^[A-Za-z]:/").containsMatchIn(lexical) || lexical.startsWith("//")) {
+                lexical.lowercase(Locale.ROOT)
+            } else {
+                runCatching { Path.of(raw).toRealPath().toString().replace('\\', '/').trimEnd('/') }
+                    .getOrElse { lexical }
+            }
         }
     }
 

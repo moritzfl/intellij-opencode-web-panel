@@ -102,7 +102,15 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         serverManager,
         syncCallback = { openCodeLocalStorageQuery.inject("payload") },
     )
-    private val systemNotifications = OpenCodeSystemNotifications(project, toolWindow, browser, serverManager, ::openCodeProjectDirectory, this)
+    private val systemNotifications = OpenCodeSystemNotifications(
+        project,
+        toolWindow,
+        browser,
+        serverManager,
+        ::openCodeProjectDirectory,
+        ::navigateFromNotification,
+        this,
+    )
     private val requestHandler = OpenCodeBrowserRequestHandler(serverManager, ideNavigation, ::recoverFromRendererCrash)
     private val interruptedSessionRecovery = OpenCodeInterruptedSessionRecovery(project, serverManager, ::openCodeProjectDirectory)
     private val openProjectAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
@@ -116,6 +124,10 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
      * re-seed project state and never yank the user back to the startup conversation.
      */
     private var pendingOpenMostRecentConversation = false
+    private val loadIntent = OpenCodeLoadIntent()
+
+    @Volatile
+    private var browserDocumentRevision = 0L
 
     /**
      * A UI-behavior enhancement injected into the OpenCode page as JavaScript. Instances bundle
@@ -253,10 +265,12 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         parentDisposable = this,
     )
     private val agentStatusTracker = OpenCodeAgentStatusTracker(
-        serverManager,
-        ::openCodeProjectDirectory,
+        projectDirectory = ::openCodeProjectDirectory,
         enabled = { !isContentDisposed() && OpenCodeSettingsState.getInstance().showAgentStatusBadge },
         onStateChanged = ::onAgentStatusChanged,
+        serverUrl = serverManager::getServerUrl,
+        serverPassword = serverManager::getServerPassword,
+        serverGeneration = serverManager::getServerGeneration,
     )
     private var loadedServerRootUrl: String? = null
     private var pendingServerStartRequest = false
@@ -270,6 +284,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     private val loadHandler = object : CefLoadHandlerAdapter() {
         override fun onLoadStart(browser: CefBrowser?, frame: CefFrame?, transitionType: CefRequest.TransitionType?) {
             if (frame?.isMain == true) {
+                browserDocumentRevision++
                 injectedFeatures.forEach { it.scheduled = false }
                 earlyInjectedFeatures.forEach { it.scheduled = false }
                 if (OpenCodeServerProtocol.isOpenCodeServerPage(serverManager.getServerUrl(), frame.url)) {
@@ -369,12 +384,23 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         browser.jbCefClient.addDisplayHandler(
             object : CefDisplayHandlerAdapter() {
                 override fun onAddressChange(cefBrowser: CefBrowser?, frame: CefFrame?, url: String?) {
-                    if (frame?.isMain == true) scheduleBrowserRepaintNudges()
+                    if (frame?.isMain == true) {
+                        browserDocumentRevision++
+                        scheduleBrowserRepaintNudges()
+                    }
                 }
             },
             browser.cefBrowser,
         )
-        OpenCodeFileDropHandler(project, browser, serverManager, ::openCodeProjectDirectory, ::isContentDisposed, this).install()
+        OpenCodeFileDropHandler(
+            project,
+            browser,
+            serverManager,
+            ::openCodeProjectDirectory,
+            { browserDocumentRevision },
+            ::isContentDisposed,
+            this,
+        ).install()
         OpenCodeBrowserEditShortcutHandler(browser, serverManager, ::isContentDisposed, this).install()
         OpenCodeChatInputService.getInstance(project).setDispatcher(::dispatchChatTexts)
         ApplicationManager.getApplication().messageBus.connect(this).subscribe(
@@ -657,6 +683,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
      */
     fun reloadOpenCodePage() {
         if (isContentDisposed()) return
+        loadIntent.invalidate()
         val serverUrl = serverManager.getServerUrl()
         if (serverUrl == null ||
             loadedServerRootUrl == null ||
@@ -719,6 +746,8 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     private fun loadProjectPage() {
         if (isContentDisposed()) return
         val serverUrl = serverManager.getServerUrl() ?: return
+        val serverGeneration = serverManager.getServerGeneration()
+        val loadToken = loadIntent.begin()
         // Boot on the native 1.18 server session route (/server/<serverKey>/session[/<id>]), not the
         // legacy project directory route (/<encodedDir>/session). Cold-loading the bare directory
         // route crashes opencode 1.18.x's application error boundary. Prefer a concrete session id
@@ -747,6 +776,19 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                 val sessionId = fetchMostRecentSessionId(serverUrl, projectDirectory)
                 ApplicationManager.getApplication().invokeLater {
                     if (isContentDisposed()) return@invokeLater
+                    if (!loadIntent.accepts(
+                            token = loadToken,
+                            initialServerGeneration = serverGeneration,
+                            currentServerGeneration = serverManager.getServerGeneration(),
+                            initialServerUrl = serverUrl,
+                            currentServerUrl = serverManager.getServerUrl(),
+                            initialDirectory = projectDirectory,
+                            currentDirectory = openCodeProjectDirectory(),
+                            stillEnabled = OpenCodeSettingsState.getInstance().openMostRecentConversationOnStartup,
+                        )
+                    ) {
+                        return@invokeLater
+                    }
                     pendingMostRecentSessionId = sessionId
                     loadProjectPageAt(serverUrl, sessionId)
                 }
@@ -775,6 +817,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         if (!OpenCodeServerProtocol.isOpenCodeServerPage(previousServerRootUrl, browser.cefBrowser.url)) return
 
         loadedServerRootUrl = null
+        loadIntent.invalidate()
         openProjectAlarm.cancelAllRequests()
         browser.loadURL("about:blank")
     }
@@ -1064,6 +1107,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     }
 
     private fun applyOpenCodeProjectDirectoryChange() {
+        loadIntent.invalidate()
         openProjectScriptScheduled = false
         openProjectSeedFeature.scheduled = false
         fileLinkFeature.scheduled = false
@@ -1071,6 +1115,15 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         // The badge state belongs to the previous directory; loadProjectPage re-seeds.
         resetAgentStatusBadge()
         checkAndLoadContent()
+    }
+
+    private fun navigateFromNotification(targetUrl: String) {
+        loadIntent.invalidate()
+        pendingOpenMostRecentConversation = false
+        pendingMostRecentSessionId = null
+        openProjectScriptScheduled = false
+        openProjectAlarm.cancelAllRequests()
+        browser.loadURL(targetUrl)
     }
 
     private fun openCodeProjectDirectory(): String? {

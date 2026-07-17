@@ -108,4 +108,34 @@ class OpenCodeFileDropHandlerTest {
             Files.deleteIfExists(file)
         }
     }
+
+    @Test
+    fun dispatchContextMustStillMatchTheInitiatingDocumentAndServer() {
+        val matching = OpenCodeFileDropHandler.dispatchContextMatches(
+            initialDocumentRevision = 4,
+            currentDocumentRevision = 4,
+            initialServerGeneration = 2,
+            currentServerGeneration = 2,
+            initialServerUrl = "http://127.0.0.1:4096",
+            currentServerUrl = "http://127.0.0.1:4096",
+            initialDirectory = "C:\\Source\\Project",
+            currentDirectory = "c:/source/project/",
+            browserUrl = "http://127.0.0.1:4096/server/key/session/ses_1",
+        )
+        assertTrue(matching)
+
+        assertFalse(
+            OpenCodeFileDropHandler.dispatchContextMatches(
+                initialDocumentRevision = 4,
+                currentDocumentRevision = 5,
+                initialServerGeneration = 2,
+                currentServerGeneration = 2,
+                initialServerUrl = "http://127.0.0.1:4096",
+                currentServerUrl = "http://127.0.0.1:4096",
+                initialDirectory = "/project",
+                currentDirectory = "/project",
+                browserUrl = "http://127.0.0.1:4096/server/key/session/ses_2",
+            ),
+        )
+    }
 }

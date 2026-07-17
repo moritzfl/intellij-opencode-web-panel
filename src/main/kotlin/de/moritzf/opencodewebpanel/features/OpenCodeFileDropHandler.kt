@@ -39,6 +39,7 @@ internal class OpenCodeFileDropHandler(
     private val browser: JBCefBrowser,
     private val serverManager: SharedOpenCodeServerManager,
     private val openCodeProjectDirectory: () -> String?,
+    private val browserDocumentRevision: () -> Long,
     private val isDisposed: () -> Boolean,
     private val parentDisposable: Disposable,
 ) {
@@ -67,6 +68,24 @@ internal class OpenCodeFileDropHandler(
             if (droppedFiles.isEmpty()) return true
             if (droppedFiles.any { OpenCodeServerProtocol.localFileDropText(it, projectDirectory) != null }) return false
             return droppedFiles.none { Files.isRegularFile(it.toPath()) }
+        }
+
+        internal fun dispatchContextMatches(
+            initialDocumentRevision: Long,
+            currentDocumentRevision: Long,
+            initialServerGeneration: Long,
+            currentServerGeneration: Long,
+            initialServerUrl: String,
+            currentServerUrl: String?,
+            initialDirectory: String?,
+            currentDirectory: String?,
+            browserUrl: String?,
+        ): Boolean {
+            return initialDocumentRevision == currentDocumentRevision &&
+                initialServerGeneration == currentServerGeneration &&
+                initialServerUrl == currentServerUrl &&
+                OpenCodeServerProtocol.isSameFilesystemPath(initialDirectory, currentDirectory) &&
+                OpenCodeServerProtocol.isOpenCodeServerPage(initialServerUrl, browserUrl)
         }
 
         internal fun encodeImageToPng(image: Image): ByteArray? {
@@ -229,6 +248,9 @@ internal class OpenCodeFileDropHandler(
         extraPayloads: List<OpenCodeServerProtocol.DroppedFilePayload> = emptyList(),
     ): Boolean {
         val projectDirectory = openCodeProjectDirectory()
+        val serverUrl = serverManager.getServerUrl() ?: return false
+        val serverGeneration = serverManager.getServerGeneration()
+        val documentRevision = browserDocumentRevision()
         val fileTextDrops = files.mapNotNull { file -> OpenCodeServerProtocol.localFileDropText(file, projectDirectory) }
         val textDrops = fileTextDrops.ifEmpty { droppedTextPlainItems(files, textPlain) }
         val filesToForward = files.filter { file -> OpenCodeServerProtocol.localFileDropText(file, projectDirectory) == null }
@@ -248,10 +270,22 @@ internal class OpenCodeFileDropHandler(
                 textPlain = textDrops,
                 enabled = OpenCodeSettingsState.getInstance().enableChatFileDrop,
             ) ?: return@executeOnPooledThread
-            val rootUrl = serverManager.getServerUrl()?.let { OpenCodeServerProtocol.buildServerRootUrl(it) }
-                ?: return@executeOnPooledThread
+            val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
             ApplicationManager.getApplication().invokeLater {
-                if (!isDisposed() && OpenCodeSettingsState.getInstance().enableChatFileDrop) {
+                val contextIsCurrent = !isDisposed() &&
+                    OpenCodeSettingsState.getInstance().enableChatFileDrop &&
+                    dispatchContextMatches(
+                        initialDocumentRevision = documentRevision,
+                        currentDocumentRevision = browserDocumentRevision(),
+                        initialServerGeneration = serverGeneration,
+                        currentServerGeneration = serverManager.getServerGeneration(),
+                        initialServerUrl = serverUrl,
+                        currentServerUrl = serverManager.getServerUrl(),
+                        initialDirectory = projectDirectory,
+                        currentDirectory = openCodeProjectDirectory(),
+                        browserUrl = browser.cefBrowser.url,
+                    )
+                if (contextIsCurrent) {
                     browser.cefBrowser.executeJavaScript(script, rootUrl, 0)
                 }
             }

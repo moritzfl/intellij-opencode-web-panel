@@ -2,6 +2,7 @@ package de.moritzf.opencodewebpanel.features
 
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import de.moritzf.opencodewebpanel.server.OpenCodeGlobalEvent
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -49,6 +50,8 @@ class OpenCodeAgentStatusTrackerTest {
         assertFalse(state.applyEvent("message.updated", properties("""{"sessionID":"ses_1"}""")))
         assertFalse(state.applyEvent("session.status", properties("""{"status":{"type":"busy"}}""")))
         assertFalse(state.applyEvent("session.status", properties("""{"sessionID":"ses_1"}""")))
+        assertFalse(state.applyEvent("session.status", properties("""{"sessionID":"ses_1","status":{"type":"queued"}}""")))
+        assertFalse(state.applyEvent("session.idle", properties("{}")))
         assertFalse(state.applyEvent("permission.asked", properties("""{"sessionID":"ses_1"}""")))
         assertFalse(state.applyEvent("permission.replied", properties("{}")))
         assertEquals(OpenCodeAgentStatusState.IDLE, state.current())
@@ -72,5 +75,69 @@ class OpenCodeAgentStatusTrackerTest {
 
         state.clear()
         assertEquals(OpenCodeAgentStatusState.IDLE, state.current())
+    }
+
+    @Test
+    fun latestSeedWinsWhenOlderProjectCompletesLast() {
+        val tasks = mutableListOf<() -> Unit>()
+        val transitions = mutableListOf<String>()
+        var directory = "/project-a"
+        val tracker = OpenCodeAgentStatusTracker(
+            projectDirectory = { directory },
+            enabled = { true },
+            onStateChanged = transitions::add,
+            serverUrl = { "http://127.0.0.1:4096" },
+            serverPassword = { "pw" },
+            serverGeneration = { 1L },
+            loadSnapshot = { _, _, requestedDirectory ->
+                if (requestedDirectory == "/project-a") {
+                    OpenCodeAgentStatusSnapshot(setOf("ses_a"), emptyList())
+                } else {
+                    OpenCodeAgentStatusSnapshot(emptySet(), listOf("per_b"))
+                }
+            },
+            executeAsync = tasks::add,
+        )
+
+        tracker.seed()
+        directory = "/project-b"
+        tracker.reset()
+        tracker.seed()
+
+        tasks[1]()
+        tasks[0]()
+
+        assertEquals(listOf(OpenCodeAgentStatusState.ATTENTION), transitions)
+    }
+
+    @Test
+    fun partialPendingSnapshotDoesNotClearEventDerivedAttention() {
+        val tasks = mutableListOf<() -> Unit>()
+        val transitions = mutableListOf<String>()
+        val directory = "/project"
+        val tracker = OpenCodeAgentStatusTracker(
+            projectDirectory = { directory },
+            enabled = { true },
+            onStateChanged = transitions::add,
+            serverUrl = { "http://127.0.0.1:4096" },
+            serverPassword = { "pw" },
+            serverGeneration = { 1L },
+            loadSnapshot = { _, _, _ -> OpenCodeAgentStatusSnapshot(emptySet(), null) },
+            executeAsync = tasks::add,
+        )
+        tracker.eventReceived(
+            OpenCodeGlobalEvent(directory, "permission.asked", "evt_1", properties("""{"id":"per_1"}""")),
+        )
+
+        tracker.seed()
+        tasks.single()()
+        tracker.eventReceived(
+            OpenCodeGlobalEvent(directory, "permission.replied", "evt_2", properties("""{"requestID":"per_1"}""")),
+        )
+
+        assertEquals(
+            listOf(OpenCodeAgentStatusState.ATTENTION, OpenCodeAgentStatusState.IDLE),
+            transitions,
+        )
     }
 }

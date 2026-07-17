@@ -9,6 +9,9 @@
 - Project selection no longer repeatedly expands or reorders an existing project while the panel starts, and malformed saved project state now repairs itself.
 - More OpenCode interface preferences survive browser-profile or server-port changes, including tab history and review-panel state.
 - File and code links recover their pointer cursor if OpenCode replaces page styles, and browser enhancements are active immediately after a page loads.
+- Slow startup lookups and agent-status refreshes can no longer overwrite a newer project, server, or explicitly opened conversation.
+- Files prepared for drag-and-drop are discarded if the panel navigates before preparation finishes, rather than being delivered to the newer page.
+- Event-driven status, notifications, and refreshes now recognize macOS path aliases, symlinks, Windows path case, and UNC shares as the same project.
 
 ## [1.8.0] - 2026-07-17
 

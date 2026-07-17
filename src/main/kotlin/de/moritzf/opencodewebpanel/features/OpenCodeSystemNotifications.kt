@@ -24,7 +24,6 @@ import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.util.concurrency.AppExecutorUtil
 import java.awt.Frame
-import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicBoolean
 
 /** Collapses whitespace, truncates, and HTML-escapes a value for use in notification HTML. */
@@ -47,6 +46,7 @@ internal class OpenCodeSystemNotifications(
     private val browser: JBCefBrowser,
     private val serverManager: SharedOpenCodeServerManager,
     private val projectDirectory: () -> String?,
+    private val navigate: (String) -> Unit,
     parentDisposable: Disposable,
 ) {
     init {
@@ -166,7 +166,7 @@ internal class OpenCodeSystemNotifications(
         toolWindow.activate({
             if (project.isDisposed) return@activate
             if (!OpenCodeServerProtocol.isOpenCodeRouteAlreadyOpen(serverUrl, browser.cefBrowser.url, targetUrl)) {
-                browser.loadURL(targetUrl)
+                navigate(targetUrl)
             }
             browser.component.requestFocusInWindow()
             // The user is now looking at the notified session; its other notifications
@@ -302,13 +302,13 @@ internal class OpenCodeSystemNotifications(
         }
 
         private fun targetFor(directory: String): OpenCodeSystemNotifications? {
-            val normalizedDirectory = normalizeDirectory(directory) ?: return null
+            if (directory.isBlank()) return null
             val openProjects = ProjectManager.getInstance().openProjects.toSet()
             return synchronized(targets) {
                 targets.firstOrNull { target ->
                     !target.project.isDisposed &&
                         openProjects.contains(target.project) &&
-                        normalizeDirectory(target.projectDirectory()) == normalizedDirectory
+                        OpenCodeServerProtocol.isSameFilesystemPath(target.projectDirectory(), directory)
                 }
             }
         }
@@ -324,12 +324,6 @@ internal class OpenCodeSystemNotifications(
                     true
                 }
             }
-        }
-
-        private fun normalizeDirectory(directory: String?): String? {
-            val text = directory?.trim()?.takeIf { it.isNotBlank() } ?: return null
-            return runCatching { Path.of(text).toAbsolutePath().normalize().toString() }
-                .getOrElse { text.trimEnd('/', '\\') }
         }
     }
 }

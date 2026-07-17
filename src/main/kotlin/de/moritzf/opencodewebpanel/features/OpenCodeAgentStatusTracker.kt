@@ -5,7 +5,6 @@ import com.intellij.openapi.application.ApplicationManager
 import de.moritzf.opencodewebpanel.server.OpenCodeGlobalEvent
 import de.moritzf.opencodewebpanel.server.OpenCodeGlobalEventListener
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
-import de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager
 import de.moritzf.opencodewebpanel.server.objectMember
 import de.moritzf.opencodewebpanel.server.stringMember
 
@@ -49,14 +48,17 @@ internal class OpenCodeAgentStatusState {
                 val sessionID = properties.stringMember("sessionID").orEmpty()
                 val statusType = properties.objectMember("status")?.stringMember("type")
                 if (sessionID.isBlank() || statusType == null) return false
-                if (statusType == "busy" || statusType == "retry") {
-                    busySessions.add(sessionID)
-                } else {
-                    busySessions.remove(sessionID)
+                when (statusType) {
+                    "busy", "retry" -> busySessions.add(sessionID)
+                    "idle" -> busySessions.remove(sessionID)
+                    else -> return false
                 }
             }
             // Deprecated predecessor of session.status; current servers emit both.
-            "session.idle" -> busySessions.remove(properties.stringMember("sessionID").orEmpty())
+            "session.idle" -> {
+                val sessionID = properties.stringMember("sessionID")?.takeIf { it.isNotBlank() } ?: return false
+                busySessions.remove(sessionID)
+            }
             "permission.asked", "question.asked" -> {
                 val requestID = properties.stringMember("id")?.takeIf { it.isNotBlank() } ?: return false
                 attentionRequests.add(requestID)
@@ -86,10 +88,16 @@ internal class OpenCodeAgentStatusState {
  * or a pooled thread; callers dispatch to the EDT themselves.
  */
 internal class OpenCodeAgentStatusTracker(
-    private val serverManager: SharedOpenCodeServerManager,
     private val projectDirectory: () -> String?,
     private val enabled: () -> Boolean,
     private val onStateChanged: (String) -> Unit,
+    private val serverUrl: () -> String?,
+    private val serverPassword: () -> String?,
+    private val serverGeneration: () -> Long,
+    private val loadSnapshot: (String, String, String) -> OpenCodeAgentStatusSnapshot = ::loadAgentStatusSnapshot,
+    private val executeAsync: ((() -> Unit) -> Unit) = { task ->
+        ApplicationManager.getApplication().executeOnPooledThread(task)
+    },
 ) : OpenCodeGlobalEventListener {
 
     private val lock = Any()
@@ -100,6 +108,7 @@ internal class OpenCodeAgentStatusTracker(
     // snapshot went stale (an event raced past it) and fetch a fresh one instead of
     // overwriting newer event-derived state with older REST data.
     private var stateRevision = 0L
+    private var seedEpoch = 0L
 
     private companion object {
         private const val MAX_SEED_ATTEMPTS = 3
@@ -127,53 +136,56 @@ internal class OpenCodeAgentStatusTracker(
      * because events that occurred before then never reached this tracker.
      */
     fun seed() {
-        seed(attempt = 1)
+        val epoch = synchronized(lock) { ++seedEpoch }
+        seed(attempt = 1, epoch = epoch)
     }
 
-    private fun seed(attempt: Int) {
+    private fun seed(attempt: Int, epoch: Long) {
         if (!enabled()) return
         val directory = projectDirectory() ?: return
-        val serverUrl = serverManager.getServerUrl() ?: return
-        val password = serverManager.getServerPassword() ?: return
+        val serverUrl = serverUrl() ?: return
+        val password = serverPassword() ?: return
+        val generation = serverGeneration()
         val authHeader = OpenCodeServerProtocol.buildBasicAuthHeader(password)
         val revisionAtRequest = synchronized(lock) { stateRevision }
-        ApplicationManager.getApplication().executeOnPooledThread {
-            val busySessionIds = OpenCodeServerProtocol.fetchBusySessionIds(serverUrl, authHeader, directory)
-            val permissions = OpenCodeServerProtocol.fetchPendingRequestIds(
-                serverUrl, authHeader, OpenCodeServerProtocol.PERMISSION_LIST_PATH, directory,
-            )
-            val questions = OpenCodeServerProtocol.fetchPendingRequestIds(
-                serverUrl, authHeader, OpenCodeServerProtocol.QUESTION_LIST_PATH, directory,
-            )
-            val pendingRequestIds = if (permissions == null && questions == null) {
-                null
-            } else {
-                permissions.orEmpty() + questions.orEmpty()
-            }
+        executeAsync {
+            val snapshot = loadSnapshot(serverUrl, authHeader, directory)
+            if (!seedIdentityIsCurrent(epoch, directory, serverUrl, generation)) return@executeAsync
             var retry = false
             val transition = synchronized(lock) {
-                if (stateRevision != revisionAtRequest && attempt < MAX_SEED_ATTEMPTS) {
-                    // Events raced past this snapshot while it was in flight; a fresh fetch
-                    // reflects them server-side. On the last attempt the (at most ms-stale)
-                    // snapshot is still better than keeping possibly long-stale state.
-                    retry = true
+                if (seedEpoch != epoch) {
+                    null
+                } else if (stateRevision != revisionAtRequest) {
+                    // Never overwrite event-derived state with an older snapshot. Retry a bounded
+                    // number of times; if events keep racing, retain the live state.
+                    retry = attempt < MAX_SEED_ATTEMPTS
                     null
                 } else {
-                    state.seed(busySessionIds, pendingRequestIds)
+                    state.seed(snapshot.busySessionIds, snapshot.pendingRequestIds)
                     reportableTransition()
                 }
             }
             if (retry) {
-                seed(attempt + 1)
-                return@executeOnPooledThread
+                seed(attempt + 1, epoch)
+                return@executeAsync
             }
-            transition?.let(onStateChanged)
+            if (seedIdentityIsCurrent(epoch, directory, serverUrl, generation)) {
+                transition?.let(onStateChanged)
+            }
         }
+    }
+
+    private fun seedIdentityIsCurrent(epoch: Long, directory: String, url: String, generation: Long): Boolean {
+        if (!enabled() || serverGeneration() != generation || serverUrl() != url) return false
+        if (!OpenCodeServerProtocol.isSameFilesystemPath(projectDirectory(), directory)) return false
+        return synchronized(lock) { seedEpoch == epoch }
     }
 
     /** Clears the tracked state without reporting, e.g. on server stop or badge disable. */
     fun reset() {
         synchronized(lock) {
+            seedEpoch++
+            stateRevision++
             state.clear()
             lastReportedState = OpenCodeAgentStatusState.IDLE
         }
@@ -185,4 +197,23 @@ internal class OpenCodeAgentStatusTracker(
         lastReportedState = current
         return current
     }
+}
+
+internal data class OpenCodeAgentStatusSnapshot(
+    val busySessionIds: Set<String>?,
+    val pendingRequestIds: List<String>?,
+)
+
+private fun loadAgentStatusSnapshot(serverUrl: String, authHeader: String, directory: String): OpenCodeAgentStatusSnapshot {
+    val permissions = OpenCodeServerProtocol.fetchPendingRequestIds(
+        serverUrl, authHeader, OpenCodeServerProtocol.PERMISSION_LIST_PATH, directory,
+    )
+    val questions = OpenCodeServerProtocol.fetchPendingRequestIds(
+        serverUrl, authHeader, OpenCodeServerProtocol.QUESTION_LIST_PATH, directory,
+    )
+    return OpenCodeAgentStatusSnapshot(
+        busySessionIds = OpenCodeServerProtocol.fetchBusySessionIds(serverUrl, authHeader, directory),
+        // The combined pending snapshot is authoritative only when both endpoint reads succeeded.
+        pendingRequestIds = if (permissions != null && questions != null) permissions + questions else null,
+    )
 }
