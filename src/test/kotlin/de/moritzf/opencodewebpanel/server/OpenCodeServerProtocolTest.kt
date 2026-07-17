@@ -317,6 +317,8 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("state.projects[scope]"))
         assertTrue(script.contains("state.lastProject[scope] = directory"))
         assertTrue(script.contains("{ worktree: directory, expanded: true }"))
+        assertTrue(script.contains("const sameWorktree = (left, right) =>"))
+        assertTrue(script.contains("!sameWorktree(project.worktree, directory)"))
         assertTrue(script.contains("const directory = '/tmp/my \\'project\\''"))
         // Without a resolved recent session the injected id is empty, so the runtime guard skips
         // navigation and the script only seeds.

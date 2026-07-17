@@ -108,8 +108,14 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     private val openProjectAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
     private val scriptScheduler = OpenCodeBrowserScriptScheduler(project, browser, openProjectAlarm)
     private var openProjectScriptScheduled = false
+    private var openProjectSeedScheduled = false
     /** Most-recent session resolved for the current page load (avoids a second REST fetch). */
     private var pendingMostRecentSessionId: String? = null
+    /**
+     * One-shot boot intent: navigate to [pendingMostRecentSessionId] only for the load started by
+     * [loadProjectPage]. Cleared once the target session is open so later SPA navigations only
+     * re-seed project state and never yank the user back to the startup conversation.
+     */
     private var pendingOpenMostRecentConversation = false
     private var compactLayoutScriptScheduled = false
     private var ideThemeSyncScriptScheduled = false
@@ -220,12 +226,16 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                 compactLayoutScriptScheduled = false
                 ideThemeSyncScriptScheduled = false
                 hideWebsiteButtonScriptScheduled = false
+                openProjectSeedScheduled = false
                 if (OpenCodeServerProtocol.isOpenCodeServerPage(serverManager.getServerUrl(), frame.url)) {
                     // Drop any previous open-project delay series so navigations do not stack injects.
                     // Reset the flag so onLoadEnd can schedule a fresh series for this document.
                     openProjectAlarm.cancelAllRequests()
                     openProjectScriptScheduled = false
                     localStorageBridge.restore(frame.url)
+                    // Seed lastProject before the SPA bundle reads localStorage (shared browser
+                    // profile otherwise keeps the previous IDE project's workspace).
+                    injectOpenProjectSeedEarly()
                     localStorageBridge.installSync(frame.url)
                     injectIdeThemeSyncEarly()
                     injectCompactLayoutEarly()
@@ -769,29 +779,29 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         val projectDirectory = openCodeProjectDirectory()?.takeIf { it.isNotBlank() } ?: return
         openProjectScriptScheduled = true
 
-        val openMostRecent = pendingOpenMostRecentConversation ||
-            OpenCodeSettingsState.getInstance().openMostRecentConversationOnStartup
-        if (!openMostRecent) {
-            scheduleOpenProjectScript(serverUrl, projectDirectory, openMostRecentConversation = false, mostRecentSessionId = null)
-            return
-        }
-        // Prefer the id resolved for this page load (boot already fetched it). Only re-fetch when
-        // a plain reload left the pending id unset (e.g. user turned the setting on mid-session).
-        val pendingId = pendingMostRecentSessionId
-        if (pendingId != null || pendingOpenMostRecentConversation) {
-            scheduleOpenProjectScript(serverUrl, projectDirectory, openMostRecentConversation = true, mostRecentSessionId = pendingId)
-            return
-        }
-        ApplicationManager.getApplication().executeOnPooledThread {
-            val sessionId = fetchMostRecentSessionId(serverUrl, projectDirectory)
-            ApplicationManager.getApplication().invokeLater {
-                if (isContentDisposed()) return@invokeLater
-                pendingMostRecentSessionId = sessionId
-                // loadStart may have cleared the flag for a newer document; onLoadEnd will reschedule.
-                if (!openProjectScriptScheduled) return@invokeLater
-                scheduleOpenProjectScript(serverUrl, projectDirectory, openMostRecentConversation = true, mostRecentSessionId = sessionId)
+        // One-shot boot intent only — do not re-read the setting on every SPA navigation, or a
+        // later full page load would yank the user back to the startup conversation.
+        val openMostRecent = pendingOpenMostRecentConversation
+        val pendingId = pendingMostRecentSessionId?.takeIf { openMostRecent }
+        if (!openMostRecent || pendingId == null) {
+            if (openMostRecent && pendingId == null) {
+                // Fetch returned nothing (empty project); keep seeding, drop navigate intent.
+                pendingOpenMostRecentConversation = false
             }
+            scheduleOpenProjectScript(
+                serverUrl,
+                projectDirectory,
+                openMostRecentConversation = false,
+                mostRecentSessionId = null,
+            )
+            return
         }
+        scheduleOpenProjectScript(
+            serverUrl,
+            projectDirectory,
+            openMostRecentConversation = true,
+            mostRecentSessionId = pendingId,
+        )
     }
 
     private fun fetchMostRecentSessionId(serverUrl: String, projectDirectory: String): String? {
@@ -827,16 +837,44 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         scriptScheduler.schedule(script, rootUrl) {
             if (!isBrowserOnOpenCodeServerPage(serverUrl)) return@schedule false
             val frameUrl = browser.cefBrowser.url
-            // Once the target session is open, further delayed injects only re-seed lastProject.
-            // Keep running on the id-less shell and on legacy directory destinations that still
-            // need the script; stop once we are on the requested session (or any session when we
-            // were only seeding).
+            // Navigate series: stop (and clear boot intent) once the target session is open so
+            // later SPA navigations only re-seed. Seed-only series keep running on directoryless
+            // routes / project roots that still need lastProject binding.
             if (openMostRecentConversation && mostRecentSessionId != null) {
-                return@schedule OpenCodeServerProtocol.sessionIdFromUrl(frameUrl) != mostRecentSessionId
+                val onTarget = OpenCodeServerProtocol.sessionIdFromUrl(frameUrl) == mostRecentSessionId
+                if (onTarget) {
+                    pendingOpenMostRecentConversation = false
+                    pendingMostRecentSessionId = null
+                    return@schedule false
+                }
+                return@schedule true
             }
             val onProjectRootRoute = isOpenCodeProjectRootRoute(frameUrl)
             val onProjectDestination = isOpenCodeProjectDestination(frameUrl)
             !onProjectDestination || onProjectRootRoute
+        }
+    }
+
+    /**
+     * Writes `lastProject` / project list into the SPA's localStorage before the bundle runs.
+     * Must run from [onLoadStart]; post-load injects alone race the SPA's first read of the
+     * shared browser profile and can leave the panel bound to another IDE project's workspace.
+     */
+    private fun injectOpenProjectSeedEarly() {
+        if (openProjectSeedScheduled) return
+        val serverUrl = serverManager.getServerUrl() ?: return
+        val projectDirectory = openCodeProjectDirectory()?.takeIf { it.isNotBlank() } ?: return
+        val script = OpenCodeBrowserSnippets.buildOpenProjectScript(
+            projectDirectory,
+            serverUrl,
+            openMostRecentConversation = false,
+            mostRecentSessionId = null,
+        ) ?: return
+        val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
+        openProjectSeedScheduled = true
+        browser.cefBrowser.executeJavaScript(script, rootUrl, 0)
+        scriptScheduler.schedule(script, rootUrl, early = true) {
+            isBrowserOnOpenCodeServerPage(serverUrl)
         }
     }
 
@@ -978,6 +1016,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
 
     private fun applyOpenCodeProjectDirectoryChange() {
         openProjectScriptScheduled = false
+        openProjectSeedScheduled = false
         fileLinkFeature.scheduled = false
         openProjectAlarm.cancelAllRequests()
         // The badge state belongs to the previous directory; loadProjectPage re-seeds.

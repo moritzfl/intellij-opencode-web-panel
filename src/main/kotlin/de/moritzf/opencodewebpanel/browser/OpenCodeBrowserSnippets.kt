@@ -107,6 +107,10 @@ internal object OpenCodeBrowserSnippets {
      * navigates straight there. The legacy `/<encodedDir>/session` project route is deliberately not
      * used: without a session id it crashes the SPA's error boundary, which then leaves every "send"
      * failing with "Unable to retrieve session".
+     *
+     * Callers should inject the seed-only form ([openMostRecentConversation] false) from
+     * `onLoadStart` so `lastProject` is set before the SPA bundle reads localStorage. Navigation
+     * is a post-load safety net only.
      */
     fun buildOpenProjectScript(
         projectBasePath: String?,
@@ -146,9 +150,20 @@ internal object OpenCodeBrowserSnippets {
                 state.projects = state.projects && typeof state.projects === 'object' ? state.projects : {};
                 state.lastProject = state.lastProject && typeof state.lastProject === 'object' ? state.lastProject : {};
                 const projects = Array.isArray(state.projects[scope]) ? state.projects[scope] : [];
+                // Match worktrees case-insensitively on Windows drive roots and with either
+                // separator so a stale entry from another client does not leave two copies.
+                const sameWorktree = (left, right) => {
+                  if (typeof left !== 'string' || typeof right !== 'string') return false;
+                  const norm = (value) => {
+                    let next = value.replace(/\\/g, '/').replace(/\/+$/g, '');
+                    if (/^[A-Za-z]:\//.test(next)) next = next.charAt(0).toLowerCase() + next.slice(1);
+                    return next;
+                  };
+                  return norm(left) === norm(right);
+                };
                 state.projects[scope] = [
                   { worktree: directory, expanded: true },
-                  ...projects.filter((project) => project && project.worktree !== directory),
+                  ...projects.filter((project) => project && !sameWorktree(project.worktree, directory)),
                 ];
                 state.lastProject[scope] = directory;
                 window.localStorage.setItem(storageKey, JSON.stringify(state));
@@ -167,10 +182,12 @@ internal object OpenCodeBrowserSnippets {
                 return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+${'$'}/g, '');
               };
               const target = '/server/' + encodeServerKey(window.location.origin) + '/session/' + encodeURIComponent(sessionId);
+              // One-shot per tab session *and* target id: a later boot with a newer most-recent
+              // conversation must still be allowed to navigate.
               const navigationKey = 'opencode.intellij.project.opened:' + directory;
               let alreadyOpened = false;
               try { alreadyOpened = window.sessionStorage.getItem(navigationKey) === target; } catch (_) {}
-              // Navigate at most once per tab session. Skip only when already on the *target*
+              // Navigate at most once per target. Skip only when already on the *target*
               // session — not any /session/<id> (SPA may have restored a different conversation
               // from the shared profile before this script ran).
               const currentMatch = window.location.pathname.match(/\/session\/([^/?#]+)/);
