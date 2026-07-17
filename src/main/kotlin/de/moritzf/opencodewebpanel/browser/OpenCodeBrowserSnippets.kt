@@ -630,18 +630,20 @@ internal object OpenCodeBrowserSnippets {
             (() => {
               if (window.__opencodeIntellijProjectSwitchPromptSuppressionInstalled) return;
               window.__opencodeIntellijProjectSwitchPromptSuppressionInstalled = true;
-              const notificationTitles = new Set(['Permission required', 'Question', 'Berechtigung erforderlich', 'Frage']);
-              const goToSessionLabels = new Set(['Go to session', 'Zur Sitzung gehen']);
-              const text = (element) => (element && element.textContent ? element.textContent : '').replace(/\s+/g, ' ').trim();
+              // Structural match, no locale-dependent label text: the permission/question toast is
+              // the only toast rendered with the "checklist" (permission) or "bubble-5" (question)
+              // sprite icon, and it always carries an action row (go-to-session/dismiss buttons).
+              // The Icon component renders the sprite name in the DOM as use[href="#opencode-icon-…"],
+              // in both the legacy toast and the redesigned toast-v2.
               const toastSelector = '[data-component="toast"], [data-component="toast-v2"]';
-              const titleSelector = '[data-slot="toast-title"], [data-slot="toast-v2-title"]';
+              const iconSlotSelector = '[data-slot="toast-icon"], [data-slot="toast-v2-icon"]';
+              const promptIconSelector = 'use[href="#opencode-icon-checklist"], use[href="#opencode-icon-bubble-5"]';
               const actionSelector = '[data-slot="toast-action"], [data-slot="toast-v2-actions"] button';
               const closeSelector = '[data-slot="toast-close-button"], [data-slot="toast-v2-close-button"]';
               const dismissIfProjectSwitchPrompt = (toast) => {
-                const title = toast.querySelector(titleSelector);
-                if (!notificationTitles.has(text(title))) return;
-                const actions = Array.from(toast.querySelectorAll(actionSelector));
-                if (!actions.some((action) => goToSessionLabels.has(text(action)))) return;
+                const iconSlot = toast.querySelector(iconSlotSelector);
+                if (!iconSlot || !iconSlot.querySelector(promptIconSelector)) return;
+                if (!toast.querySelector(actionSelector)) return;
                 const close = toast.querySelector(closeSelector);
                 if (close && typeof close.click === 'function') {
                   close.click();

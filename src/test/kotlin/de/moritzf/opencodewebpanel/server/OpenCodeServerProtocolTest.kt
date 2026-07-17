@@ -927,10 +927,12 @@ class OpenCodeServerProtocolTest {
 
         assertTrue(script.contains("window.__opencodeIntellijProjectSwitchPromptSuppressionInstalled"))
         assertTrue(script.contains("[data-component=\"toast\"], [data-component=\"toast-v2\"]"))
-        assertTrue(script.contains("Permission required"))
-        assertTrue(script.contains("Berechtigung erforderlich"))
-        assertTrue(script.contains("Go to session"))
-        assertTrue(script.contains("Zur Sitzung gehen"))
+        // Locale-independent structural match: sprite icon names, not translated labels.
+        assertTrue(script.contains("use[href=\"#opencode-icon-checklist\"]"))
+        assertTrue(script.contains("use[href=\"#opencode-icon-bubble-5\"]"))
+        assertTrue(script.contains("[data-slot=\"toast-icon\"], [data-slot=\"toast-v2-icon\"]"))
+        assertFalse(script.contains("Permission required"))
+        assertFalse(script.contains("Go to session"))
         assertTrue(script.contains("[data-slot=\"toast-close-button\"], [data-slot=\"toast-v2-close-button\"]"))
         assertTrue(script.contains("new MutationObserver"))
     }
