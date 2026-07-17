@@ -846,7 +846,7 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
-    fun buildCompactLayoutScriptPatchesMatchMediaAndInjectsStyle() {
+    fun buildCompactLayoutScriptPatchesMatchMediaOnly() {
         val script = OpenCodeBrowserSnippets.buildCompactLayoutScript(enabled = true)!!
 
         assertTrue(script.contains("window.__opencodeIntellijCompactInstalled"))
@@ -855,10 +855,10 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("(max-width: 767px)"))
         assertTrue(script.contains("stub(WIDE_QUERY, false)"))
         assertTrue(script.contains("stub(NARROW_QUERY, true)"))
-        assertTrue(script.contains("opencode-intellij-compact-layout"))
-        assertTrue(script.contains("md\\\\:flex-row"))
-        assertTrue(script.contains("md\\\\:flex-none"))
-        assertTrue(script.contains("flex-direction: column"))
+        // No Tailwind class overrides — layout is driven only by the media-query stub.
+        assertFalse(script.contains("opencode-intellij-compact-layout"))
+        assertFalse(script.contains("md\\\\:flex-row"))
+        assertFalse(script.contains("createElement('style')"))
     }
 
     @Test

@@ -35,7 +35,7 @@ Project-specific guidance for future implementation work.
 - Launch: `opencode serve --hostname 127.0.0.1 --port <port> --print-logs`. Default host `127.0.0.1`; basic-auth username is always `opencode`.
 - Port: default mode `Auto select` (`--port 0`); fixed mode sanitizes to `1..65535`, default fixed port `4096`.
 - When settings that affect the process change, stop the server and let the next tool-window load restart it.
-- Compact layout: OpenCode switches compact(mobile)/wide(desktop) on a `(min-width: 768px)` `matchMedia` query. To force compact, patch `window.matchMedia` **before** the SPA bundle loads (`onLoadStart`) so `createMediaQuery` initializes with `matches: false` and never subscribes to real resize events. `forceCompactLayout` defaults **on**, so the panel normally renders the mobile layout (classic `session-review-*`/`data-file` review panel); the redesigned v2 review panel (`session-review-v2-*`) appears only with it off (desktop).
+- Compact layout: OpenCode switches compact(mobile)/wide(desktop) on a `(min-width: 768px)` `matchMedia` query. To force compact, patch `window.matchMedia` for that query and `(max-width: 767px)` **before** the SPA bundle loads (`onLoadStart`) so `createMediaQuery` initializes with compact matches and never subscribes to real resize events. No CSS class overrides — layout is query-driven only. `forceCompactLayout` defaults **on**, so the panel normally renders the mobile layout (classic `session-review-*`/`data-file` review panel); the redesigned v2 review panel (`session-review-v2-*`) appears only with it off (desktop).
 
 ## Settings UI
 

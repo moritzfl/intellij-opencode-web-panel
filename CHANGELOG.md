@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Compact layout now relies only on the browser media-query breakpoint OpenCode already uses, without extra CSS class overrides that tracked Tailwind class names.
+
 ## [1.7.1] - 2026-07-16
 
 ### Fixed

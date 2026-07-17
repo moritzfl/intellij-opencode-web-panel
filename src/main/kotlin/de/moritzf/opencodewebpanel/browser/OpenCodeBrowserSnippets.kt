@@ -408,6 +408,14 @@ internal object OpenCodeBrowserSnippets {
         return script.trimIndent()
     }
 
+    /**
+     * Forces OpenCode's compact (mobile) layout by stubbing the breakpoint media queries the SPA
+     * uses for layout. No CSS class overrides: layout is driven by `createMediaQuery` on
+     * `(min-width: 768px)` / `(max-width: 767px)`, so patching those is enough and stays free of
+     * Tailwind class names that change with redesigns.
+     *
+     * Must run before the SPA bundle initializes media queries (`onLoadStart`).
+     */
     fun buildCompactLayoutScript(enabled: Boolean): String? {
         if (!enabled) return null
         @Language("JavaScript")
@@ -427,22 +435,6 @@ internal object OpenCodeBrowserSnippets {
                 if (q === NARROW_QUERY) return stub(NARROW_QUERY, true);
                 return orig(q);
               };
-              const style = document.createElement('style');
-              style.id = 'opencode-intellij-compact-layout';
-              style.textContent = '@media (min-width: 768px) {\n  .md\\:flex-row { flex-direction: column !important; }\n  .md\\:flex-none { flex: 1 1 0% !important; }\n  .hidden.md\\:flex { display: none !important; }\n  .hidden.md\\:block { display: none !important; }\n}';
-              // At the earliest injection point document.documentElement can still be null; retry
-              // until a parent exists and re-attach if the SPA replaces the head content.
-              const ensureStyle = () => {
-                const parent = document.head || document.documentElement;
-                if (!parent) return false;
-                if (!style.isConnected) parent.appendChild(style);
-                return true;
-              };
-              if (!ensureStyle()) {
-                const observer = new MutationObserver(() => { if (ensureStyle()) observer.disconnect(); });
-                observer.observe(document, { childList: true, subtree: true });
-              }
-              document.addEventListener('DOMContentLoaded', ensureStyle, { once: true });
             })();
         """
         return script.trimIndent()
