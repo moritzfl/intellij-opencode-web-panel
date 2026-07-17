@@ -8,10 +8,15 @@
 
 - A setting to show or hide OpenCode's floating website/help button in the panel (default: hide). Turn it off if an OpenCode update needs that control visible again.
 
+### Fixed
+
+- The "suppress project-switch prompts" option now works in every language: the permission/question notification toast is recognized by its structure and icons instead of English/German label texts.
+
 ### Changed
 
 - Compact layout now relies only on the browser media-query breakpoint OpenCode already uses, without extra CSS class overrides that tracked Tailwind class names.
 - The website-button hide rule matches more durable signals (opencode.ai link + icon button / fixed chrome) instead of English labels and fixed position utility classes.
+- Smoother chat streaming: the panel's page tweaks now stay idle while OpenCode updates the conversation, instead of re-scanning the page on every change.
 
 ## [1.7.1] - 2026-07-16
 
