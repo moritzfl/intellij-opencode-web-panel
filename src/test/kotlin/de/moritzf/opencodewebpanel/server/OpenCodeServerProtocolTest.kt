@@ -862,6 +862,25 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun buildHideWebsiteButtonScriptIsMissingWhenDisabled() {
+        assertNull(OpenCodeBrowserSnippets.buildHideWebsiteButtonScript(enabled = false))
+    }
+
+    @Test
+    fun buildHideWebsiteButtonScriptUsesDurableHrefSelectors() {
+        val script = OpenCodeBrowserSnippets.buildHideWebsiteButtonScript(enabled = true)!!
+
+        assertTrue(script.contains("window.__opencodeIntellijHideWebsiteButtonInstalled"))
+        assertTrue(script.contains("href^=\"https://opencode.ai\""))
+        assertTrue(script.contains("data-component*=\"icon-button\""))
+        assertTrue(script.contains(".fixed"))
+        // Locale-specific labels and Tailwind position utilities are not primary matchers.
+        assertFalse(script.contains("Open the OpenCode website"))
+        assertFalse(script.contains("bottom-5"))
+        assertFalse(script.contains("right-5"))
+    }
+
+    @Test
     fun buildCompactLayoutScriptIsIdempotent() {
         val script = OpenCodeBrowserSnippets.buildCompactLayoutScript(enabled = true)!!
 

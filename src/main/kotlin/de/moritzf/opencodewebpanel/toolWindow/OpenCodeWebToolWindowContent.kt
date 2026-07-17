@@ -409,6 +409,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                         OpenCodeUiSetting.DIFF_NAVIGATION -> applyFeature(diffNavigationFeature, enabled)
                         OpenCodeUiSetting.CHAT_FILE_DROP -> applyFeature(filePasteSuppressionFeature, enabled)
                         OpenCodeUiSetting.COMPACT_LAYOUT -> applyCompactLayout()
+                        OpenCodeUiSetting.HIDE_WEBSITE_BUTTON -> applyHideWebsiteButton()
                         OpenCodeUiSetting.IDE_THEME_SYNC -> applyIdeThemeSync(enabled)
                         OpenCodeUiSetting.PROJECT_SWITCH_PROMPT_SUPPRESSION -> applyFeature(projectSwitchPromptSuppressionFeature, enabled)
                         OpenCodeUiSetting.BROWSER_CURSOR_MIRROR -> applyFeature(cursorMirrorFeature, enabled)
@@ -1047,6 +1048,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
 
     private fun injectHideWebsiteButtonEarly() {
         if (hideWebsiteButtonScriptScheduled) return
+        if (!OpenCodeSettingsState.getInstance().hideWebsiteButton) return
 
         val serverUrl = serverManager.getServerUrl() ?: return
         val script = OpenCodeBrowserSnippets.buildHideWebsiteButtonScript(enabled = true) ?: return
@@ -1057,7 +1059,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         browser.cefBrowser.executeJavaScript(script, rootUrl, 0)
         // Re-inject on delays in case the early injection ran before JS context was ready
         scriptScheduler.schedule(script, rootUrl, early = true) {
-            isBrowserOnOpenCodeServerPage(serverUrl)
+            OpenCodeSettingsState.getInstance().hideWebsiteButton && isBrowserOnOpenCodeServerPage(serverUrl)
         }
     }
 
@@ -1092,6 +1094,16 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     private fun applyCompactLayout() {
         // Toggling requires a page reload — early injection on next load start
         compactLayoutScriptScheduled = false
+        val serverUrl = serverManager.getServerUrl() ?: return
+        if (OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)) {
+            browser.cefBrowser.reload()
+        }
+    }
+
+    private fun applyHideWebsiteButton() {
+        // Off → reload so listeners/stylesheets are fully removed (safeguard contract).
+        // On → reload so early inject runs before SPA chrome mounts.
+        hideWebsiteButtonScriptScheduled = false
         val serverUrl = serverManager.getServerUrl() ?: return
         if (OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)) {
             browser.cefBrowser.reload()

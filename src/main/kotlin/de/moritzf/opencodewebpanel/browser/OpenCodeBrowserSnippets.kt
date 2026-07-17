@@ -441,13 +441,12 @@ internal object OpenCodeBrowserSnippets {
     }
 
     /**
-     * Hides OpenCode's floating "open the website" button (a circled question mark pinned to the
-     * bottom-right corner). Inside the embedded IDE panel it only overlaps the composer and links
-     * out to opencode.ai, so it is always suppressed.
+     * Hides OpenCode's floating "open the website" control (help / marketing link out to
+     * opencode.ai). Inside the embedded IDE panel it only overlaps the composer.
      *
-     * Matches both the exact HelpButton markup (`aria-label` / `data-component` / href) and a
-     * position-based fallback. Style is kept alive with a permanent MutationObserver because the
-     * SPA can replace `<head>` after early injection (a one-shot observer is not enough).
+     * Selectors prefer durable signals (`href` to opencode.ai + icon-button / fixed chrome) over
+     * English aria labels and Tailwind position utilities. Style is kept alive with a permanent
+     * MutationObserver because the SPA can replace `<head>` after early injection.
      */
     fun buildHideWebsiteButtonScript(enabled: Boolean): String? {
         if (!enabled) return null
@@ -457,12 +456,14 @@ internal object OpenCodeBrowserSnippets {
               if (window.__opencodeIntellijHideWebsiteButtonInstalled) return;
               window.__opencodeIntellijHideWebsiteButtonInstalled = true;
               const STYLE_ID = 'opencode-intellij-hide-website-button';
-              const CSS = [
-                'a[aria-label="Open the OpenCode website"]',
-                'a[data-component="icon-button-v2"][href^="https://opencode.ai"]',
-                'a[href="https://opencode.ai"].fixed.bottom-5.right-5',
-                'a[href="https://opencode.ai/"].fixed.bottom-5.right-5',
-              ].join(', ') + ' { display: none !important; visibility: hidden !important; pointer-events: none !important; }';
+              // Prefer href + role/chrome over locale-specific labels and layout class names.
+              const SELECTOR = [
+                'a[href^="https://opencode.ai"][data-component*="icon-button"]',
+                'a[href^="https://opencode.ai"].fixed',
+                'a[href^="http://opencode.ai"][data-component*="icon-button"]',
+                'a[href^="http://opencode.ai"].fixed',
+              ].join(', ');
+              const CSS = SELECTOR + ' { display: none !important; visibility: hidden !important; pointer-events: none !important; }';
               const ensureStyle = () => {
                 const parent = document.head || document.documentElement;
                 if (!parent) return false;
@@ -477,9 +478,7 @@ internal object OpenCodeBrowserSnippets {
                 return true;
               };
               const hideNodes = () => {
-                document.querySelectorAll(
-                  'a[aria-label="Open the OpenCode website"], a[data-component="icon-button-v2"][href^="https://opencode.ai"]'
-                ).forEach((el) => {
+                document.querySelectorAll(SELECTOR).forEach((el) => {
                   el.style.setProperty('display', 'none', 'important');
                   el.style.setProperty('visibility', 'hidden', 'important');
                   el.style.setProperty('pointer-events', 'none', 'important');

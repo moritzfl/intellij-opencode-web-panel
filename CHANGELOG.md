@@ -4,9 +4,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- A setting to show or hide OpenCode's floating website/help button in the panel (default: hide). Turn it off if an OpenCode update needs that control visible again.
+
 ### Changed
 
 - Compact layout now relies only on the browser media-query breakpoint OpenCode already uses, without extra CSS class overrides that tracked Tailwind class names.
+- The website-button hide rule matches more durable signals (opencode.ai link + icon button / fixed chrome) instead of English labels and fixed position utility classes.
 
 ## [1.7.1] - 2026-07-16
 

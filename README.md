@@ -117,6 +117,7 @@ Open <kbd>Settings/Preferences</kbd> > <kbd>Tools</kbd> > <kbd>OpenCode Web Pane
 - Enable click-to-navigate for code references in chat.
 - Enable file drop and paste into chat, using `@relative/path` for project file references.
 - Lock OpenCode to compact layout for panel-friendly use.
+- Hide OpenCode's floating website/help button in the panel.
 - Sync OpenCode's system color scheme with the IDE theme.
 - Suppress project-switch prompts that are not useful inside the embedded panel.
 - Forward OpenCode browser notifications to the IDE, optionally with Allow/Deny actions for permission requests.

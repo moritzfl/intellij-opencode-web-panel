@@ -88,6 +88,7 @@ class OpenCodeSettingsConfigurable : Configurable {
     private val openDiffsInIdeCheckBox = JBCheckBox("Open diffs in the IDE on Alt+Click")
     private val enableChatFileDropCheckBox = JBCheckBox("Enable file drop and paste into chat")
     private val forceCompactLayoutCheckBox = JBCheckBox("Lock to compact view")
+    private val hideWebsiteButtonCheckBox = JBCheckBox("Hide the OpenCode website button")
     private val syncThemeWithIdeCheckBox = JBCheckBox("Sync OpenCode color scheme with the IDE theme")
     private val suppressProjectSwitchPromptsCheckBox = JBCheckBox("Suppress project-switch prompts")
     private val mirrorBrowserCursorCheckBox = JBCheckBox("Mirror the web page mouse cursor")
@@ -132,6 +133,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         CheckBoxSettingBinding(openDiffsInIdeCheckBox, { openDiffsInIde }, { value -> openDiffsInIde = value }, OpenCodeUiSetting.DIFF_NAVIGATION),
         CheckBoxSettingBinding(enableChatFileDropCheckBox, { enableChatFileDrop }, { value -> enableChatFileDrop = value }, OpenCodeUiSetting.CHAT_FILE_DROP),
         CheckBoxSettingBinding(forceCompactLayoutCheckBox, { forceCompactLayout }, { value -> forceCompactLayout = value }, OpenCodeUiSetting.COMPACT_LAYOUT),
+        CheckBoxSettingBinding(hideWebsiteButtonCheckBox, { hideWebsiteButton }, { value -> hideWebsiteButton = value }, OpenCodeUiSetting.HIDE_WEBSITE_BUTTON),
         CheckBoxSettingBinding(syncThemeWithIdeCheckBox, { syncThemeWithIde }, { value -> syncThemeWithIde = value }, OpenCodeUiSetting.IDE_THEME_SYNC),
         CheckBoxSettingBinding(suppressProjectSwitchPromptsCheckBox, { suppressProjectSwitchPrompts }, { value -> suppressProjectSwitchPrompts = value }, OpenCodeUiSetting.PROJECT_SWITCH_PROMPT_SUPPRESSION),
         CheckBoxSettingBinding(mirrorBrowserCursorCheckBox, { mirrorBrowserCursor }, { value -> mirrorBrowserCursor = value }, OpenCodeUiSetting.BROWSER_CURSOR_MIRROR),
@@ -230,6 +232,10 @@ class OpenCodeSettingsConfigurable : Configurable {
                 row {
                     cell(forceCompactLayoutCheckBox)
                         .comment("Keep the compact mobile layout even when the panel is wide. On: classic review panel. Off: OpenCode's redesigned desktop review panel.")
+                }
+                row {
+                    cell(hideWebsiteButtonCheckBox)
+                        .comment("Hide OpenCode's floating help button that opens the OpenCode website. It only overlaps the message box in the panel. Turn off if an OpenCode update needs the control visible again.")
                 }
                 row {
                     cell(syncThemeWithIdeCheckBox)

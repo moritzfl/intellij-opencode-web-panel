@@ -117,6 +117,20 @@ class OpenCodeSettingsStateTest {
     }
 
     @Test
+    fun hideWebsiteButtonIsEnabledByDefault() {
+        assertEquals(true, OpenCodeSettingsState().hideWebsiteButton)
+    }
+
+    @Test
+    fun hideWebsiteButtonLoadsPersistedValue() {
+        val settings = OpenCodeSettingsState()
+
+        settings.loadState(OpenCodeSettingsState().apply { hideWebsiteButton = false })
+
+        assertEquals(false, settings.hideWebsiteButton)
+    }
+
+    @Test
     fun syncThemeWithIdeIsEnabledByDefault() {
         assertEquals(true, OpenCodeSettingsState().syncThemeWithIde)
     }

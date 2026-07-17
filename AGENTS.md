@@ -45,7 +45,7 @@ Project-specific guidance for future implementation work.
 
 ## Injection Safeguards
 
-UI-behavior settings (`openFileLinksInIde`, `enableCodeNavigation`, `openDiffsInIde`, `enableChatFileDrop`, `forceCompactLayout`, …) gate **browser-side JS/CSS injection** into the embedded web app. They are **safeguards**, not cosmetics: if an injected behavior breaks the OpenCode UI or conflicts with an update, the user must be able to disable it and get back a clean, unmodified web app.
+UI-behavior settings (`openFileLinksInIde`, `enableCodeNavigation`, `openDiffsInIde`, `enableChatFileDrop`, `forceCompactLayout`, `hideWebsiteButton`, …) gate **browser-side JS/CSS injection** into the embedded web app. They are **safeguards**, not cosmetics: if an injected behavior breaks the OpenCode UI or conflicts with an update, the user must be able to disable it and get back a clean, unmodified web app.
 
 - Disabled ⇒ generate/inject/schedule nothing; the script builder returns `null`.
 - Toggled **off** at runtime ⇒ reload the page so listeners/patches/stylesheets are fully removed — never inject a "disable" script.
