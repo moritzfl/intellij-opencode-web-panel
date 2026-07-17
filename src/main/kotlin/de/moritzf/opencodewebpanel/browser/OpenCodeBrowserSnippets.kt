@@ -477,19 +477,23 @@ internal object OpenCodeBrowserSnippets {
                 else if (style.textContent !== CSS) style.textContent = CSS;
                 return true;
               };
-              const hideNodes = () => {
-                document.querySelectorAll(SELECTOR).forEach((el) => {
-                  el.style.setProperty('display', 'none', 'important');
-                  el.style.setProperty('visibility', 'hidden', 'important');
-                  el.style.setProperty('pointer-events', 'none', 'important');
+              // The stylesheet alone does the hiding; the observer only re-attaches it if the SPA
+              // replaces <head>. Reattachment checks are debounced to one per animation frame so
+              // chat streaming (which mutates the DOM constantly) costs nothing measurable.
+              ensureStyle();
+              let ensureQueued = false;
+              const queueEnsureStyle = () => {
+                if (ensureQueued) return;
+                ensureQueued = true;
+                window.requestAnimationFrame(() => {
+                  ensureQueued = false;
+                  ensureStyle();
                 });
               };
-              const apply = () => { ensureStyle(); hideNodes(); };
-              apply();
-              const observer = new MutationObserver(apply);
+              const observer = new MutationObserver(queueEnsureStyle);
               const root = document.documentElement || document;
               observer.observe(root, { childList: true, subtree: true });
-              document.addEventListener('DOMContentLoaded', apply, { once: true });
+              document.addEventListener('DOMContentLoaded', ensureStyle, { once: true });
             })();
         """
         return script.trimIndent()
