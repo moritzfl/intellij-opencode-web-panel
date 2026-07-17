@@ -32,12 +32,18 @@ internal object OpenCodeBrowserSnippets {
     @Language("JavaScript")
     private val POINTER_CURSOR_KIT_JS = """
         const POINTER_ATTR = 'data-opencode-intellij-pointer';
+        const POINTER_STYLE_ID = 'opencode-intellij-pointer-cursor';
+        const POINTER_CSS = '[' + POINTER_ATTR + '], [' + POINTER_ATTR + '] * { cursor: pointer !important; }';
         const ensurePointerCursorStyle = () => {
-          if (window.__opencodeIntellijPointerCursorStyleInstalled) return;
-          window.__opencodeIntellijPointerCursorStyleInstalled = true;
-          const style = document.createElement('style');
-          style.textContent = '[' + POINTER_ATTR + '], [' + POINTER_ATTR + '] * { cursor: pointer !important; }';
-          (document.head || document.documentElement).appendChild(style);
+          const parent = document.head || document.documentElement;
+          if (!parent) return;
+          let style = document.getElementById(POINTER_STYLE_ID);
+          if (!style) {
+            style = document.createElement('style');
+            style.id = POINTER_STYLE_ID;
+          }
+          if (style.textContent !== POINTER_CSS) style.textContent = POINTER_CSS;
+          if (!style.isConnected) parent.appendChild(style);
         };
         let hoveredElement = null;
         const markHovered = (element) => {
@@ -64,9 +70,9 @@ internal object OpenCodeBrowserSnippets {
           'opencode-theme-css-dark',
           'settings.v3',
         ]);
-        const globalKeys = /^opencode\.global\.dat:(language|model|layout|layout\.page|permission|notification|tabs|open\.app|go-upsell)${'$'}/;
+        const globalKeys = /^opencode\.global\.dat:(language|model|layout|layout\.page|permission|notification|tabs|open\.app|go-upsell|home\.servers|review-panel-v2|new-session\.provider-tip)${'$'}/;
         const workspaceKeys = /^opencode\.workspace\.[^:]+:workspace:(model-selection|terminal|project|icon|vcs)${'$'}/;
-        const windowKeys = /^opencode\.window\.browser\.dat:tabs(\.recent)?${'$'}/;
+        const windowKeys = /^opencode\.window\.browser\.dat:tabs(\.(recent|info|closed))?${'$'}/;
         const shouldPersistKey = (key) => typeof key === 'string' && (exactKeys.has(key) || globalKeys.test(key) || workspaceKeys.test(key) || windowKeys.test(key));
     """.trimIndent()
 
@@ -145,8 +151,9 @@ internal object OpenCodeBrowserSnippets {
               try {
                 const storageKey = 'opencode.global.dat:server';
                 const raw = window.localStorage.getItem(storageKey);
-                const state = raw ? JSON.parse(raw) : { list: [], projects: {}, lastProject: {} };
-                state.list = Array.isArray(state.list) ? state.list : [];
+                let parsed = {};
+                try { parsed = raw ? JSON.parse(raw) : {}; } catch (_) {}
+                const state = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
                 state.projects = state.projects && typeof state.projects === 'object' ? state.projects : {};
                 state.lastProject = state.lastProject && typeof state.lastProject === 'object' ? state.lastProject : {};
                 const projects = Array.isArray(state.projects[scope]) ? state.projects[scope] : [];
@@ -161,20 +168,28 @@ internal object OpenCodeBrowserSnippets {
                   };
                   return norm(left) === norm(right);
                 };
-                // Preserve any extra fields the SPA already stores on this project's entry so a
-                // future schema addition is not stripped on every panel load.
-                const existing = projects.find((project) => project && sameWorktree(project.worktree, directory));
-                const entry = Object.assign(
-                  {},
-                  existing && typeof existing === 'object' ? existing : {},
-                  { worktree: directory, expanded: true },
-                );
-                state.projects[scope] = [
-                  entry,
-                  ...projects.filter((project) => project && !sameWorktree(project.worktree, directory)),
-                ];
+                // Preserve the existing entry's position, collapse state, and unknown fields.
+                // The early/post-load retry series can run many times, so later attempts must be
+                // true no-ops and must not fight a user's sidebar changes.
+                let found = false;
+                const nextProjects = [];
+                for (const project of projects) {
+                  if (!project || !sameWorktree(project.worktree, directory)) {
+                    nextProjects.push(project);
+                    continue;
+                  }
+                  if (found) continue;
+                  found = true;
+                  nextProjects.push(Object.assign({}, project, {
+                    worktree: directory,
+                    expanded: typeof project.expanded === 'boolean' ? project.expanded : true,
+                  }));
+                }
+                if (!found) nextProjects.unshift({ worktree: directory, expanded: true });
+                state.projects[scope] = nextProjects;
                 state.lastProject[scope] = directory;
-                window.localStorage.setItem(storageKey, JSON.stringify(state));
+                const nextRaw = JSON.stringify(state);
+                if (nextRaw !== raw) window.localStorage.setItem(storageKey, nextRaw);
               } catch (error) {
                 if (window.console && window.console.warn) {
                   window.console.warn('Failed to seed OpenCode project state', error);
@@ -517,6 +532,8 @@ internal object OpenCodeBrowserSnippets {
         val script = """
             (() => {
               const QUERY = '(prefers-color-scheme: dark)';
+              const QUERY_KEY = '(prefers-color-scheme:dark)';
+              const queryKey = (value) => String(value || '').replace(/\s+/g, '').toLowerCase();
               const dark = $darkLiteral;
               if (window.__opencodeIntellijThemeInstalled) {
                 if (window.__opencodeIntellijThemeMql && window.__opencodeIntellijThemeDark !== dark) {
@@ -546,7 +563,7 @@ internal object OpenCodeBrowserSnippets {
                 },
               };
               window.__opencodeIntellijThemeMql = mql;
-              window.matchMedia = (q) => q === QUERY ? mql : orig(q);
+              window.matchMedia = (q) => queryKey(q) === QUERY_KEY ? mql : orig(q);
             })();
         """
         return script.trimIndent()
@@ -822,7 +839,7 @@ internal object OpenCodeBrowserSnippets {
               window.__opencodeIntellijFileLinksInstalled = true;
               const directory = '$directory';
               const unsupportedProtocol = /^(https?|mailto|tel|data|blob|javascript):/i;
-              const absoluteFilePath = /^(\/|[A-Za-z]:[\\/])/;
+              const absoluteFilePath = /^(\/|\\\\|[A-Za-z]:[\\/])/;
               $DECODE_ROUTE_DIRECTORY_JS
               const openCodeRoutePath = (value) => {
                 const text = (value || '').trim();

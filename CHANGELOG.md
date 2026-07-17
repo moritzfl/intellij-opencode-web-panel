@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Project selection no longer repeatedly expands or reorders an existing project while the panel starts, and malformed saved project state now repairs itself.
+- More OpenCode interface preferences survive browser-profile or server-port changes, including tab history and review-panel state.
+- File and code links recover their pointer cursor if OpenCode replaces page styles, and browser enhancements are active immediately after a page loads.
+
 ## [1.8.0] - 2026-07-17
 
 ### Added

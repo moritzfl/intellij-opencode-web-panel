@@ -317,9 +317,12 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("state.projects[scope]"))
         assertTrue(script.contains("state.lastProject[scope] = directory"))
         assertTrue(script.contains("worktree: directory, expanded: true"))
-        // Extra fields already on the SPA's project entry are preserved across re-seeds.
+        // Existing entries preserve position, collapse state, and unknown fields across re-seeds.
         assertTrue(script.contains("Object.assign"))
-        assertTrue(script.contains("const existing = projects.find"))
+        assertTrue(script.contains("typeof project.expanded === 'boolean' ? project.expanded : true"))
+        assertTrue(script.contains("if (!found) nextProjects.unshift"))
+        assertTrue(script.contains("if (nextRaw !== raw)"))
+        assertFalse(script.contains("state.list ="))
         assertTrue(script.contains("const sameWorktree = (left, right) =>"))
         assertTrue(script.contains("!sameWorktree(project.worktree, directory)"))
         assertTrue(script.contains("const directory = '/tmp/my \\'project\\''"))
@@ -428,6 +431,8 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("document.addEventListener('mousedown'"))
         assertTrue(script.contains("now - lastOpenedAt < 750"))
         assertTrue(script.contains("data-opencode-intellij-pointer"))
+        assertTrue(script.contains("opencode-intellij-pointer-cursor"))
+        assertTrue(script.contains("if (!style.isConnected) parent.appendChild(style)"))
         assertTrue(script.contains("cursor: pointer !important"))
         assertTrue(script.contains("document.addEventListener('mouseover'"))
         assertTrue(script.contains("document.addEventListener('mouseout'"))
@@ -537,6 +542,10 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("opencode\\.workspace\\."))
         assertTrue(script.contains("opencode\\.window\\.browser\\.dat:tabs"))
         assertTrue(script.contains("'settings.v3'"))
+        assertTrue(script.contains("home\\.servers"))
+        assertTrue(script.contains("review-panel-v2"))
+        assertTrue(script.contains("new-session\\.provider-tip"))
+        assertTrue(script.contains("recent|info|closed"))
         assertFalse(script.contains("opencode.settings.dat:defaultServerUrl"))
         assertTrue(script.contains("window.localStorage.getItem(key) === null"))
         assertTrue(script.contains("window.localStorage.setItem(key, value)"))
@@ -556,6 +565,10 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("opencode\\.workspace\\."))
         assertTrue(script.contains("opencode\\.window\\.browser\\.dat:tabs"))
         assertTrue(script.contains("'settings.v3'"))
+        assertTrue(script.contains("home\\.servers"))
+        assertTrue(script.contains("review-panel-v2"))
+        assertTrue(script.contains("new-session\\.provider-tip"))
+        assertTrue(script.contains("recent|info|closed"))
         assertTrue(script.contains("MAX_VALUE_CHARS"))
         assertFalse(script.contains("opencode.settings.dat:defaultServerUrl"))
         assertTrue(script.contains("window.intellijStore(payload)"))
@@ -909,7 +922,9 @@ class OpenCodeServerProtocolTest {
         assertTrue(darkScript.contains("const dark = true"))
         assertTrue(lightScript.contains("const dark = false"))
         assertTrue(darkScript.contains("window.__opencodeIntellijThemeInstalled"))
-        assertTrue(darkScript.contains("window.matchMedia = (q) => q === QUERY ? mql : orig(q)"))
+        assertTrue(darkScript.contains("const QUERY_KEY = '(prefers-color-scheme:dark)'"))
+        assertTrue(darkScript.contains("replace(/\\s+/g, '').toLowerCase()"))
+        assertTrue(darkScript.contains("queryKey(q) === QUERY_KEY ? mql : orig(q)"))
         assertTrue(darkScript.contains("matches: dark"))
         assertFalse(darkScript.contains("window.localStorage.setItem"))
         assertFalse(darkScript.contains("StorageEvent"))
@@ -1026,6 +1041,7 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("event.target.closest('code')"))
         assertTrue(script.contains("isSnakeCase"))
         assertTrue(script.contains("data-opencode-intellij-pointer"))
+        assertTrue(script.contains("opencode-intellij-pointer-cursor"))
         assertTrue(script.contains("cursor: pointer !important"))
         assertTrue(script.contains("document.addEventListener('mouseover'"))
         assertTrue(script.contains("document.addEventListener('mouseout'"))
@@ -1298,6 +1314,10 @@ class OpenCodeServerProtocolTest {
             ),
         )
         assertNull(OpenCodeServerProtocol.routeDirectoryFromUrl("http://127.0.0.1:57099/new-session"))
+
+        val uncDirectory = "\\\\server\\share\\project"
+        val uncUrl = "http://127.0.0.1:57099/${OpenCodeServerProtocol.encodeDirectory(uncDirectory)}/session/ses_1"
+        assertEquals(uncDirectory, OpenCodeServerProtocol.routeDirectoryFromUrl(uncUrl))
     }
 
     @Test
@@ -1334,6 +1354,11 @@ class OpenCodeServerProtocolTest {
         assertTrue(
             OpenCodeServerProtocol.isOpenCodeSessionRouteHref(
                 "/${OpenCodeServerProtocol.encodeDirectory("/tmp/project")}",
+            ),
+        )
+        assertTrue(
+            OpenCodeServerProtocol.isOpenCodeSessionRouteHref(
+                "/${OpenCodeServerProtocol.encodeDirectory("\\\\server\\share\\project")}/session/ses_unc",
             ),
         )
         assertFalse(OpenCodeServerProtocol.isOpenCodeSessionRouteHref("/tmp/session/readme.md"))

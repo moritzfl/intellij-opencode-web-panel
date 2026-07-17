@@ -933,6 +933,10 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
         feature.scheduled = true
 
+        // These scripts install document-level listeners and carry their own idempotence guards;
+        // no DOM target needs to exist first. Install immediately so a fast first click/paste after
+        // load cannot slip through, then retain retries for SPA/browser timing resilience.
+        browser.cefBrowser.executeJavaScript(script, rootUrl, 0)
         scriptScheduler.schedule(script, rootUrl) {
             feature.enabledInSettings() && isBrowserOnOpenCodeServerPage(serverUrl)
         }

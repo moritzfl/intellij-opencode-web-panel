@@ -342,7 +342,8 @@ internal object OpenCodeServerProtocol {
     }
 
     private fun looksLikeAbsoluteFilesystemPath(value: String): Boolean {
-        return value.startsWith('/') || Regex("^[A-Za-z]:[\\\\/]").containsMatchIn(value)
+        return value.startsWith('/') || value.startsWith("\\\\") ||
+            Regex("^[A-Za-z]:[\\\\/]").containsMatchIn(value)
     }
 
     private fun parseFileLink(href: String, basePaths: List<String>): ParsedFileLink? {
