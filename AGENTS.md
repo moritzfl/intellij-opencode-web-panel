@@ -62,7 +62,7 @@ UI-behavior settings (`openFileLinksInIde`, `enableCodeNavigation`, `openDiffsIn
 
 The Alt+Click "open diff in IDE" feature (`OpenCodeBrowserSnippets.buildDiffNavigationScript` → `features.OpenCodeDiffNavigation`) is the most DOM-coupled injection: it maps a click to a `(messageID, filePath)` pair from unstable OpenCode SPA internals. Its targets live in the chat timeline — the shared `session-ui` `MessagePart`, rendered the same in compact and desktop — so the gesture is layout-independent. Re-verify the selectors against a live page whenever diffs stop opening:
 
-- **Message id** — nearest `[data-message-id]` ancestor (one per session turn; holds the turn's **user** message id, which is what the diff endpoint is keyed by). The script also matches legacy `[data-message]`. Never send an empty or assistant id (both yield an empty diff).
+- **Message id** — nearest `[data-message-id]` ancestor (one per session turn; holds the turn's **user** message id, which is what the diff endpoint is keyed by). Never send an empty or assistant id (both yield an empty diff). (Pre-1.18 `[data-message]` no longer exists in the bundle; the fallback was removed.)
 - **Changes/review row** — `[data-file]` (path directly).
 - **"Changed files" turn-summary row** — `[data-slot="session-turn-diff-trigger"]` (no `data-file`; reconstruct path from `[data-slot="session-turn-diff-directory"]` + `[data-slot="session-turn-diff-filename"]`).
 - **Chat edit/write/patch block** — `[data-component="edit-tool"|"write-tool"|"apply-patch-tool"]` (path from `[data-slot="message-part-directory"]` + `[data-slot="message-part-title-filename"]`; multi-file patch rows from `[data-slot="apply-patch-trigger-content"]` → `apply-patch-directory` + `apply-patch-filename`).

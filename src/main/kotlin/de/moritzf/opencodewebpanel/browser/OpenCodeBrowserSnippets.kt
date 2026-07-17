@@ -938,8 +938,8 @@ internal object OpenCodeBrowserSnippets {
      * Installs an Alt+Click handler that opens the IDE diff viewer for a diff target in the
      * OpenCode page. Recognises changes/review-panel rows (`[data-file]` → cumulative session
      * diff for that file), chat edit/write blocks (`[data-component="edit-tool"|"write-tool"]`
-     * inside a `[data-message]` → that message's diff for the edited file) and any diff indicator
-     * (`[data-component="diff-changes"]` → that message's diff, all files). Forwards
+     * inside a `[data-message-id]` turn → that turn's diff for the edited file) and any diff
+     * indicator (`[data-component="diff-changes"]` → that turn's diff, all files). Forwards
      * `messageID + "\n" + filePath` (both may be empty) to the JVM via [openDiffCallback]; the JVM
      * derives the session id and directory itself. Returns null when disabled or without a callback.
      */
@@ -953,8 +953,8 @@ internal object OpenCodeBrowserSnippets {
               window.__opencodeIntellijDiffNavInstalled = true;
               const clean = (value) => (value || '').replace(/[\u202A-\u202E]/g, '').trim();
               const messageIdOf = (node) => {
-                const el = node && node.closest ? node.closest('[data-message-id], [data-message]') : null;
-                return el ? (el.getAttribute('data-message-id') || el.getAttribute('data-message') || '') : '';
+                const el = node && node.closest ? node.closest('[data-message-id]') : null;
+                return el ? (el.getAttribute('data-message-id') || '') : '';
               };
               const pathFrom = (root, dirSel, nameSel) => {
                 if (!root || !root.querySelector) return '';

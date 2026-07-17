@@ -37,7 +37,10 @@ done
 # OpenCodeBrowserSnippets and the AGENTS.md DOM-contract sections.
 MARKERS=(
   # diff navigation (buildDiffNavigationScript)
-  'data-message-id'
+  # Generic attrs are checked in their compiled quoted-attribute form to avoid substring
+  # false positives (e.g. plain data-file would match data-filename).
+  '"data-message-id"'
+  '"data-file"'
   'session-turn-diff-trigger'
   'session-turn-diff-directory'
   'session-turn-diff-filename'
@@ -51,6 +54,7 @@ MARKERS=(
   'message-part-directory'
   'message-part-title-filename'
   # file links, classic + v2 review panels (buildFileLinkHandlerScript)
+  '"data-path"'
   'session-review-view-button'
   'session-review-file-info'
   'session-review-directory'
