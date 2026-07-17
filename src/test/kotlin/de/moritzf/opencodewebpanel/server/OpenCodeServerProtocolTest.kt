@@ -753,9 +753,9 @@ class OpenCodeServerProtocolTest {
 
         assertTrue(script.contains("new DataTransfer()"))
         assertTrue(script.contains("new File([decode(entry.base64)], entry.name"))
-        assertTrue(script.contains("const previousActive = document.activeElement"))
-        assertTrue(script.contains("target.dispatchEvent(new DragEvent('drop'"))
-        assertTrue(script.contains("previousActive.isContentEditable"))
+        assertTrue(script.contains("[data-component=\"prompt-input\"][contenteditable=\"true\"]"))
+        assertTrue(script.contains("const event = new DragEvent('drop'"))
+        assertTrue(script.contains("return event.defaultPrevented"))
         assertTrue(script.contains("hello \\'world\\'.txt"))
         assertTrue(script.contains("aGVsbG8="))
     }
@@ -788,7 +788,7 @@ class OpenCodeServerProtocolTest {
         )!!
 
         assertTrue(script.contains("transfer.setData('text/plain', 'file:src/main/App.kt')"))
-        assertTrue(script.contains("target.dispatchEvent(new DragEvent('drop'"))
+        assertTrue(script.contains("const event = new DragEvent('drop'"))
     }
 
     @Test
@@ -799,8 +799,24 @@ class OpenCodeServerProtocolTest {
             enabled = true,
         )!!
 
-        assertTrue(script.contains("dispatchDrop((transfer) => transfer.setData('text/plain', 'file:CHANGELOG.md'))"))
-        assertTrue(script.contains("dispatchDrop((transfer) => transfer.setData('text/plain', 'file:gradle.properties'))"))
+        assertTrue(script.contains("results.push(dispatchDrop((transfer) => transfer.setData('text/plain', 'file:CHANGELOG.md')))"))
+        assertTrue(script.contains("results.push(dispatchDrop((transfer) => transfer.setData('text/plain', 'file:gradle.properties')))"))
+    }
+
+    @Test
+    fun buildDispatchDroppedFilesScriptPastesGenericTextAndReportsAcceptance() {
+        val script = OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(
+            emptyList(),
+            textPlain = listOf("selected code"),
+            batchId = "chat-1",
+            resultCallback = "window.intellijResult(batchId, accepted)",
+        )!!
+
+        assertTrue(script.contains("new ClipboardEvent('paste'"))
+        assertTrue(script.contains("results.push(dispatchPaste('selected code'))"))
+        assertTrue(script.contains("const batchId = 'chat-1'"))
+        assertTrue(script.contains("window.intellijResult(batchId, accepted)"))
+        assertTrue(script.contains("results.every(Boolean)"))
     }
 
     @Test

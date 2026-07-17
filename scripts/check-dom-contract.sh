@@ -77,6 +77,8 @@ MARKERS=(
   '(max-width: 767px)'
   # IDE theme sync (buildIdeThemeSyncScript)
   'prefers-color-scheme: dark'
+  # chat/file delivery target (buildDispatchDroppedFilesScript)
+  'prompt-input'
   # open-project seed (buildOpenProjectScript)
   'opencode.global.dat'
   'lastProject'

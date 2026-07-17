@@ -716,6 +716,8 @@ internal object OpenCodeBrowserSnippets {
         files: List<OpenCodeServerProtocol.DroppedFilePayload>,
         textPlain: List<String> = emptyList(),
         enabled: Boolean = true,
+        batchId: String? = null,
+        resultCallback: String? = null,
     ): String? {
         val textEntries = textPlain.filter { it.isNotBlank() }
         if (!enabled || (files.isEmpty() && textEntries.isEmpty())) return null
@@ -724,15 +726,18 @@ internal object OpenCodeBrowserSnippets {
             val entry = "{ name: '${escapeJavaScript(file.name)}', mime: '${escapeJavaScript(file.mime)}', lastModified: ${file.lastModified}, base64: '${escapeJavaScript(file.base64)}' }"
             entry
         }
-        val textDrops = textEntries.joinToString("\n") {
-            @Language("JavaScript")
-            val drop = "dispatchDrop((transfer) => transfer.setData('text/plain', '${escapeJavaScript(it)}'));"
+        val textDrops = textEntries.joinToString("\n") { text ->
+            val drop = if (text.startsWith("file:")) {
+                "results.push(dispatchDrop((transfer) => transfer.setData('text/plain', '${escapeJavaScript(text)}')));"
+            } else {
+                "results.push(dispatchPaste('${escapeJavaScript(text)}'));"
+            }
             drop
         }
         val fileDrop = if (files.isNotEmpty()) {
             @Language("JavaScript")
             val drop = """
-                dispatchDrop((transfer) => {
+                results.push(dispatchDrop((transfer) => {
                   const entries = [
                     $fileEntries
                   ];
@@ -742,19 +747,48 @@ internal object OpenCodeBrowserSnippets {
                       lastModified: entry.lastModified,
                     }));
                   }
-                });
+                }));
             """
             drop.trimIndent()
         } else {
             ""
         }
+        val escapedBatchId = escapeJavaScript(batchId.orEmpty())
+        val reportResult = resultCallback?.let { callback ->
+            @Language("JavaScript")
+            val report = """
+                try {
+                  $callback;
+                } catch (error) {
+                  if (window.console && window.console.warn) {
+                    window.console.warn('Failed to report OpenCode drop result to IntelliJ', error);
+                  }
+                }
+            """
+            report.trimIndent()
+        }.orEmpty()
         @Language("JavaScript")
         val script = """
             (() => {
-              if (typeof DataTransfer !== 'function' || typeof File !== 'function' || typeof DragEvent !== 'function') {
-                  console.warn('OpenCode Web Panel could not dispatch dropped files: browser drag APIs unavailable');
-                  return;
-                }
+              const batchId = '$escapedBatchId';
+              const report = (accepted) => {
+                $reportResult
+              };
+              if (typeof DataTransfer !== 'function' || typeof File !== 'function' ||
+                  typeof DragEvent !== 'function' || typeof ClipboardEvent !== 'function') {
+                console.warn('OpenCode Web Panel could not dispatch dropped files: browser drag APIs unavailable');
+                report(false);
+                return;
+              }
+              const target = Array.from(document.querySelectorAll('[data-component="prompt-input"][contenteditable="true"]'))
+                .find((element) => {
+                  const style = window.getComputedStyle(element);
+                  return element.isConnected && style.display !== 'none' && style.visibility !== 'hidden';
+                });
+              if (!target) {
+                report(false);
+                return;
+              }
               const decode = (base64) => {
                 const binary = atob(base64);
                 const bytes = new Uint8Array(binary.length);
@@ -764,21 +798,32 @@ internal object OpenCodeBrowserSnippets {
                 return bytes;
               };
               const dispatchDrop = (fill) => {
-                const previousActive = document.activeElement;
-                const target = previousActive instanceof HTMLElement && document.contains(previousActive) ? previousActive : document;
                 const transfer = new DataTransfer();
                 fill(transfer);
                 const options = { bubbles: true, cancelable: true, dataTransfer: transfer };
                 target.dispatchEvent(new DragEvent('dragover', options));
-                target.dispatchEvent(new DragEvent('drop', options));
-                if (previousActive instanceof HTMLElement && previousActive.isContentEditable) {
-                  requestAnimationFrame(() => {
-                    if (document.contains(previousActive)) previousActive.focus();
-                  });
-                }
+                const event = new DragEvent('drop', options);
+                target.dispatchEvent(event);
+                requestAnimationFrame(() => { if (document.contains(target)) target.focus(); });
+                return event.defaultPrevented;
               };
+              const dispatchPaste = (text) => {
+                const transfer = new DataTransfer();
+                transfer.setData('text/plain', text);
+                const event = new ClipboardEvent('paste', {
+                  bubbles: true,
+                  cancelable: true,
+                  clipboardData: transfer,
+                });
+                target.dispatchEvent(event);
+                requestAnimationFrame(() => { if (document.contains(target)) target.focus(); });
+                return event.defaultPrevented;
+              };
+              const results = [];
               $textDrops
               $fileDrop
+              const accepted = results.length > 0 && results.every(Boolean);
+              report(accepted);
             })();
         """
         return script.trimIndent()

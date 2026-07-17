@@ -12,6 +12,8 @@
 - Slow startup lookups and agent-status refreshes can no longer overwrite a newer project, server, or explicitly opened conversation.
 - Files prepared for drag-and-drop are discarded if the panel navigates before preparation finishes, rather than being delivered to the newer page.
 - Event-driven status, notifications, and refreshes now recognize macOS path aliases, symlinks, Windows path case, and UNC shares as the same project.
+- IDE actions that add file references or selected text now wait for confirmation from OpenCode's real prompt before removing queued input; unavailable prompts and open dialogs no longer lose it silently.
+- Generic selected text is inserted through OpenCode's paste path, while file references and attachments use its drop path.
 
 ## [1.8.0] - 2026-07-17
 

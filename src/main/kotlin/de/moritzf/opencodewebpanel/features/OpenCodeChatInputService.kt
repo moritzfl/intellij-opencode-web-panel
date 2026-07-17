@@ -10,28 +10,77 @@ import com.intellij.openapi.project.Project
  */
 @Service(Service.Level.PROJECT)
 class OpenCodeChatInputService {
-    private val lock = Any()
-    private var dispatcher: ((List<String>) -> Boolean)? = null
-    private val pending = mutableListOf<String>()
+    internal data class Batch(val id: String, val text: String)
 
-    fun setDispatcher(dispatcher: ((List<String>) -> Boolean)?) {
+    private val lock = Any()
+    private var dispatcher: ((Batch) -> Boolean)? = null
+    private val pending = ArrayDeque<Batch>()
+    private var inFlight: Batch? = null
+    private var nextBatchID = 0L
+
+    internal fun setDispatcher(dispatcher: ((Batch) -> Boolean)?) {
         synchronized(lock) {
+            if (dispatcher == null) requeueInFlightLocked()
             this.dispatcher = dispatcher
         }
     }
 
-    /** Dispatches immediately when the panel is ready, otherwise queues. Returns true if dispatched. */
+    /** Queues each text as an independently acknowledged delivery, preserving caller order. */
     fun send(texts: List<String>): Boolean {
-        if (texts.isEmpty()) return true
-        val currentDispatcher = synchronized(lock) { dispatcher }
-        if (currentDispatcher != null && currentDispatcher(texts)) return true
         synchronized(lock) {
-            pending.addAll(texts)
+            texts.filter { it.isNotBlank() }.forEach { text ->
+                pending.addLast(Batch("chat-${++nextBatchID}", text))
+            }
         }
-        return false
+        return dispatchPending()
     }
 
-    fun takePending(): List<String> = synchronized(lock) { pending.toList().also { pending.clear() } }
+    /** Submits at most one batch; the next stays queued until this one is acknowledged. */
+    internal fun dispatchPending(): Boolean {
+        val claim = synchronized(lock) {
+            if (inFlight != null) return true
+            val currentDispatcher = dispatcher ?: return false
+            val batch = pending.removeFirstOrNull() ?: return true
+            inFlight = batch
+            currentDispatcher to batch
+        }
+        val submitted = runCatching { claim.first(claim.second) }.getOrDefault(false)
+        if (!submitted) {
+            synchronized(lock) {
+                if (inFlight?.id == claim.second.id) requeueInFlightLocked()
+            }
+        }
+        return submitted
+    }
+
+    /** Completes an accepted batch, or requeues a rejected one for a later page-ready retry. */
+    internal fun acknowledge(batchID: String, accepted: Boolean): Boolean {
+        val matched = synchronized(lock) {
+            val batch = inFlight?.takeIf { it.id == batchID } ?: return false
+            inFlight = null
+            if (!accepted) pending.addFirst(batch)
+            true
+        }
+        if (accepted) dispatchPending()
+        return matched
+    }
+
+    internal fun retryInFlight(batchID: String): Boolean = synchronized(lock) {
+        if (inFlight?.id != batchID) return false
+        requeueInFlightLocked()
+        true
+    }
+
+    internal fun requeueInFlight() {
+        synchronized(lock) { requeueInFlightLocked() }
+    }
+
+    internal fun queuedCount(): Int = synchronized(lock) { pending.size + if (inFlight != null) 1 else 0 }
+
+    private fun requeueInFlightLocked() {
+        inFlight?.let(pending::addFirst)
+        inFlight = null
+    }
 
     companion object {
         fun getInstance(project: Project): OpenCodeChatInputService {

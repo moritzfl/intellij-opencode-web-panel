@@ -64,6 +64,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         // Delay after a project-page load before flushing queued chat input, so the SPA's own
         // drop handlers are installed when the synthetic drop is dispatched.
         private const val PENDING_CHAT_INPUT_FLUSH_DELAY_MILLIS = 1_500
+        private const val CHAT_INPUT_ACK_TIMEOUT_MILLIS = 3_000
 
         // How long the 1 px repaint-recovery resize is held before restoring the real bounds,
         // so CEF's asynchronous view-rect query observes the transient size.
@@ -94,6 +95,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     private val openExternalLinkQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
     private val browserCursorQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
     private val openDiffQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
+    private val chatInputResultQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
     private val serverManager = SharedOpenCodeServerManager.getInstance()
     private val ideNavigation = OpenCodeIdeNavigation(project, browser, serverManager, ::openCodeProjectDirectory, this)
     private val diffNavigation = OpenCodeDiffNavigation(project, browser, serverManager, ::openCodeProjectDirectory)
@@ -285,6 +287,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         override fun onLoadStart(browser: CefBrowser?, frame: CefFrame?, transitionType: CefRequest.TransitionType?) {
             if (frame?.isMain == true) {
                 browserDocumentRevision++
+                OpenCodeChatInputService.getInstance(project).requeueInFlight()
                 injectedFeatures.forEach { it.scheduled = false }
                 earlyInjectedFeatures.forEach { it.scheduled = false }
                 if (OpenCodeServerProtocol.isOpenCodeServerPage(serverManager.getServerUrl(), frame.url)) {
@@ -356,7 +359,9 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             if (OpenCodeSettingsState.getInstance().mirrorBrowserCursor) {
                 val cursorType = OpenCodeBrowserSnippets.awtCursorTypeForCss(cssCursor)
                 ApplicationManager.getApplication().invokeLater {
-                    if (!isContentDisposed()) applyBrowserCursor(Cursor.getPredefinedCursor(cursorType))
+                    if (!isContentDisposed() && OpenCodeSettingsState.getInstance().mirrorBrowserCursor) {
+                        applyBrowserCursor(Cursor.getPredefinedCursor(cursorType))
+                    }
                 }
             }
             null
@@ -370,6 +375,18 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         openDiffQuery.addHandler { payload ->
             if (OpenCodeSettingsState.getInstance().openDiffsInIde) {
                 diffNavigation.openDiff(payload)
+            }
+            null
+        }
+        chatInputResultQuery.addHandler { payload ->
+            val lines = payload.lineSequence().toList()
+            val batchID = lines.getOrNull(0).orEmpty()
+            val accepted = lines.getOrNull(1) == "1"
+            ApplicationManager.getApplication().invokeLater {
+                if (isContentDisposed()) return@invokeLater
+                val service = OpenCodeChatInputService.getInstance(project)
+                if (!service.acknowledge(batchID, accepted)) return@invokeLater
+                if (!accepted) scheduleFlushPendingChatInput()
             }
             null
         }
@@ -402,7 +419,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             this,
         ).install()
         OpenCodeBrowserEditShortcutHandler(browser, serverManager, ::isContentDisposed, this).install()
-        OpenCodeChatInputService.getInstance(project).setDispatcher(::dispatchChatTexts)
+        OpenCodeChatInputService.getInstance(project).setDispatcher(::dispatchChatBatch)
         ApplicationManager.getApplication().messageBus.connect(this).subscribe(
             AppLifecycleListener.TOPIC,
             object : AppLifecycleListener {
@@ -476,7 +493,10 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                         OpenCodeUiSetting.EXTERNAL_LINK_NAVIGATION -> applyFeature(externalLinkFeature, enabled)
                         OpenCodeUiSetting.CODE_NAVIGATION -> applyFeature(codeNavigationFeature, enabled)
                         OpenCodeUiSetting.DIFF_NAVIGATION -> applyFeature(diffNavigationFeature, enabled)
-                        OpenCodeUiSetting.CHAT_FILE_DROP -> applyFeature(filePasteSuppressionFeature, enabled)
+                        OpenCodeUiSetting.CHAT_FILE_DROP -> {
+                            applyFeature(filePasteSuppressionFeature, enabled)
+                            if (enabled) scheduleFlushPendingChatInput(delayMillis = 0)
+                        }
                         OpenCodeUiSetting.COMPACT_LAYOUT -> applyCompactLayout()
                         OpenCodeUiSetting.HIDE_WEBSITE_BUTTON -> applyHideWebsiteButton()
                         OpenCodeUiSetting.IDE_THEME_SYNC -> applyIdeThemeSync(enabled)
@@ -582,32 +602,41 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     }
 
     /**
-     * Sends IDE-initiated texts (file references, code snippets) into the chat through the same
-     * drop mechanism used for drag-and-drop and paste. Returns false when the page is not ready,
-     * in which case the texts stay queued in [OpenCodeChatInputService].
+     * Submits one queued IDE-initiated text and retains it in-flight until the page acknowledges
+     * that OpenCode's prompt handler accepted the synthetic paste/drop event.
      */
-    private fun dispatchChatTexts(texts: List<String>): Boolean {
+    private fun dispatchChatBatch(batch: OpenCodeChatInputService.Batch): Boolean {
         if (isContentDisposed()) return false
         if (!OpenCodeSettingsState.getInstance().enableChatFileDrop) return false
         val serverUrl = serverManager.getServerUrl() ?: return false
         if (!isBrowserOnOpenCodeServerPage(serverUrl)) return false
-        val script = OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(emptyList(), texts, enabled = true) ?: return false
+        val script = OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(
+            emptyList(),
+            textPlain = listOf(batch.text),
+            enabled = true,
+            batchId = batch.id,
+            resultCallback = chatInputResultQuery.inject("batchId + '\\n' + (accepted ? '1' : '0')"),
+        ) ?: return false
         browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
+        openProjectAlarm.addRequest(
+            {
+                if (isContentDisposed()) return@addRequest
+                val service = OpenCodeChatInputService.getInstance(project)
+                if (service.retryInFlight(batch.id)) scheduleFlushPendingChatInput()
+            },
+            CHAT_INPUT_ACK_TIMEOUT_MILLIS,
+        )
         return true
     }
 
-    private fun scheduleFlushPendingChatInput() {
+    private fun scheduleFlushPendingChatInput(delayMillis: Int = PENDING_CHAT_INPUT_FLUSH_DELAY_MILLIS) {
         val service = OpenCodeChatInputService.getInstance(project)
         openProjectAlarm.addRequest(
             {
                 if (isContentDisposed()) return@addRequest
-                val texts = service.takePending()
-                if (texts.isNotEmpty() && !dispatchChatTexts(texts)) {
-                    // Page changed in the meantime; requeue for the next successful load.
-                    service.send(texts)
-                }
+                service.dispatchPending()
             },
-            PENDING_CHAT_INPUT_FLUSH_DELAY_MILLIS,
+            delayMillis,
         )
     }
 
