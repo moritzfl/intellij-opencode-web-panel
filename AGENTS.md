@@ -54,6 +54,9 @@ UI-behavior settings (`openFileLinksInIde`, `enableCodeNavigation`, `openDiffsIn
 - Never open event streams or other long-lived connections from injected scripts; consume OpenCode events JVM-side instead (see Event & REST Contract).
 - Add unit tests asserting disabled builders return `null` and that a toggle-off reloads rather than injects a "disable" script.
 - Validate injected JS against a real page before claiming it works (see Validating Against a Real Server) — unit tests only check the script *text*, never real DOM behavior.
+- Prefer **locale- and design-independent DOM signals** over label text or Tailwind utility classes: `data-slot`/`data-component` attributes, `href` targets, and sprite-icon references (`use[href="#opencode-icon-<name>"]` — both toast generations render icon *names* into the DOM this way). The project-switch toast suppression matches the permission/question toast purely structurally: toast container + icon slot containing the `checklist`/`bubble-5` sprite icon + an action row; never translated strings.
+- Early injection is centralized: `EarlyInjectedFeature` instances (seed → theme → compact → hide-website, order matters) run through `injectEarlyFeature` from `onLoadStart` with early-series retries; builders are re-invoked per attempt and must be idempotent in-page. Post-load features use `InjectedFeature`/`scheduleFeatureScript`. Add new injections to one of these lists — do not hand-roll per-feature flags.
+- Injected MutationObservers must be cheap in steady state: hiding is done by an installed stylesheet, and the observer only re-attaches the `<style>` (rAF-debounced) if the SPA replaces `<head>` — never per-mutation `querySelectorAll` work on the whole document.
 
 ### Diff navigation DOM contract (`openDiffsInIde`)
 
@@ -108,7 +111,9 @@ Which project a directoryless URL shows is **not** in the path — only in the S
 
 ## Validating Against a Real Server
 
-Injection fixes and wire-contract checks must be validated against a live server — not `about:blank`, synthetic pages, or unit tests. DOM/wire contracts below last validated vs **opencode 1.18.1**; re-verify on OpenCode updates.
+Injection fixes and wire-contract checks must be validated against a live server — not `about:blank`, synthetic pages, or unit tests. DOM/wire contracts below last validated vs **opencode 1.18.2**; re-verify on OpenCode updates.
+
+- Fast first check after an OpenCode update: `OPENCODE_SERVER_PASSWORD=testpw123 scripts/check-dom-contract.sh http://127.0.0.1:<port>` greps the served SPA bundle for every DOM/JS marker the injected scripts rely on (diff nav, file links, toast suppression, compact/theme queries, seed keys, website button). A missing marker means the matching snippet in `OpenCodeBrowserSnippets` needs re-validation before release. Keep the marker list in sync when adding/changing injections.
 
 - Start: `OPENCODE_SERVER_PASSWORD=testpw123 opencode serve --hostname 127.0.0.1 --port <port> --print-logs`. Health: `curl -u opencode:testpw123 http://127.0.0.1:<port>/api/health` ⇒ `{"healthy":true}` (curl with `-u` first to separate auth from app problems).
 - **Basic auth covers everything** — the SPA's static assets (`/assets/*.js|css`) and all API routes; only `/site.webmanifest` and the web-app-manifest PNGs are public.
