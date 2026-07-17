@@ -316,7 +316,10 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("opencode.intellij.project.opened:"))
         assertTrue(script.contains("state.projects[scope]"))
         assertTrue(script.contains("state.lastProject[scope] = directory"))
-        assertTrue(script.contains("{ worktree: directory, expanded: true }"))
+        assertTrue(script.contains("worktree: directory, expanded: true"))
+        // Extra fields already on the SPA's project entry are preserved across re-seeds.
+        assertTrue(script.contains("Object.assign"))
+        assertTrue(script.contains("const existing = projects.find"))
         assertTrue(script.contains("const sameWorktree = (left, right) =>"))
         assertTrue(script.contains("!sameWorktree(project.worktree, directory)"))
         assertTrue(script.contains("const directory = '/tmp/my \\'project\\''"))
@@ -415,7 +418,9 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("session-review-view-button"))
         assertTrue(script.contains("session-review-accordion-item"))
         assertTrue(script.contains("getAttribute('data-file')"))
-        assertTrue(script.contains("button[aria-label=\"Open file\"]"))
+        // Locale-specific aria/title labels are no longer used as fallbacks.
+        assertFalse(script.contains("button[aria-label=\"Open file\"]"))
+        assertFalse(script.contains("Datei öffnen"))
         assertTrue(script.contains("session-review-file-info"))
         assertTrue(script.contains("session-review-directory"))
         assertTrue(script.contains("session-review-filename"))
@@ -851,10 +856,13 @@ class OpenCodeServerProtocolTest {
 
         assertTrue(script.contains("window.__opencodeIntellijCompactInstalled"))
         assertTrue(script.contains("window.matchMedia = "))
-        assertTrue(script.contains("(min-width: 768px)"))
-        assertTrue(script.contains("(max-width: 767px)"))
-        assertTrue(script.contains("stub(WIDE_QUERY, false)"))
-        assertTrue(script.contains("stub(NARROW_QUERY, true)"))
+        assertTrue(script.contains("(min-width:768px)"))
+        assertTrue(script.contains("(max-width:767px)"))
+        // Whitespace-tolerant match so minifier/formatter changes do not disable the stub.
+        assertTrue(script.contains("const keyOf = (q) =>"))
+        assertTrue(script.contains("replace(/\\s+/g, '')"))
+        assertTrue(script.contains("stub(q, false)"))
+        assertTrue(script.contains("stub(q, true)"))
         // No Tailwind class overrides — layout is driven only by the media-query stub.
         assertFalse(script.contains("opencode-intellij-compact-layout"))
         assertFalse(script.contains("md\\\\:flex-row"))
@@ -873,8 +881,8 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("window.__opencodeIntellijHideWebsiteButtonInstalled"))
         assertTrue(script.contains("href^=\"https://opencode.ai\""))
         assertTrue(script.contains("data-component*=\"icon-button\""))
-        assertTrue(script.contains(".fixed"))
-        // Locale-specific labels and Tailwind position utilities are not primary matchers.
+        // Locale-specific labels and Tailwind layout utilities are not matchers.
+        assertFalse(script.contains(".fixed"))
         assertFalse(script.contains("Open the OpenCode website"))
         assertFalse(script.contains("bottom-5"))
         assertFalse(script.contains("right-5"))
@@ -928,8 +936,11 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("window.__opencodeIntellijProjectSwitchPromptSuppressionInstalled"))
         assertTrue(script.contains("[data-component=\"toast\"], [data-component=\"toast-v2\"]"))
         // Locale-independent structural match: sprite icon names, not translated labels.
+        // Both v1 and v2 sprite prefixes are covered so an icon-system migration stays matched.
         assertTrue(script.contains("use[href=\"#opencode-icon-checklist\"]"))
         assertTrue(script.contains("use[href=\"#opencode-icon-bubble-5\"]"))
+        assertTrue(script.contains("use[href=\"#opencode-v2-icon-checklist\"]"))
+        assertTrue(script.contains("use[href=\"#opencode-v2-icon-bubble-5\"]"))
         assertTrue(script.contains("[data-slot=\"toast-icon\"], [data-slot=\"toast-v2-icon\"]"))
         assertFalse(script.contains("Permission required"))
         assertFalse(script.contains("Go to session"))

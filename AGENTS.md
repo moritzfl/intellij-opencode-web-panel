@@ -74,7 +74,7 @@ The file-link handler (`buildFileLinkHandlerScript`) early-returns on `event.alt
 
 Two review panels exist, selected by width: the plugin's default forced-compact mode shows the **classic** panel; with `forceCompactLayout` **off** (desktop) OpenCode shows the redesigned **v2** panel (`session-ui/src/v2/components/session-review-v2*`, a sidebar tree + preview pane). `buildFileLinkHandlerScript` must resolve "open in IDE" in both:
 
-- **Classic** — the per-file "open" button (`[data-slot="session-review-view-button"]`, or aria/title "Open file"/"Datei öffnen"); path from a `[data-file]`/`[data-path]`/`session-review-accordion-item` ancestor, else the `session-review-file-info` spans (`session-review-directory` + `session-review-filename`).
+- **Classic** — the per-file "open" button (`[data-slot="session-review-view-button"]` only — no locale-specific aria/title fallbacks); path from a `[data-file]`/`[data-path]`/`session-review-accordion-item` ancestor, else the `session-review-file-info` spans (`session-review-directory` + `session-review-filename`).
 - **v2** — no per-file button; resolve from the **preview header** (`[data-slot="session-review-v2-file-name"]` + optional `[data-slot="session-review-v2-file-path"]`, inside `[data-slot="session-review-v2-file-title"]`). Do **not** hijack the sidebar rows (`[data-slot="session-review-v2-sidebar-tree"] button[data-path]`) — those are the SPA's own preview navigation.
 
 Diff Alt+Click from either review panel is inherently empty (session-scoped, no `[data-message-id]` ancestor); the meaningful diff nav is the chat timeline.

@@ -161,8 +161,16 @@ internal object OpenCodeBrowserSnippets {
                   };
                   return norm(left) === norm(right);
                 };
-                state.projects[scope] = [
+                // Preserve any extra fields the SPA already stores on this project's entry so a
+                // future schema addition is not stripped on every panel load.
+                const existing = projects.find((project) => project && sameWorktree(project.worktree, directory));
+                const entry = Object.assign(
+                  {},
+                  existing && typeof existing === 'object' ? existing : {},
                   { worktree: directory, expanded: true },
+                );
+                state.projects[scope] = [
+                  entry,
                   ...projects.filter((project) => project && !sameWorktree(project.worktree, directory)),
                 ];
                 state.lastProject[scope] = directory;
@@ -424,15 +432,20 @@ internal object OpenCodeBrowserSnippets {
               if (window.__opencodeIntellijCompactInstalled) return;
               window.__opencodeIntellijCompactInstalled = true;
               // OpenCode checks both the wide query and its inverse (titlebar, settings), so both
-              // must be patched for a consistent compact layout.
-              const WIDE_QUERY = '(min-width: 768px)';
-              const NARROW_QUERY = '(max-width: 767px)';
+              // must be patched for a consistent compact layout. Whitespace is normalized so a
+              // formatter/minifier change to the query string does not silently disable the stub.
+              // Compare after stripping all whitespace so minifier/formatter spacing cannot
+              // disable the stub. Breakpoint values stay exact (a real change is a contract break).
+              const WIDE_KEY = '(min-width:768px)';
+              const NARROW_KEY = '(max-width:767px)';
+              const keyOf = (q) => String(q || '').replace(/\s+/g, '').toLowerCase();
               const orig = window.matchMedia.bind(window);
               window.__opencodeIntellijOrigMatchMedia = orig;
               const stub = (media, matches) => ({ matches, media, onchange: null, addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false });
               window.matchMedia = (q) => {
-                if (q === WIDE_QUERY) return stub(WIDE_QUERY, false);
-                if (q === NARROW_QUERY) return stub(NARROW_QUERY, true);
+                const key = keyOf(q);
+                if (key === WIDE_KEY) return stub(q, false);
+                if (key === NARROW_KEY) return stub(q, true);
                 return orig(q);
               };
             })();
@@ -456,12 +469,10 @@ internal object OpenCodeBrowserSnippets {
               if (window.__opencodeIntellijHideWebsiteButtonInstalled) return;
               window.__opencodeIntellijHideWebsiteButtonInstalled = true;
               const STYLE_ID = 'opencode-intellij-hide-website-button';
-              // Prefer href + role/chrome over locale-specific labels and layout class names.
+              // Prefer href + durable chrome role over locale labels and Tailwind layout classes.
               const SELECTOR = [
                 'a[href^="https://opencode.ai"][data-component*="icon-button"]',
-                'a[href^="https://opencode.ai"].fixed',
                 'a[href^="http://opencode.ai"][data-component*="icon-button"]',
-                'a[href^="http://opencode.ai"].fixed',
               ].join(', ');
               const CSS = SELECTOR + ' { display: none !important; visibility: hidden !important; pointer-events: none !important; }';
               const ensureStyle = () => {
@@ -637,7 +648,14 @@ internal object OpenCodeBrowserSnippets {
               // in both the legacy toast and the redesigned toast-v2.
               const toastSelector = '[data-component="toast"], [data-component="toast-v2"]';
               const iconSlotSelector = '[data-slot="toast-icon"], [data-slot="toast-v2-icon"]';
-              const promptIconSelector = 'use[href="#opencode-icon-checklist"], use[href="#opencode-icon-bubble-5"]';
+              // Cover both icon sprites: toasts currently use the v1 sprite even inside v2 toast
+              // chrome; if icons migrate to the v2 sprite the same names keep matching.
+              const promptIconSelector = [
+                'use[href="#opencode-icon-checklist"]',
+                'use[href="#opencode-icon-bubble-5"]',
+                'use[href="#opencode-v2-icon-checklist"]',
+                'use[href="#opencode-v2-icon-bubble-5"]',
+              ].join(', ');
               const actionSelector = '[data-slot="toast-action"], [data-slot="toast-v2-actions"] button';
               const closeSelector = '[data-slot="toast-close-button"], [data-slot="toast-v2-close-button"]';
               const dismissIfProjectSwitchPrompt = (toast) => {
@@ -852,7 +870,8 @@ internal object OpenCodeBrowserSnippets {
               let lastOpenedHref = '';
               let lastOpenedAt = 0;
               const cleanDisplayedPath = (value) => (value || '').replace(/[\u202A-\u202E]/g, '').trim();
-              const changedFileButtonSelector = '[data-slot="session-review-view-button"], button[aria-label="Open file"], button[aria-label="Datei öffnen"], button[title="Open file"], button[title="Datei öffnen"]';
+              // Durable slot only — no locale-specific aria/title labels.
+              const changedFileButtonSelector = '[data-slot="session-review-view-button"]';
               const changedFileButtonLink = (target) => {
                 const button = target && target.closest ? target.closest(changedFileButtonSelector) : null;
                 if (!button) return '';
