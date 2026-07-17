@@ -108,7 +108,6 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     private val openProjectAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
     private val scriptScheduler = OpenCodeBrowserScriptScheduler(project, browser, openProjectAlarm)
     private var openProjectScriptScheduled = false
-    private var openProjectSeedScheduled = false
     /** Most-recent session resolved for the current page load (avoids a second REST fetch). */
     private var pendingMostRecentSessionId: String? = null
     /**
@@ -117,9 +116,6 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
      * re-seed project state and never yank the user back to the startup conversation.
      */
     private var pendingOpenMostRecentConversation = false
-    private var compactLayoutScriptScheduled = false
-    private var ideThemeSyncScriptScheduled = false
-    private var hideWebsiteButtonScriptScheduled = false
 
     /**
      * A UI-behavior enhancement injected into the OpenCode page as JavaScript. Instances bundle
@@ -134,6 +130,58 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     ) {
         var scheduled = false
     }
+
+    /**
+     * A UI-behavior enhancement that must run before the SPA bundle executes (injected from
+     * `onLoadStart`, then retried on the early delay series in case the V8 context was not
+     * ready yet). Builders are re-invoked on every attempt so scripts can embed current state
+     * (e.g. the IDE theme); they must be idempotent in-page. Instances share one scheduling
+     * routine ([injectEarlyFeature]) and one reset point so per-feature flag drift is impossible.
+     */
+    private class EarlyInjectedFeature(
+        val enabledInSettings: () -> Boolean = { true },
+        val buildScript: (serverUrl: String) -> String?,
+    ) {
+        var scheduled = false
+    }
+
+    private val openProjectSeedFeature = EarlyInjectedFeature(
+        buildScript = { serverUrl ->
+            openCodeProjectDirectory()?.takeIf { it.isNotBlank() }?.let { projectDirectory ->
+                OpenCodeBrowserSnippets.buildOpenProjectScript(
+                    projectDirectory,
+                    serverUrl,
+                    openMostRecentConversation = false,
+                    mostRecentSessionId = null,
+                )
+            }
+        },
+    )
+    private val ideThemeSyncFeature = EarlyInjectedFeature(
+        enabledInSettings = { OpenCodeSettingsState.getInstance().syncThemeWithIde },
+        buildScript = {
+            OpenCodeBrowserSnippets.buildIdeThemeSyncScript(
+                enabled = OpenCodeSettingsState.getInstance().syncThemeWithIde,
+                dark = isIdeDarkTheme(),
+            )
+        },
+    )
+    private val compactLayoutFeature = EarlyInjectedFeature(
+        enabledInSettings = { OpenCodeSettingsState.getInstance().forceCompactLayout },
+        buildScript = { OpenCodeBrowserSnippets.buildCompactLayoutScript(enabled = true) },
+    )
+    private val hideWebsiteButtonFeature = EarlyInjectedFeature(
+        enabledInSettings = { OpenCodeSettingsState.getInstance().hideWebsiteButton },
+        buildScript = { OpenCodeBrowserSnippets.buildHideWebsiteButtonScript(enabled = true) },
+    )
+
+    /** Injection order matters: the project seed must precede everything else. */
+    private val earlyInjectedFeatures = listOf(
+        openProjectSeedFeature,
+        ideThemeSyncFeature,
+        compactLayoutFeature,
+        hideWebsiteButtonFeature,
+    )
 
     private val fileLinkFeature = InjectedFeature(
         enabledInSettings = { OpenCodeSettingsState.getInstance().openFileLinksInIde },
@@ -223,23 +271,18 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         override fun onLoadStart(browser: CefBrowser?, frame: CefFrame?, transitionType: CefRequest.TransitionType?) {
             if (frame?.isMain == true) {
                 injectedFeatures.forEach { it.scheduled = false }
-                compactLayoutScriptScheduled = false
-                ideThemeSyncScriptScheduled = false
-                hideWebsiteButtonScriptScheduled = false
-                openProjectSeedScheduled = false
+                earlyInjectedFeatures.forEach { it.scheduled = false }
                 if (OpenCodeServerProtocol.isOpenCodeServerPage(serverManager.getServerUrl(), frame.url)) {
                     // Drop any previous open-project delay series so navigations do not stack injects.
                     // Reset the flag so onLoadEnd can schedule a fresh series for this document.
                     openProjectAlarm.cancelAllRequests()
                     openProjectScriptScheduled = false
                     localStorageBridge.restore(frame.url)
-                    // Seed lastProject before the SPA bundle reads localStorage (shared browser
-                    // profile otherwise keeps the previous IDE project's workspace).
-                    injectOpenProjectSeedEarly()
+                    // Seed lastProject (first early feature) before the SPA bundle reads
+                    // localStorage — the shared browser profile otherwise keeps the previous IDE
+                    // project's workspace.
+                    earlyInjectedFeatures.forEach(::injectEarlyFeature)
                     localStorageBridge.installSync(frame.url)
-                    injectIdeThemeSyncEarly()
-                    injectCompactLayoutEarly()
-                    injectHideWebsiteButtonEarly()
                 }
             }
         }
@@ -687,8 +730,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         pendingMostRecentSessionId = null
         pendingOpenMostRecentConversation = false
         injectedFeatures.forEach { it.scheduled = false }
-        compactLayoutScriptScheduled = false
-        ideThemeSyncScriptScheduled = false
+        earlyInjectedFeatures.forEach { it.scheduled = false }
         openProjectAlarm.cancelAllRequests()
         applyBrowserZoom()
         injectedFeatures.forEach(::scheduleFeatureScript)
@@ -857,25 +899,26 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     }
 
     /**
-     * Writes `lastProject` / project list into the SPA's localStorage before the bundle runs.
-     * Must run from [onLoadStart]; post-load injects alone race the SPA's first read of the
-     * shared browser profile and can leave the panel bound to another IDE project's workspace.
+     * Injects [feature] from `onLoadStart`: executes the script immediately (before the SPA
+     * bundle runs) and retries on the early delay series in case the first attempt ran before
+     * the new document's V8 context was ready. The builder is re-invoked per attempt so it
+     * always reflects current IDE state. The open-project seed must be first: post-load injects
+     * alone race the SPA's first read of the shared browser profile and can leave the panel
+     * bound to another IDE project's workspace.
      */
-    private fun injectOpenProjectSeedEarly() {
-        if (openProjectSeedScheduled) return
+    private fun injectEarlyFeature(feature: EarlyInjectedFeature) {
+        if (feature.scheduled) return
+        if (!feature.enabledInSettings()) return
         val serverUrl = serverManager.getServerUrl() ?: return
-        val projectDirectory = openCodeProjectDirectory()?.takeIf { it.isNotBlank() } ?: return
-        val script = OpenCodeBrowserSnippets.buildOpenProjectScript(
-            projectDirectory,
-            serverUrl,
-            openMostRecentConversation = false,
-            mostRecentSessionId = null,
-        ) ?: return
+        val script = feature.buildScript(serverUrl) ?: return
         val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
-        openProjectSeedScheduled = true
+        feature.scheduled = true
         browser.cefBrowser.executeJavaScript(script, rootUrl, 0)
-        scriptScheduler.schedule(script, rootUrl, early = true) {
-            isBrowserOnOpenCodeServerPage(serverUrl)
+        scriptScheduler.scheduleAction(
+            early = true,
+            shouldRun = { feature.enabledInSettings() && isBrowserOnOpenCodeServerPage(serverUrl) },
+        ) {
+            feature.buildScript(serverUrl)?.let { browser.cefBrowser.executeJavaScript(it, rootUrl, 0) }
         }
     }
 
@@ -923,11 +966,11 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     }
 
     private fun scheduleIdeThemeSyncScript() {
-        if (ideThemeSyncScriptScheduled) return
+        if (ideThemeSyncFeature.scheduled) return
         if (!OpenCodeSettingsState.getInstance().syncThemeWithIde) return
 
         val serverUrl = serverManager.getServerUrl() ?: return
-        ideThemeSyncScriptScheduled = true
+        ideThemeSyncFeature.scheduled = true
 
         scriptScheduler.scheduleAction(
             shouldRun = { OpenCodeSettingsState.getInstance().syncThemeWithIde && isBrowserOnOpenCodeServerPage(serverUrl) },
@@ -998,12 +1041,12 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     private fun applyIdeThemeSync(enabled: Boolean) {
         val serverUrl = serverManager.getServerUrl() ?: return
         if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)) return
-        ideThemeSyncScriptScheduled = false
+        ideThemeSyncFeature.scheduled = false
         if (!enabled) {
             browser.cefBrowser.reload()
             return
         }
-        if (executeIdeThemeSyncScript(serverUrl)) ideThemeSyncScriptScheduled = true
+        if (executeIdeThemeSyncScript(serverUrl)) ideThemeSyncFeature.scheduled = true
     }
 
     /** Code navigation piggybacks on file-link navigation, so a toggle here re-applies both. */
@@ -1017,7 +1060,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
 
     private fun applyOpenCodeProjectDirectoryChange() {
         openProjectScriptScheduled = false
-        openProjectSeedScheduled = false
+        openProjectSeedFeature.scheduled = false
         fileLinkFeature.scheduled = false
         openProjectAlarm.cancelAllRequests()
         // The badge state belongs to the previous directory; loadProjectPage re-seeds.
@@ -1027,55 +1070,6 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
 
     private fun openCodeProjectDirectory(): String? {
         return OpenCodeProjectSettingsState.getInstance(project).effectiveProjectDirectory(project.basePath)
-    }
-
-    private fun injectCompactLayoutEarly() {
-        if (compactLayoutScriptScheduled) return
-        if (!OpenCodeSettingsState.getInstance().forceCompactLayout) return
-
-        val serverUrl = serverManager.getServerUrl() ?: return
-        val script = OpenCodeBrowserSnippets.buildCompactLayoutScript(enabled = true) ?: return
-        val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
-        compactLayoutScriptScheduled = true
-
-        // Inject immediately (onLoadStart — before SPA bundle executes)
-        browser.cefBrowser.executeJavaScript(script, rootUrl, 0)
-        // Re-inject on delays in case the early injection ran before JS context was ready
-        scriptScheduler.schedule(script, rootUrl, early = true) {
-            OpenCodeSettingsState.getInstance().forceCompactLayout && isBrowserOnOpenCodeServerPage(serverUrl)
-        }
-    }
-
-    private fun injectHideWebsiteButtonEarly() {
-        if (hideWebsiteButtonScriptScheduled) return
-        if (!OpenCodeSettingsState.getInstance().hideWebsiteButton) return
-
-        val serverUrl = serverManager.getServerUrl() ?: return
-        val script = OpenCodeBrowserSnippets.buildHideWebsiteButtonScript(enabled = true) ?: return
-        val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
-        hideWebsiteButtonScriptScheduled = true
-
-        // Inject immediately (onLoadStart — before SPA bundle executes)
-        browser.cefBrowser.executeJavaScript(script, rootUrl, 0)
-        // Re-inject on delays in case the early injection ran before JS context was ready
-        scriptScheduler.schedule(script, rootUrl, early = true) {
-            OpenCodeSettingsState.getInstance().hideWebsiteButton && isBrowserOnOpenCodeServerPage(serverUrl)
-        }
-    }
-
-    private fun injectIdeThemeSyncEarly() {
-        if (ideThemeSyncScriptScheduled) return
-        if (!OpenCodeSettingsState.getInstance().syncThemeWithIde) return
-
-        val serverUrl = serverManager.getServerUrl() ?: return
-        ideThemeSyncScriptScheduled = true
-
-        executeIdeThemeSyncScript(serverUrl)
-        scriptScheduler.scheduleAction(
-            early = true,
-            shouldRun = { OpenCodeSettingsState.getInstance().syncThemeWithIde && isBrowserOnOpenCodeServerPage(serverUrl) },
-            action = { executeIdeThemeSyncScript(serverUrl) },
-        )
     }
 
     private fun executeIdeThemeSyncScript(serverUrl: String): Boolean {
@@ -1093,17 +1087,22 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
 
     private fun applyCompactLayout() {
         // Toggling requires a page reload — early injection on next load start
-        compactLayoutScriptScheduled = false
-        val serverUrl = serverManager.getServerUrl() ?: return
-        if (OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)) {
-            browser.cefBrowser.reload()
-        }
+        reloadForEarlyFeatureToggle(compactLayoutFeature)
     }
 
     private fun applyHideWebsiteButton() {
         // Off → reload so listeners/stylesheets are fully removed (safeguard contract).
         // On → reload so early inject runs before SPA chrome mounts.
-        hideWebsiteButtonScriptScheduled = false
+        reloadForEarlyFeatureToggle(hideWebsiteButtonFeature)
+    }
+
+    /**
+     * Applies a runtime toggle of an early-injected feature. Both directions reload the page:
+     * off so previously installed patches are fully removed (safeguard contract, never a
+     * "disable" script), on so the script runs before the SPA bundle on the next load start.
+     */
+    private fun reloadForEarlyFeatureToggle(feature: EarlyInjectedFeature) {
+        feature.scheduled = false
         val serverUrl = serverManager.getServerUrl() ?: return
         if (OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)) {
             browser.cefBrowser.reload()
