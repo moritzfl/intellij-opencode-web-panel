@@ -729,12 +729,13 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         openProjectScriptScheduled = false
         pendingMostRecentSessionId = null
         pendingOpenMostRecentConversation = false
+        // No pre-load script scheduling here: onLoadStart cancels the alarm and resets the
+        // per-page flags anyway, and onLoadStart/onLoadEnd (re)schedule everything for the new
+        // document. The resets above only cover the case where the load never starts.
         injectedFeatures.forEach { it.scheduled = false }
         earlyInjectedFeatures.forEach { it.scheduled = false }
         openProjectAlarm.cancelAllRequests()
         applyBrowserZoom()
-        injectedFeatures.forEach(::scheduleFeatureScript)
-        scheduleIdeThemeSyncScript()
         // Events that fired before this panel started caring never reached the tracker.
         agentStatusTracker.seed()
 
