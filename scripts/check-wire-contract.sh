@@ -23,14 +23,20 @@ python3 - "$WORKDIR" <<'PY'
 import json
 import pathlib
 import sys
+import copy
 
 root = pathlib.Path(sys.argv[1])
 load = lambda name: json.loads((root / name).read_text())
 doc = load("doc.json")
 
 operations = {
+    ("/api/health", "get"): "v2.health.get",
+    ("/global/health", "get"): "global.health",
+    ("/global/dispose", "post"): "global.dispose",
     ("/global/event", "get"): "global.event",
     ("/session/status", "get"): "session.status",
+    ("/session/{sessionID}", "get"): "session.get",
+    ("/session/{sessionID}/diff", "get"): "session.diff",
     ("/permission", "get"): "permission.list",
     ("/question", "get"): "question.list",
     ("/permission/{requestID}/reply", "post"): "permission.reply",
@@ -39,16 +45,28 @@ operations = {
     ("/api/session/{sessionID}/prompt", "post"): "v2.session.prompt",
 }
 
-failures = []
-for (path, method), operation_id in operations.items():
-    operation = doc.get("paths", {}).get(path, {}).get(method)
-    if not operation:
-        failures.append(f"missing {method.upper()} {path}")
-        continue
-    if operation.get("operationId") != operation_id:
-        failures.append(f"{method.upper()} {path}: operationId={operation.get('operationId')!r}")
-    if operation.get("deprecated") is True:
-        failures.append(f"{method.upper()} {path}: deprecated")
+def operation_failures(candidate):
+    result = []
+    for (path, method), operation_id in operations.items():
+        operation = candidate.get("paths", {}).get(path, {}).get(method)
+        if not operation:
+            result.append(f"missing {method.upper()} {path}")
+            continue
+        if operation.get("operationId") != operation_id:
+            result.append(f"{method.upper()} {path}: operationId={operation.get('operationId')!r}")
+        if operation.get("deprecated") is True:
+            result.append(f"{method.upper()} {path}: deprecated")
+    return result
+
+failures = operation_failures(doc)
+
+# Negative fixtures: prove each declared operation is genuinely required by this checker.
+for path, method in operations:
+    mutated = copy.deepcopy(doc)
+    mutated.get("paths", {}).get(path, {}).pop(method, None)
+    expected = f"missing {method.upper()} {path}"
+    if expected not in operation_failures(mutated):
+        failures.append(f"checker self-test did not reject missing {method.upper()} {path}")
 
 health = load("health.json")
 if not isinstance(health, dict) or health.get("healthy") is not True or not isinstance(health.get("version"), str):
@@ -85,5 +103,5 @@ if failures:
         print(f"FAIL: {failure}", file=sys.stderr)
     raise SystemExit(1)
 
-print(f"OK: {len(operations)} operations, 4 live response roots, 8 event types; OpenCode {health['version']}")
+print(f"OK: {len(operations)} operations, 5 live response roots, 8 event types; OpenCode {health['version']}")
 PY
