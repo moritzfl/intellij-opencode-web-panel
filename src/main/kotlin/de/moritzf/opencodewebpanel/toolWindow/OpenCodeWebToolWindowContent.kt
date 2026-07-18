@@ -401,12 +401,12 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         }
         chatInputResultQuery.addHandler { payload ->
             val lines = payload.lineSequence().toList()
-            val batchID = lines.getOrNull(0).orEmpty()
+            val attemptID = lines.getOrNull(0).orEmpty()
             val accepted = lines.getOrNull(1) == "1"
             ApplicationManager.getApplication().invokeLater {
                 if (isContentDisposed()) return@invokeLater
                 val service = OpenCodeChatInputService.getInstance(project)
-                if (!service.acknowledge(batchID, accepted)) return@invokeLater
+                if (!service.acknowledge(attemptID, accepted)) return@invokeLater
                 if (!accepted) scheduleFlushPendingChatInput()
             }
             null
@@ -599,16 +599,16 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
      * Submits one queued IDE-initiated text and retains it in-flight until the page acknowledges
      * that OpenCode's prompt handler accepted the synthetic paste/drop event.
      */
-    private fun dispatchChatBatch(batch: OpenCodeChatInputService.Batch): Boolean {
+    private fun dispatchChatBatch(delivery: OpenCodeChatInputService.Delivery): Boolean {
         if (isContentDisposed()) return false
         if (!OpenCodeSettingsState.getInstance().enableChatFileDrop) return false
         val serverUrl = serverManager.getServerUrl() ?: return false
         if (!isBrowserOnOpenCodeServerPage(serverUrl)) return false
         val script = OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(
             emptyList(),
-            textPlain = listOf(batch.text),
+            textPlain = listOf(delivery.batch.text),
             enabled = true,
-            batchId = batch.id,
+            batchId = delivery.attemptID,
             resultCallback = chatInputResultQuery.inject("batchId + '\\n' + (accepted ? '1' : '0')"),
         ) ?: return false
         browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
@@ -616,7 +616,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             {
                 if (isContentDisposed()) return@addRequest
                 val service = OpenCodeChatInputService.getInstance(project)
-                if (service.retryInFlight(batch.id)) scheduleFlushPendingChatInput()
+                if (service.retryInFlight(delivery.attemptID)) scheduleFlushPendingChatInput()
             },
             CHAT_INPUT_ACK_TIMEOUT_MILLIS,
         )

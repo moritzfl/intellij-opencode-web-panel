@@ -13,9 +13,45 @@ import java.awt.event.KeyEvent
 import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
 import java.nio.file.Files
+import java.util.Collections
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import javax.imageio.ImageIO
 
 class OpenCodeFileDropHandlerTest {
+    @Test
+    fun dropPreparationExecutorPreservesSubmissionOrder() {
+        val executor = createOpenCodeDropPreparationExecutor()
+        val firstStarted = CountDownLatch(1)
+        val releaseFirst = CountDownLatch(1)
+        val secondStarted = CountDownLatch(1)
+        val finished = CountDownLatch(2)
+        val order = Collections.synchronizedList(mutableListOf<String>())
+        try {
+            executor.execute {
+                order += "first-start"
+                firstStarted.countDown()
+                releaseFirst.await(5, TimeUnit.SECONDS)
+                order += "first-end"
+                finished.countDown()
+            }
+            assertTrue(firstStarted.await(5, TimeUnit.SECONDS))
+            executor.execute {
+                order += "second"
+                secondStarted.countDown()
+                finished.countDown()
+            }
+
+            assertFalse(secondStarted.await(250, TimeUnit.MILLISECONDS))
+            releaseFirst.countDown()
+            assertTrue(finished.await(5, TimeUnit.SECONDS))
+            assertEquals(listOf("first-start", "first-end", "second"), order)
+        } finally {
+            releaseFirst.countDown()
+            executor.shutdownNow()
+        }
+    }
+
     @Test
     fun isPasteShortcutAcceptsCommandOrControlV() {
         assertTrue(OpenCodeFileDropHandler.isPasteShortcut(KeyEvent.VK_V, EventFlags.EVENTFLAG_COMMAND_DOWN))

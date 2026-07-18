@@ -11,6 +11,7 @@ import com.intellij.openapi.util.Disposer
 import com.intellij.ui.jcef.JBCefBrowser
 import com.intellij.ui.jcef.JBCefBrowserBase
 import com.intellij.ui.jcef.JBCefJSQuery
+import com.intellij.util.concurrency.AppExecutorUtil
 import de.moritzf.opencodewebpanel.browser.OpenCodeBrowserSnippets
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager
@@ -37,6 +38,11 @@ import org.cef.handler.CefKeyboardHandlerAdapter
 import org.cef.misc.BoolRef
 import org.cef.misc.EventFlags
 
+internal fun createOpenCodeDropPreparationExecutor() = AppExecutorUtil.createBoundedApplicationPoolExecutor(
+    "OpenCode File Drop Preparation",
+    1,
+)
+
 internal class OpenCodeFileDropHandler(
     private val project: Project,
     private val browser: JBCefBrowser,
@@ -47,6 +53,7 @@ internal class OpenCodeFileDropHandler(
     private val parentDisposable: Disposable,
 ) {
     private val dropResultQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
+    private val preparationExecutor = createOpenCodeDropPreparationExecutor()
     private val nextDropID = AtomicLong()
 
     internal companion object {
@@ -133,6 +140,7 @@ internal class OpenCodeFileDropHandler(
     private var suppressNextBrowserPasteAtMillis = 0L
 
     init {
+        Disposer.register(parentDisposable) { preparationExecutor.shutdownNow() }
         dropResultQuery.addHandler { payload ->
             if (payload.lineSequence().drop(1).firstOrNull() != "1") {
                 ApplicationManager.getApplication().invokeLater {
@@ -275,8 +283,8 @@ internal class OpenCodeFileDropHandler(
         val documentRevision = browserDocumentRevision()
         val batchID = "drop-${nextDropID.incrementAndGet()}"
 
-        ApplicationManager.getApplication().executeOnPooledThread {
-            if (isDisposed()) return@executeOnPooledThread
+        preparationExecutor.execute {
+            if (isDisposed()) return@execute
             val classifiedFiles = files.map { file ->
                 file to OpenCodeServerProtocol.localFileDropText(file, projectDirectory)
             }
@@ -292,14 +300,14 @@ internal class OpenCodeFileDropHandler(
             val warnings = selection.rejectionMessages + preparedImages.rejectionMessages
             if (warnings.isNotEmpty()) showFileDropWarning(warnings)
             val payloads = selection.acceptedFiles.mapNotNull { droppedFilePayload(it) } + preparedImages.payloads
-            if (textDrops.isEmpty() && payloads.isEmpty()) return@executeOnPooledThread
+            if (textDrops.isEmpty() && payloads.isEmpty()) return@execute
             val script = OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(
                 payloads,
                 textPlain = textDrops,
                 enabled = OpenCodeSettingsState.getInstance().enableChatFileDrop,
                 batchId = batchID,
                 resultCallback = dropResultQuery.inject("batchId + '\\n' + (accepted ? '1' : '0')"),
-            ) ?: return@executeOnPooledThread
+            ) ?: return@execute
             val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
             ApplicationManager.getApplication().invokeLater {
                 val contextIsCurrent = !isDisposed() &&

@@ -26,6 +26,7 @@
 - Preparing pasted images and dropped files now runs in the background, keeping the IDE responsive for large or slow files.
 - Pending permission and question notifications are reconciled after event-stream reconnects, restoring missed requests and dismissing requests already answered elsewhere.
 - Windows drive and network file links now open in the IDE, and editor selections beginning with a file reference are pasted intact instead of being mistaken for one file path.
+- Retried IDE-to-chat inputs ignore late acknowledgements from older attempts, and rapid file/image drops retain their submission order.
 
 ## [1.8.0] - 2026-07-17
 

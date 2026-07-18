@@ -9,37 +9,57 @@ class OpenCodeChatInputServiceTest {
     @Test
     fun dispatchesInOrderAndWaitsForAcknowledgement() {
         val service = OpenCodeChatInputService()
-        val submitted = mutableListOf<OpenCodeChatInputService.Batch>()
-        service.setDispatcher { batch -> submitted += batch; true }
+        val submitted = mutableListOf<OpenCodeChatInputService.Delivery>()
+        service.setDispatcher { delivery -> submitted += delivery; true }
 
         assertTrue(service.send(listOf("first", "second")))
-        assertEquals(listOf("first"), submitted.map { it.text })
+        assertEquals(listOf("first"), submitted.map { it.batch.text })
         assertEquals(2, service.queuedCount())
 
-        assertTrue(service.acknowledge(submitted[0].id, accepted = true))
-        assertEquals(listOf("first", "second"), submitted.map { it.text })
+        assertTrue(service.acknowledge(submitted[0].attemptID, accepted = true))
+        assertEquals(listOf("first", "second"), submitted.map { it.batch.text })
         assertEquals(1, service.queuedCount())
 
-        assertTrue(service.acknowledge(submitted[1].id, accepted = true))
+        assertTrue(service.acknowledge(submitted[1].attemptID, accepted = true))
         assertEquals(0, service.queuedCount())
     }
 
     @Test
     fun rejectedOrTimedOutBatchIsRequeuedWithoutDuplication() {
         val service = OpenCodeChatInputService()
-        val submitted = mutableListOf<OpenCodeChatInputService.Batch>()
-        service.setDispatcher { batch -> submitted += batch; true }
+        val submitted = mutableListOf<OpenCodeChatInputService.Delivery>()
+        service.setDispatcher { delivery -> submitted += delivery; true }
         service.send(listOf("text"))
-        val id = submitted.single().id
+        val first = submitted.single()
 
-        assertTrue(service.acknowledge(id, accepted = false))
+        assertTrue(service.acknowledge(first.attemptID, accepted = false))
         assertEquals(1, service.queuedCount())
-        assertFalse(service.acknowledge(id, accepted = true))
+        assertFalse(service.acknowledge(first.attemptID, accepted = true))
 
         assertTrue(service.dispatchPending())
-        assertEquals(listOf(id, id), submitted.map { it.id })
-        assertTrue(service.retryInFlight(id))
+        val second = submitted.last()
+        assertEquals(first.batch.id, second.batch.id)
+        assertFalse(first.attemptID == second.attemptID)
+        assertTrue(service.retryInFlight(second.attemptID))
         assertEquals(1, service.queuedCount())
+    }
+
+    @Test
+    fun staleCallbackAndTimeoutCannotAffectRetriedAttempt() {
+        val service = OpenCodeChatInputService()
+        val submitted = mutableListOf<OpenCodeChatInputService.Delivery>()
+        service.setDispatcher { delivery -> submitted += delivery; true }
+        service.send(listOf("text"))
+        val first = submitted.single()
+        assertTrue(service.retryInFlight(first.attemptID))
+        assertTrue(service.dispatchPending())
+        val second = submitted.last()
+
+        assertFalse(service.acknowledge(first.attemptID, accepted = true))
+        assertFalse(service.retryInFlight(first.attemptID))
+        assertEquals(1, service.queuedCount())
+        assertTrue(service.acknowledge(second.attemptID, accepted = true))
+        assertEquals(0, service.queuedCount())
     }
 
     @Test
