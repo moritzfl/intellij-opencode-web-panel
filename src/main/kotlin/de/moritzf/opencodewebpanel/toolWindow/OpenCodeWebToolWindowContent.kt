@@ -6,11 +6,13 @@ import com.intellij.ide.ui.LafManagerListener
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.application.ApplicationActivationListener
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.IconLoader
 import com.intellij.openapi.util.text.StringUtil
+import com.intellij.openapi.wm.IdeFrame
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.ui.BadgeIconSupplier
 import com.intellij.ui.jcef.JBCefBrowser
@@ -120,6 +122,11 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     private val componentSizeRestoreAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
     private val scriptScheduler = OpenCodeBrowserScriptScheduler(project, browser, openProjectAlarm)
     private val repaintScheduler = OpenCodeBrowserScriptScheduler(project, browser, repaintAlarm)
+    private val browserFocusSync = OpenCodeBrowserFocusSync(
+        component = { browser.component },
+        isActive = { !isContentDisposed() },
+        setBrowserFocus = { browser.cefBrowser.setFocus(it) },
+    )
     private val componentSizeNudger = OpenCodeComponentSizeNudger(
         component = browser.component,
         isActive = { !isContentDisposed() },
@@ -328,6 +335,9 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
 
         override fun onLoadEnd(browser: CefBrowser?, frame: CefFrame?, httpStatusCode: Int) {
             if (frame?.isMain != true) return
+            // JBCef's own focus forwarding is transition-based and can be dropped around
+            // loads (e.g. before native browser init); re-sync so the text caret is rendered.
+            browserFocusSync.reassertIfFocused()
             if (httpStatusCode !in 200..399) return
             if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverManager.getServerUrl(), frame.url)) return
 
@@ -425,6 +435,9 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                     if (frame?.isMain == true) {
                         browserDocumentRevision++
                         scheduleBrowserRepaintNudges()
+                        // CEF OSR can drop Chromium-level focus on SPA redirects/route changes
+                        // (CEF #3870), which hides the text caret while typing still works.
+                        browserFocusSync.reassertIfFocused()
                     }
                 }
             },
@@ -446,6 +459,17 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             object : AppLifecycleListener {
                 override fun appClosing() {
                     applicationClosing = true
+                }
+            },
+        )
+        // Re-activating the IDE window does not emit a component-level focus transition when
+        // focus never left the browser, so JBCef never re-tells Chromium it is focused and the
+        // text caret stays hidden until the user clicks elsewhere and back.
+        ApplicationManager.getApplication().messageBus.connect(this).subscribe(
+            ApplicationActivationListener.TOPIC,
+            object : ApplicationActivationListener {
+                override fun applicationActivated(ideFrame: IdeFrame) {
+                    browserFocusSync.reassertIfFocused()
                 }
             },
         )
