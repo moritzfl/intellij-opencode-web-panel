@@ -327,6 +327,10 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("typeof project.expanded === 'boolean' ? project.expanded : true"))
         assertTrue(script.contains("if (!found) nextProjects.unshift"))
         assertTrue(script.contains("if (nextRaw !== raw)"))
+        // Foreign-schema guard: a root that parses but is not a plain object is treated as a
+        // newer OpenCode schema and skipped (fail soft) instead of being replaced wholesale.
+        assertTrue(script.contains("if (!parseFailed && parsed !== null && !isPlainObject)"))
+        assertTrue(script.contains("Skipping OpenCode project seed: unrecognized project-state schema"))
         assertFalse(script.contains("state.list ="))
         assertTrue(script.contains("const sameWorktree = (left, right) =>"))
         assertTrue(script.contains("!sameWorktree(project.worktree, directory)"))

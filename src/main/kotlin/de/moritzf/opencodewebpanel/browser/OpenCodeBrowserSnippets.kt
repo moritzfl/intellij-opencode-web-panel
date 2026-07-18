@@ -152,46 +152,60 @@ internal object OpenCodeBrowserSnippets {
                 const storageKey = 'opencode.global.dat:server';
                 const raw = window.localStorage.getItem(storageKey);
                 let parsed = {};
-                try { parsed = raw ? JSON.parse(raw) : {}; } catch (_) {}
-                const state = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-                state.projects = state.projects && typeof state.projects === 'object' && !Array.isArray(state.projects)
-                  ? state.projects : {};
-                state.lastProject = state.lastProject && typeof state.lastProject === 'object' && !Array.isArray(state.lastProject)
-                  ? state.lastProject : {};
-                const projects = Array.isArray(state.projects[scope]) ? state.projects[scope] : [];
-                // Match worktrees case-insensitively on Windows drive roots and with either
-                // separator so a stale entry from another client does not leave two copies.
-                const sameWorktree = (left, right) => {
-                  if (typeof left !== 'string' || typeof right !== 'string') return false;
-                  const norm = (value) => {
-                    let next = value.replace(/\\/g, '/').replace(/\/+$/g, '');
-                    if (/^[A-Za-z]:\//.test(next)) next = next.charAt(0).toLowerCase() + next.slice(1);
-                    return next;
-                  };
-                  return norm(left) === norm(right);
-                };
-                // Preserve the existing entry's position, collapse state, and unknown fields.
-                // The early/post-load retry series can run many times, so later attempts must be
-                // true no-ops and must not fight a user's sidebar changes.
-                let found = false;
-                const nextProjects = [];
-                for (const project of projects) {
-                  if (!project || !sameWorktree(project.worktree, directory)) {
-                    nextProjects.push(project);
-                    continue;
+                let parseFailed = false;
+                try { parsed = raw ? JSON.parse(raw) : {}; } catch (_) { parseFailed = true; }
+                const isPlainObject = !!parsed && typeof parsed === 'object' && !Array.isArray(parsed);
+                if (!parseFailed && parsed !== null && !isPlainObject) {
+                  // A root that parses but is not a plain object is most likely a NEWER OpenCode
+                  // schema, not corruption. Re-"repairing" it would stomp the new format on every
+                  // load, persistently, for every project sharing the browser profile. Skip the
+                  // seed instead (fail soft): the SPA owns this key and rewrites it in its own
+                  // format, after which seeding resumes. Unparseable or null roots cannot be a
+                  // meaningful schema and are still re-initialized below.
+                  if (window.console && window.console.warn) {
+                    window.console.warn('Skipping OpenCode project seed: unrecognized project-state schema');
                   }
-                  if (found) continue;
-                  found = true;
-                  nextProjects.push(Object.assign({}, project, {
-                    worktree: directory,
-                    expanded: typeof project.expanded === 'boolean' ? project.expanded : true,
-                  }));
+                } else {
+                  const state = isPlainObject ? parsed : {};
+                  state.projects = state.projects && typeof state.projects === 'object' && !Array.isArray(state.projects)
+                    ? state.projects : {};
+                  state.lastProject = state.lastProject && typeof state.lastProject === 'object' && !Array.isArray(state.lastProject)
+                    ? state.lastProject : {};
+                  const projects = Array.isArray(state.projects[scope]) ? state.projects[scope] : [];
+                  // Match worktrees case-insensitively on Windows drive roots and with either
+                  // separator so a stale entry from another client does not leave two copies.
+                  const sameWorktree = (left, right) => {
+                    if (typeof left !== 'string' || typeof right !== 'string') return false;
+                    const norm = (value) => {
+                      let next = value.replace(/\\/g, '/').replace(/\/+$/g, '');
+                      if (/^[A-Za-z]:\//.test(next)) next = next.charAt(0).toLowerCase() + next.slice(1);
+                      return next;
+                    };
+                    return norm(left) === norm(right);
+                  };
+                  // Preserve the existing entry's position, collapse state, and unknown fields.
+                  // The early/post-load retry series can run many times, so later attempts must be
+                  // true no-ops and must not fight a user's sidebar changes.
+                  let found = false;
+                  const nextProjects = [];
+                  for (const project of projects) {
+                    if (!project || !sameWorktree(project.worktree, directory)) {
+                      nextProjects.push(project);
+                      continue;
+                    }
+                    if (found) continue;
+                    found = true;
+                    nextProjects.push(Object.assign({}, project, {
+                      worktree: directory,
+                      expanded: typeof project.expanded === 'boolean' ? project.expanded : true,
+                    }));
+                  }
+                  if (!found) nextProjects.unshift({ worktree: directory, expanded: true });
+                  state.projects[scope] = nextProjects;
+                  state.lastProject[scope] = directory;
+                  const nextRaw = JSON.stringify(state);
+                  if (nextRaw !== raw) window.localStorage.setItem(storageKey, nextRaw);
                 }
-                if (!found) nextProjects.unshift({ worktree: directory, expanded: true });
-                state.projects[scope] = nextProjects;
-                state.lastProject[scope] = directory;
-                const nextRaw = JSON.stringify(state);
-                if (nextRaw !== raw) window.localStorage.setItem(storageKey, nextRaw);
               } catch (error) {
                 if (window.console && window.console.warn) {
                   window.console.warn('Failed to seed OpenCode project state', error);
