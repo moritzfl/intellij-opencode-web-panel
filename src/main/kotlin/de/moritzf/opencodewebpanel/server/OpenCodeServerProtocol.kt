@@ -558,7 +558,7 @@ internal object OpenCodeServerProtocol {
         readTimeoutMillis: Int = 2000,
     ): Boolean {
         val body = httpGet(buildHealthUrl(serverUrl), basicAuthHeader, connectTimeoutMillis, readTimeoutMillis) ?: return false
-        return Regex("\"healthy\"\\s*:\\s*true").containsMatchIn(body)
+        return parseJsonObject(body)?.booleanMember("healthy") == true
     }
 
     /**
@@ -573,7 +573,7 @@ internal object OpenCodeServerProtocol {
     ): String? {
         val body = httpGet(buildServerRootUrl(serverUrl) + GLOBAL_HEALTH_PATH, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)
             ?: return null
-        return Regex("\"version\"\\s*:\\s*\"([^\"]+)\"").find(body)?.groupValues?.get(1)
+        return parseJsonObject(body)?.stringMember("version")
     }
 
     /**
@@ -1114,7 +1114,8 @@ internal object OpenCodeServerProtocol {
             if (!seenCursors.add(cursor)) {
                 return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_BODY)
             }
-            url = rootUrl + "/api/session?cursor=" + java.net.URLEncoder.encode(cursor, StandardCharsets.UTF_8)
+            url = rootUrl + "/api/session?cursor=" +
+                java.net.URLEncoder.encode(cursor, StandardCharsets.UTF_8) + "&limit=$limit"
         }
         return OpenCodeProtocolResult.Success(sessions.values.toList())
     }

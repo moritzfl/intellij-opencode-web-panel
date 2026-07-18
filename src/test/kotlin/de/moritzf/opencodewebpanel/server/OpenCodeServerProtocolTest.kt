@@ -999,6 +999,7 @@ class OpenCodeServerProtocolTest {
 
         assertTrue(script.contains("window.__opencodeIntellijCursorMirrorInstalled"))
         assertTrue(script.contains("getComputedStyle(el).cursor"))
+        assertTrue(script.contains("caretPositionFromPoint"))
         assertTrue(script.contains("caretRangeFromPoint"))
         assertTrue(script.contains("addEventListener('pointermove'"))
         assertTrue(script.contains("addEventListener('pointerdown'"))
@@ -1627,6 +1628,31 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun checkServerRespondingRequiresRootBooleanHealthField() {
+        for (body in listOf("""{"meta":{"healthy":true}}""", """{"healthy":"true"}""", """[{"healthy":true}]""")) {
+            withSingleRequestHttpServer(body = body) { url ->
+                assertFalse(OpenCodeServerProtocol.checkServerResponding(url))
+            }
+        }
+    }
+
+    @Test
+    fun fetchServerVersionRequiresRootStringField() {
+        withSingleRequestHttpServer(
+            body = """{"healthy":true,"version":"1.18.2"}""",
+            expectedRequestLine = "GET ${OpenCodeServerProtocol.GLOBAL_HEALTH_PATH} HTTP/1.1",
+        ) { url ->
+            assertEquals("1.18.2", OpenCodeServerProtocol.fetchServerVersion(url, null))
+        }
+        withSingleRequestHttpServer(
+            body = """{"metadata":{"version":"9.9.9"}}""",
+            expectedRequestLine = "GET ${OpenCodeServerProtocol.GLOBAL_HEALTH_PATH} HTTP/1.1",
+        ) { url ->
+            assertNull(OpenCodeServerProtocol.fetchServerVersion(url, null))
+        }
+    }
+
+    @Test
     fun checkServerRespondingReturnsFalseForInvalidUrl() {
         assertFalse(
             OpenCodeServerProtocol.checkServerResponding(
@@ -1996,10 +2022,12 @@ class OpenCodeServerProtocolTest {
     @Test
     fun fetchRecentSessionsFollowsCursorPages() {
         val requests = AtomicInteger()
+        val queries = java.util.Collections.synchronizedList(mutableListOf<String>())
         val now = System.currentTimeMillis()
         val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
         server.createContext("/api/session") { exchange ->
             val request = requests.incrementAndGet()
+            queries.add(exchange.requestURI.rawQuery.orEmpty())
             val body = if (exchange.requestURI.rawQuery.orEmpty().contains("cursor=")) {
                 """{"data":[{"id":"ses_page2","time":{"updated":${now - 1}}}],"cursor":{}}"""
             } else {
@@ -2024,6 +2052,7 @@ class OpenCodeServerProtocolTest {
                 (result as OpenCodeProtocolResult.Success).value.map { it.id },
             )
             assertEquals(2, requests.get())
+            assertTrue(queries[1].contains("limit=20"))
         } finally {
             server.stop(0)
         }

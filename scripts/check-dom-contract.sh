@@ -97,9 +97,40 @@ for marker in "${MARKERS[@]}"; do
   fi
 done
 
+# Discover the minified Persist namespace from one stable key, then reject newly introduced
+# direct keys until they are explicitly classified as mirrored UI state or intentionally excluded.
+PERSIST_REFERENCES=()
+while IFS= read -r reference; do
+  PERSIST_REFERENCES+=("$reference")
+done < <(grep -oE '[A-Za-z_$][A-Za-z0-9_$]*\.global\("home\.servers"' "$WORKDIR/bundle.js" | sort -u)
+if [ "${#PERSIST_REFERENCES[@]}" -eq 0 ]; then
+  echo "MISSING: Persist.global(home.servers)" >&2
+  MISSING=$((MISSING + 1))
+else
+  PERSIST_FACTORY="${PERSIST_REFERENCES[0]%%.global*}"
+  PERSIST_COUNT=0
+  while IFS= read -r reference; do
+    [ "${reference%%.*}" = "$PERSIST_FACTORY" ] || continue
+    scopedKey="${reference#*.}"
+    scope="${scopedKey%%(*}"
+    key="${scopedKey#*\"}"
+    key="${key%\"}"
+    PERSIST_COUNT=$((PERSIST_COUNT + 1))
+    case "$scope:$key" in
+      global:command.catalog.v1|global:go-upsell|global:home.servers|global:language|global:model|global:open.app|global:prompt-history|global:prompt-history-shell|global:review-panel-v2|global:server|window:tabs|window:tabs.closed|window:tabs.info|window:tabs.recent)
+        ;;
+      *)
+        echo "UNCLASSIFIED PERSIST KEY: $scope:$key"
+        MISSING=$((MISSING + 1))
+        ;;
+    esac
+  done < <(grep -oE '[A-Za-z_$][A-Za-z0-9_$]*\.(global|window|workspace|server)\("[^"]+"' "$WORKDIR/bundle.js" | sort -u)
+fi
+
 TOTAL="${#MARKERS[@]}"
 if [ "$MISSING" -gt 0 ]; then
-  echo "FAIL: $MISSING/$TOTAL contract markers missing from $BASE_URL bundle" >&2
+  echo "FAIL: $MISSING contract check(s) failed for $BASE_URL bundle ($TOTAL DOM markers checked)" >&2
   exit 1
 fi
 echo "OK: all $TOTAL contract markers present in $BASE_URL bundle (${#ASSETS[@]} asset(s))"
+echo "OK: all ${PERSIST_COUNT:-0} directly declared Persist keys classified"

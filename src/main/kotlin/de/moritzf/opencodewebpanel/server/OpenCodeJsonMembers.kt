@@ -12,5 +12,8 @@ internal fun JsonObject.longMember(name: String): Long? =
     get(name)?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isNumber }
         ?.let { runCatching { it.asLong }.getOrNull() }
 
+internal fun JsonObject.booleanMember(name: String): Boolean? =
+    get(name)?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isBoolean }?.asBoolean
+
 internal fun JsonObject.objectMember(name: String): JsonObject? =
     get(name)?.takeIf { it.isJsonObject }?.asJsonObject

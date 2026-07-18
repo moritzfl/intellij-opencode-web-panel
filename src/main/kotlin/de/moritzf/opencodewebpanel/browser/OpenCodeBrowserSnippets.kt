@@ -611,11 +611,13 @@ internal object OpenCodeBrowserSnippets {
                 const tag = el.tagName;
                 if (tag === 'TEXTAREA') return 'text';
                 if (tag === 'INPUT' && !/^(button|submit|reset|checkbox|radio|range|file|color|image)${'$'}/i.test(el.type)) return 'text';
-                // Over selectable text, auto renders as the text I-beam. caretRangeFromPoint
-                // snaps to the nearest text, so require the point to be inside its element.
-                if (document.caretRangeFromPoint) {
-                  const range = document.caretRangeFromPoint(x, y);
-                  const node = range && range.startContainer;
+                // Over selectable text, auto renders as the text I-beam. Point-to-caret APIs
+                // snap to the nearest text, so require the point to be inside its element.
+                if (document.caretPositionFromPoint || document.caretRangeFromPoint) {
+                  const caret = document.caretPositionFromPoint
+                    ? document.caretPositionFromPoint(x, y)
+                    : document.caretRangeFromPoint(x, y);
+                  const node = caret && (caret.offsetNode || caret.startContainer);
                   if (node && node.nodeType === 3 && node.parentElement) {
                     const rect = node.parentElement.getBoundingClientRect();
                     if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) return 'text';
