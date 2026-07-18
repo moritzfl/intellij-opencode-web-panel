@@ -4,9 +4,22 @@
 
 ## [Unreleased]
 
+## [1.9.1] - 2026-07-19
+
 ### Added
 
 - OpenCode notification sounds (agent finished, permission required, errors) now play from the IDE using the sound choices configured in OpenCode's own settings. The embedded browser previously stayed silent for these cues.
+- New "Reset OpenCode Web State" option in the tool window's gear menu clears the embedded OpenCode web app's locally stored state and reloads the panel — a one-click recovery if the panel ever gets stuck in a bad state, for example after an OpenCode update.
+- New "Open Browser DevTools" option in the gear menu opens Chromium's built-in developer tools (console, network, elements) for the embedded page — useful for diagnosing problems with the panel. If DevTools asks you to sign in, a notification provides the username and a one-click copy of the server password.
+
+### Changed
+
+- The panel is now more careful with OpenCode's own stored browser data: data in an unrecognized format (e.g. from a newer OpenCode version) is left untouched instead of being rewritten, automatic notification-toast handling is bounded, and internal panel errors can no longer interfere with the web app's storage.
+- The context menu's "View Page Source" entry has been removed — it never worked in the embedded browser. Use the gear menu's "Open Browser DevTools" for page inspection instead.
+
+### Fixed
+
+- The text caret in the chat input no longer intermittently disappears (typing kept working but the cursor position was invisible, e.g. after switching back to the IDE window or when OpenCode changed pages).
 
 ## [1.9.0] - 2026-07-18
 
@@ -410,7 +423,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.0...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.1...HEAD
+[1.9.1]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.0...1.9.1
 [1.9.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.8.0...1.9.0
 [1.8.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.7.1...1.8.0
 [1.7.1]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.7.0...1.7.1
