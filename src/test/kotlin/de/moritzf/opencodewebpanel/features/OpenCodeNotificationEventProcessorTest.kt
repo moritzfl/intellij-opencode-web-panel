@@ -89,6 +89,16 @@ class OpenCodeNotificationEventProcessorTest {
     }
 
     @Test
+    fun lifecycleResetClearsIdleMergeState() {
+        sessions["ses_1"] = OpenCodeServerProtocol.SessionInfo("Fix the build", parentID = null)
+        assertTrue(processor.process(event("session.idle", """{"sessionID":"ses_1"}""")) is OpenCodeNotificationEventProcessor.Outcome.Notify)
+
+        processor.reset()
+
+        assertTrue(processor.process(event("session.idle", """{"sessionID":"ses_1"}""")) is OpenCodeNotificationEventProcessor.Outcome.Notify)
+    }
+
+    @Test
     fun idleNotificationsSkipUnknownAndChildSessions() {
         assertNull(processor.process(event("session.idle", """{"sessionID":"ses_unknown"}""")))
 

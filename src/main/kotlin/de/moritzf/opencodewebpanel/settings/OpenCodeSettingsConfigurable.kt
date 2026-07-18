@@ -330,6 +330,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         val oldBinaryMode = settings.binaryModeValue()
         val oldBinaryPath = settings.binaryPath.trim()
         val oldUiZoomPercent = OpenCodeSettingsState.sanitizeUiZoomPercent(settings.uiZoomPercent)
+        val oldSystemNotificationsEnabled = settings.enableSystemNotifications
         val oldPassword = savedPassword
         val pendingBroadcasts = checkBoxSettingBindings.mapNotNull { binding ->
             val uiSetting = binding.uiSetting ?: return@mapNotNull null
@@ -382,6 +383,11 @@ class OpenCodeSettingsConfigurable : Configurable {
             val publisher = ApplicationManager.getApplication().messageBus
                 .syncPublisher(OpenCodeSettingsListener.TOPIC)
             pendingBroadcasts.forEach { (setting, enabled) -> publisher.uiSettingChanged(setting, enabled) }
+        }
+        if (oldSystemNotificationsEnabled != settings.enableSystemNotifications) {
+            ApplicationManager.getApplication().messageBus
+                .syncPublisher(OpenCodeSettingsListener.TOPIC)
+                .systemNotificationsChanged(settings.enableSystemNotifications)
         }
     }
 

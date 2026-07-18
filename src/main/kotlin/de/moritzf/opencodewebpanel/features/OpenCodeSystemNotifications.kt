@@ -19,12 +19,16 @@ import com.intellij.ui.jcef.JBCefBrowser
 import de.moritzf.opencodewebpanel.server.OpenCodeGlobalEvent
 import de.moritzf.opencodewebpanel.server.OpenCodeGlobalEventListener
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
+import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleListener
+import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState
 import de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager
+import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsListener
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.util.concurrency.AppExecutorUtil
 import java.awt.Frame
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 /** Collapses whitespace, truncates, and HTML-escapes a value for use in notification HTML. */
 internal fun notificationText(value: String, maxLength: Int = 1000): String {
@@ -79,19 +83,26 @@ internal class OpenCodeSystemNotifications(
         title: String,
         openCodeNotification: OpenCodeServerProtocol.SystemNotificationPayload,
         response: OpenCodeServerProtocol.PermissionResponse,
+        identity: OpenCodeNotificationServerIdentity,
     ): NotificationAction {
         return object : NotificationAction(title) {
             override fun actionPerformed(e: AnActionEvent, notification: Notification) {
                 notification.expire()
-                replyToPermission(openCodeNotification, response)
+                replyToPermission(openCodeNotification, response, identity)
             }
         }
     }
 
-    private fun replyToPermission(openCodeNotification: OpenCodeServerProtocol.SystemNotificationPayload, response: OpenCodeServerProtocol.PermissionResponse) {
+    private fun replyToPermission(
+        openCodeNotification: OpenCodeServerProtocol.SystemNotificationPayload,
+        response: OpenCodeServerProtocol.PermissionResponse,
+        identity: OpenCodeNotificationServerIdentity,
+    ) {
+        if (!isCurrentServer(identity)) return
         val serverUrl = serverManager.getServerUrl() ?: return
         val password = serverManager.getServerPassword() ?: return
         ApplicationManager.getApplication().executeOnPooledThread {
+            if (!isCurrentServer(identity)) return@executeOnPooledThread
             val accepted = OpenCodeServerProtocol.replyToPermission(
                 serverUrl,
                 OpenCodeServerProtocol.buildBasicAuthHeader(password),
@@ -113,6 +124,13 @@ internal class OpenCodeSystemNotifications(
                     ?.notify(project)
             }
         }
+    }
+
+    private fun isCurrentServer(identity: OpenCodeNotificationServerIdentity): Boolean {
+        return serverManager.getLifecycleState() == OpenCodeServerLifecycleState.RUNNING &&
+            serverManager.getServerGeneration() == identity.generation &&
+            serverManager.getServerUrl() == identity.serverUrl &&
+            notificationEpoch.get() == identity.notificationEpoch
     }
 
     fun dispose() {
@@ -180,13 +198,25 @@ internal class OpenCodeSystemNotifications(
         private val targets = mutableSetOf<OpenCodeSystemNotifications>()
         private val recentNotificationIds = linkedMapOf<String, Long>()
 
-        // Live notifications by dismiss key ("request:<id>" / "session:<id>"). Static because
-        // a dismissal applies to whichever panel's instance created the notification; entries
-        // are removed via whenExpired, so the map cannot grow stale.
-        private val activeNotificationsByKey = mutableMapOf<String, MutableList<Notification>>()
+        // Static because a dismissal applies to whichever panel created the notification.
+        private val activeNotifications = OpenCodeActiveNotificationRegistry<Notification>()
 
         private val globalEventSubscriptionInstalled = AtomicBoolean()
+        private val notificationEpoch = AtomicLong()
         private val eventProcessor = OpenCodeNotificationEventProcessor(::fetchSessionForNotification)
+        private val notificationInvalidator = OpenCodeNotificationInvalidator(
+            registry = activeNotifications,
+            resetReducedState = {
+                notificationEpoch.incrementAndGet()
+                eventProcessor.reset()
+                synchronized(recentNotificationIds) { recentNotificationIds.clear() }
+            },
+            expire = { notifications ->
+                ApplicationManager.getApplication().invokeLater {
+                    notifications.forEach(Notification::expire)
+                }
+            },
+        )
 
         // Single-threaded so events are processed in stream order: a slow session lookup for
         // "permission.asked" must not finish after the matching "permission.replied" dismissal,
@@ -194,6 +224,18 @@ internal class OpenCodeSystemNotifications(
         private val eventExecutor = AppExecutorUtil.createBoundedApplicationPoolExecutor(
             "OpenCode Notification Events",
             1,
+        )
+        private val eventDispatcher = OpenCodeNotificationEventDispatcher(
+            enabled = { OpenCodeSettingsState.getInstance().enableSystemNotifications },
+            serverIdentity = ::currentServerIdentity,
+            process = eventProcessor::process,
+            dispatch = { outcome, identity ->
+                when (outcome) {
+                    is OpenCodeNotificationEventProcessor.Outcome.Dismiss -> dismissByKey(outcome.key)
+                    is OpenCodeNotificationEventProcessor.Outcome.Notify -> show(outcome.payload, identity)
+                }
+            },
+            executeAsync = { task -> eventExecutor.execute { task() } },
         )
 
         /**
@@ -204,30 +246,44 @@ internal class OpenCodeSystemNotifications(
          */
         private fun ensureGlobalEventSubscription() {
             if (!globalEventSubscriptionInstalled.compareAndSet(false, true)) return
-            ApplicationManager.getApplication().messageBus
+            val connection = ApplicationManager.getApplication().messageBus
                 .connect(SharedOpenCodeServerManager.getInstance())
-                .subscribe(
-                    OpenCodeGlobalEventListener.TOPIC,
-                    object : OpenCodeGlobalEventListener {
-                        override fun eventReceived(event: OpenCodeGlobalEvent) {
-                            handleGlobalEvent(event)
-                        }
-                    },
-                )
+            connection.subscribe(
+                OpenCodeGlobalEventListener.TOPIC,
+                object : OpenCodeGlobalEventListener {
+                    override fun eventReceived(event: OpenCodeGlobalEvent) {
+                        handleGlobalEvent(event)
+                    }
+                },
+            )
+            connection.subscribe(
+                OpenCodeServerLifecycleListener.TOPIC,
+                object : OpenCodeServerLifecycleListener {
+                    override fun stateChanged(state: OpenCodeServerLifecycleState) {
+                        if (state != OpenCodeServerLifecycleState.RUNNING) notificationInvalidator.invalidate()
+                    }
+                },
+            )
+            connection.subscribe(
+                OpenCodeSettingsListener.TOPIC,
+                object : OpenCodeSettingsListener {
+                    override fun systemNotificationsChanged(enabled: Boolean) {
+                        if (!enabled) notificationInvalidator.invalidate()
+                    }
+                },
+            )
         }
 
         private fun handleGlobalEvent(event: OpenCodeGlobalEvent) {
-            if (event.type !in OpenCodeNotificationEventProcessor.RELEVANT_EVENT_TYPES) return
-            if (!OpenCodeSettingsState.getInstance().enableSystemNotifications) return
-            // The processor may fetch the session via REST; keep that off the stream thread —
-            // but keep events strictly ordered on the single-threaded executor.
-            eventExecutor.execute {
-                when (val outcome = eventProcessor.process(event)) {
-                    is OpenCodeNotificationEventProcessor.Outcome.Dismiss -> dismissByKey(outcome.key)
-                    is OpenCodeNotificationEventProcessor.Outcome.Notify -> show(outcome.payload)
-                    null -> Unit
-                }
-            }
+            eventDispatcher.eventReceived(event)
+        }
+
+        private fun currentServerIdentity(): OpenCodeNotificationServerIdentity? {
+            val serverManager = SharedOpenCodeServerManager.getInstance()
+            if (serverManager.getLifecycleState() != OpenCodeServerLifecycleState.RUNNING) return null
+            val serverUrl = serverManager.getServerUrl() ?: return null
+            val generation = serverManager.getServerGeneration().takeIf { it > 0L } ?: return null
+            return OpenCodeNotificationServerIdentity(generation, serverUrl, notificationEpoch.get())
         }
 
         private fun fetchSessionForNotification(directory: String, sessionID: String): OpenCodeServerProtocol.SessionInfo? {
@@ -243,21 +299,21 @@ internal class OpenCodeSystemNotifications(
         }
 
         private fun dismissByKey(key: String) {
-            val toExpire = synchronized(activeNotificationsByKey) {
-                activeNotificationsByKey.remove(key)?.toList()
-            } ?: return
+            val toExpire = activeNotifications.removeByKey(key)
+            if (toExpire.isEmpty()) return
             ApplicationManager.getApplication().invokeLater {
                 toExpire.forEach { it.expire() }
             }
         }
 
-        fun show(openCodeNotification: OpenCodeServerProtocol.SystemNotificationPayload) {
+        private fun show(
+            openCodeNotification: OpenCodeServerProtocol.SystemNotificationPayload,
+            identity: OpenCodeNotificationServerIdentity,
+        ) {
             ApplicationManager.getApplication().invokeLater {
                 if (!OpenCodeSettingsState.getInstance().enableSystemNotifications) return@invokeLater
                 val target = targetFor(openCodeNotification.directory) ?: return@invokeLater
-                // A stopped server makes the notification pointless: its "Show in OpenCode"
-                // and permission actions would have nothing to talk to.
-                if (target.serverManager.getServerUrl() == null) return@invokeLater
+                if (!target.isCurrentServer(identity)) return@invokeLater
                 if (!target.isProjectOpen()) return@invokeLater
                 // The user is looking at the panel; the OpenCode UI itself shows the state.
                 if (target.isPanelInView()) return@invokeLater
@@ -271,9 +327,9 @@ internal class OpenCodeSystemNotifications(
                 if (OpenCodeServerProtocol.isPermissionNotification(openCodeNotification) &&
                     OpenCodeSettingsState.getInstance().enablePermissionNotificationActions
                 ) {
-                    ideNotification.addAction(target.permissionReplyAction("Allow", openCodeNotification, OpenCodeServerProtocol.PermissionResponse.ONCE))
-                    ideNotification.addAction(target.permissionReplyAction("Always Allow", openCodeNotification, OpenCodeServerProtocol.PermissionResponse.ALWAYS))
-                    ideNotification.addAction(target.permissionReplyAction("Deny", openCodeNotification, OpenCodeServerProtocol.PermissionResponse.REJECT))
+                    ideNotification.addAction(target.permissionReplyAction("Allow", openCodeNotification, OpenCodeServerProtocol.PermissionResponse.ONCE, identity))
+                    ideNotification.addAction(target.permissionReplyAction("Always Allow", openCodeNotification, OpenCodeServerProtocol.PermissionResponse.ALWAYS, identity))
+                    ideNotification.addAction(target.permissionReplyAction("Deny", openCodeNotification, OpenCodeServerProtocol.PermissionResponse.REJECT, identity))
                 }
                 ideNotification.addAction(object : NotificationAction("Show in OpenCode") {
                     override fun actionPerformed(e: AnActionEvent, notification: Notification) {
@@ -284,20 +340,18 @@ internal class OpenCodeSystemNotifications(
                 OpenCodeServerProtocol.notificationDismissKeys(openCodeNotification).forEach { key ->
                     registerForAutoDismiss(key, ideNotification)
                 }
+                if (!target.isCurrentServer(identity)) {
+                    ideNotification.expire()
+                    return@invokeLater
+                }
                 ideNotification.notify(target.project)
             }
         }
 
         private fun registerForAutoDismiss(key: String, notification: Notification) {
-            synchronized(activeNotificationsByKey) {
-                activeNotificationsByKey.getOrPut(key) { mutableListOf() }.add(notification)
-            }
+            activeNotifications.register(key, notification)
             notification.whenExpired {
-                synchronized(activeNotificationsByKey) {
-                    val remaining = activeNotificationsByKey[key] ?: return@whenExpired
-                    remaining.remove(notification)
-                    if (remaining.isEmpty()) activeNotificationsByKey.remove(key)
-                }
+                activeNotifications.remove(key, notification)
             }
         }
 

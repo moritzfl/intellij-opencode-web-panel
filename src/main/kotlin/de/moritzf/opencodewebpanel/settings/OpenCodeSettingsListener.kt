@@ -22,6 +22,8 @@ interface OpenCodeSettingsListener {
 
     fun uiSettingChanged(setting: OpenCodeUiSetting, enabled: Boolean) {}
 
+    fun systemNotificationsChanged(enabled: Boolean) {}
+
     fun serverRestartRequested() {}
 
     companion object {

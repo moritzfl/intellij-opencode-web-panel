@@ -131,6 +131,12 @@ internal class OpenCodeNotificationEventProcessor(
         )
     }
 
+    fun reset() {
+        synchronized(recentIdleAtMillis) {
+            recentIdleAtMillis.clear()
+        }
+    }
+
     private fun sessionErrorMessage(properties: JsonObject): String? {
         properties.stringMember("error")?.takeIf { it.isNotBlank() }?.let { return it }
         val error = properties.objectMember("error") ?: return null

@@ -20,6 +20,7 @@
 - Most-recent-session lookup follows paginated results, so heavily used projects do not miss an older conversation with newer activity.
 - File and code navigation now acts only on OpenCode's Markdown and review surfaces, so future application routes, unknown link schemes, fenced code, and inline URLs retain their native behavior.
 - Interrupted-session recovery now retries transient listing/message failures, stops when the project, server, or setting changes, and reports rejected continuation requests instead of silently treating them as successful.
+- System notifications now expire when their server stops or notifications are disabled, and queued events from an older server instance can no longer appear after a restart.
 
 ## [1.8.0] - 2026-07-17
 
