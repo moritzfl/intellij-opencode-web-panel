@@ -12,10 +12,10 @@ class OpenCodeInterruptedSessionRecoveryTest {
         assertEquals(true, claims.reserve("/project", 1L))
         assertEquals(true, claims.reserve("/project", 2L))
 
-        claims.complete("/project", 1L, validSessionList = false)
+        claims.complete("/project", 1L, completed = false)
 
         assertEquals(false, claims.reserve("/project", 2L))
-        claims.complete("/project", 2L, validSessionList = false)
+        claims.complete("/project", 2L, completed = false)
         assertEquals(true, claims.reserve("/project", 2L))
     }
 
@@ -77,6 +77,68 @@ class OpenCodeInterruptedSessionRecoveryTest {
 
         recovery.checkAndContinue()
         recovery.checkAndContinue()
+        recovery.checkAndContinue()
+
+        assertEquals(2, harness.listCalls)
+        assertEquals(listOf("ses_1"), harness.sent)
+    }
+
+    @Test
+    fun exhaustedListRetriesReleaseClaimForLaterCheck() {
+        val harness = Harness()
+        repeat(3) {
+            harness.sessionResults.add(OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.HTTP, 503))
+        }
+        harness.sessionResults.add(harness.sessions("ses_1"))
+        val recovery = harness.recovery()
+
+        recovery.checkAndContinue()
+        assertEquals(3, harness.listCalls)
+        assertEquals(emptyList<String>(), harness.sent)
+
+        recovery.checkAndContinue()
+        assertEquals(4, harness.listCalls)
+        assertEquals(listOf("ses_1"), harness.sent)
+    }
+
+    @Test
+    fun restartRecoveryRetainsCandidateAfterTransientMessageFailure() {
+        val harness = Harness()
+        harness.sessionResults.add(harness.sessions("ses_1"))
+        harness.fetchMessage = {
+            if (harness.messageCalls == 1) {
+                OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.HTTP, 503)
+            } else {
+                OpenCodeProtocolResult.Success("""{"type":"user"}""")
+            }
+        }
+        val recovery = harness.recovery()
+
+        recovery.checkAndContinue()
+
+        assertEquals(2, harness.messageCalls)
+        assertEquals(listOf("ses_1"), harness.sent)
+    }
+
+    @Test
+    fun eligibilityAbortReleasesGenerationClaim() {
+        val harness = Harness()
+        harness.sessionResults.add(harness.sessions("ses_1"))
+        harness.sessionResults.add(harness.sessions("ses_1"))
+        var firstFetch = true
+        harness.fetchMessage = {
+            if (firstFetch) {
+                firstFetch = false
+                harness.enabled = false
+                OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.HTTP, 503)
+            } else {
+                OpenCodeProtocolResult.Success("""{"type":"user"}""")
+            }
+        }
+        val recovery = harness.recovery()
+
+        recovery.checkAndContinue()
+        harness.enabled = true
         recovery.checkAndContinue()
 
         assertEquals(2, harness.listCalls)

@@ -38,11 +38,11 @@ internal class OpenCodeRecoveryClaimRegistry {
         return reserved
     }
 
-    fun complete(key: String, token: Long, validSessionList: Boolean) {
+    fun complete(key: String, token: Long, completed: Boolean) {
         claims.computeIfPresent(key) { _, current ->
             if (current.token != token || current.state != State.IN_PROGRESS) {
                 current
-            } else if (validSessionList) {
+            } else if (completed) {
                 Claim(token, State.DONE)
             } else {
                 null
@@ -133,6 +133,8 @@ internal class OpenCodeInterruptedSessionRecovery internal constructor(
         private const val CHECK_INTERVAL_MILLIS = OpenCodeServerProtocol.CHECK_INTERVAL_SECONDS * 1000L
         private const val SEVERED_SETTLE_POLL_INTERVAL_MILLIS = 20_000L
         private const val SEVERED_SETTLE_POLL_ATTEMPTS = 6
+        private const val RESTART_RECOVERY_RETRY_BACKOFF_MILLIS = 2_000L
+        private const val RESTART_RECOVERY_ATTEMPTS = 3
         private const val SESSION_FETCH_LIMIT = 100
     }
 
@@ -145,47 +147,15 @@ internal class OpenCodeInterruptedSessionRecovery internal constructor(
         if (!generationClaims.reserve(claimKey, context.generation)) return
 
         executeAsync {
-            var validSessionList = false
+            var completed = false
             try {
-                if (!stillEligible(context)) return@executeAsync
-                val sessions = when (val result = fetchRecentSessions(
-                    context,
-                    OpenCodeServerProtocol.RECENT_SESSION_WINDOW_MILLIS + recentSuspendGapMillis(),
-                    SESSION_FETCH_LIMIT,
-                )) {
-                    is OpenCodeProtocolResult.Success -> {
-                        validSessionList = true
-                        result.value
-                    }
-                    is OpenCodeProtocolResult.Failure -> {
-                        logFailure("list recent sessions", null, result)
-                        return@executeAsync
-                    }
-                }
-                for (session in sessions) {
-                    if (session.parentID != null) continue
-                    if (!stillEligible(context)) return@executeAsync
-                    val lastMessage = when (val result = fetchLastMessage(context, session.id)) {
-                        is OpenCodeProtocolResult.Success -> result.value ?: continue
-                        is OpenCodeProtocolResult.Failure -> {
-                            logFailure("fetch last message", session.id, result)
-                            continue
-                        }
-                    }
-                    if (!OpenCodeServerProtocol.isInterruptedLastMessage(lastMessage)) continue
-                    if (!stillEligible(context)) return@executeAsync
-                    thisLogger().info("OpenCode session ${session.id} was interrupted; sending continuation prompt")
-                    when (val result = sendContinuePrompt(context, session.id)) {
-                        is OpenCodeProtocolResult.Success -> Unit
-                        is OpenCodeProtocolResult.Failure -> logFailure("continue session", session.id, result)
-                    }
-                }
+                completed = recoverAfterRestart(context)
             } catch (_: InterruptedException) {
                 Thread.currentThread().interrupt()
             } catch (e: Exception) {
                 thisLogger().warn("Failed to check for interrupted OpenCode sessions", e)
             } finally {
-                generationClaims.complete(claimKey, context.generation, validSessionList)
+                generationClaims.complete(claimKey, context.generation, completed)
             }
         }
     }
@@ -200,7 +170,7 @@ internal class OpenCodeInterruptedSessionRecovery internal constructor(
         val completedAfterMillis = resumedAtMillis - CHECK_INTERVAL_MILLIS - COMPLETED_AFTER_SLACK_MILLIS
 
         executeAsync {
-            var validSessionList = false
+            var completed = false
             try {
                 if (!stillEligible(context)) return@executeAsync
                 val sessions = when (val result = fetchRecentSessions(
@@ -209,7 +179,6 @@ internal class OpenCodeInterruptedSessionRecovery internal constructor(
                     SESSION_FETCH_LIMIT,
                 )) {
                     is OpenCodeProtocolResult.Success -> {
-                        validSessionList = true
                         result.value
                     }
                     is OpenCodeProtocolResult.Failure -> {
@@ -265,14 +234,71 @@ internal class OpenCodeInterruptedSessionRecovery internal constructor(
                     }
                     candidates = remaining
                 }
+                completed = candidates.isEmpty() && stillEligible(context)
             } catch (_: InterruptedException) {
                 Thread.currentThread().interrupt()
             } catch (e: Exception) {
                 thisLogger().warn("Failed to check for suspend-severed OpenCode sessions", e)
             } finally {
-                suspendClaims.complete(claimKey, resumedAtMillis, validSessionList)
+                suspendClaims.complete(claimKey, resumedAtMillis, completed)
             }
         }
+    }
+
+    private fun recoverAfterRestart(context: OpenCodeRecoveryContext): Boolean {
+        val sessions = fetchRestartSessions(context) ?: return false
+        var candidates = sessions.filter { it.parentID == null }.map { it.id }
+        var attempt = 0
+        while (candidates.isNotEmpty() && attempt < RESTART_RECOVERY_ATTEMPTS) {
+            if (!stillEligible(context)) return false
+            if (attempt > 0) {
+                sleep(RESTART_RECOVERY_RETRY_BACKOFF_MILLIS * attempt)
+                if (!stillEligible(context)) return false
+            }
+            attempt++
+            val remaining = mutableListOf<String>()
+            for (sessionID in candidates) {
+                if (!stillEligible(context)) return false
+                val lastMessage = when (val result = fetchLastMessage(context, sessionID)) {
+                    is OpenCodeProtocolResult.Success -> result.value ?: continue
+                    is OpenCodeProtocolResult.Failure -> {
+                        logFailure("fetch last message", sessionID, result)
+                        remaining.add(sessionID)
+                        continue
+                    }
+                }
+                if (!OpenCodeServerProtocol.isInterruptedLastMessage(lastMessage)) continue
+                if (!stillEligible(context)) return false
+                thisLogger().info("OpenCode session $sessionID was interrupted; sending continuation prompt")
+                when (val result = sendContinuePrompt(context, sessionID)) {
+                    is OpenCodeProtocolResult.Success -> Unit
+                    is OpenCodeProtocolResult.Failure -> logFailure("continue session", sessionID, result)
+                }
+            }
+            candidates = remaining
+        }
+        return candidates.isEmpty() && stillEligible(context)
+    }
+
+    private fun fetchRestartSessions(
+        context: OpenCodeRecoveryContext,
+    ): List<OpenCodeServerProtocol.SessionSummary>? {
+        repeat(RESTART_RECOVERY_ATTEMPTS) { attempt ->
+            if (!stillEligible(context)) return null
+            when (val result = fetchRecentSessions(
+                context,
+                OpenCodeServerProtocol.RECENT_SESSION_WINDOW_MILLIS + recentSuspendGapMillis(),
+                SESSION_FETCH_LIMIT,
+            )) {
+                is OpenCodeProtocolResult.Success -> return result.value
+                is OpenCodeProtocolResult.Failure -> logFailure("list recent sessions", null, result)
+            }
+            if (attempt + 1 < RESTART_RECOVERY_ATTEMPTS) {
+                if (!stillEligible(context)) return null
+                sleep(RESTART_RECOVERY_RETRY_BACKOFF_MILLIS * (attempt + 1))
+            }
+        }
+        return null
     }
 
     private fun captureContext(): OpenCodeRecoveryContext? {
