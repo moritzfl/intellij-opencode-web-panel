@@ -8,6 +8,7 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.application.ApplicationActivationListener
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.wm.IdeFrame
@@ -18,6 +19,7 @@ import com.intellij.openapi.wm.ex.ToolWindowManagerListener
 import com.intellij.ui.jcef.JBCefBrowser
 import de.moritzf.opencodewebpanel.server.OpenCodeGlobalEvent
 import de.moritzf.opencodewebpanel.server.OpenCodeGlobalEventListener
+import de.moritzf.opencodewebpanel.server.OpenCodeProtocolResult
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleListener
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState
@@ -58,6 +60,7 @@ internal class OpenCodeSystemNotifications(
             targets.add(this)
         }
         ensureGlobalEventSubscription()
+        reconcilePendingRequests()
         // Interacting with the panel that shows a session dismisses that session's
         // notifications: the user has seen what the notification pointed at. The tool-window
         // and application activation listeners cover the ways the panel can come into view.
@@ -229,12 +232,17 @@ internal class OpenCodeSystemNotifications(
             enabled = { OpenCodeSettingsState.getInstance().enableSystemNotifications },
             serverIdentity = ::currentServerIdentity,
             process = eventProcessor::process,
-            dispatch = { outcome, identity ->
-                when (outcome) {
-                    is OpenCodeNotificationEventProcessor.Outcome.Dismiss -> dismissByKey(outcome.key)
-                    is OpenCodeNotificationEventProcessor.Outcome.Notify -> show(outcome.payload, identity)
-                }
-            },
+            dispatch = ::dispatchOutcome,
+            executeAsync = { task -> eventExecutor.execute { task() } },
+        )
+        private val pendingReconciler = OpenCodePendingNotificationReconciler(
+            enabled = { OpenCodeSettingsState.getInstance().enableSystemNotifications },
+            serverIdentity = ::currentServerIdentity,
+            directories = ::targetDirectories,
+            load = ::loadPendingNotificationRequests,
+            activeRequestKeys = { activeNotifications.keys("request:") },
+            process = eventProcessor::process,
+            dispatch = ::dispatchOutcome,
             executeAsync = { task -> eventExecutor.execute { task() } },
         )
 
@@ -251,6 +259,10 @@ internal class OpenCodeSystemNotifications(
             connection.subscribe(
                 OpenCodeGlobalEventListener.TOPIC,
                 object : OpenCodeGlobalEventListener {
+                    override fun connected() {
+                        reconcilePendingRequests()
+                    }
+
                     override fun eventReceived(event: OpenCodeGlobalEvent) {
                         handleGlobalEvent(event)
                     }
@@ -268,7 +280,11 @@ internal class OpenCodeSystemNotifications(
                 OpenCodeSettingsListener.TOPIC,
                 object : OpenCodeSettingsListener {
                     override fun systemNotificationsChanged(enabled: Boolean) {
-                        if (!enabled) notificationInvalidator.invalidate()
+                        if (enabled) {
+                            reconcilePendingRequests()
+                        } else {
+                            notificationInvalidator.invalidate()
+                        }
                     }
                 },
             )
@@ -276,6 +292,20 @@ internal class OpenCodeSystemNotifications(
 
         private fun handleGlobalEvent(event: OpenCodeGlobalEvent) {
             eventDispatcher.eventReceived(event)
+        }
+
+        private fun reconcilePendingRequests() {
+            pendingReconciler.reconcile()
+        }
+
+        private fun dispatchOutcome(
+            outcome: OpenCodeNotificationEventProcessor.Outcome,
+            identity: OpenCodeNotificationServerIdentity,
+        ) {
+            when (outcome) {
+                is OpenCodeNotificationEventProcessor.Outcome.Dismiss -> dismissByKey(outcome.key)
+                is OpenCodeNotificationEventProcessor.Outcome.Notify -> show(outcome.payload, identity)
+            }
         }
 
         private fun currentServerIdentity(): OpenCodeNotificationServerIdentity? {
@@ -298,6 +328,48 @@ internal class OpenCodeSystemNotifications(
             )
         }
 
+        private fun loadPendingNotificationRequests(
+            identity: OpenCodeNotificationServerIdentity,
+            directory: String,
+        ): OpenCodePendingNotificationLoad {
+            if (currentServerIdentity() != identity) return OpenCodePendingNotificationLoad(emptyList(), false)
+            val serverManager = SharedOpenCodeServerManager.getInstance()
+            val password = serverManager.getServerPassword()
+                ?: return OpenCodePendingNotificationLoad(emptyList(), false)
+            val authHeader = OpenCodeServerProtocol.buildBasicAuthHeader(password)
+            val permissions = OpenCodeServerProtocol.fetchPendingRequestsResult(
+                identity.serverUrl,
+                authHeader,
+                OpenCodeServerProtocol.PERMISSION_LIST_PATH,
+                directory,
+            )
+            if (currentServerIdentity() != identity) return OpenCodePendingNotificationLoad(emptyList(), false)
+            val questions = OpenCodeServerProtocol.fetchPendingRequestsResult(
+                identity.serverUrl,
+                authHeader,
+                OpenCodeServerProtocol.QUESTION_LIST_PATH,
+                directory,
+            )
+            val permissionValues = (permissions as? OpenCodeProtocolResult.Success)?.value
+            val questionValues = (questions as? OpenCodeProtocolResult.Success)?.value
+            listOfNotNull(
+                permissions as? OpenCodeProtocolResult.Failure,
+                questions as? OpenCodeProtocolResult.Failure,
+            ).forEach { failure ->
+                val status = failure.statusCode?.let { ", HTTP $it" }.orEmpty()
+                thisLogger().warn("Failed to reconcile pending OpenCode requests (${failure.kind}$status)")
+            }
+            val requests = permissionValues.orEmpty().map { request ->
+                OpenCodePendingNotificationRequest(directory, "permission.asked", request.id, request.sessionID)
+            } + questionValues.orEmpty().map { request ->
+                OpenCodePendingNotificationRequest(directory, "question.asked", request.id, request.sessionID)
+            }
+            return OpenCodePendingNotificationLoad(
+                requests = requests,
+                authoritative = permissionValues != null && questionValues != null,
+            )
+        }
+
         private fun dismissByKey(key: String) {
             val toExpire = activeNotifications.removeByKey(key)
             if (toExpire.isEmpty()) return
@@ -317,6 +389,10 @@ internal class OpenCodeSystemNotifications(
                 if (!target.isProjectOpen()) return@invokeLater
                 // The user is looking at the panel; the OpenCode UI itself shows the state.
                 if (target.isPanelInView()) return@invokeLater
+                val requestKey = openCodeNotification.requestID
+                    .takeIf { OpenCodeServerProtocol.isOpenCodeRecordId(it) }
+                    ?.let { "request:$it" }
+                if (requestKey != null && activeNotifications.containsKey(requestKey)) return@invokeLater
                 if (!markRecent(openCodeNotification.id)) return@invokeLater
                 val group = NotificationGroupManager.getInstance()
                     .getNotificationGroup(OpenCodeServerProtocol.NOTIFICATION_GROUP_ID)
@@ -364,6 +440,16 @@ internal class OpenCodeSystemNotifications(
                         openProjects.contains(target.project) &&
                         OpenCodeServerProtocol.isSameFilesystemPath(target.projectDirectory(), directory)
                 }
+            }
+        }
+
+        private fun targetDirectories(): List<String> {
+            return synchronized(targets) {
+                targets.asSequence()
+                    .filter { !it.project.isDisposed }
+                    .mapNotNull { it.projectDirectory()?.takeIf(String::isNotBlank) }
+                    .distinctBy { OpenCodeServerProtocol.filesystemPathKey(it) ?: it }
+                    .toList()
             }
         }
 

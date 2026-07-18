@@ -31,6 +31,8 @@ doc = load("doc.json")
 operations = {
     ("/global/event", "get"): "global.event",
     ("/session/status", "get"): "session.status",
+    ("/permission", "get"): "permission.list",
+    ("/question", "get"): "question.list",
     ("/permission/{requestID}/reply", "post"): "permission.reply",
     ("/api/session", "get"): "v2.session.list",
     ("/api/session/{sessionID}/message", "get"): "v2.session.messages",
@@ -53,10 +55,18 @@ if not isinstance(health, dict) or health.get("healthy") is not True or not isin
     failures.append("/global/health root/version shape changed")
 if not isinstance(load("status.json"), dict):
     failures.append("/session/status root is not object")
-if not isinstance(load("permission.json"), list):
+permissions = load("permission.json")
+questions = load("question.json")
+if not isinstance(permissions, list):
     failures.append("/permission root is not array")
-if not isinstance(load("question.json"), list):
+if not isinstance(questions, list):
     failures.append("/question root is not array")
+for endpoint, requests in (("/permission", permissions), ("/question", questions)):
+    if not isinstance(requests, list):
+        continue
+    for index, request in enumerate(requests):
+        if not isinstance(request, dict) or not isinstance(request.get("id"), str) or not isinstance(request.get("sessionID"), str):
+            failures.append(f"{endpoint}[{index}] request identity shape changed")
 sessions = load("sessions.json")
 if not isinstance(sessions, dict) or not isinstance(sessions.get("data"), list) or not isinstance(sessions.get("cursor"), dict):
     failures.append("/api/session envelope changed")

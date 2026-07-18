@@ -24,6 +24,7 @@
 - Browser repaint recovery can no longer leave the embedded panel one pixel too large when navigation or overlapping refreshes interrupt a resize nudge.
 - Improved server health detection, session-list paging, and text-cursor behavior in the embedded panel.
 - Preparing pasted images and dropped files now runs in the background, keeping the IDE responsive for large or slow files.
+- Pending permission and question notifications are reconciled after event-stream reconnects, restoring missed requests and dismissing requests already answered elsewhere.
 
 ## [1.8.0] - 2026-07-17
 

@@ -1210,6 +1210,29 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun parsePendingRequestsRequiresSafeRequestAndSessionIds() {
+        val requests = OpenCodeServerProtocol.parsePendingRequests(
+            """[
+                {"id":"per_1","sessionID":"ses_1"},
+                {"id":"que_2","sessionID":"ses_2"},
+                {"id":"per_1","sessionID":"ses_duplicate"},
+                {"id":"per/unsafe","sessionID":"ses_3"},
+                {"id":"per_4"},
+                {"id":"per_5","sessionID":"not-a-session"}
+            ]""".trimIndent(),
+        )
+
+        assertEquals(
+            listOf(
+                OpenCodeServerProtocol.PendingRequestSummary("per_1", "ses_1"),
+                OpenCodeServerProtocol.PendingRequestSummary("que_2", "ses_2"),
+            ),
+            requests,
+        )
+        assertTrue(OpenCodeServerProtocol.parsePendingRequests("{}").isEmpty())
+    }
+
+    @Test
     fun permissionNotificationRequiresSafeRecordIds() {
         val base = OpenCodeServerProtocol.SystemNotificationPayload(
             id = "id", directory = "/tmp", route = "/r", title = "t", body = "b",

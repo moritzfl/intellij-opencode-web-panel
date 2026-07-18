@@ -1050,6 +1050,42 @@ internal object OpenCodeServerProtocol {
         }
     }
 
+    data class PendingRequestSummary(val id: String, val sessionID: String)
+
+    fun fetchPendingRequestsResult(
+        serverUrl: String,
+        basicAuthHeader: String,
+        listPath: String,
+        directory: String,
+        connectTimeoutMillis: Int = 3000,
+        readTimeoutMillis: Int = 3000,
+    ): OpenCodeProtocolResult<List<PendingRequestSummary>> {
+        val url = buildServerRootUrl(serverUrl) + listPath + "?directory=" +
+            java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
+        return when (val response = httpGetResult(url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)) {
+            is OpenCodeProtocolResult.Failure -> response
+            is OpenCodeProtocolResult.Success -> {
+                val requests = parsePendingRequestsOrNull(response.value)
+                    ?: return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_BODY)
+                OpenCodeProtocolResult.Success(requests)
+            }
+        }
+    }
+
+    @TestOnly
+    fun parsePendingRequests(json: String): List<PendingRequestSummary> = parsePendingRequestsOrNull(json).orEmpty()
+
+    private fun parsePendingRequestsOrNull(json: String): List<PendingRequestSummary>? {
+        val requests = runCatching { JsonParser.parseString(json) }.getOrNull()
+            ?.takeIf { it.isJsonArray }?.asJsonArray ?: return null
+        return requests.mapNotNull { request ->
+            val value = request.takeIf { it.isJsonObject }?.asJsonObject ?: return@mapNotNull null
+            val id = value.stringMember("id")?.takeIf(::isOpenCodeRecordId) ?: return@mapNotNull null
+            val sessionID = value.stringMember("sessionID")?.takeIf(::isSessionId) ?: return@mapNotNull null
+            PendingRequestSummary(id, sessionID)
+        }.distinctBy { it.id }
+    }
+
     data class SessionSummary(val id: String, val updatedMillis: Long, val parentID: String? = null)
     private data class SessionPage(val sessions: List<SessionSummary>, val nextCursor: String?)
 

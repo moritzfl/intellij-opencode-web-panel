@@ -114,4 +114,93 @@ class OpenCodeNotificationDispatchTest {
         assertTrue(registry.removeByKey("request:per_1").isEmpty())
         assertTrue(registry.removeByKey("session:ses_1").isEmpty())
     }
+
+    @Test
+    fun pendingReconciliationShowsCurrentRequestsAndDismissesStaleKeys() {
+        val identity = OpenCodeNotificationServerIdentity(1L, "http://127.0.0.1:4096", 0L)
+        val outcomes = mutableListOf<OpenCodeNotificationEventProcessor.Outcome>()
+        val reconciler = OpenCodePendingNotificationReconciler(
+            enabled = { true },
+            serverIdentity = { identity },
+            directories = { listOf("/project") },
+            load = { _, directory ->
+                OpenCodePendingNotificationLoad(
+                    requests = listOf(
+                        OpenCodePendingNotificationRequest(directory, "permission.asked", "per_1", "ses_1"),
+                        OpenCodePendingNotificationRequest(directory, "question.asked", "que_1", "ses_2"),
+                    ),
+                    authoritative = true,
+                )
+            },
+            activeRequestKeys = { setOf("request:per_1", "request:stale") },
+            process = { OpenCodeNotificationEventProcessor.Outcome.Dismiss("processed:${it.recordId}") },
+            dispatch = { outcome, _ -> outcomes.add(outcome) },
+            executeAsync = { it() },
+        )
+
+        reconciler.reconcile()
+
+        assertEquals(
+            listOf(
+                OpenCodeNotificationEventProcessor.Outcome.Dismiss("request:stale"),
+                OpenCodeNotificationEventProcessor.Outcome.Dismiss("processed:per_1"),
+                OpenCodeNotificationEventProcessor.Outcome.Dismiss("processed:que_1"),
+            ),
+            outcomes,
+        )
+    }
+
+    @Test
+    fun partialPendingSnapshotNeverDismissesExistingRequests() {
+        val identity = OpenCodeNotificationServerIdentity(1L, "http://127.0.0.1:4096", 0L)
+        val outcomes = mutableListOf<OpenCodeNotificationEventProcessor.Outcome>()
+        val reconciler = OpenCodePendingNotificationReconciler(
+            enabled = { true },
+            serverIdentity = { identity },
+            directories = { listOf("/project") },
+            load = { _, directory ->
+                OpenCodePendingNotificationLoad(
+                    listOf(OpenCodePendingNotificationRequest(directory, "permission.asked", "per_1", "ses_1")),
+                    authoritative = false,
+                )
+            },
+            activeRequestKeys = { setOf("request:stale") },
+            process = { OpenCodeNotificationEventProcessor.Outcome.Dismiss("processed:${it.recordId}") },
+            dispatch = { outcome, _ -> outcomes.add(outcome) },
+            executeAsync = { it() },
+        )
+
+        reconciler.reconcile()
+
+        assertEquals(
+            listOf(OpenCodeNotificationEventProcessor.Outcome.Dismiss("processed:per_1")),
+            outcomes,
+        )
+    }
+
+    @Test
+    fun serverChangeDuringPendingFetchDropsEntireSnapshot() {
+        var identity = OpenCodeNotificationServerIdentity(1L, "http://127.0.0.1:4096", 0L)
+        val outcomes = mutableListOf<OpenCodeNotificationEventProcessor.Outcome>()
+        val reconciler = OpenCodePendingNotificationReconciler(
+            enabled = { true },
+            serverIdentity = { identity },
+            directories = { listOf("/project") },
+            load = { _, directory ->
+                identity = identity.copy(generation = 2L)
+                OpenCodePendingNotificationLoad(
+                    listOf(OpenCodePendingNotificationRequest(directory, "permission.asked", "per_1", "ses_1")),
+                    authoritative = true,
+                )
+            },
+            activeRequestKeys = { setOf("request:stale") },
+            process = { OpenCodeNotificationEventProcessor.Outcome.Dismiss("processed") },
+            dispatch = { outcome, _ -> outcomes.add(outcome) },
+            executeAsync = { it() },
+        )
+
+        reconciler.reconcile()
+
+        assertTrue(outcomes.isEmpty())
+    }
 }
