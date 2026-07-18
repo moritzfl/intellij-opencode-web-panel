@@ -242,6 +242,23 @@ internal object OpenCodeBrowserSnippets {
         return script.trimIndent()
     }
 
+    /**
+     * User-invoked escape hatch (not an injection feature): wipes the page's localStorage and
+     * sessionStorage so a bad persisted value — a corrupt seeded project state or a mirrored
+     * snapshot that keeps getting restored — can be cleared without digging into the JCEF
+     * profile. The caller clears the IDE-side snapshot and reloads the page afterwards.
+     */
+    fun buildClearOpenCodeWebStateScript(): String {
+        @Language("JavaScript")
+        val script = """
+            (() => {
+              try { window.localStorage.clear(); } catch (_) {}
+              try { window.sessionStorage.clear(); } catch (_) {}
+            })();
+        """
+        return script.trimIndent()
+    }
+
     fun buildRestoreOpenCodeLocalStorageScript(snapshot: String?): String? {
         val text = snapshot?.trim().orEmpty()
         if (text.isBlank() || text == "{}") return null

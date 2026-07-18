@@ -592,6 +592,16 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun buildClearOpenCodeWebStateScriptWipesBrowserStorage() {
+        val script = OpenCodeBrowserSnippets.buildClearOpenCodeWebStateScript()
+
+        assertTrue(script.contains("window.localStorage.clear()"))
+        assertTrue(script.contains("window.sessionStorage.clear()"))
+        // Each clear is individually guarded so a storage-access failure cannot abort the other.
+        assertEquals(2, Regex("""try \{ window\.\w+Storage\.clear\(\); \} catch \(_\) \{\}""").findAll(script).count())
+    }
+
+    @Test
     fun logIndicatesPortConflictMatchesKnownFailurePatterns() {
         assertTrue(OpenCodeServerProtocol.logIndicatesPortConflict(listOf("Error: listen EADDRINUSE: address already in use 127.0.0.1:4096")))
         assertTrue(OpenCodeServerProtocol.logIndicatesPortConflict(listOf("error: Failed to start server. Is port 4096 in use?")))

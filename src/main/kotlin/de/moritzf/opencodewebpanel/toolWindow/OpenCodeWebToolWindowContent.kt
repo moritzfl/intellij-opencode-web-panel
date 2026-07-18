@@ -745,6 +745,27 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     }
 
     /**
+     * Escape hatch for corrupted OpenCode web state: clears the IDE-side mirrored localStorage
+     * snapshot and the page's local/session storage, then reloads. This is the recovery path for
+     * a bad persisted value — e.g. a mirrored snapshot that would otherwise be restored on every
+     * load, or a seeded project state the SPA can no longer read. The browser profile is shared
+     * by every project's panel, so the effect is application-wide by design.
+     */
+    fun resetOpenCodeWebState() {
+        if (isContentDisposed()) return
+        OpenCodeSettingsState.getInstance().openCodeLocalStorageSnapshot = "{}"
+        val serverUrl = serverManager.getServerUrl()
+        if (serverUrl != null && isBrowserOnOpenCodeServerPage(serverUrl)) {
+            browser.cefBrowser.executeJavaScript(
+                OpenCodeBrowserSnippets.buildClearOpenCodeWebStateScript(),
+                OpenCodeServerProtocol.buildServerRootUrl(serverUrl),
+                0,
+            )
+        }
+        reloadOpenCodePage()
+    }
+
+    /**
      * Reloads the OpenCode page after the shared server recovered without this panel's involvement,
      * e.g. an automatic health-check restart or a restart initiated from another project window.
      * Without this, the panel would stay on the blank page installed by [clearStaleBrowserPage].

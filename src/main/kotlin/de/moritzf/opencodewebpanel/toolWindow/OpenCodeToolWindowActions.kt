@@ -158,6 +158,43 @@ internal fun confirmOpenCodeServerRestart(project: Project?): Boolean {
         .ask(project)
 }
 
+/**
+ * Gear-only escape hatch: recovers from corrupted embedded web-app state (a bad mirrored
+ * snapshot or seeded project state that is re-applied on every load) without requiring the
+ * user to locate and wipe the JCEF profile manually.
+ */
+internal class OpenCodeResetWebStateAction : DumbAwareAction(
+    "Reset OpenCode Web State",
+    "Clear the embedded OpenCode web app's stored browser state and reload",
+    null,
+) {
+    override fun actionPerformed(e: AnActionEvent) {
+        val content = openCodePanelContent(e) ?: return
+        if (!confirmOpenCodeWebStateReset(e.project)) return
+        content.resetOpenCodeWebState()
+    }
+
+    override fun update(e: AnActionEvent) {
+        e.presentation.isEnabled = e.project != null
+    }
+
+    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+}
+
+internal fun confirmOpenCodeWebStateReset(project: Project?): Boolean {
+    return MessageDialogBuilder.yesNo(
+        "Reset OpenCode Web State",
+        "This clears the embedded OpenCode web app's locally stored UI state (open tabs, drafts, " +
+            "web-app settings) and the snapshot the IDE keeps of it. The browser state is shared, " +
+            "so this affects the OpenCode panel in every open project. " +
+            "Conversations stored on the OpenCode server are not affected.",
+    )
+        .yesText("Reset and Reload")
+        .noText("Cancel")
+        .icon(Messages.getWarningIcon())
+        .ask(project)
+}
+
 internal class OpenCodeViewServerLogAction : DumbAwareAction(
     "View Server Log",
     "Open the OpenCode server log in the editor",
