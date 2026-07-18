@@ -233,6 +233,7 @@ internal class OpenCodeSystemNotifications(
             serverIdentity = ::currentServerIdentity,
             notify = ::showNow,
             dismiss = ::dismissByKeyNow,
+            activeRequestKeys = { activeNotifications.keys("request:") },
             executeOnUi = { task -> ApplicationManager.getApplication().invokeLater { task() } },
         )
         private val eventDispatcher = OpenCodeNotificationEventDispatcher(
@@ -247,7 +248,7 @@ internal class OpenCodeSystemNotifications(
             serverIdentity = ::currentServerIdentity,
             directories = ::targetDirectories,
             load = ::loadPendingNotificationRequests,
-            activeRequestKeys = { activeNotifications.keys("request:") },
+            reconcileActiveRequestKeys = outcomeDispatcher::reconcileRequestKeys,
             process = eventProcessor::process,
             dispatch = outcomeDispatcher::dispatch,
             executeAsync = { task -> eventExecutor.execute { task() } },

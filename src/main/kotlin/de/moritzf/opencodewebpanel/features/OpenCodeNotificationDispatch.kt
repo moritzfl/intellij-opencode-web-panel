@@ -49,6 +49,7 @@ internal class OpenCodeNotificationOutcomeDispatcher(
         identity: OpenCodeNotificationServerIdentity,
     ) -> Unit,
     private val dismiss: (key: String) -> Unit,
+    private val activeRequestKeys: () -> Set<String> = { emptySet() },
     private val executeOnUi: ((() -> Unit) -> Unit),
 ) {
     fun dispatch(
@@ -61,6 +62,13 @@ internal class OpenCodeNotificationOutcomeDispatcher(
                 is OpenCodeNotificationEventProcessor.Outcome.Notify -> notify(outcome.payload, identity)
                 is OpenCodeNotificationEventProcessor.Outcome.Dismiss -> dismiss(outcome.key)
             }
+        }
+    }
+
+    fun reconcileRequestKeys(pendingKeys: Set<String>, identity: OpenCodeNotificationServerIdentity) {
+        executeOnUi {
+            if (!enabled() || serverIdentity() != identity) return@executeOnUi
+            (activeRequestKeys() - pendingKeys).forEach(dismiss)
         }
     }
 }
@@ -87,7 +95,10 @@ internal class OpenCodePendingNotificationReconciler(
         identity: OpenCodeNotificationServerIdentity,
         directory: String,
     ) -> OpenCodePendingNotificationLoad,
-    private val activeRequestKeys: () -> Set<String>,
+    private val reconcileActiveRequestKeys: (
+        pendingKeys: Set<String>,
+        identity: OpenCodeNotificationServerIdentity,
+    ) -> Unit,
     private val process: (
         event: OpenCodeGlobalEvent,
         identity: OpenCodeNotificationServerIdentity,
@@ -114,9 +125,7 @@ internal class OpenCodePendingNotificationReconciler(
             if (!stillCurrent(identity)) return@executeAsync
             if (allAuthoritative) {
                 val pendingKeys = pending.mapTo(mutableSetOf()) { "request:${it.id}" }
-                (activeRequestKeys() - pendingKeys).forEach { key ->
-                    dispatch(OpenCodeNotificationEventProcessor.Outcome.Dismiss(key), identity)
-                }
+                reconcileActiveRequestKeys(pendingKeys, identity)
             }
             for (request in pending.distinctBy { it.id }) {
                 if (!stillCurrent(identity)) return@executeAsync

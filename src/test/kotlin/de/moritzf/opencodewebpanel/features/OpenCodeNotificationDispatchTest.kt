@@ -153,6 +153,55 @@ class OpenCodeNotificationDispatchTest {
     }
 
     @Test
+    fun reconnectReconciliationSeesEarlierQueuedNotification() {
+        val identity = OpenCodeNotificationServerIdentity(1L, "http://127.0.0.1:4096", 0L)
+        val uiTasks = mutableListOf<() -> Unit>()
+        val active = mutableSetOf<String>()
+        val actions = mutableListOf<String>()
+        val outcomeDispatcher = OpenCodeNotificationOutcomeDispatcher(
+            enabled = { true },
+            serverIdentity = { identity },
+            notify = { payload, _ ->
+                actions += "notify"
+                active += "request:${payload.requestID}"
+            },
+            dismiss = { key ->
+                actions += "dismiss"
+                active -= key
+            },
+            activeRequestKeys = { active.toSet() },
+            executeOnUi = uiTasks::add,
+        )
+        val payload = OpenCodeServerProtocol.SystemNotificationPayload(
+            id = "per_1",
+            directory = "/project",
+            route = "/route",
+            title = "Permission required",
+            body = "body",
+            kind = "permission",
+            sessionID = "ses_1",
+            requestID = "per_1",
+        )
+        outcomeDispatcher.dispatch(OpenCodeNotificationEventProcessor.Outcome.Notify(payload), identity)
+        val reconciler = OpenCodePendingNotificationReconciler(
+            enabled = { true },
+            serverIdentity = { identity },
+            directories = { listOf("/project") },
+            load = { _, _ -> OpenCodePendingNotificationLoad(emptyList(), authoritative = true) },
+            reconcileActiveRequestKeys = outcomeDispatcher::reconcileRequestKeys,
+            process = { _, _ -> null },
+            dispatch = outcomeDispatcher::dispatch,
+            executeAsync = { it() },
+        )
+
+        reconciler.reconcile()
+        uiTasks.forEach { it() }
+
+        assertEquals(listOf("notify", "dismiss"), actions)
+        assertTrue(active.isEmpty())
+    }
+
+    @Test
     fun lifecycleInvalidationClearsEveryKeyAndExpiresEachItemOnce() {
         val registry = OpenCodeActiveNotificationRegistry<String>()
         registry.register("request:per_1", "permission")
@@ -192,7 +241,11 @@ class OpenCodeNotificationDispatchTest {
                     authoritative = true,
                 )
             },
-            activeRequestKeys = { setOf("request:per_1", "request:stale") },
+            reconcileActiveRequestKeys = { pending, _ ->
+                (setOf("request:per_1", "request:stale") - pending).forEach { key ->
+                    outcomes.add(OpenCodeNotificationEventProcessor.Outcome.Dismiss(key))
+                }
+            },
             process = { event, _ -> OpenCodeNotificationEventProcessor.Outcome.Dismiss("processed:${event.recordId}") },
             dispatch = { outcome, _ -> outcomes.add(outcome) },
             executeAsync = { it() },
@@ -224,7 +277,11 @@ class OpenCodeNotificationDispatchTest {
                     authoritative = false,
                 )
             },
-            activeRequestKeys = { setOf("request:stale") },
+            reconcileActiveRequestKeys = { pending, _ ->
+                (setOf("request:stale") - pending).forEach { key ->
+                    outcomes.add(OpenCodeNotificationEventProcessor.Outcome.Dismiss(key))
+                }
+            },
             process = { event, _ -> OpenCodeNotificationEventProcessor.Outcome.Dismiss("processed:${event.recordId}") },
             dispatch = { outcome, _ -> outcomes.add(outcome) },
             executeAsync = { it() },
@@ -253,7 +310,9 @@ class OpenCodeNotificationDispatchTest {
                     authoritative = true,
                 )
             },
-            activeRequestKeys = { setOf("request:stale") },
+            reconcileActiveRequestKeys = { _, _ ->
+                outcomes.add(OpenCodeNotificationEventProcessor.Outcome.Dismiss("request:stale"))
+            },
             process = { _, _ -> OpenCodeNotificationEventProcessor.Outcome.Dismiss("processed") },
             dispatch = { outcome, _ -> outcomes.add(outcome) },
             executeAsync = { it() },
