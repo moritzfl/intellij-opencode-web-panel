@@ -1055,18 +1055,11 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
      * itself. File/VCS refresh is handled separately by [workspaceRefreshCoordinator] so it works
      * even when the badge is disabled.
      */
-    private fun onAgentStatusChanged(state: String) {
-        updateAgentStatusBadge(state)
-    }
-
-    /**
-     * Overlays the tool window icon with a live indicator while the agent works and a warning
-     * while it awaits input, so the panel is glanceable even when collapsed.
-     */
-    private fun updateAgentStatusBadge(state: String) {
+    private fun onAgentStatusChanged(state: String, presentationRevision: Long) {
         ApplicationManager.getApplication().invokeLater {
             if (isContentDisposed()) return@invokeLater
             if (!OpenCodeSettingsState.getInstance().showAgentStatusBadge) return@invokeLater
+            if (!agentStatusTracker.isCurrentPresentation(state, presentationRevision)) return@invokeLater
             toolWindow.setIcon(
                 when (state) {
                     OpenCodeAgentStatusState.ATTENTION -> toolWindowIconSupplier.warningIcon

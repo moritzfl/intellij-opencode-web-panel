@@ -90,7 +90,7 @@ internal class OpenCodeAgentStatusState {
 internal class OpenCodeAgentStatusTracker(
     private val projectDirectory: () -> String?,
     private val enabled: () -> Boolean,
-    private val onStateChanged: (String) -> Unit,
+    private val onStateChanged: (state: String, presentationRevision: Long) -> Unit,
     private val serverUrl: () -> String?,
     private val serverPassword: () -> String?,
     private val serverGeneration: () -> Long,
@@ -109,6 +109,9 @@ internal class OpenCodeAgentStatusTracker(
     // overwriting newer event-derived state with older REST data.
     private var stateRevision = 0L
     private var seedEpoch = 0L
+    private var presentationRevision = 0L
+
+    private data class Transition(val state: String, val revision: Long)
 
     private companion object {
         private const val MAX_SEED_ATTEMPTS = 3
@@ -127,7 +130,7 @@ internal class OpenCodeAgentStatusTracker(
             stateRevision++
             reportableTransition()
         } ?: return
-        onStateChanged(transition)
+        onStateChanged(transition.state, transition.revision)
     }
 
     /**
@@ -162,6 +165,7 @@ internal class OpenCodeAgentStatusTracker(
                     null
                 } else {
                     state.seed(snapshot.busySessionIds, snapshot.pendingRequestIds)
+                    stateRevision++
                     reportableTransition()
                 }
             }
@@ -170,7 +174,7 @@ internal class OpenCodeAgentStatusTracker(
                 return@executeAsync
             }
             if (seedIdentityIsCurrent(epoch, directory, serverUrl, generation)) {
-                transition?.let(onStateChanged)
+                transition?.let { onStateChanged(it.state, it.revision) }
             }
         }
     }
@@ -188,14 +192,19 @@ internal class OpenCodeAgentStatusTracker(
             stateRevision++
             state.clear()
             lastReportedState = OpenCodeAgentStatusState.IDLE
+            presentationRevision++
         }
     }
 
-    private fun reportableTransition(): String? {
+    internal fun isCurrentPresentation(state: String, revision: Long): Boolean = synchronized(lock) {
+        presentationRevision == revision && lastReportedState == state && this.state.current() == state
+    }
+
+    private fun reportableTransition(): Transition? {
         val current = state.current()
         if (current == lastReportedState) return null
         lastReportedState = current
-        return current
+        return Transition(current, ++presentationRevision)
     }
 }
 
