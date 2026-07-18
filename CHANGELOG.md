@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-07-18
+
 ### Added
 
 - OpenCode's New Session, Home/sidebar, model, agent, thinking-effort, file-attachment, and stop shortcuts now work inside the panel and can be remapped under the IDE's Keymap settings.
@@ -404,7 +406,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.8.0...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.0...HEAD
+[1.9.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.8.0...1.9.0
 [1.8.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.7.1...1.8.0
 [1.7.1]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.7.0...1.7.1
 [1.7.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.6.6...1.7.0
