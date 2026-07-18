@@ -314,19 +314,28 @@ internal object OpenCodeBrowserSnippets {
               const originalSetItem = Storage.prototype.setItem;
               const originalRemoveItem = Storage.prototype.removeItem;
               const originalClear = Storage.prototype.clear;
+              // The original method always runs first and its result is always returned; the
+              // mirror tail is additionally try-caught so no bug in it can ever escalate into
+              // breaking the SPA's own storage operations (this is the only page-wide API patch).
               Storage.prototype.setItem = function(key, value) {
                 const result = originalSetItem.apply(this, arguments);
-                if (this === window.localStorage && shouldPersistKey(String(key))) queueSend();
+                try {
+                  if (this === window.localStorage && shouldPersistKey(String(key))) queueSend();
+                } catch (_) {}
                 return result;
               };
               Storage.prototype.removeItem = function(key) {
                 const result = originalRemoveItem.apply(this, arguments);
-                if (this === window.localStorage && shouldPersistKey(String(key))) queueSend();
+                try {
+                  if (this === window.localStorage && shouldPersistKey(String(key))) queueSend();
+                } catch (_) {}
                 return result;
               };
               Storage.prototype.clear = function() {
                 const result = originalClear.apply(this, arguments);
-                if (this === window.localStorage) queueSend();
+                try {
+                  if (this === window.localStorage) queueSend();
+                } catch (_) {}
                 return result;
               };
               document.addEventListener('visibilitychange', () => {

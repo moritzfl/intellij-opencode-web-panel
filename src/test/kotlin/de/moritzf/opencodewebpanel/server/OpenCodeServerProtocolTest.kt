@@ -584,6 +584,11 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("MAX_VALUE_CHARS"))
         assertFalse(script.contains("opencode.settings.dat:defaultServerUrl"))
         assertTrue(script.contains("window.intellijStore(payload)"))
+        // Containment contract for the only page-wide API patch: the original method runs
+        // first, and the mirror tail is try-caught so a bug in it can never break the SPA's
+        // own storage operations.
+        assertTrue(script.contains("const result = originalSetItem.apply(this, arguments);"))
+        assertEquals(3, Regex("""const result = original\w+\.apply\(this, arguments\);\s*\n\s*try \{""").findAll(script).count())
     }
 
     @Test
