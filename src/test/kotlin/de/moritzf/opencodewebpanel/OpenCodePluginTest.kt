@@ -4,9 +4,18 @@ import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState
 import de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager
 import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsConfigurable
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable
+import de.moritzf.opencodewebpanel.toolWindow.OPEN_CODE_RESET_ZOOM_ACTION_ID
+import de.moritzf.opencodewebpanel.toolWindow.OPEN_CODE_ZOOM_IN_ACTION_ID
+import de.moritzf.opencodewebpanel.toolWindow.OPEN_CODE_ZOOM_OUT_ACTION_ID
+import de.moritzf.opencodewebpanel.toolWindow.OpenCodeBrowserCommand
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodeWebToolWindowFactoryImpl
+import com.intellij.openapi.actionSystem.ActionManager
+import com.intellij.openapi.actionSystem.KeyboardShortcut
 import com.intellij.openapi.project.DumbAware
+import com.intellij.openapi.util.SystemInfo
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import java.awt.event.InputEvent
+import java.awt.event.KeyEvent
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
@@ -52,6 +61,42 @@ class OpenCodePluginTest : BasePlatformTestCase() {
         assertTrue(pluginXml.contains("displayName=\"OpenCode Web Panel\""))
         assertEquals("OpenCode Web Panel", OpenCodeSettingsConfigurable().displayName)
         assertEquals("OpenCode Web Panel", OpenCodeProjectSettingsConfigurable(project).displayName)
+    }
+
+    fun testBrowserShortcutActionsAreRegisteredForKeymapCustomization() {
+        val actionIDs = OpenCodeBrowserCommand.entries.map { it.intellijActionID } + listOf(
+            OPEN_CODE_ZOOM_IN_ACTION_ID,
+            OPEN_CODE_ZOOM_OUT_ACTION_ID,
+            OPEN_CODE_RESET_ZOOM_ACTION_ID,
+        )
+
+        actionIDs.forEach { actionID ->
+            val action = ActionManager.getInstance().getAction(actionID)
+            assertNotNull(actionID, action)
+            assertTrue(actionID, action.shortcutSet.shortcuts.isNotEmpty())
+        }
+
+        val expectedModifier = if (SystemInfo.isMac) InputEvent.META_DOWN_MASK else InputEvent.CTRL_DOWN_MASK
+        val newSessionShortcuts = ActionManager.getInstance()
+            .getAction(OpenCodeBrowserCommand.NEW_SESSION.intellijActionID)
+            .shortcutSet
+            .shortcuts
+            .filterIsInstance<KeyboardShortcut>()
+        assertTrue(
+            newSessionShortcuts.any {
+                it.firstKeyStroke.keyCode == KeyEvent.VK_T && it.firstKeyStroke.modifiers and expectedModifier != 0
+            },
+        )
+        val zoomInShortcuts = ActionManager.getInstance()
+            .getAction(OPEN_CODE_ZOOM_IN_ACTION_ID)
+            .shortcutSet
+            .shortcuts
+            .filterIsInstance<KeyboardShortcut>()
+        assertTrue(
+            zoomInShortcuts.any {
+                it.firstKeyStroke.keyCode == KeyEvent.VK_PLUS && it.firstKeyStroke.modifiers and expectedModifier != 0
+            },
+        )
     }
 
     fun testSharedServerManagerStopsServerAndClearsLifecycleState() {

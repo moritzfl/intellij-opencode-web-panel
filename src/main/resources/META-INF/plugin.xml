@@ -5,9 +5,13 @@
     <vendor>moritzfl</vendor>
 
     <description>
-        OpenCode Web Panel embeds the OpenCode web app directly inside JetBrains IDEs. It starts and authenticates a local OpenCode server, opens the current IDE project, preserves selected OpenCode UI state, and adds IDE-native file-link, code-reference, and file-drop integrations.
+        OpenCode Web Panel embeds the OpenCode web app directly inside JetBrains IDEs. It starts and authenticates a
+        local OpenCode server, opens the current IDE project, preserves selected OpenCode UI state, and adds IDE-native
+        file-link, code-reference, and file-drop integrations.
 
-        Browser-side integrations are configurable safeguards, so users can disable them if an OpenCode update conflicts with the embedded panel behavior. This is an unofficial community plugin for OpenCode and is not affiliated with OpenCode.
+        Browser-side integrations are configurable safeguards, so users can disable them if an OpenCode update conflicts
+        with the embedded panel behavior. This is an unofficial community plugin for OpenCode and is not affiliated with
+        OpenCode.
     </description>
 
     <depends>com.intellij.modules.platform</depends>
@@ -22,6 +26,87 @@
     </extensions>
 
     <actions>
+        <group id="OpenCodeWebPanel.Shortcuts" text="OpenCode Web Panel" popup="false">
+            <action id="OpenCodeWebPanel.NewSession"
+                    class="com.intellij.openapi.actionSystem.EmptyAction"
+                    text="OpenCode: New Session"
+                    description="Start a new OpenCode session">
+                <keyboard-shortcut keymap="$default" first-keystroke="control T"/>
+                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta T" replace-all="true"/>
+            </action>
+            <action id="OpenCodeWebPanel.ToggleHome"
+                    class="com.intellij.openapi.actionSystem.EmptyAction"
+                    text="OpenCode: Home / Sidebar"
+                    description="Toggle the OpenCode home view or classic sidebar">
+                <keyboard-shortcut keymap="$default" first-keystroke="control B"/>
+                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta B" replace-all="true"/>
+            </action>
+            <action id="OpenCodeWebPanel.ChooseModel"
+                    class="com.intellij.openapi.actionSystem.EmptyAction"
+                    text="OpenCode: Choose Model"
+                    description="Choose the model for the OpenCode session">
+                <keyboard-shortcut keymap="$default" first-keystroke="control QUOTE"/>
+                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta QUOTE" replace-all="true"/>
+            </action>
+            <action id="OpenCodeWebPanel.CycleAgent"
+                    class="com.intellij.openapi.actionSystem.EmptyAction"
+                    text="OpenCode: Cycle Agent"
+                    description="Select the next OpenCode agent">
+                <keyboard-shortcut keymap="$default" first-keystroke="control PERIOD"/>
+                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta PERIOD" replace-all="true"/>
+            </action>
+            <action id="OpenCodeWebPanel.CycleThinkingEffort"
+                    class="com.intellij.openapi.actionSystem.EmptyAction"
+                    text="OpenCode: Cycle Thinking Effort"
+                    description="Select the next model thinking effort">
+                <keyboard-shortcut keymap="$default" first-keystroke="control shift D"/>
+                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta shift D" replace-all="true"/>
+            </action>
+            <action id="OpenCodeWebPanel.AttachFiles"
+                    class="com.intellij.openapi.actionSystem.EmptyAction"
+                    text="OpenCode: Attach Files"
+                    description="Choose files to attach to the OpenCode prompt">
+                <keyboard-shortcut keymap="$default" first-keystroke="control U"/>
+                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta U" replace-all="true"/>
+            </action>
+            <action id="OpenCodeWebPanel.CancelOrStop"
+                    class="com.intellij.openapi.actionSystem.EmptyAction"
+                    text="OpenCode: Cancel or Stop"
+                    description="Close the active OpenCode popup or stop the current response">
+                <keyboard-shortcut keymap="$default" first-keystroke="ESCAPE"/>
+            </action>
+            <action id="OpenCodeWebPanel.ZoomIn"
+                    class="com.intellij.openapi.actionSystem.EmptyAction"
+                    text="OpenCode: Zoom In"
+                    description="Increase the OpenCode panel zoom">
+                <keyboard-shortcut keymap="$default" first-keystroke="control EQUALS"/>
+                <keyboard-shortcut keymap="$default" first-keystroke="control shift EQUALS"/>
+                <keyboard-shortcut keymap="$default" first-keystroke="control PLUS"/>
+                <keyboard-shortcut keymap="$default" first-keystroke="control ADD"/>
+                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta EQUALS" replace-all="true"/>
+                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta shift EQUALS"/>
+                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta PLUS"/>
+                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta ADD"/>
+            </action>
+            <action id="OpenCodeWebPanel.ZoomOut"
+                    class="com.intellij.openapi.actionSystem.EmptyAction"
+                    text="OpenCode: Zoom Out"
+                    description="Decrease the OpenCode panel zoom">
+                <keyboard-shortcut keymap="$default" first-keystroke="control MINUS"/>
+                <keyboard-shortcut keymap="$default" first-keystroke="control SUBTRACT"/>
+                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta MINUS" replace-all="true"/>
+                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta SUBTRACT"/>
+            </action>
+            <action id="OpenCodeWebPanel.ResetZoom"
+                    class="com.intellij.openapi.actionSystem.EmptyAction"
+                    text="OpenCode: Reset Zoom"
+                    description="Reset the OpenCode panel zoom">
+                <keyboard-shortcut keymap="$default" first-keystroke="control 0"/>
+                <keyboard-shortcut keymap="$default" first-keystroke="control NUMPAD0"/>
+                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta 0" replace-all="true"/>
+                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta NUMPAD0"/>
+            </action>
+        </group>
         <action id="OpenCodeWebPanel.AddFileToChat"
                 class="de.moritzf.opencodewebpanel.features.OpenCodeAddFileToChatAction"
                 text="Add to OpenCode Chat"

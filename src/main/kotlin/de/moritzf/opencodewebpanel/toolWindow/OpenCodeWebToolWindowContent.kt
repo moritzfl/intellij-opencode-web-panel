@@ -439,7 +439,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             ::isContentDisposed,
             this,
         ).install()
-        OpenCodeBrowserEditShortcutHandler(browser, serverManager, ::isContentDisposed, this).install()
+        OpenCodeBrowserShortcutHandler(browser, serverManager, this).install()
         OpenCodeChatInputService.getInstance(project).setDispatcher(::dispatchChatBatch)
         ApplicationManager.getApplication().messageBus.connect(this).subscribe(
             AppLifecycleListener.TOPIC,

@@ -82,6 +82,23 @@ MARKERS=(
   'prefers-color-scheme: dark'
   # chat/file delivery target (buildDispatchDroppedFilesScript)
   'prompt-input'
+  # IntelliJ Keymap bridge (OpenCodeBrowserShortcutHandler)
+  'tab.new'
+  'mod+t'
+  'session.new'
+  'mod+shift+s'
+  'home.toggle'
+  'sidebar.toggle'
+  'mod+b'
+  'titlebar-v2'
+  'model.choose'
+  "mod+'"
+  'agent.cycle'
+  'mod+.'
+  'model.variant.cycle'
+  'shift+mod+d'
+  'file.attach'
+  'mod+u'
   # open-project seed (buildOpenProjectScript)
   'opencode.global.dat'
   'lastProject'

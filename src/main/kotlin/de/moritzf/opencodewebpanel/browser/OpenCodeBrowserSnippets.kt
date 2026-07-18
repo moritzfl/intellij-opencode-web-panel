@@ -326,6 +326,85 @@ internal object OpenCodeBrowserSnippets {
         return script.trimIndent()
     }
 
+    /** Dispatches a remapped IntelliJ action through OpenCode's current page-local command map. */
+    fun buildShortcutDispatchScript(newLayoutKeybinds: List<String>, classicKeybinds: List<String>): String? {
+        if (newLayoutKeybinds.isEmpty() && classicKeybinds.isEmpty()) return null
+        val newLayout = newLayoutKeybinds.joinToString(", ", prefix = "[", postfix = "]") {
+            "'${escapeJavaScript(it)}'"
+        }
+        val classic = classicKeybinds.joinToString(", ", prefix = "[", postfix = "]") {
+            "'${escapeJavaScript(it)}'"
+        }
+        val configs = if (newLayoutKeybinds == classicKeybinds) {
+            newLayout
+        } else {
+            "document.querySelector('[data-slot=\"titlebar-v2\"]') ? $newLayout : $classic"
+        }
+        @Language("JavaScript")
+        val script = """
+            (() => {
+              const configs = $configs;
+              const isMac = /(Mac|iPod|iPhone|iPad)/.test(navigator.platform);
+              const namedKeys = {
+                comma: ',', plus: '+', space: ' ', escape: 'Escape', esc: 'Escape',
+                enter: 'Enter', return: 'Enter', tab: 'Tab', backspace: 'Backspace',
+                delete: 'Delete', insert: 'Insert', home: 'Home', end: 'End',
+                pageup: 'PageUp', pagedown: 'PageDown', arrowup: 'ArrowUp',
+                arrowdown: 'ArrowDown', arrowleft: 'ArrowLeft', arrowright: 'ArrowRight'
+              };
+              const codeFor = (key) => {
+                if (/^[a-z]${'$'}/.test(key)) return 'Key' + key.toUpperCase();
+                if (/^[0-9]${'$'}/.test(key)) return 'Digit' + key;
+                if (/^F(?:[1-9]|1[0-9]|2[0-4])${'$'}/.test(key)) return key;
+                return ({
+                  "'": 'Quote', '.': 'Period', ',': 'Comma', ';': 'Semicolon',
+                  '/': 'Slash', '\\': 'Backslash', '-': 'Minus', '=': 'Equal',
+                  '+': 'NumpadAdd', ' ': 'Space', Escape: 'Escape'
+                })[key] || key;
+              };
+              const parse = (chord) => {
+                const binding = { key: '', ctrlKey: false, metaKey: false, altKey: false, shiftKey: false };
+                for (const part of chord.trim().toLowerCase().split('+').filter(Boolean)) {
+                  if (part === 'mod') {
+                    if (isMac) binding.metaKey = true;
+                    else binding.ctrlKey = true;
+                  } else if (part === 'meta' || part === 'cmd' || part === 'command') {
+                    binding.metaKey = true;
+                  } else if (part === 'ctrl' || part === 'control') {
+                    binding.ctrlKey = true;
+                  } else if (part === 'alt' || part === 'option') {
+                    binding.altKey = true;
+                  } else if (part === 'shift') {
+                    binding.shiftKey = true;
+                  } else if (!binding.key) {
+                    binding.key = namedKeys[part] || (/^f[0-9]+${'$'}/.test(part) ? part.toUpperCase() : part);
+                  } else {
+                    return null;
+                  }
+                }
+                if (!binding.key) return null;
+                return { ...binding, code: codeFor(binding.key) };
+              };
+              const target = document.activeElement instanceof Element ? document.activeElement : document;
+              for (const config of configs) {
+                for (const chord of config.split(',')) {
+                  const binding = parse(chord);
+                  if (!binding) continue;
+                  const event = new KeyboardEvent('keydown', {
+                    ...binding,
+                    bubbles: true,
+                    cancelable: true,
+                    composed: true
+                  });
+                  target.dispatchEvent(event);
+                  if (event.defaultPrevented) return;
+                }
+              }
+            })();
+        """
+        return script.trimIndent()
+    }
+
     fun buildExternalLinkHandlerScript(enabled: Boolean, openExternalCallback: String?): String? {
         if (!enabled || openExternalCallback == null) return null
         @Language("JavaScript")

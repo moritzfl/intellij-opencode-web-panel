@@ -4,6 +4,15 @@
 
 ## [Unreleased]
 
+### Added
+
+- OpenCode's New Session, Home/sidebar, model, agent, thinking-effort, file-attachment, and stop shortcuts now work inside the panel and can be remapped under the IDE's Keymap settings.
+- Pressing Esc while the panel is focused now closes OpenCode popups or stops the running response; remove the shortcut from "OpenCode: Cancel or Stop" in the Keymap to restore the IDE's Esc-to-editor behavior instead.
+
+### Changed
+
+- Panel zoom shortcuts can now be remapped. Cut, copy, paste, select all, undo, and redo follow the active IDE keymap on Windows and Linux; macOS keeps the standard system chords.
+
 ### Fixed
 
 - Project selection no longer repeatedly expands or reorders an existing project while the panel starts, and malformed saved project state now repairs itself.
