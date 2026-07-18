@@ -53,6 +53,9 @@ MARKERS=(
   'diff-changes'
   'message-part-directory'
   'message-part-title-filename'
+  # Markdown provenance / semantic inline-code classification
+  'inlineCodeKind'
+  'data-component=markdown'
   # file links, classic + v2 review panels (buildFileLinkHandlerScript)
   '"data-path"'
   'session-review-view-button'

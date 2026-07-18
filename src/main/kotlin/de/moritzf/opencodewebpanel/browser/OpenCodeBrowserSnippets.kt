@@ -401,7 +401,12 @@ internal object OpenCodeBrowserSnippets {
                 return false;
               };
               const extractRef = (codeEl) => {
+                if (!codeEl.closest('[data-component="markdown"]')) return '';
+                if (codeEl.closest('pre') || codeEl.closest('a')) return '';
                 const text = (codeEl.textContent || '').trim();
+                const kind = codeEl.getAttribute('data-inline-code-kind');
+                if (kind === 'url') return '';
+                if (kind === 'path') return text.length > 0 && text.length <= 512 ? text : '';
                 if (!looksLikeCodeRef(text)) return '';
                 const parent = codeEl.parentElement;
                 if (!parent) return text;
@@ -883,7 +888,8 @@ internal object OpenCodeBrowserSnippets {
               if (window.__opencodeIntellijFileLinksInstalled) return;
               window.__opencodeIntellijFileLinksInstalled = true;
               const directory = '$directory';
-              const unsupportedProtocol = /^(https?|mailto|tel|data|blob|javascript):/i;
+              const explicitProtocol = /^[a-zA-Z][a-zA-Z0-9+.-]*:/;
+              const supportedFileProtocol = /^(file|sandbox):/i;
               const absoluteFilePath = /^(\/|\\\\|[A-Za-z]:[\\/])/;
               $DECODE_ROUTE_DIRECTORY_JS
               const openCodeRoutePath = (value) => {
@@ -966,7 +972,7 @@ internal object OpenCodeBrowserSnippets {
               const isLocalFileLink = (href) => {
                 if (!href || href.startsWith('#')) return false;
                 if (isOpenCodeAppRoute(href)) return false;
-                if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(href)) return !unsupportedProtocol.test(href);
+                if (explicitProtocol.test(href)) return supportedFileProtocol.test(href);
                 if (href.startsWith('/') || href.startsWith('./') || href.startsWith('../')) return true;
                 if (/^[A-Za-z]:[\\/]/.test(href)) return true;
                 return !href.startsWith('//') && !href.includes('://');
@@ -983,6 +989,7 @@ internal object OpenCodeBrowserSnippets {
                 const reviewV2Href = changedFileHref ? '' : reviewV2FileLink(target);
                 if (changedButtonOnly && !changedFileHref && !reviewV2Href) return null;
                 const link = !changedFileHref && !reviewV2Href && target && target.closest ? target.closest('a') : null;
+                if (link && (!link.closest('[data-component="markdown"]') || link.target !== '_blank')) return null;
                 const rawHref = changedFileHref || reviewV2Href || (link ? (link.getAttribute('href') || inferredFileLink(link)) : '');
                 if (!isLocalFileLink(rawHref)) return null;
                 const element = changedFileHref

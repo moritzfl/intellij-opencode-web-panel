@@ -18,6 +18,7 @@
 - The OpenCode event connection now recovers within roughly 45 seconds after missed heartbeats instead of remaining silently stalled for up to ten minutes.
 - Session-error notifications now display messages from OpenCode's current structured error format.
 - Most-recent-session lookup follows paginated results, so heavily used projects do not miss an older conversation with newer activity.
+- File and code navigation now acts only on OpenCode's Markdown and review surfaces, so future application routes, unknown link schemes, fenced code, and inline URLs retain their native behavior.
 
 ## [1.8.0] - 2026-07-17
 

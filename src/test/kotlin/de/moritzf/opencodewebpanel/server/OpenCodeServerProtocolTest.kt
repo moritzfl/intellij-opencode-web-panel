@@ -439,7 +439,9 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("cursor: pointer !important"))
         assertTrue(script.contains("document.addEventListener('mouseover'"))
         assertTrue(script.contains("document.addEventListener('mouseout'"))
-        assertTrue(script.contains("unsupportedProtocol"))
+        assertTrue(script.contains("supportedFileProtocol"))
+        assertTrue(script.contains("link.closest('[data-component=\"markdown\"]')"))
+        assertTrue(script.contains("link.target !== '_blank'"))
         assertTrue(script.contains("decodeRouteDirectory"))
         assertTrue(script.contains("isOpenCodeAppRoute(href)"))
         // Subagent/task cards link to /server/<key>/session/<id>; that must not be treated as a file path.
@@ -1058,6 +1060,12 @@ class OpenCodeServerProtocolTest {
 
         assertTrue(script.contains("window.__opencodeIntellijCodeNavInstalled"))
         assertTrue(script.contains("event.target.closest('code')"))
+        assertTrue(script.contains("codeEl.closest('[data-component=\"markdown\"]')"))
+        assertTrue(script.contains("codeEl.closest('pre')"))
+        assertTrue(script.contains("codeEl.closest('a')"))
+        assertTrue(script.contains("data-inline-code-kind"))
+        assertTrue(script.contains("kind === 'url'"))
+        assertTrue(script.contains("kind === 'path'"))
         assertTrue(script.contains("isSnakeCase"))
         assertTrue(script.contains("data-opencode-intellij-pointer"))
         assertTrue(script.contains("opencode-intellij-pointer-cursor"))
