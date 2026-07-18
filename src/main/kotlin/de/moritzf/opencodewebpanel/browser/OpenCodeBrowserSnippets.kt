@@ -734,7 +734,8 @@ internal object OpenCodeBrowserSnippets {
             entry
         }
         val textDrops = textEntries.joinToString("\n") { text ->
-            val drop = if (text.startsWith("file:")) {
+            val isStandaloneFileReference = text.startsWith("file:") && !text.contains('\n') && !text.contains('\r')
+            val drop = if (isStandaloneFileReference) {
                 "results.push(dispatchDrop((transfer) => transfer.setData('text/plain', '${escapeJavaScript(text)}')));"
             } else {
                 "results.push(dispatchPaste('${escapeJavaScript(text)}'));"
@@ -974,9 +975,9 @@ internal object OpenCodeBrowserSnippets {
               const isLocalFileLink = (href) => {
                 if (!href || href.startsWith('#')) return false;
                 if (isOpenCodeAppRoute(href)) return false;
+                if (absoluteFilePath.test(href)) return true;
                 if (explicitProtocol.test(href)) return supportedFileProtocol.test(href);
-                if (href.startsWith('/') || href.startsWith('./') || href.startsWith('../')) return true;
-                if (/^[A-Za-z]:[\\/]/.test(href)) return true;
+                if (href.startsWith('./') || href.startsWith('../')) return true;
                 return !href.startsWith('//') && !href.includes('://');
               };
               const openFileInIde = (rawHref) => {

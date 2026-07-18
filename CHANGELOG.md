@@ -25,6 +25,7 @@
 - Improved server health detection, session-list paging, and text-cursor behavior in the embedded panel.
 - Preparing pasted images and dropped files now runs in the background, keeping the IDE responsive for large or slow files.
 - Pending permission and question notifications are reconciled after event-stream reconnects, restoring missed requests and dismissing requests already answered elsewhere.
+- Windows drive and network file links now open in the IDE, and editor selections beginning with a file reference are pasted intact instead of being mistaken for one file path.
 
 ## [1.8.0] - 2026-07-17
 

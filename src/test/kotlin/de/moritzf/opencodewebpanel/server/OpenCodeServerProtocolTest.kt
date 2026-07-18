@@ -447,7 +447,8 @@ class OpenCodeServerProtocolTest {
         // Subagent/task cards link to /server/<key>/session/<id>; that must not be treated as a file path.
         assertTrue(script.contains("/server/"))
         assertTrue(script.contains("new-session"))
-        assertTrue(script.contains("href.startsWith('/')"))
+        assertTrue(script.contains("absoluteFilePath.test(href)"))
+        assertTrue(script.indexOf("absoluteFilePath.test(href)") < script.indexOf("explicitProtocol.test(href)"))
         assertTrue(script.contains("!href.includes('://')"))
         assertTrue(script.contains("${OpenCodeServerProtocol.OPEN_FILE_LINK_SCHEME}://${OpenCodeServerProtocol.OPEN_FILE_LINK_HOST}"))
     }
@@ -822,6 +823,23 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("const batchId = 'chat-1'"))
         assertTrue(script.contains("window.intellijResult(batchId, accepted)"))
         assertTrue(script.contains("results.every(Boolean)"))
+    }
+
+    @Test
+    fun buildDispatchDroppedFilesScriptPastesMultilineSelectionBeginningWithFileReference() {
+        val selection = """file:src/main/App.kt
+            |src/main/App.kt lines 1-2:
+            |```kotlin
+            |fun main() = Unit
+            |```""".trimMargin()
+
+        val script = OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(
+            emptyList(),
+            textPlain = listOf(selection),
+        )!!
+
+        assertTrue(script.contains("results.push(dispatchPaste('file:src/main/App.kt\\n"))
+        assertFalse(script.contains("transfer.setData('text/plain', 'file:src/main/App.kt\\n"))
     }
 
     @Test
