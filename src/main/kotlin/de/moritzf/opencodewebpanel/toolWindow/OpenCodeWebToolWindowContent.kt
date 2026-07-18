@@ -116,7 +116,27 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     private val requestHandler = OpenCodeBrowserRequestHandler(serverManager, ideNavigation, ::recoverFromRendererCrash)
     private val interruptedSessionRecovery = OpenCodeInterruptedSessionRecovery(project, serverManager, ::openCodeProjectDirectory)
     private val openProjectAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
+    private val repaintAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
+    private val componentSizeRestoreAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
     private val scriptScheduler = OpenCodeBrowserScriptScheduler(project, browser, openProjectAlarm)
+    private val repaintScheduler = OpenCodeBrowserScriptScheduler(project, browser, repaintAlarm)
+    private val componentSizeNudger = OpenCodeComponentSizeNudger(
+        component = browser.component,
+        isActive = { !isContentDisposed() },
+        scheduleRestore = { action ->
+            componentSizeRestoreAlarm.addRequest({ action() }, COMPONENT_SIZE_NUDGE_RESTORE_DELAY_MILLIS)
+        },
+        afterGrow = {
+            browser.component.validate()
+            browser.component.repaint()
+        },
+        afterRestore = {
+            browser.component.validate()
+            browser.component.revalidate()
+            browser.component.repaint()
+            browser.cefBrowser.notifyScreenInfoChanged()
+        },
+    )
     private var openProjectScriptScheduled = false
     /** Most-recent session resolved for the current page load (avoids a second REST fetch). */
     private var pendingMostRecentSessionId: String? = null
@@ -287,6 +307,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         override fun onLoadStart(browser: CefBrowser?, frame: CefFrame?, transitionType: CefRequest.TransitionType?) {
             if (frame?.isMain == true) {
                 browserDocumentRevision++
+                repaintAlarm.cancelAllRequests()
                 OpenCodeChatInputService.getInstance(project).requeueInFlight()
                 injectedFeatures.forEach { it.scheduled = false }
                 earlyInjectedFeatures.forEach { it.scheduled = false }
@@ -544,8 +565,9 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         val nudgedAtUrl = browser.cefBrowser.url
         val serverUrl = serverManager.getServerUrl() ?: return
         val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
+        repaintAlarm.cancelAllRequests()
 
-        scriptScheduler.scheduleAction(early = true, shouldRun = { !isContentDisposed() }) {
+        repaintScheduler.scheduleAction(early = true, shouldRun = { !isContentDisposed() }) {
             if (!stillOnSamePage(nudgedAtUrl)) return@scheduleAction
             browser.cefBrowser.notifyScreenInfoChanged()
             browser.component.repaint()
@@ -554,51 +576,23 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         // later attempts, wiggle the Swing component size. A 1 px resize causes CEF to reallocate
         // the off-screen backing surface, which clears the mismatched-frame state that a plain
         // repaint sometimes cannot recover.
-        scriptScheduler.scheduleAt(500, shouldRun = { !isContentDisposed() }) {
+        repaintScheduler.scheduleAt(500, shouldRun = { !isContentDisposed() }) {
             if (!stillOnSamePage(nudgedAtUrl)) return@scheduleAt
             browser.cefBrowser.executeJavaScript("window.dispatchEvent(new Event('resize'))", rootUrl, 0)
         }
-        scriptScheduler.scheduleAt(1500, shouldRun = { !isContentDisposed() }) {
+        repaintScheduler.scheduleAt(1500, shouldRun = { !isContentDisposed() }) {
             if (!stillOnSamePage(nudgedAtUrl)) return@scheduleAt
-            nudgeComponentSize()
+            componentSizeNudger.nudge()
         }
-        scriptScheduler.scheduleAt(3000, shouldRun = { !isContentDisposed() }) {
+        repaintScheduler.scheduleAt(3000, shouldRun = { !isContentDisposed() }) {
             if (!stillOnSamePage(nudgedAtUrl)) return@scheduleAt
-            nudgeComponentSize()
+            componentSizeNudger.nudge()
         }
     }
 
     private fun stillOnSamePage(expectedUrl: String?): Boolean {
         if (expectedUrl.isNullOrBlank()) return false
         return expectedUrl == browser.cefBrowser.url
-    }
-
-    /**
-     * Grows the browser wrapper by one pixel, holds that size briefly, then restores it. CEF
-     * consumes resizes asynchronously (the view rect is queried later from its own thread), so
-     * the transient size must survive past this EDT cycle or CEF never observes a change and the
-     * off-screen surface is not reallocated. For the same reason the grow step must not
-     * revalidate — the layout manager would reassert the old bounds immediately — but it must
-     * validate synchronously so the inner CEF component actually resizes with the wrapper.
-     */
-    private fun nudgeComponentSize() {
-        ApplicationManager.getApplication().invokeLater {
-            if (isContentDisposed()) return@invokeLater
-            val component = browser.component
-            val bounds = component.bounds
-            if (bounds.width <= 0 || bounds.height <= 0) return@invokeLater
-            component.setBounds(bounds.x, bounds.y, bounds.width + 1, bounds.height)
-            component.validate()
-            component.repaint()
-            scriptScheduler.scheduleAt(COMPONENT_SIZE_NUDGE_RESTORE_DELAY_MILLIS, shouldRun = { !isContentDisposed() }) {
-                component.setBounds(bounds)
-                component.validate()
-                // Reconcile with any parent resize that happened while the nudge was held.
-                component.revalidate()
-                component.repaint()
-                browser.cefBrowser.notifyScreenInfoChanged()
-            }
-        }
     }
 
     /**
@@ -1222,6 +1216,8 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             OpenCodeChatInputService.getInstance(project).setDispatcher(null)
         }
         openProjectAlarm.cancelAllRequests()
+        repaintAlarm.cancelAllRequests()
+        componentSizeRestoreAlarm.cancelAllRequests()
         systemNotifications.dispose()
         if (isApplicationShutdownInProgress()) return
         Disposer.dispose(browser)
