@@ -124,6 +124,20 @@ class OpenCodeFileDropHandlerTest {
         )
         assertTrue(matching)
 
+        assertTrue(
+            OpenCodeFileDropHandler.dispatchContextMatches(
+                initialDocumentRevision = 4,
+                currentDocumentRevision = 4,
+                initialServerGeneration = 2,
+                currentServerGeneration = 2,
+                initialServerUrl = "http://127.0.0.1:4096",
+                currentServerUrl = "http://127.0.0.1:4096",
+                initialDirectory = null,
+                currentDirectory = null,
+                browserUrl = "http://127.0.0.1:4096/server/key/session/ses_1",
+            ),
+        )
+
         assertFalse(
             OpenCodeFileDropHandler.dispatchContextMatches(
                 initialDocumentRevision = 4,

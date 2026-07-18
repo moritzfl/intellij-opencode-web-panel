@@ -87,10 +87,12 @@ internal class OpenCodeFileDropHandler(
             currentDirectory: String?,
             browserUrl: String?,
         ): Boolean {
+            val sameDirectory = (initialDirectory == null && currentDirectory == null) ||
+                OpenCodeServerProtocol.isSameFilesystemPath(initialDirectory, currentDirectory)
             return initialDocumentRevision == currentDocumentRevision &&
                 initialServerGeneration == currentServerGeneration &&
                 initialServerUrl == currentServerUrl &&
-                OpenCodeServerProtocol.isSameFilesystemPath(initialDirectory, currentDirectory) &&
+                sameDirectory &&
                 OpenCodeServerProtocol.isOpenCodeServerPage(initialServerUrl, browserUrl)
         }
 
@@ -164,11 +166,11 @@ internal class OpenCodeFileDropHandler(
                     @Suppress("UNCHECKED_CAST")
                     support.transferable.getTransferData(DataFlavor.javaFileListFlavor) as? List<File>
                 }.getOrNull().orEmpty()
-                val imagePayloads = droppedImagePayloads(support.transferable, droppedFiles)
+                val pendingImages = droppedImages(support.transferable)
                 val text = droppedTextPayload(support.transferable)
                 val fileReferenceText = text?.takeIf { it.startsWith("file:") }
-                val textToDispatch = if (imagePayloads.isNotEmpty()) fileReferenceText else text
-                return dispatchDroppedData(droppedFiles, textToDispatch, imagePayloads)
+                val textToDispatch = if (pendingImages.isNotEmpty()) fileReferenceText else text
+                return dispatchDroppedData(droppedFiles, textToDispatch, pendingImages)
             }
         }
         installTransferHandler(browser.component, handler)
@@ -248,43 +250,49 @@ internal class OpenCodeFileDropHandler(
         val files = transferables
             .flatMap { clipboardFiles(it) }
             .distinctBy { it.toPath().toAbsolutePath().normalize() }
-        val imagePayloads = if (files.isEmpty()) {
-            imagePayloads(transferables, fileNamePrefix = "pasted-image", warningDescription = "pasted image")
+        val pendingImages = if (files.isEmpty()) {
+            pendingImages(transferables, fileNamePrefix = "pasted-image", warningDescription = "pasted image")
         } else {
             emptyList()
         }
         val text = transferables.firstNotNullOfOrNull { droppedTextPayload(it) }
         val fileReferenceText = text?.takeIf { it.startsWith("file:") }
-        if (files.isEmpty() && imagePayloads.isEmpty() && fileReferenceText == null) return false
+        if (files.isEmpty() && pendingImages.isEmpty() && fileReferenceText == null) return false
         // When a pasted image is forwarded, ignore any incidental text flavor that is not a file reference.
-        val textToDispatch = if (imagePayloads.isNotEmpty()) fileReferenceText else text
-        return dispatchDroppedData(files, textToDispatch, imagePayloads)
+        val textToDispatch = if (pendingImages.isNotEmpty()) fileReferenceText else text
+        return dispatchDroppedData(files, textToDispatch, pendingImages)
     }
 
     private fun dispatchDroppedData(
         files: List<File>,
         textPlain: String?,
-        extraPayloads: List<OpenCodeServerProtocol.DroppedFilePayload> = emptyList(),
+        pendingImages: List<PendingDroppedImage> = emptyList(),
     ): Boolean {
+        if (files.isEmpty() && textPlain.isNullOrBlank() && pendingImages.isEmpty()) return false
         val projectDirectory = openCodeProjectDirectory()
         val serverUrl = serverManager.getServerUrl() ?: return false
         val serverGeneration = serverManager.getServerGeneration()
         val documentRevision = browserDocumentRevision()
         val batchID = "drop-${nextDropID.incrementAndGet()}"
-        val fileTextDrops = files.mapNotNull { file -> OpenCodeServerProtocol.localFileDropText(file, projectDirectory) }
-        val textDrops = fileTextDrops.ifEmpty { droppedTextPlainItems(files, textPlain) }
-        val filesToForward = files.filter { file -> OpenCodeServerProtocol.localFileDropText(file, projectDirectory) == null }
-        val selection = selectDroppedFiles(filesToForward)
-        if (selection.rejectionMessages.isNotEmpty()) {
-            showFileDropWarning(selection.rejectionMessages)
-        }
-        if (textDrops.isEmpty() && selection.acceptedFiles.isEmpty() && extraPayloads.isEmpty()) {
-            return selection.rejectionMessages.isNotEmpty()
-        }
 
         ApplicationManager.getApplication().executeOnPooledThread {
             if (isDisposed()) return@executeOnPooledThread
-            val payloads = selection.acceptedFiles.mapNotNull { droppedFilePayload(it) } + extraPayloads
+            val classifiedFiles = files.map { file ->
+                file to OpenCodeServerProtocol.localFileDropText(file, projectDirectory)
+            }
+            val fileTextDrops = classifiedFiles.mapNotNull { it.second }
+            val textDrops = fileTextDrops.ifEmpty { droppedTextPlainItems(files, textPlain) }
+            val filesToForward = classifiedFiles.filter { it.second == null }.map { it.first }
+            val selection = selectDroppedFiles(filesToForward)
+            val preparedImages = if (pendingImages.isNotEmpty() && shouldUseDroppedImageFlavor(files, projectDirectory)) {
+                prepareDroppedImages(pendingImages)
+            } else {
+                PreparedDroppedImages(emptyList(), emptyList())
+            }
+            val warnings = selection.rejectionMessages + preparedImages.rejectionMessages
+            if (warnings.isNotEmpty()) showFileDropWarning(warnings)
+            val payloads = selection.acceptedFiles.mapNotNull { droppedFilePayload(it) } + preparedImages.payloads
+            if (textDrops.isEmpty() && payloads.isEmpty()) return@executeOnPooledThread
             val script = OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(
                 payloads,
                 textPlain = textDrops,
@@ -317,40 +325,49 @@ internal class OpenCodeFileDropHandler(
         return true
     }
 
-    private fun droppedImagePayloads(
-        transferable: Transferable,
-        droppedFiles: List<File>,
-    ): List<OpenCodeServerProtocol.DroppedFilePayload> {
+    private fun droppedImages(transferable: Transferable): List<PendingDroppedImage> {
         if (!transferable.isDataFlavorSupported(DataFlavor.imageFlavor)) return emptyList()
-        if (!shouldUseDroppedImageFlavor(droppedFiles, openCodeProjectDirectory())) return emptyList()
-        return imagePayloads(listOf(transferable), fileNamePrefix = "dropped-image", warningDescription = "dropped image")
+        // The file checks that decide whether this image flavor is incidental run later on the
+        // pooled preparation thread; only capture the Transferable's image on the EDT here.
+        return pendingImages(listOf(transferable), fileNamePrefix = "dropped-image", warningDescription = "dropped image")
     }
 
-    private fun imagePayloads(
+    private fun pendingImages(
         transferables: List<Transferable>,
         fileNamePrefix: String,
         warningDescription: String,
-    ): List<OpenCodeServerProtocol.DroppedFilePayload> {
-        val bytes = transferables.firstNotNullOfOrNull { imagePng(it) } ?: return emptyList()
-        if (bytes.size > MAX_DROPPED_FILE_BYTES) {
-            showFileDropWarning(listOf("The $warningDescription is larger than ${formatFileSize(MAX_DROPPED_FILE_BYTES)}."))
-            return emptyList()
-        }
-        val timestamp = System.currentTimeMillis()
-        return listOf(
-            OpenCodeServerProtocol.DroppedFilePayload(
-                name = "$fileNamePrefix-$timestamp.png",
+    ): List<PendingDroppedImage> {
+        val image = transferables.firstNotNullOfOrNull(::transferableImage) ?: return emptyList()
+        return listOf(PendingDroppedImage(image, fileNamePrefix, warningDescription))
+    }
+
+    private fun transferableImage(transferable: Transferable): Image? {
+        if (!transferable.isDataFlavorSupported(DataFlavor.imageFlavor)) return null
+        return runCatching { transferable.getTransferData(DataFlavor.imageFlavor) as? Image }.getOrNull()
+    }
+
+    private fun prepareDroppedImages(images: List<PendingDroppedImage>): PreparedDroppedImages {
+        val payloads = mutableListOf<OpenCodeServerProtocol.DroppedFilePayload>()
+        val rejectionMessages = mutableListOf<String>()
+        for (pending in images) {
+            val bytes = encodeImageToPng(pending.image)
+            if (bytes == null) {
+                rejectionMessages += "The ${pending.warningDescription} could not be read."
+                continue
+            }
+            if (bytes.size > MAX_DROPPED_FILE_BYTES) {
+                rejectionMessages += "The ${pending.warningDescription} is larger than ${formatFileSize(MAX_DROPPED_FILE_BYTES)}."
+                continue
+            }
+            val timestamp = System.currentTimeMillis()
+            payloads += OpenCodeServerProtocol.DroppedFilePayload(
+                name = "${pending.fileNamePrefix}-$timestamp.png",
                 mime = "image/png",
                 lastModified = timestamp,
                 base64 = Base64.getEncoder().encodeToString(bytes),
-            ),
-        )
-    }
-
-    private fun imagePng(transferable: Transferable): ByteArray? {
-        if (!transferable.isDataFlavorSupported(DataFlavor.imageFlavor)) return null
-        val image = runCatching { transferable.getTransferData(DataFlavor.imageFlavor) as? Image }.getOrNull() ?: return null
-        return encodeImageToPng(image)
+            )
+        }
+        return PreparedDroppedImages(payloads, rejectionMessages)
     }
 
     private fun clipboardFiles(transferable: Transferable): List<File> {
@@ -438,6 +455,12 @@ internal class OpenCodeFileDropHandler(
     }
 
     private fun showFileDropWarning(rejectionMessages: List<String>) {
+        if (!ApplicationManager.getApplication().isDispatchThread) {
+            ApplicationManager.getApplication().invokeLater {
+                if (!isDisposed()) showFileDropWarning(rejectionMessages)
+            }
+            return
+        }
         val group = NotificationGroupManager.getInstance()
             .getNotificationGroup(OpenCodeServerProtocol.NOTIFICATION_GROUP_ID)
             ?: return
@@ -457,6 +480,17 @@ internal class OpenCodeFileDropHandler(
 
     private data class DroppedFileSelection(
         val acceptedFiles: List<File>,
+        val rejectionMessages: List<String>,
+    )
+
+    private data class PendingDroppedImage(
+        val image: Image,
+        val fileNamePrefix: String,
+        val warningDescription: String,
+    )
+
+    private data class PreparedDroppedImages(
+        val payloads: List<OpenCodeServerProtocol.DroppedFilePayload>,
         val rejectionMessages: List<String>,
     )
 
