@@ -2069,6 +2069,34 @@ class OpenCodeServerProtocolTest {
     fun sendContinuePromptReturnsFalseForInvalidSessionId() {
         val auth = OpenCodeServerProtocol.buildBasicAuthHeader("test")
         assertFalse(OpenCodeServerProtocol.sendContinuePrompt("http://127.0.0.1:1", auth, "invalid"))
+        assertEquals(
+            OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_IDENTIFIER),
+            OpenCodeServerProtocol.sendContinuePromptResult("http://127.0.0.1:1", auth, "invalid"),
+        )
+    }
+
+    @Test
+    fun sendContinuePromptResultPreservesHttpStatus() {
+        for (status in listOf(409, 500)) {
+            val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+            server.createContext("/api/session/ses_1/prompt") { exchange ->
+                exchange.sendResponseHeaders(status, -1)
+                exchange.close()
+            }
+            server.start()
+            try {
+                assertEquals(
+                    OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.HTTP, status),
+                    OpenCodeServerProtocol.sendContinuePromptResult(
+                        "http://127.0.0.1:${server.address.port}",
+                        OpenCodeServerProtocol.buildBasicAuthHeader("test"),
+                        "ses_1",
+                    ),
+                )
+            } finally {
+                server.stop(0)
+            }
+        }
     }
 
     @Test

@@ -232,14 +232,14 @@ internal object OpenCodeServerProtocol {
     }
 
     fun isSameFilesystemPath(first: String?, second: String?): Boolean {
-        val left = normalizeFilesystemPathForComparison(first) ?: return false
-        val right = normalizeFilesystemPathForComparison(second) ?: return false
+        val left = filesystemPathKey(first) ?: return false
+        val right = filesystemPathKey(second) ?: return false
         return left == right
     }
 
     private val canonicalPathCache = ConcurrentHashMap<String, String>()
 
-    private fun normalizeFilesystemPathForComparison(path: String?): String? {
+    fun filesystemPathKey(path: String?): String? {
         val raw = path?.trim()?.takeIf { it.isNotBlank() } ?: return null
         return canonicalPathCache.computeIfAbsent(raw) {
             val lexical = raw.replace('\\', '/').trimEnd('/')
@@ -1259,9 +1259,33 @@ internal object OpenCodeServerProtocol {
         connectTimeoutMillis: Int = 5000,
         readTimeoutMillis: Int = 5000,
     ): Boolean {
-        if (!isSessionId(sessionID)) return false
+        return sendContinuePromptResult(
+            serverUrl,
+            basicAuthHeader,
+            sessionID,
+            connectTimeoutMillis,
+            readTimeoutMillis,
+        ) is OpenCodeProtocolResult.Success
+    }
+
+    fun sendContinuePromptResult(
+        serverUrl: String,
+        basicAuthHeader: String,
+        sessionID: String,
+        connectTimeoutMillis: Int = 5000,
+        readTimeoutMillis: Int = 5000,
+    ): OpenCodeProtocolResult<Unit> {
+        if (!isSessionId(sessionID)) {
+            return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_IDENTIFIER)
+        }
         val url = buildServerRootUrl(serverUrl) + "/api/session/$sessionID/prompt"
-        return httpPostJson(url, basicAuthHeader, """{"prompt":{"text":"Continue"},"resume":true}""", connectTimeoutMillis, readTimeoutMillis)
+        return httpPostJsonResult(
+            url,
+            basicAuthHeader,
+            """{"prompt":{"text":"Continue"},"resume":true}""",
+            connectTimeoutMillis,
+            readTimeoutMillis,
+        )
     }
 
     private fun httpGet(
@@ -1340,6 +1364,17 @@ internal object OpenCodeServerProtocol {
         connectTimeoutMillis: Int,
         readTimeoutMillis: Int,
     ): Boolean {
+        return httpPostJsonResult(url, basicAuthHeader, body, connectTimeoutMillis, readTimeoutMillis) is
+            OpenCodeProtocolResult.Success
+    }
+
+    private fun httpPostJsonResult(
+        url: String,
+        basicAuthHeader: String,
+        body: String,
+        connectTimeoutMillis: Int,
+        readTimeoutMillis: Int,
+    ): OpenCodeProtocolResult<Unit> {
         return try {
             val connection = URI(url).toURL().openConnection() as HttpURLConnection
             try {
@@ -1350,12 +1385,19 @@ internal object OpenCodeServerProtocol {
                 connection.setRequestProperty("Authorization", basicAuthHeader)
                 connection.setRequestProperty("Content-Type", "application/json")
                 connection.outputStream.use { it.write(body.toByteArray(StandardCharsets.UTF_8)) }
-                connection.responseCode in 200..299
+                val status = connection.responseCode
+                if (status in 200..299) {
+                    OpenCodeProtocolResult.Success(Unit)
+                } else {
+                    OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.HTTP, status)
+                }
             } finally {
                 connection.disconnect()
             }
+        } catch (_: SocketTimeoutException) {
+            OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.TIMEOUT)
         } catch (_: Exception) {
-            false
+            OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.IO)
         }
     }
 }
