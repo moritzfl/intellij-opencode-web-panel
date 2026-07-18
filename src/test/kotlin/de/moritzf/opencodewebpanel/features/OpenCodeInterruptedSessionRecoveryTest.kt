@@ -146,6 +146,33 @@ class OpenCodeInterruptedSessionRecoveryTest {
     }
 
     @Test
+    fun incompleteMixedRunNeverReplaysAnAttemptedContinuation() {
+        val harness = Harness()
+        harness.sessionResults.add(harness.sessions("ses_attempted", "ses_retry"))
+        harness.sessionResults.add(harness.sessions("ses_attempted", "ses_retry"))
+        val fetches = mutableMapOf<String, Int>()
+        harness.fetchMessage = { sessionID ->
+            val count = (fetches[sessionID] ?: 0) + 1
+            fetches[sessionID] = count
+            if (sessionID == "ses_retry" && count <= 3) {
+                OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.HTTP, 503)
+            } else {
+                OpenCodeProtocolResult.Success("""{"type":"user"}""")
+            }
+        }
+        // A 500 is ambiguous: the server may have accepted the write before failing the response.
+        harness.sendResult = OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.HTTP, 500)
+        val recovery = harness.recovery()
+
+        recovery.checkAndContinue()
+        recovery.checkAndContinue()
+
+        assertEquals(2, harness.listCalls)
+        assertEquals(listOf("ses_attempted", "ses_retry"), harness.sent)
+        assertEquals(1, fetches["ses_attempted"])
+    }
+
+    @Test
     fun failedContinuationPostIsNotRepeatedForSameGeneration() {
         for (status in listOf(409, 500)) {
             val harness = Harness()
@@ -179,6 +206,24 @@ class OpenCodeInterruptedSessionRecoveryTest {
         recovery.onResumedFromSuspend(lastAliveMillis = 1_000_000L, resumedAtMillis = 2_000_000L)
 
         assertEquals(2, harness.messageCalls)
+        assertEquals(listOf("ses_1"), harness.sent)
+    }
+
+    @Test
+    fun suspendRecoveryRetriesTransientSessionListFailure() {
+        val harness = Harness()
+        harness.sessionResults.add(OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.HTTP, 503))
+        harness.sessionResults.add(harness.sessions("ses_1"))
+        harness.fetchMessage = {
+            OpenCodeProtocolResult.Success(
+                """{"type":"assistant","time":{"created":900000,"completed":2000000},"error":{"name":"FetchError"}}""",
+            )
+        }
+        val recovery = harness.recovery()
+
+        recovery.onResumedFromSuspend(lastAliveMillis = 1_000_000L, resumedAtMillis = 2_000_003L)
+
+        assertEquals(2, harness.listCalls)
         assertEquals(listOf("ses_1"), harness.sent)
     }
 
