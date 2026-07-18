@@ -319,6 +319,8 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("opencode.intellij.project.opened:"))
         assertTrue(script.contains("state.projects[scope]"))
         assertTrue(script.contains("state.lastProject[scope] = directory"))
+        assertTrue(script.contains("!Array.isArray(state.projects)"))
+        assertTrue(script.contains("!Array.isArray(state.lastProject)"))
         assertTrue(script.contains("worktree: directory, expanded: true"))
         // Existing entries preserve position, collapse state, and unknown fields across re-seeds.
         assertTrue(script.contains("Object.assign"))

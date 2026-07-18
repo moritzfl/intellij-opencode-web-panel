@@ -154,8 +154,10 @@ internal object OpenCodeBrowserSnippets {
                 let parsed = {};
                 try { parsed = raw ? JSON.parse(raw) : {}; } catch (_) {}
                 const state = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-                state.projects = state.projects && typeof state.projects === 'object' ? state.projects : {};
-                state.lastProject = state.lastProject && typeof state.lastProject === 'object' ? state.lastProject : {};
+                state.projects = state.projects && typeof state.projects === 'object' && !Array.isArray(state.projects)
+                  ? state.projects : {};
+                state.lastProject = state.lastProject && typeof state.lastProject === 'object' && !Array.isArray(state.lastProject)
+                  ? state.lastProject : {};
                 const projects = Array.isArray(state.projects[scope]) ? state.projects[scope] : [];
                 // Match worktrees case-insensitively on Windows drive roots and with either
                 // separator so a stale entry from another client does not leave two copies.
