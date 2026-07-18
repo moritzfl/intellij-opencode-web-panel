@@ -27,6 +27,7 @@
 - Pending permission and question notifications are reconciled after event-stream reconnects, restoring missed requests and dismissing requests already answered elsewhere.
 - Windows drive and network file links now open in the IDE, and editor selections beginning with a file reference are pasted intact instead of being mistaken for one file path.
 - Retried IDE-to-chat inputs ignore late acknowledgements from older attempts, and rapid file/image drops retain their submission order.
+- Session-error notifications now keep the actual error detail alongside the conversation title, including across server lifecycle changes.
 
 ## [1.8.0] - 2026-07-17
 

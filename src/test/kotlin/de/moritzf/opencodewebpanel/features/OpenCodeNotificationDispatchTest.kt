@@ -20,8 +20,8 @@ class OpenCodeNotificationDispatchTest {
         val dispatcher = OpenCodeNotificationEventDispatcher(
             enabled = { true },
             serverIdentity = { identity },
-            process = {
-                processed.add(it)
+            process = { event, _ ->
+                processed.add(event)
                 OpenCodeNotificationEventProcessor.Outcome.Dismiss("session:ses_1")
             },
             dispatch = { outcome, _ -> dispatched.add(outcome) },
@@ -43,7 +43,7 @@ class OpenCodeNotificationDispatchTest {
         val dispatcher = OpenCodeNotificationEventDispatcher(
             enabled = { true },
             serverIdentity = { identity },
-            process = {
+            process = { _, _ ->
                 identity = identity.copy(generation = 2L)
                 OpenCodeNotificationEventProcessor.Outcome.Dismiss("session:ses_1")
             },
@@ -64,7 +64,7 @@ class OpenCodeNotificationDispatchTest {
         val dispatcher = OpenCodeNotificationEventDispatcher(
             enabled = { true },
             serverIdentity = { identity },
-            process = { OpenCodeNotificationEventProcessor.Outcome.Dismiss("session:ses_1") },
+            process = { _, _ -> OpenCodeNotificationEventProcessor.Outcome.Dismiss("session:ses_1") },
             dispatch = { outcome, _ -> dispatched.add(outcome) },
             executeAsync = tasks::add,
         )
@@ -83,7 +83,7 @@ class OpenCodeNotificationDispatchTest {
         val dispatcher = OpenCodeNotificationEventDispatcher(
             enabled = { true },
             serverIdentity = { identity },
-            process = { OpenCodeNotificationEventProcessor.Outcome.Dismiss("session:ses_1") },
+            process = { _, _ -> OpenCodeNotificationEventProcessor.Outcome.Dismiss("session:ses_1") },
             dispatch = { _, captured -> dispatched.add(captured) },
             executeAsync = { it() },
         )
@@ -99,6 +99,7 @@ class OpenCodeNotificationDispatchTest {
         registry.register("request:per_1", "permission")
         registry.register("session:ses_1", "permission")
         registry.register("session:ses_1", "response")
+        registry.track("unkeyed error")
         var resetCount = 0
         val expired = mutableListOf<String>()
         val invalidator = OpenCodeNotificationInvalidator(
@@ -110,7 +111,7 @@ class OpenCodeNotificationDispatchTest {
         invalidator.invalidate()
 
         assertEquals(1, resetCount)
-        assertEquals(listOf("permission", "response"), expired)
+        assertEquals(listOf("permission", "response", "unkeyed error"), expired)
         assertTrue(registry.removeByKey("request:per_1").isEmpty())
         assertTrue(registry.removeByKey("session:ses_1").isEmpty())
     }
@@ -133,7 +134,7 @@ class OpenCodeNotificationDispatchTest {
                 )
             },
             activeRequestKeys = { setOf("request:per_1", "request:stale") },
-            process = { OpenCodeNotificationEventProcessor.Outcome.Dismiss("processed:${it.recordId}") },
+            process = { event, _ -> OpenCodeNotificationEventProcessor.Outcome.Dismiss("processed:${event.recordId}") },
             dispatch = { outcome, _ -> outcomes.add(outcome) },
             executeAsync = { it() },
         )
@@ -165,7 +166,7 @@ class OpenCodeNotificationDispatchTest {
                 )
             },
             activeRequestKeys = { setOf("request:stale") },
-            process = { OpenCodeNotificationEventProcessor.Outcome.Dismiss("processed:${it.recordId}") },
+            process = { event, _ -> OpenCodeNotificationEventProcessor.Outcome.Dismiss("processed:${event.recordId}") },
             dispatch = { outcome, _ -> outcomes.add(outcome) },
             executeAsync = { it() },
         )
@@ -194,7 +195,7 @@ class OpenCodeNotificationDispatchTest {
                 )
             },
             activeRequestKeys = { setOf("request:stale") },
-            process = { OpenCodeNotificationEventProcessor.Outcome.Dismiss("processed") },
+            process = { _, _ -> OpenCodeNotificationEventProcessor.Outcome.Dismiss("processed") },
             dispatch = { outcome, _ -> outcomes.add(outcome) },
             executeAsync = { it() },
         )

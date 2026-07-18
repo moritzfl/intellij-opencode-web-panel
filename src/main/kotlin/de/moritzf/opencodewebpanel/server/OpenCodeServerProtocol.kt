@@ -1032,12 +1032,17 @@ internal object OpenCodeServerProtocol {
         connectTimeoutMillis: Int = 3000,
         readTimeoutMillis: Int = 3000,
     ): List<String>? {
-        val url = buildServerRootUrl(serverUrl) + listPath + "?directory=" +
-            java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
-        val body = httpGet(url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis) ?: return null
-        val root = runCatching { JsonParser.parseString(body) }.getOrNull()
-        if (root?.isJsonArray != true) return null
-        return parsePendingRequestIds(body)
+        return when (val result = fetchPendingRequestsResult(
+            serverUrl,
+            basicAuthHeader,
+            listPath,
+            directory,
+            connectTimeoutMillis,
+            readTimeoutMillis,
+        )) {
+            is OpenCodeProtocolResult.Success -> result.value.map { it.id }
+            is OpenCodeProtocolResult.Failure -> null
+        }
     }
 
     fun parsePendingRequestIds(json: String): List<String> {
@@ -1051,6 +1056,10 @@ internal object OpenCodeServerProtocol {
     }
 
     data class PendingRequestSummary(val id: String, val sessionID: String)
+    private data class ParsedPendingRequests(
+        val requests: List<PendingRequestSummary>,
+        val malformedEntry: Boolean,
+    )
 
     fun fetchPendingRequestsResult(
         serverUrl: String,
@@ -1065,25 +1074,39 @@ internal object OpenCodeServerProtocol {
         return when (val response = httpGetResult(url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)) {
             is OpenCodeProtocolResult.Failure -> response
             is OpenCodeProtocolResult.Success -> {
-                val requests = parsePendingRequestsOrNull(response.value)
-                    ?: return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_BODY)
-                OpenCodeProtocolResult.Success(requests)
+                parsePendingRequestsResult(response.value)
             }
         }
     }
 
     @TestOnly
-    fun parsePendingRequests(json: String): List<PendingRequestSummary> = parsePendingRequestsOrNull(json).orEmpty()
+    fun parsePendingRequests(json: String): List<PendingRequestSummary> = parsePendingRequestsBody(json)?.requests.orEmpty()
 
-    private fun parsePendingRequestsOrNull(json: String): List<PendingRequestSummary>? {
+    fun parsePendingRequestsResult(json: String): OpenCodeProtocolResult<List<PendingRequestSummary>> {
+        val parsed = parsePendingRequestsBody(json)
+            ?: return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_BODY)
+        if (parsed.malformedEntry) {
+            return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_BODY)
+        }
+        return OpenCodeProtocolResult.Success(parsed.requests)
+    }
+
+    private fun parsePendingRequestsBody(json: String): ParsedPendingRequests? {
         val requests = runCatching { JsonParser.parseString(json) }.getOrNull()
             ?.takeIf { it.isJsonArray }?.asJsonArray ?: return null
-        return requests.mapNotNull { request ->
-            val value = request.takeIf { it.isJsonObject }?.asJsonObject ?: return@mapNotNull null
-            val id = value.stringMember("id")?.takeIf(::isOpenCodeRecordId) ?: return@mapNotNull null
-            val sessionID = value.stringMember("sessionID")?.takeIf(::isSessionId) ?: return@mapNotNull null
-            PendingRequestSummary(id, sessionID)
+        var malformedEntry = false
+        val parsed = requests.mapNotNull { request ->
+            val value = request.takeIf { it.isJsonObject }?.asJsonObject
+            val id = value?.stringMember("id")?.takeIf(::isOpenCodeRecordId)
+            val sessionID = value?.stringMember("sessionID")?.takeIf(::isSessionId)
+            if (id == null || sessionID == null) {
+                malformedEntry = true
+                null
+            } else {
+                PendingRequestSummary(id, sessionID)
+            }
         }.distinctBy { it.id }
+        return ParsedPendingRequests(parsed, malformedEntry)
     }
 
     data class SessionSummary(val id: String, val updatedMillis: Long, val parentID: String? = null)

@@ -13,7 +13,10 @@ internal data class OpenCodeNotificationServerIdentity(
 internal class OpenCodeNotificationEventDispatcher(
     private val enabled: () -> Boolean,
     private val serverIdentity: () -> OpenCodeNotificationServerIdentity?,
-    private val process: (OpenCodeGlobalEvent) -> OpenCodeNotificationEventProcessor.Outcome?,
+    private val process: (
+        event: OpenCodeGlobalEvent,
+        identity: OpenCodeNotificationServerIdentity,
+    ) -> OpenCodeNotificationEventProcessor.Outcome?,
     private val dispatch: (
         outcome: OpenCodeNotificationEventProcessor.Outcome,
         identity: OpenCodeNotificationServerIdentity,
@@ -25,7 +28,7 @@ internal class OpenCodeNotificationEventDispatcher(
         val identity = serverIdentity() ?: return
         executeAsync {
             if (!stillCurrent(identity)) return@executeAsync
-            val outcome = process(event) ?: return@executeAsync
+            val outcome = process(event, identity) ?: return@executeAsync
             if (!stillCurrent(identity)) return@executeAsync
             dispatch(outcome, identity)
         }
@@ -59,7 +62,10 @@ internal class OpenCodePendingNotificationReconciler(
         directory: String,
     ) -> OpenCodePendingNotificationLoad,
     private val activeRequestKeys: () -> Set<String>,
-    private val process: (OpenCodeGlobalEvent) -> OpenCodeNotificationEventProcessor.Outcome?,
+    private val process: (
+        event: OpenCodeGlobalEvent,
+        identity: OpenCodeNotificationServerIdentity,
+    ) -> OpenCodeNotificationEventProcessor.Outcome?,
     private val dispatch: (
         outcome: OpenCodeNotificationEventProcessor.Outcome,
         identity: OpenCodeNotificationServerIdentity,
@@ -99,6 +105,7 @@ internal class OpenCodePendingNotificationReconciler(
                         recordId = request.id,
                         properties = properties,
                     ),
+                    identity,
                 ) ?: continue
                 if (!stillCurrent(identity)) return@executeAsync
                 dispatch(outcome, identity)
@@ -114,9 +121,16 @@ internal class OpenCodePendingNotificationReconciler(
 /** Tracks notifications under every request/session dismissal key they belong to. */
 internal class OpenCodeActiveNotificationRegistry<T> {
     private val itemsByKey = mutableMapOf<String, MutableList<T>>()
+    private val trackedItems = linkedSetOf<T>()
+
+    @Synchronized
+    fun track(item: T) {
+        trackedItems.add(item)
+    }
 
     @Synchronized
     fun register(key: String, item: T) {
+        trackedItems.add(item)
         itemsByKey.getOrPut(key) { mutableListOf() }.add(item)
     }
 
@@ -130,15 +144,20 @@ internal class OpenCodeActiveNotificationRegistry<T> {
     fun keys(prefix: String): Set<String> = itemsByKey.keys.filterTo(mutableSetOf()) { it.startsWith(prefix) }
 
     @Synchronized
-    fun remove(key: String, item: T) {
-        val remaining = itemsByKey[key] ?: return
-        remaining.remove(item)
-        if (remaining.isEmpty()) itemsByKey.remove(key)
+    fun removeItem(item: T) {
+        trackedItems.remove(item)
+        val iterator = itemsByKey.iterator()
+        while (iterator.hasNext()) {
+            val entry = iterator.next()
+            entry.value.remove(item)
+            if (entry.value.isEmpty()) iterator.remove()
+        }
     }
 
     @Synchronized
     fun clear(): List<T> {
-        val items = itemsByKey.values.flatten().distinct()
+        val items = trackedItems.toList()
+        trackedItems.clear()
         itemsByKey.clear()
         return items
     }

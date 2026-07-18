@@ -1248,6 +1248,18 @@ class OpenCodeServerProtocolTest {
             requests,
         )
         assertTrue(OpenCodeServerProtocol.parsePendingRequests("{}").isEmpty())
+        assertTrue(
+            OpenCodeServerProtocol.parsePendingRequestsResult("""[{"id":"per_1"}]""") is
+                OpenCodeProtocolResult.Failure,
+        )
+        assertEquals(
+            OpenCodeProtocolResult.Success(
+                listOf(OpenCodeServerProtocol.PendingRequestSummary("per_1", "ses_1")),
+            ),
+            OpenCodeServerProtocol.parsePendingRequestsResult(
+                """[{"id":"per_1","sessionID":"ses_1"}]""",
+            ),
+        )
     }
 
     @Test

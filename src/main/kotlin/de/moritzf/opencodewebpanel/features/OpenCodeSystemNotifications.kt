@@ -400,6 +400,8 @@ internal class OpenCodeSystemNotifications(
                 val title = notificationText(openCodeNotification.title, 200)
                 val body = notificationText(openCodeNotification.body, 1000)
                 val ideNotification = group.createNotification(title, body, NotificationType.INFORMATION)
+                activeNotifications.track(ideNotification)
+                ideNotification.whenExpired { activeNotifications.removeItem(ideNotification) }
                 if (OpenCodeServerProtocol.isPermissionNotification(openCodeNotification) &&
                     OpenCodeSettingsState.getInstance().enablePermissionNotificationActions
                 ) {
@@ -426,9 +428,6 @@ internal class OpenCodeSystemNotifications(
 
         private fun registerForAutoDismiss(key: String, notification: Notification) {
             activeNotifications.register(key, notification)
-            notification.whenExpired {
-                activeNotifications.remove(key, notification)
-            }
         }
 
         private fun targetFor(directory: String): OpenCodeSystemNotifications? {

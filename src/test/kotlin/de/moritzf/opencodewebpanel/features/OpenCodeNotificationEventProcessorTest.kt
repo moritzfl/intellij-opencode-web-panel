@@ -99,6 +99,20 @@ class OpenCodeNotificationEventProcessorTest {
     }
 
     @Test
+    fun idleMergeStateIsScopedToServerIdentity() {
+        sessions["ses_1"] = OpenCodeServerProtocol.SessionInfo("Fix the build", parentID = null)
+
+        assertTrue(
+            processor.process(event("session.idle", """{"sessionID":"ses_1"}"""), idleScope = "old") is
+                OpenCodeNotificationEventProcessor.Outcome.Notify,
+        )
+        assertTrue(
+            processor.process(event("session.idle", """{"sessionID":"ses_1"}"""), idleScope = "new") is
+                OpenCodeNotificationEventProcessor.Outcome.Notify,
+        )
+    }
+
+    @Test
     fun idleNotificationsSkipUnknownAndChildSessions() {
         assertNull(processor.process(event("session.idle", """{"sessionID":"ses_unknown"}""")))
 
@@ -130,6 +144,17 @@ class OpenCodeNotificationEventProcessorTest {
             processor.process(event("session.error", """{"error":{"name":"ContextOverflowError","data":{}}}""")),
         )
         assertEquals("ContextOverflowError", namedError.body)
+
+        sessions["ses_known"] = OpenCodeServerProtocol.SessionInfo("Fix the build", parentID = null)
+        val titledError = notify(
+            processor.process(
+                event(
+                    "session.error",
+                    """{"sessionID":"ses_known","error":{"name":"APIError","data":{"message":"provider failed"}}}""",
+                ),
+            ),
+        )
+        assertEquals("Fix the build: provider failed", titledError.body)
 
         val defaultBody = notify(processor.process(event("session.error", "{}")))
         assertEquals("An error occurred", defaultBody.body)

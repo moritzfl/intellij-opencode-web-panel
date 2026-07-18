@@ -39,9 +39,11 @@ internal class OpenCodeNotificationEventProcessor(
 
     // Merges the paired session.idle/session.status events of one state change without
     // suppressing a genuine re-idle shortly after; keyed by directory + session.
-    private val recentIdleAtMillis = mutableMapOf<String, Long>()
+    private data class IdleKey(val scope: Any, val directory: String, val sessionID: String)
 
-    fun process(event: OpenCodeGlobalEvent): Outcome? {
+    private val recentIdleAtMillis = mutableMapOf<IdleKey, Long>()
+
+    fun process(event: OpenCodeGlobalEvent, idleScope: Any = Unit): Outcome? {
         val directory = event.directory
         val properties = event.properties
         var type = event.type
@@ -75,7 +77,7 @@ internal class OpenCodeNotificationEventProcessor(
         val sessionID = properties.stringMember("sessionID").orEmpty()
         val session = if (sessionID.isNotBlank()) fetchSession(directory, sessionID) else null
         if (type == "session.idle" && (session == null || session.parentID != null)) return null
-        if (type == "session.idle" && !markIdle(directory, sessionID)) return null
+        if (type == "session.idle" && !markIdle(idleScope, directory, sessionID)) return null
         if (type == "session.error" && session?.parentID != null) return null
 
         val sessionTitle = session?.title?.takeIf { it.isNotBlank() }
@@ -88,9 +90,13 @@ internal class OpenCodeNotificationEventProcessor(
             }
             "session.error" -> {
                 title = "Session error"
-                body = sessionTitle
-                    ?: sessionErrorMessage(properties)
-                    ?: "An error occurred"
+                val error = sessionErrorMessage(properties)
+                body = when {
+                    error != null && sessionTitle != null -> "$sessionTitle: $error"
+                    error != null -> error
+                    sessionTitle != null -> sessionTitle
+                    else -> "An error occurred"
+                }
             }
             "permission.asked" -> {
                 title = "Permission required"
@@ -144,8 +150,8 @@ internal class OpenCodeNotificationEventProcessor(
         return error.stringMember("name")?.takeIf { it.isNotBlank() }
     }
 
-    private fun markIdle(directory: String, sessionID: String): Boolean {
-        val idleKey = directory + "\n" + sessionID
+    private fun markIdle(scope: Any, directory: String, sessionID: String): Boolean {
+        val idleKey = IdleKey(scope, directory, sessionID)
         val now = nowMillis()
         synchronized(recentIdleAtMillis) {
             recentIdleAtMillis.entries.removeIf { now - it.value >= IDLE_MERGE_WINDOW_MILLIS }
