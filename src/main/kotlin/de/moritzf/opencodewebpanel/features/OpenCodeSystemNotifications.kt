@@ -60,6 +60,7 @@ internal class OpenCodeSystemNotifications(
             targets.add(this)
         }
         ensureGlobalEventSubscription()
+        OpenCodeSoundService.ensureInstalled()
         reconcilePendingRequests()
         // Interacting with the panel that shows a session dismisses that session's
         // notifications: the user has seen what the notification pointed at. The tool-window

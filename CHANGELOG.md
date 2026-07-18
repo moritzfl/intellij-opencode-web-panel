@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- OpenCode notification sounds (agent finished, permission required, errors) now play from the IDE using the sound choices configured in OpenCode's own settings. The embedded browser previously stayed silent for these cues.
+
 ## [1.9.0] - 2026-07-18
 
 ### Added
