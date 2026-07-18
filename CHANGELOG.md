@@ -30,6 +30,7 @@
 - Session-error notifications now keep the actual error detail alongside the conversation title, including across server lifecycle changes.
 - The tool-window badge no longer lets a delayed server snapshot overwrite a newer idle or attention state.
 - Malformed nested project state in OpenCode's browser storage is now repaired instead of being rewritten ineffectively on every retry.
+- Permission and question notifications now preserve event order, so an already answered request cannot appear after its reply event.
 
 ## [1.8.0] - 2026-07-17
 

@@ -2,6 +2,7 @@ package de.moritzf.opencodewebpanel.features
 
 import com.google.gson.JsonObject
 import de.moritzf.opencodewebpanel.server.OpenCodeGlobalEvent
+import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 
 internal data class OpenCodeNotificationServerIdentity(
     val generation: Long,
@@ -36,6 +37,31 @@ internal class OpenCodeNotificationEventDispatcher(
 
     private fun stillCurrent(identity: OpenCodeNotificationServerIdentity): Boolean {
         return enabled() && serverIdentity() == identity
+    }
+}
+
+/** Applies ordered event outcomes on the UI thread after one final identity check. */
+internal class OpenCodeNotificationOutcomeDispatcher(
+    private val enabled: () -> Boolean,
+    private val serverIdentity: () -> OpenCodeNotificationServerIdentity?,
+    private val notify: (
+        payload: OpenCodeServerProtocol.SystemNotificationPayload,
+        identity: OpenCodeNotificationServerIdentity,
+    ) -> Unit,
+    private val dismiss: (key: String) -> Unit,
+    private val executeOnUi: ((() -> Unit) -> Unit),
+) {
+    fun dispatch(
+        outcome: OpenCodeNotificationEventProcessor.Outcome,
+        identity: OpenCodeNotificationServerIdentity,
+    ) {
+        executeOnUi {
+            if (!enabled() || serverIdentity() != identity) return@executeOnUi
+            when (outcome) {
+                is OpenCodeNotificationEventProcessor.Outcome.Notify -> notify(outcome.payload, identity)
+                is OpenCodeNotificationEventProcessor.Outcome.Dismiss -> dismiss(outcome.key)
+            }
+        }
     }
 }
 

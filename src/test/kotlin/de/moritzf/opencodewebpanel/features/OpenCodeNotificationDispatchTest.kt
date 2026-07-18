@@ -2,6 +2,7 @@ package de.moritzf.opencodewebpanel.features
 
 import com.google.gson.JsonObject
 import de.moritzf.opencodewebpanel.server.OpenCodeGlobalEvent
+import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -91,6 +92,64 @@ class OpenCodeNotificationDispatchTest {
         dispatcher.eventReceived(event())
 
         assertEquals(listOf(identity), dispatched)
+    }
+
+    @Test
+    fun notifyAndDismissOutcomesApplyInUiQueueOrder() {
+        val identity = OpenCodeNotificationServerIdentity(1L, "http://127.0.0.1:4096", 0L)
+        val uiTasks = mutableListOf<() -> Unit>()
+        val active = mutableSetOf<String>()
+        val actions = mutableListOf<String>()
+        val dispatcher = OpenCodeNotificationOutcomeDispatcher(
+            enabled = { true },
+            serverIdentity = { identity },
+            notify = { payload, _ ->
+                actions += "notify"
+                active += "request:${payload.requestID}"
+            },
+            dismiss = { key ->
+                actions += "dismiss"
+                active -= key
+            },
+            executeOnUi = uiTasks::add,
+        )
+        val payload = OpenCodeServerProtocol.SystemNotificationPayload(
+            id = "per_1",
+            directory = "/project",
+            route = "/route",
+            title = "Permission required",
+            body = "body",
+            kind = "permission",
+            sessionID = "ses_1",
+            requestID = "per_1",
+        )
+
+        dispatcher.dispatch(OpenCodeNotificationEventProcessor.Outcome.Notify(payload), identity)
+        dispatcher.dispatch(OpenCodeNotificationEventProcessor.Outcome.Dismiss("request:per_1"), identity)
+        uiTasks.forEach { it() }
+
+        assertEquals(listOf("notify", "dismiss"), actions)
+        assertTrue(active.isEmpty())
+    }
+
+    @Test
+    fun staleOutcomeIsDroppedAgainOnUiThread() {
+        val uiTasks = mutableListOf<() -> Unit>()
+        var identity = OpenCodeNotificationServerIdentity(1L, "http://127.0.0.1:4096", 0L)
+        val actions = mutableListOf<String>()
+        val dispatcher = OpenCodeNotificationOutcomeDispatcher(
+            enabled = { true },
+            serverIdentity = { identity },
+            notify = { _, _ -> actions += "notify" },
+            dismiss = { actions += "dismiss" },
+            executeOnUi = uiTasks::add,
+        )
+
+        dispatcher.dispatch(OpenCodeNotificationEventProcessor.Outcome.Dismiss("session:ses_1"), identity)
+        identity = identity.copy(generation = 2L)
+        uiTasks.single()()
+
+        assertTrue(actions.isEmpty())
     }
 
     @Test
