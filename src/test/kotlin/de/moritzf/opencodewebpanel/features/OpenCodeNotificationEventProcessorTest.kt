@@ -92,6 +92,10 @@ class OpenCodeNotificationEventProcessorTest {
     fun idleNotificationsSkipUnknownAndChildSessions() {
         assertNull(processor.process(event("session.idle", """{"sessionID":"ses_unknown"}""")))
 
+        // A failed lookup must not consume the paired idle event's dedupe opportunity.
+        sessions["ses_unknown"] = OpenCodeServerProtocol.SessionInfo("Recovered", parentID = null)
+        assertTrue(processor.process(event("session.status", """{"sessionID":"ses_unknown","status":{"type":"idle"}}""")) is OpenCodeNotificationEventProcessor.Outcome.Notify)
+
         now += 10_000
         sessions["ses_child"] = OpenCodeServerProtocol.SessionInfo("Subtask", parentID = "ses_parent")
         assertNull(processor.process(event("session.idle", """{"sessionID":"ses_child"}""")))
@@ -104,6 +108,18 @@ class OpenCodeNotificationEventProcessorTest {
         )
         assertEquals("Session error", payload.title)
         assertEquals("boom", payload.body)
+
+        val objectError = notify(
+            processor.process(
+                event("session.error", """{"error":{"name":"APIError","data":{"message":"provider failed"}}}"""),
+            ),
+        )
+        assertEquals("provider failed", objectError.body)
+
+        val namedError = notify(
+            processor.process(event("session.error", """{"error":{"name":"ContextOverflowError","data":{}}}""")),
+        )
+        assertEquals("ContextOverflowError", namedError.body)
 
         val defaultBody = notify(processor.process(event("session.error", "{}")))
         assertEquals("An error occurred", defaultBody.body)

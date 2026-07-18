@@ -68,13 +68,17 @@ class OpenCodeGlobalEventStreamTest {
     }
 
     @Test
-    fun parseGlobalEventDefaultsMissingIdAndProperties() {
-        val event = OpenCodeGlobalEventStream.parseGlobalEvent(
-            """{"directory": "/tmp/project", "payload": {"type": "session.idle"}}""",
-        )!!
-
-        assertEquals("", event.recordId)
-        assertEquals(0, event.properties.size())
+    fun parseGlobalEventRejectsMissingIdOrProperties() {
+        assertNull(
+            OpenCodeGlobalEventStream.parseGlobalEvent(
+                """{"directory":"/tmp/project","payload":{"type":"session.idle","properties":{}}}""",
+            ),
+        )
+        assertNull(
+            OpenCodeGlobalEventStream.parseGlobalEvent(
+                """{"directory":"/tmp/project","payload":{"id":"evt_1","type":"session.idle"}}""",
+            ),
+        )
     }
 
     @Test
@@ -133,7 +137,7 @@ class OpenCodeGlobalEventStreamTest {
                         "data: {\"directory\":\"/tmp/project\",\"payload\":{\"id\":\"evt_1\",\"type\":\"session.idle\"," +
                             "\"properties\":{\"sessionID\":\"ses_1\"}}}\n\n" +
                             ": keep-alive\n\n" +
-                            "data: {\"directory\":\"/tmp/project\",\"payload\":{\"type\":\"permission.asked\"," +
+                            "data: {\"directory\":\"/tmp/project\",\"payload\":{\"id\":\"evt_2\",\"type\":\"permission.asked\"," +
                             "\"properties\":{\"id\":\"per_1\"}}}\n\n"
                         ).toByteArray(StandardCharsets.UTF_8),
                 )
@@ -198,7 +202,7 @@ class OpenCodeGlobalEventStreamTest {
                 } else {
                     body.write(
                         (
-                            "data: {\"directory\":\"/tmp/project\",\"payload\":{\"type\":\"session.idle\"," +
+                            "data: {\"directory\":\"/tmp/project\",\"payload\":{\"id\":\"evt_ok\",\"type\":\"session.idle\"," +
                                 "\"properties\":{\"sessionID\":\"ses_ok\"}}}\n\n"
                             ).toByteArray(StandardCharsets.UTF_8),
                     )
@@ -223,6 +227,69 @@ class OpenCodeGlobalEventStreamTest {
             stream.start("http://127.0.0.1:${server.address.port}", "Basic dGVzdA==")
             assertTrue("did not recover after oversized block", eventsLatch.await(10, TimeUnit.SECONDS))
             assertTrue(connections.get() >= 2)
+        } finally {
+            stream.stop()
+            server.stop(0)
+        }
+    }
+
+    @Test
+    fun streamRejectsWrongContentTypeBeforePublishingConnected() {
+        val connections = AtomicInteger()
+        val connected = AtomicInteger()
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/global/event") { exchange ->
+            connections.incrementAndGet()
+            exchange.responseHeaders.add("Content-Type", "application/json")
+            exchange.sendResponseHeaders(200, 2)
+            exchange.responseBody.use { it.write("{}".toByteArray()) }
+        }
+        server.start()
+        val stream = OpenCodeGlobalEventStream(
+            listener = {
+                object : OpenCodeGlobalEventListener {
+                    override fun connected() { connected.incrementAndGet() }
+                    override fun eventReceived(event: OpenCodeGlobalEvent) = Unit
+                }
+            },
+            reconnectDelayMillis = 20,
+            readTimeoutMillis = 100,
+        )
+        try {
+            stream.start("http://127.0.0.1:${server.address.port}", "Basic test")
+            val deadline = System.currentTimeMillis() + 3_000
+            while (connections.get() < 2 && System.currentTimeMillis() < deadline) Thread.sleep(20)
+            assertTrue(connections.get() >= 2)
+            assertEquals(0, connected.get())
+        } finally {
+            stream.stop()
+            server.stop(0)
+        }
+    }
+
+    @Test
+    fun stalledStreamReconnectsAfterReadTimeout() {
+        val connections = AtomicInteger()
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/global/event") { exchange ->
+            connections.incrementAndGet()
+            exchange.responseHeaders.add("Content-Type", "text/event-stream")
+            exchange.sendResponseHeaders(200, 0)
+            exchange.responseBody.use { body ->
+                body.flush()
+                Thread.sleep(400)
+            }
+        }
+        server.start()
+        val stream = OpenCodeGlobalEventStream(
+            reconnectDelayMillis = 20,
+            readTimeoutMillis = 100,
+        )
+        try {
+            stream.start("http://127.0.0.1:${server.address.port}", "Basic test")
+            val deadline = System.currentTimeMillis() + 3_000
+            while (connections.get() < 2 && System.currentTimeMillis() < deadline) Thread.sleep(20)
+            assertTrue("stalled stream did not reconnect", connections.get() >= 2)
         } finally {
             stream.stop()
             server.stop(0)

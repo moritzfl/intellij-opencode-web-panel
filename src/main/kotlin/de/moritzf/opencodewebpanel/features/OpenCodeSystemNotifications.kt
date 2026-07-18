@@ -161,7 +161,7 @@ internal class OpenCodeSystemNotifications(
         // even when the panel is already on the same session under /server/.../session/<id>.
         val targetUrl = OpenCodeServerProtocol.buildServerSessionUrl(
             serverUrl,
-            sessionID.takeIf(OpenCodeServerProtocol::isOpenCodeRecordId),
+            sessionID.takeIf(OpenCodeServerProtocol::isSessionId),
         )
         toolWindow.activate({
             if (project.isDisposed) return@activate
@@ -171,7 +171,7 @@ internal class OpenCodeSystemNotifications(
             browser.component.requestFocusInWindow()
             // The user is now looking at the notified session; its other notifications
             // (e.g. an earlier "response ready") are obsolete too.
-            sessionID.takeIf(OpenCodeServerProtocol::isOpenCodeRecordId)?.let { dismissByKey("session:$it") }
+            sessionID.takeIf(OpenCodeServerProtocol::isSessionId)?.let { dismissByKey("session:$it") }
         }, true)
     }
 

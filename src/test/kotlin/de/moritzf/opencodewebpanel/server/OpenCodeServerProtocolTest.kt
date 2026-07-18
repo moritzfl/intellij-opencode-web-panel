@@ -8,12 +8,15 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 import java.net.InetAddress
+import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.SocketException
 import java.nio.file.Files
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import de.moritzf.opencodewebpanel.browser.OpenCodeBrowserSnippets
+import com.sun.net.httpserver.HttpServer
+import java.util.concurrent.atomic.AtomicInteger
 
 class OpenCodeServerProtocolTest {
 
@@ -1085,6 +1088,7 @@ class OpenCodeServerProtocolTest {
     @Test
     fun parseSessionInfoReadsBareAndEnvelopedSessions() {
         val bare = OpenCodeServerProtocol.parseSessionInfo("""{"id":"ses_1","title":"Fix the build"}""")!!
+        assertEquals("ses_1", bare.id)
         assertEquals("Fix the build", bare.title)
         assertNull(bare.parentID)
 
@@ -1103,6 +1107,8 @@ class OpenCodeServerProtocolTest {
         assertNull(OpenCodeServerProtocol.parseSessionInfo(""))
         assertNull(OpenCodeServerProtocol.parseSessionInfo("not json"))
         assertNull(OpenCodeServerProtocol.parseSessionInfo("[]"))
+        assertNull(OpenCodeServerProtocol.parseSessionInfo("{}"))
+        assertNull(OpenCodeServerProtocol.parseSessionInfo("""{"title":"Missing id"}"""))
     }
 
     @Test
@@ -1969,6 +1975,50 @@ class OpenCodeServerProtocolTest {
             readTimeoutMillis = 100,
         )
         assertTrue(sessions.isEmpty())
+        val result = OpenCodeServerProtocol.fetchRecentSessionsResult(
+            "http://127.0.0.1:1",
+            auth,
+            "/tmp/project",
+            connectTimeoutMillis = 100,
+            readTimeoutMillis = 100,
+        )
+        assertTrue(result is OpenCodeProtocolResult.Failure)
+    }
+
+    @Test
+    fun fetchRecentSessionsFollowsCursorPages() {
+        val requests = AtomicInteger()
+        val now = System.currentTimeMillis()
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/api/session") { exchange ->
+            val request = requests.incrementAndGet()
+            val body = if (exchange.requestURI.rawQuery.orEmpty().contains("cursor=")) {
+                """{"data":[{"id":"ses_page2","time":{"updated":${now - 1}}}],"cursor":{}}"""
+            } else {
+                """{"data":[{"id":"ses_page1","time":{"updated":${now - 2}}}],"cursor":{"next":"page-2"}}"""
+            }
+            exchange.sendResponseHeaders(200, body.toByteArray().size.toLong())
+            exchange.responseBody.use { it.write(body.toByteArray()) }
+            assertTrue(request <= 2)
+        }
+        server.start()
+        try {
+            val result = OpenCodeServerProtocol.fetchRecentSessionsResult(
+                "http://127.0.0.1:${server.address.port}",
+                OpenCodeServerProtocol.buildBasicAuthHeader("test"),
+                "/tmp/project",
+                maxAgeMillis = Long.MAX_VALUE,
+                nowMillis = now,
+            )
+            assertTrue(result is OpenCodeProtocolResult.Success)
+            assertEquals(
+                listOf("ses_page1", "ses_page2"),
+                (result as OpenCodeProtocolResult.Success).value.map { it.id },
+            )
+            assertEquals(2, requests.get())
+        } finally {
+            server.stop(0)
+        }
     }
 
     @Test
@@ -2178,6 +2228,54 @@ class OpenCodeServerProtocolTest {
         assertTrue(
             OpenCodeServerProtocol.fetchSessionDiff("http://127.0.0.1:1", auth, "/tmp", "invalid").isEmpty(),
         )
+        val invalidMessage = OpenCodeServerProtocol.fetchSessionDiffResult(
+            "http://127.0.0.1:1",
+            auth,
+            "/tmp",
+            "ses_valid",
+            "ses_wrong_kind",
+        )
+        assertEquals(
+            OpenCodeProtocolResult.Failure.Kind.INVALID_IDENTIFIER,
+            (invalidMessage as OpenCodeProtocolResult.Failure).kind,
+        )
+    }
+
+    @Test
+    fun fetchSessionDiffDistinguishesEmptyHttpFailureAndInvalidBody() {
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/session/ses_test/diff") { exchange ->
+            val query = exchange.requestURI.rawQuery.orEmpty()
+            when {
+                query.contains("directory=fail") -> exchange.sendResponseHeaders(503, -1)
+                query.contains("directory=invalid") -> {
+                    val body = "{}"
+                    exchange.sendResponseHeaders(200, body.length.toLong())
+                    exchange.responseBody.use { it.write(body.toByteArray()) }
+                }
+                else -> {
+                    val body = "[]"
+                    exchange.sendResponseHeaders(200, body.length.toLong())
+                    exchange.responseBody.use { it.write(body.toByteArray()) }
+                }
+            }
+        }
+        server.start()
+        try {
+            val base = "http://127.0.0.1:${server.address.port}"
+            val auth = OpenCodeServerProtocol.buildBasicAuthHeader("test")
+            val empty = OpenCodeServerProtocol.fetchSessionDiffResult(base, auth, "ok", "ses_test")
+            assertTrue(empty is OpenCodeProtocolResult.Success && empty.value.isEmpty())
+
+            val failed = OpenCodeServerProtocol.fetchSessionDiffResult(base, auth, "fail", "ses_test")
+            assertEquals(OpenCodeProtocolResult.Failure.Kind.HTTP, (failed as OpenCodeProtocolResult.Failure).kind)
+            assertEquals(503, failed.statusCode)
+
+            val invalid = OpenCodeServerProtocol.fetchSessionDiffResult(base, auth, "invalid", "ses_test")
+            assertEquals(OpenCodeProtocolResult.Failure.Kind.INVALID_BODY, (invalid as OpenCodeProtocolResult.Failure).kind)
+        } finally {
+            server.stop(0)
+        }
     }
 
     @Test

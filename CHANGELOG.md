@@ -14,6 +14,10 @@
 - Event-driven status, notifications, and refreshes now recognize macOS path aliases, symlinks, Windows path case, and UNC shares as the same project.
 - IDE actions that add file references or selected text now wait for confirmation from OpenCode's real prompt before removing queued input; unavailable prompts and open dialogs no longer lose it silently.
 - Generic selected text is inserted through OpenCode's paste path, while file references and attachments use its drop path.
+- Diff loading now distinguishes a real empty diff from a server or response failure and reports the latter clearly.
+- The OpenCode event connection now recovers within roughly 45 seconds after missed heartbeats instead of remaining silently stalled for up to ten minutes.
+- Session-error notifications now display messages from OpenCode's current structured error format.
+- Most-recent-session lookup follows paginated results, so heavily used projects do not miss an older conversation with newer activity.
 
 ## [1.8.0] - 2026-07-17
 

@@ -28,12 +28,15 @@ internal class OpenCodeGlobalEventStream(
         ApplicationManager.getApplication().messageBus.syncPublisher(OpenCodeGlobalEventListener.TOPIC)
     },
     private val reconnectDelayMillis: Long = RECONNECT_DELAY_MILLIS,
+    private val readTimeoutMillis: Int = READ_TIMEOUT_MILLIS,
 ) {
     companion object {
         const val EVENT_PATH = "/global/event"
         private const val RECONNECT_DELAY_MILLIS = 2_000L
         private const val CONNECT_TIMEOUT_MILLIS = 5_000
-        private const val READ_TIMEOUT_MILLIS = 10 * 60 * 1_000
+        // OpenCode 1.18 emits server.heartbeat every 10 seconds. Three to four missed beats
+        // indicate a stalled/half-open transport; reconnect so consumers re-seed promptly.
+        private const val READ_TIMEOUT_MILLIS = 45_000
         /** Cap one SSE event block so a stream without blank lines cannot grow without bound. */
         const val MAX_SSE_BLOCK_CHARS = 1 * 1024 * 1024
 
@@ -50,15 +53,15 @@ internal class OpenCodeGlobalEventStream(
             return data.takeIf { it.isNotEmpty() }
         }
 
-        /** Parses one event payload; returns null for malformed or directory-less events. */
+        /** Parses one regular event payload; returns null for malformed or directory-less events. */
         fun parseGlobalEvent(json: String): OpenCodeGlobalEvent? {
             val event = runCatching { JsonParser.parseString(json) }.getOrNull()
                 ?.takeIf { it.isJsonObject }?.asJsonObject ?: return null
             val directory = event.stringMember("directory")?.takeIf { it.isNotBlank() } ?: return null
             val payload = event.objectMember("payload") ?: return null
             val type = payload.stringMember("type")?.takeIf { it.isNotBlank() } ?: return null
-            val recordId = payload.stringMember("id").orEmpty()
-            val properties = payload.objectMember("properties") ?: JsonObject()
+            val recordId = payload.stringMember("id")?.takeIf { it.isNotBlank() } ?: return null
+            val properties = payload.objectMember("properties") ?: return null
             return OpenCodeGlobalEvent(directory, type, recordId, properties)
         }
     }
@@ -127,12 +130,7 @@ internal class OpenCodeGlobalEventStream(
         val url = OpenCodeServerProtocol.buildServerRootUrl(serverUrl) + EVENT_PATH
         val newConnection = URI(url).toURL().openConnection() as HttpURLConnection
         newConnection.connectTimeout = CONNECT_TIMEOUT_MILLIS
-        // The server sends no keep-alives, so a silent stream is normal while no session is
-        // active — but an unbounded read could also block forever on a socket that died
-        // without an error. The bounded timeout turns that into a reconnect (and consumer
-        // re-seed) after at most this long, at the cost of an occasional cheap local
-        // reconnect on genuinely idle streams.
-        newConnection.readTimeout = READ_TIMEOUT_MILLIS
+        newConnection.readTimeout = readTimeoutMillis
         newConnection.requestMethod = "GET"
         newConnection.setRequestProperty("Accept", "text/event-stream")
         newConnection.setRequestProperty("Authorization", basicAuthHeader)
@@ -148,6 +146,10 @@ internal class OpenCodeGlobalEventStream(
         try {
             if (newConnection.responseCode != HttpURLConnection.HTTP_OK) {
                 throw IOException("OpenCode event stream returned HTTP ${newConnection.responseCode}")
+            }
+            val contentType = newConnection.contentType.orEmpty().lowercase()
+            if (!contentType.startsWith("text/event-stream")) {
+                throw IOException("OpenCode event stream returned unexpected content type")
             }
             dispatchConnected(myGeneration)
             newConnection.inputStream.bufferedReader(StandardCharsets.UTF_8).use { reader ->
@@ -189,6 +191,7 @@ internal class OpenCodeGlobalEventStream(
     private fun dispatchBlock(myGeneration: Long, block: String) {
         val data = sseBlockData(block) ?: return
         val event = parseGlobalEvent(data) ?: return
+        if (event.type == "sync") return
         if (!isCurrent(myGeneration)) return
         try {
             listener().eventReceived(event)

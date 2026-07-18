@@ -13,6 +13,7 @@ import com.intellij.openapi.fileTypes.FileTypeManager
 import com.intellij.openapi.project.Project
 import com.intellij.ui.jcef.JBCefBrowser
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
+import de.moritzf.opencodewebpanel.server.OpenCodeProtocolResult
 import de.moritzf.opencodewebpanel.server.OpenCodeUnifiedDiff
 import de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager
 
@@ -38,13 +39,20 @@ internal class OpenCodeDiffNavigation(
         val directory = projectDirectory()?.takeIf { it.isNotBlank() } ?: return
 
         ApplicationManager.getApplication().executeOnPooledThread {
-            val diffs = OpenCodeServerProtocol.fetchSessionDiff(
+            val result = OpenCodeServerProtocol.fetchSessionDiffResult(
                 serverUrl,
                 OpenCodeServerProtocol.buildBasicAuthHeader(password),
                 directory,
                 sessionID,
                 messageID,
             )
+            if (result is OpenCodeProtocolResult.Failure) {
+                ApplicationManager.getApplication().invokeLater {
+                    if (!project.isDisposed) notifyDiffLoadFailed()
+                }
+                return@executeOnPooledThread
+            }
+            val diffs = (result as OpenCodeProtocolResult.Success).value
             val requests = selectDiffs(diffs, filePath).mapNotNull(::buildDiffRequest)
             ApplicationManager.getApplication().invokeLater {
                 if (project.isDisposed) return@invokeLater
@@ -105,6 +113,13 @@ internal class OpenCodeDiffNavigation(
         NotificationGroupManager.getInstance()
             .getNotificationGroup(OpenCodeServerProtocol.NOTIFICATION_GROUP_ID)
             ?.createNotification("No diff to show for this change", NotificationType.INFORMATION)
+            ?.notify(project)
+    }
+
+    private fun notifyDiffLoadFailed() {
+        NotificationGroupManager.getInstance()
+            .getNotificationGroup(OpenCodeServerProtocol.NOTIFICATION_GROUP_ID)
+            ?.createNotification("Could not load this diff from OpenCode", NotificationType.WARNING)
             ?.notify(project)
     }
 }

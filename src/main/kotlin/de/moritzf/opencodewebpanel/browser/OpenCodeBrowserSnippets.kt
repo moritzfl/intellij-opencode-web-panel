@@ -127,7 +127,7 @@ internal object OpenCodeBrowserSnippets {
         if (projectBasePath.isNullOrBlank()) return null
         val directory = escapeJavaScript(projectBasePath)
         val providedSessionId = mostRecentSessionId
-            ?.takeIf { openMostRecentConversation && OpenCodeServerProtocol.isOpenCodeRecordId(it) }
+            ?.takeIf { openMostRecentConversation && OpenCodeServerProtocol.isSessionId(it) }
             ?.let(::escapeJavaScript)
             .orEmpty()
         val originGuard = serverUrl?.let(OpenCodeServerProtocol::buildOrigin)

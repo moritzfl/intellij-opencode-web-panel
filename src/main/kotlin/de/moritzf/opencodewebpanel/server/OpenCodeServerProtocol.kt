@@ -7,6 +7,7 @@ import com.intellij.util.text.SemVer
 import java.io.BufferedReader
 import java.io.File
 import java.net.HttpURLConnection
+import java.net.SocketTimeoutException
 import java.net.URI
 import java.net.URLDecoder
 import java.nio.file.Files
@@ -18,6 +19,16 @@ import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.ln
 import org.jetbrains.annotations.TestOnly
+
+internal sealed interface OpenCodeProtocolResult<out T> {
+    data class Success<T>(val value: T) : OpenCodeProtocolResult<T>
+    data class Failure(
+        val kind: Kind,
+        val statusCode: Int? = null,
+    ) : OpenCodeProtocolResult<Nothing> {
+        enum class Kind { INVALID_IDENTIFIER, HTTP, TIMEOUT, IO, TOO_LARGE, INVALID_BODY }
+    }
+}
 
 internal object OpenCodeServerProtocol {
     private const val HOST = "127.0.0.1"
@@ -337,17 +348,23 @@ internal object OpenCodeServerProtocol {
         connectTimeoutMillis: Int = 5000,
         readTimeoutMillis: Int = 5000,
     ): Boolean {
-        if (!isOpenCodeRecordId(sessionID) || !isOpenCodeRecordId(permissionID)) return false
+        if (!isSessionId(sessionID) || !isPermissionId(permissionID)) return false
         val url = buildServerRootUrl(serverUrl) +
             "/permission/$permissionID/reply" +
             "?directory=" + java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
         return httpPostJson(url, basicAuthHeader, "{\"reply\":\"${response.jsonValue}\"}", connectTimeoutMillis, readTimeoutMillis)
     }
 
-    /** OpenCode record IDs (`ses_...`, `per_...`) are URL-safe by construction; reject anything else. */
+    /** OpenCode record IDs are URL-safe by construction; endpoint-specific helpers validate kind. */
     fun isOpenCodeRecordId(value: String): Boolean {
         return value.isNotBlank() && Regex("^[A-Za-z0-9_-]+$").matches(value)
     }
+
+    fun isSessionId(value: String): Boolean = value.startsWith("ses_") && isOpenCodeRecordId(value)
+
+    fun isMessageId(value: String): Boolean = value.startsWith("msg_") && isOpenCodeRecordId(value)
+
+    fun isPermissionId(value: String): Boolean = value.startsWith("per_") && isOpenCodeRecordId(value)
 
     private fun looksLikeAbsoluteFilesystemPath(value: String): Boolean {
         return value.startsWith('/') || value.startsWith("\\\\") ||
@@ -801,7 +818,7 @@ internal object OpenCodeServerProtocol {
 
     // ─── Session lookup for notifications ───────────────────────────────────────
 
-    data class SessionInfo(val title: String, val parentID: String?)
+    data class SessionInfo(val title: String, val parentID: String?, val id: String = "")
 
     /**
      * Fetches one session (`GET /session/{sessionID}?directory=...`), used for notification
@@ -816,19 +833,21 @@ internal object OpenCodeServerProtocol {
         connectTimeoutMillis: Int = 3000,
         readTimeoutMillis: Int = 3000,
     ): SessionInfo? {
-        if (!isOpenCodeRecordId(sessionID)) return null
+        if (!isSessionId(sessionID)) return null
         val url = buildServerRootUrl(serverUrl) + "/session/" + sessionID + "?directory=" +
             java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
         val body = httpGet(url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis) ?: return null
-        return parseSessionInfo(body)
+        return parseSessionInfo(body)?.takeIf { it.id == sessionID }
     }
 
     fun parseSessionInfo(json: String): SessionInfo? {
         val root = parseJsonObject(json) ?: return null
         val session = root.objectMember("data") ?: root
+        val id = session.stringMember("id")?.takeIf(::isSessionId) ?: return null
         return SessionInfo(
             title = session.stringMember("title").orEmpty(),
             parentID = session.stringMember("parentID")?.takeIf { it.isNotBlank() },
+            id = id,
         )
     }
 
@@ -857,20 +876,58 @@ internal object OpenCodeServerProtocol {
         connectTimeoutMillis: Int = 5000,
         readTimeoutMillis: Int = 5000,
     ): List<SnapshotFileDiff> {
-        if (!isOpenCodeRecordId(sessionID)) return emptyList()
-        val messageParam = messageID
-            ?.takeIf { it.isNotBlank() && isOpenCodeRecordId(it) }
+        return when (val result = fetchSessionDiffResult(
+            serverUrl,
+            basicAuthHeader,
+            directory,
+            sessionID,
+            messageID,
+            connectTimeoutMillis,
+            readTimeoutMillis,
+        )) {
+            is OpenCodeProtocolResult.Success -> result.value
+            is OpenCodeProtocolResult.Failure -> emptyList()
+        }
+    }
+
+    fun fetchSessionDiffResult(
+        serverUrl: String,
+        basicAuthHeader: String,
+        directory: String,
+        sessionID: String,
+        messageID: String? = null,
+        connectTimeoutMillis: Int = 5000,
+        readTimeoutMillis: Int = 5000,
+    ): OpenCodeProtocolResult<List<SnapshotFileDiff>> {
+        if (!isSessionId(sessionID)) {
+            return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_IDENTIFIER)
+        }
+        val normalizedMessageID = messageID?.takeIf { it.isNotBlank() }
+        if (normalizedMessageID != null && !isMessageId(normalizedMessageID)) {
+            return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_IDENTIFIER)
+        }
+        val messageParam = normalizedMessageID
             ?.let { "&messageID=" + java.net.URLEncoder.encode(it, StandardCharsets.UTF_8) }
             .orEmpty()
         val url = buildServerRootUrl(serverUrl) + "/session/" + sessionID + "/diff?directory=" +
             java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8) + messageParam
-        val body = httpGet(url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis) ?: return emptyList()
-        return parseSessionDiff(body)
+        return when (val response = httpGetResult(url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)) {
+            is OpenCodeProtocolResult.Failure -> response
+            is OpenCodeProtocolResult.Success -> {
+                val array = parseJsonArray(response.value)
+                    ?: return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_BODY)
+                OpenCodeProtocolResult.Success(parseSessionDiffArray(array))
+            }
+        }
     }
 
     @TestOnly
     fun parseSessionDiff(json: String): List<SnapshotFileDiff> {
         val array = parseJsonArray(json) ?: return emptyList()
+        return parseSessionDiffArray(array)
+    }
+
+    private fun parseSessionDiffArray(array: JsonArray): List<SnapshotFileDiff> {
         val results = mutableListOf<SnapshotFileDiff>()
         for (element in array) {
             val entry = element.takeIf { it.isJsonObject }?.asJsonObject ?: continue
@@ -894,12 +951,12 @@ internal object OpenCodeServerProtocol {
      */
     fun buildSessionRoute(serverUrl: String?, directory: String, sessionID: String?): String {
         if (!serverUrl.isNullOrBlank()) {
-            val path = runCatching { URI(buildServerSessionUrl(serverUrl, sessionID?.takeIf(::isOpenCodeRecordId))).rawPath }
+            val path = runCatching { URI(buildServerSessionUrl(serverUrl, sessionID?.takeIf(::isSessionId))).rawPath }
                 .getOrNull()
             if (!path.isNullOrBlank()) return path
         }
         val root = "/" + encodeDirectory(directory)
-        if (sessionID.isNullOrBlank() || !isOpenCodeRecordId(sessionID)) return root
+        if (sessionID.isNullOrBlank() || !isSessionId(sessionID)) return root
         return root + "/session/" + java.net.URLEncoder.encode(sessionID, StandardCharsets.UTF_8)
     }
 
@@ -918,7 +975,7 @@ internal object OpenCodeServerProtocol {
         val path = runCatching { URI(url).rawPath }.getOrNull() ?: return null
         val encoded = Regex("/session/([^/?#]+)").find(path)?.groupValues?.get(1) ?: return null
         return runCatching { URLDecoder.decode(encoded, StandardCharsets.UTF_8) }.getOrNull()
-            ?.takeIf { isOpenCodeRecordId(it) }
+            ?.takeIf { isSessionId(it) }
     }
 
     /** The last path segment of a project directory, for human-readable notification texts. */
@@ -950,6 +1007,7 @@ internal object OpenCodeServerProtocol {
         val url = buildServerRootUrl(serverUrl) + "/session/status?directory=" +
             java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
         val body = httpGet(url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis) ?: return null
+        if (parseJsonObject(body) == null) return null
         return parseBusySessionIds(body)
     }
 
@@ -977,6 +1035,8 @@ internal object OpenCodeServerProtocol {
         val url = buildServerRootUrl(serverUrl) + listPath + "?directory=" +
             java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
         val body = httpGet(url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis) ?: return null
+        val root = runCatching { JsonParser.parseString(body) }.getOrNull()
+        if (root?.isJsonArray != true) return null
         return parsePendingRequestIds(body)
     }
 
@@ -991,6 +1051,7 @@ internal object OpenCodeServerProtocol {
     }
 
     data class SessionSummary(val id: String, val updatedMillis: Long, val parentID: String? = null)
+    private data class SessionPage(val sessions: List<SessionSummary>, val nextCursor: String?)
 
     /**
      * Fetches recent sessions for a project directory from the v2 API
@@ -1010,19 +1071,64 @@ internal object OpenCodeServerProtocol {
         connectTimeoutMillis: Int = 3000,
         readTimeoutMillis: Int = 3000,
     ): List<SessionSummary> {
-        val url = buildServerRootUrl(serverUrl) +
-            "/api/session?order=desc&limit=$limit&directory=" +
+        return when (val result = fetchRecentSessionsResult(
+            serverUrl,
+            basicAuthHeader,
+            directory,
+            maxAgeMillis,
+            nowMillis,
+            limit,
+            connectTimeoutMillis,
+            readTimeoutMillis,
+        )) {
+            is OpenCodeProtocolResult.Success -> result.value
+            is OpenCodeProtocolResult.Failure -> emptyList()
+        }
+    }
+
+    fun fetchRecentSessionsResult(
+        serverUrl: String,
+        basicAuthHeader: String,
+        directory: String,
+        maxAgeMillis: Long = RECENT_SESSION_WINDOW_MILLIS,
+        nowMillis: Long = System.currentTimeMillis(),
+        limit: Int = 20,
+        connectTimeoutMillis: Int = 3000,
+        readTimeoutMillis: Int = 3000,
+        maxPages: Int = 10,
+    ): OpenCodeProtocolResult<List<SessionSummary>> {
+        val rootUrl = buildServerRootUrl(serverUrl)
+        var url = rootUrl + "/api/session?order=desc&limit=$limit&directory=" +
             java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
-        val body = httpGet(url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis) ?: return emptyList()
-        return parseSessionList(body, maxAgeMillis, nowMillis)
+        val sessions = linkedMapOf<String, SessionSummary>()
+        val seenCursors = mutableSetOf<String>()
+        repeat(maxPages.coerceAtLeast(1)) {
+            val response = httpGetResult(url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)
+            if (response is OpenCodeProtocolResult.Failure) return response
+            val body = (response as OpenCodeProtocolResult.Success).value
+            val page = parseSessionPage(body, maxAgeMillis, nowMillis)
+                ?: return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_BODY)
+            page.sessions.forEach { session -> sessions.putIfAbsent(session.id, session) }
+            val cursor = page.nextCursor?.takeIf { it.isNotBlank() }
+                ?: return OpenCodeProtocolResult.Success(sessions.values.toList())
+            if (!seenCursors.add(cursor)) {
+                return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_BODY)
+            }
+            url = rootUrl + "/api/session?cursor=" + java.net.URLEncoder.encode(cursor, StandardCharsets.UTF_8)
+        }
+        return OpenCodeProtocolResult.Success(sessions.values.toList())
     }
 
     @TestOnly
     fun parseSessionList(json: String, maxAgeMillis: Long, nowMillis: Long): List<SessionSummary> {
+        return parseSessionPage(json, maxAgeMillis, nowMillis)?.sessions.orEmpty()
+    }
+
+    private fun parseSessionPage(json: String, maxAgeMillis: Long, nowMillis: Long): SessionPage? {
         // Response shape (verified against opencode 1.17.13): {"data":[SessionV2Info...],"cursor":{...}}
         // with each session carrying id ("ses_...") and time.{created,updated} epoch millis.
-        val data = parseJsonObject(json)?.get("data")?.takeIf { it.isJsonArray }?.asJsonArray
-            ?: return emptyList()
+        val root = parseJsonObject(json) ?: return null
+        val data = root.get("data")?.takeIf { it.isJsonArray }?.asJsonArray ?: return null
         val results = mutableListOf<SessionSummary>()
         for (element in data) {
             val session = element.takeIf { it.isJsonObject }?.asJsonObject ?: continue
@@ -1034,7 +1140,8 @@ internal object OpenCodeServerProtocol {
                 results.add(SessionSummary(id, updated, session.stringMember("parentID")?.takeIf { it.isNotBlank() }))
             }
         }
-        return results.distinctBy { it.id }
+        val cursor = root.objectMember("cursor")?.stringMember("next")?.takeIf { it.isNotBlank() }
+        return SessionPage(results.distinctBy { it.id }, cursor)
     }
 
     /**
@@ -1049,11 +1156,40 @@ internal object OpenCodeServerProtocol {
         connectTimeoutMillis: Int = 3000,
         readTimeoutMillis: Int = 3000,
     ): String? {
-        if (!isOpenCodeRecordId(sessionID)) return null
+        return when (val result = fetchLastMessageJsonResult(
+            serverUrl,
+            basicAuthHeader,
+            sessionID,
+            connectTimeoutMillis,
+            readTimeoutMillis,
+        )) {
+            is OpenCodeProtocolResult.Success -> result.value
+            is OpenCodeProtocolResult.Failure -> null
+        }
+    }
+
+    fun fetchLastMessageJsonResult(
+        serverUrl: String,
+        basicAuthHeader: String,
+        sessionID: String,
+        connectTimeoutMillis: Int = 3000,
+        readTimeoutMillis: Int = 3000,
+    ): OpenCodeProtocolResult<String?> {
+        if (!isSessionId(sessionID)) {
+            return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_IDENTIFIER)
+        }
         val url = buildServerRootUrl(serverUrl) +
             "/api/session/$sessionID/message?order=desc&limit=1"
-        val body = httpGet(url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis) ?: return null
-        return extractFirstDataObject(body)
+        return when (val response = httpGetResult(url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)) {
+            is OpenCodeProtocolResult.Failure -> response
+            is OpenCodeProtocolResult.Success -> {
+                val root = parseJsonObject(response.value)
+                    ?: return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_BODY)
+                val data = root.get("data")?.takeIf { it.isJsonArray }?.asJsonArray
+                    ?: return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_BODY)
+                OpenCodeProtocolResult.Success(data.firstOrNull { it.isJsonObject }?.toString())
+            }
+        }
     }
 
     /** Extracts the first JSON object of the `data` array from a `{"data":[{...}]}` response. */
@@ -1123,7 +1259,7 @@ internal object OpenCodeServerProtocol {
         connectTimeoutMillis: Int = 5000,
         readTimeoutMillis: Int = 5000,
     ): Boolean {
-        if (!isOpenCodeRecordId(sessionID)) return false
+        if (!isSessionId(sessionID)) return false
         val url = buildServerRootUrl(serverUrl) + "/api/session/$sessionID/prompt"
         return httpPostJson(url, basicAuthHeader, """{"prompt":{"text":"Continue"},"resume":true}""", connectTimeoutMillis, readTimeoutMillis)
     }
@@ -1135,6 +1271,25 @@ internal object OpenCodeServerProtocol {
         readTimeoutMillis: Int,
         maxResponseChars: Int = MAX_HTTP_RESPONSE_CHARS,
     ): String? {
+        return when (val result = httpGetResult(
+            url,
+            basicAuthHeader,
+            connectTimeoutMillis,
+            readTimeoutMillis,
+            maxResponseChars,
+        )) {
+            is OpenCodeProtocolResult.Success -> result.value
+            is OpenCodeProtocolResult.Failure -> null
+        }
+    }
+
+    private fun httpGetResult(
+        url: String,
+        basicAuthHeader: String?,
+        connectTimeoutMillis: Int,
+        readTimeoutMillis: Int,
+        maxResponseChars: Int = MAX_HTTP_RESPONSE_CHARS,
+    ): OpenCodeProtocolResult<String> {
         return try {
             val connection = URI(url).toURL().openConnection() as HttpURLConnection
             try {
@@ -1144,15 +1299,20 @@ internal object OpenCodeServerProtocol {
                 if (!basicAuthHeader.isNullOrBlank()) {
                     connection.setRequestProperty("Authorization", basicAuthHeader)
                 }
-                if (connection.responseCode !in 200..299) return null
-                connection.inputStream.bufferedReader().use { reader ->
-                    readBounded(reader, maxResponseChars)
+                val status = connection.responseCode
+                if (status !in 200..299) {
+                    return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.HTTP, status)
                 }
+                val body = connection.inputStream.bufferedReader().use { reader -> readBounded(reader, maxResponseChars) }
+                    ?: return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.TOO_LARGE)
+                OpenCodeProtocolResult.Success(body)
             } finally {
                 connection.disconnect()
             }
+        } catch (_: SocketTimeoutException) {
+            OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.TIMEOUT)
         } catch (_: Exception) {
-            null
+            OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.IO)
         }
     }
 

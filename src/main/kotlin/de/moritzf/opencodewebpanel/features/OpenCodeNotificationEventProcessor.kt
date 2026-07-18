@@ -60,7 +60,7 @@ internal class OpenCodeNotificationEventProcessor(
                 // The session picked up work again (a prompt from any OpenCode client), so
                 // stale "response ready" / "session error" notifications no longer apply.
                 val sessionID = properties.stringMember("sessionID") ?: return null
-                if (!OpenCodeServerProtocol.isOpenCodeRecordId(sessionID)) return null
+                if (!OpenCodeServerProtocol.isSessionId(sessionID)) return null
                 return Outcome.Dismiss("session:$sessionID")
             }
             if (statusType != "idle") return null
@@ -73,10 +73,9 @@ internal class OpenCodeNotificationEventProcessor(
         }
 
         val sessionID = properties.stringMember("sessionID").orEmpty()
-        if (type == "session.idle" && !markIdle(directory, sessionID)) return null
-
         val session = if (sessionID.isNotBlank()) fetchSession(directory, sessionID) else null
         if (type == "session.idle" && (session == null || session.parentID != null)) return null
+        if (type == "session.idle" && !markIdle(directory, sessionID)) return null
         if (type == "session.error" && session?.parentID != null) return null
 
         val sessionTitle = session?.title?.takeIf { it.isNotBlank() }
@@ -90,7 +89,7 @@ internal class OpenCodeNotificationEventProcessor(
             "session.error" -> {
                 title = "Session error"
                 body = sessionTitle
-                    ?: properties.stringMember("error")
+                    ?: sessionErrorMessage(properties)
                     ?: "An error occurred"
             }
             "permission.asked" -> {
@@ -130,6 +129,13 @@ internal class OpenCodeNotificationEventProcessor(
                 requestID = requestID,
             ),
         )
+    }
+
+    private fun sessionErrorMessage(properties: JsonObject): String? {
+        properties.stringMember("error")?.takeIf { it.isNotBlank() }?.let { return it }
+        val error = properties.objectMember("error") ?: return null
+        error.objectMember("data")?.stringMember("message")?.takeIf { it.isNotBlank() }?.let { return it }
+        return error.stringMember("name")?.takeIf { it.isNotBlank() }
     }
 
     private fun markIdle(directory: String, sessionID: String): Boolean {
