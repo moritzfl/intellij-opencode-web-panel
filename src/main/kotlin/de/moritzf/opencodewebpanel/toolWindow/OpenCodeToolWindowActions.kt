@@ -195,6 +195,26 @@ internal fun confirmOpenCodeWebStateReset(project: Project?): Boolean {
         .ask(project)
 }
 
+/**
+ * Gear-only debugging entry: opens Chromium's built-in DevTools (console, network, elements)
+ * for the panel's browser via JBCef's own support — no plugin-side tooling to maintain.
+ */
+internal class OpenCodeOpenDevToolsAction : DumbAwareAction(
+    "Open Browser DevTools",
+    "Open Chromium DevTools for the embedded OpenCode page",
+    null,
+) {
+    override fun actionPerformed(e: AnActionEvent) {
+        openCodePanelContent(e)?.openBrowserDevTools()
+    }
+
+    override fun update(e: AnActionEvent) {
+        e.presentation.isEnabled = e.project != null
+    }
+
+    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+}
+
 internal class OpenCodeViewServerLogAction : DumbAwareAction(
     "View Server Log",
     "Open the OpenCode server log in the editor",

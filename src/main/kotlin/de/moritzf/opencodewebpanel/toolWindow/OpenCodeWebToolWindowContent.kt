@@ -1192,6 +1192,12 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         return OpenCodeProjectSettingsState.getInstance(project).effectiveProjectDirectory(project.basePath)
     }
 
+    /** Opens Chromium's built-in DevTools window for this panel's browser (JBCef built-in). */
+    fun openBrowserDevTools() {
+        if (isContentDisposed()) return
+        browser.openDevtools()
+    }
+
     private fun executeIdeThemeSyncScript(serverUrl: String): Boolean {
         val script = OpenCodeBrowserSnippets.buildIdeThemeSyncScript(
             enabled = OpenCodeSettingsState.getInstance().syncThemeWithIde,
