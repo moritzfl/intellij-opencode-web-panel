@@ -1021,6 +1021,12 @@ class OpenCodeServerProtocolTest {
         assertFalse(script.contains("Go to session"))
         assertTrue(script.contains("[data-slot=\"toast-close-button\"], [data-slot=\"toast-v2-close-button\"]"))
         assertTrue(script.contains("new MutationObserver"))
+        // Bounded blast radius: auto-dismissals are capped per page load, and hitting the cap
+        // disconnects the observer (suppression off for this load) with a single warning.
+        assertTrue(script.contains("const MAX_DISMISSALS = 20;"))
+        assertTrue(script.contains("if (dismissals >= MAX_DISMISSALS)"))
+        assertTrue(script.contains("observer.disconnect()"))
+        assertTrue(script.contains("OpenCode toast suppression cap reached"))
     }
 
     @Test

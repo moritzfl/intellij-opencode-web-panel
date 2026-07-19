@@ -803,10 +803,28 @@ internal object OpenCodeBrowserSnippets {
               ].join(', ');
               const actionSelector = '[data-slot="toast-action"], [data-slot="toast-v2-actions"] button';
               const closeSelector = '[data-slot="toast-close-button"], [data-slot="toast-v2-close-button"]';
+              // Bound auto-dismissals per page load: this feature acts on the user's behalf, so a
+              // matcher gone wrong after an OpenCode redesign must not silently eat an unbounded
+              // stream of toasts. Legit use dismisses a handful per load; hitting the cap disables
+              // suppression for this page load and logs once.
+              const MAX_DISMISSALS = 20;
+              let dismissals = 0;
+              let observer = null;
               const dismissIfProjectSwitchPrompt = (toast) => {
                 const iconSlot = toast.querySelector(iconSlotSelector);
                 if (!iconSlot || !iconSlot.querySelector(promptIconSelector)) return;
                 if (!toast.querySelector(actionSelector)) return;
+                if (dismissals >= MAX_DISMISSALS) {
+                  if (observer) {
+                    observer.disconnect();
+                    observer = null;
+                    if (window.console && window.console.warn) {
+                      window.console.warn('OpenCode toast suppression cap reached; disabled until the next page load');
+                    }
+                  }
+                  return;
+                }
+                dismissals += 1;
                 const close = toast.querySelector(closeSelector);
                 if (close && typeof close.click === 'function') {
                   close.click();
@@ -822,7 +840,7 @@ internal object OpenCodeBrowserSnippets {
               const install = () => {
                 const target = document.body || document.documentElement;
                 if (!target) return;
-                const observer = new MutationObserver((mutations) => {
+                observer = new MutationObserver((mutations) => {
                   for (const mutation of mutations) {
                     mutation.addedNodes.forEach(scan);
                   }
