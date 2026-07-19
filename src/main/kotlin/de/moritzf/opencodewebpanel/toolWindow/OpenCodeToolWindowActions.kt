@@ -77,7 +77,7 @@ internal class OpenCodeZoomOutAction : DumbAwareAction(
 internal class OpenCodeResetZoomAction : DumbAwareAction(
     "Reset Zoom",
     "Reset the OpenCode panel zoom to ${OpenCodeSettingsState.DEFAULT_UI_ZOOM_PERCENT}%",
-    null,
+    AllIcons.General.ActualZoom,
 ) {
     override fun actionPerformed(e: AnActionEvent) = OpenCodeZoom.apply { OpenCodeSettingsState.DEFAULT_UI_ZOOM_PERCENT }
 
@@ -166,7 +166,7 @@ internal fun confirmOpenCodeServerRestart(project: Project?): Boolean {
 internal class OpenCodeResetWebStateAction : DumbAwareAction(
     "Reset OpenCode Web State",
     "Clear the embedded OpenCode web app's stored browser state and reload",
-    null,
+    AllIcons.General.Reset,
 ) {
     override fun actionPerformed(e: AnActionEvent) {
         val content = openCodePanelContent(e) ?: return
@@ -202,7 +202,7 @@ internal fun confirmOpenCodeWebStateReset(project: Project?): Boolean {
 internal class OpenCodeOpenDevToolsAction : DumbAwareAction(
     "Open Browser DevTools",
     "Open Chromium DevTools for the embedded OpenCode page",
-    null,
+    AllIcons.Toolwindows.WebToolWindow,
 ) {
     override fun actionPerformed(e: AnActionEvent) {
         openCodePanelContent(e)?.openBrowserDevTools()
@@ -218,7 +218,7 @@ internal class OpenCodeOpenDevToolsAction : DumbAwareAction(
 internal class OpenCodeViewServerLogAction : DumbAwareAction(
     "View Server Log",
     "Open the OpenCode server log in the editor",
-    null,
+    AllIcons.Debugger.Console,
 ) {
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
@@ -236,7 +236,7 @@ internal class OpenCodeViewServerLogAction : DumbAwareAction(
 internal class OpenCodeOpenSettingsAction : DumbAwareAction(
     "OpenCode Web Panel Settings",
     "Open the OpenCode Web Panel settings",
-    null,
+    AllIcons.General.Settings,
 ) {
     override fun actionPerformed(e: AnActionEvent) {
         ShowSettingsUtil.getInstance().showSettingsDialog(e.project, OpenCodeSettingsConfigurable::class.java)
