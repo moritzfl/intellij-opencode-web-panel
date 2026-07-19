@@ -10,7 +10,7 @@ import com.intellij.ui.content.ContentFactory
 import kotlin.jvm.JvmDefaultWithoutCompatibility
 
 /** Must match the `toolWindow id` declared in plugin.xml. */
-internal const val OPEN_CODE_TOOL_WINDOW_ID = "OpenCode Web Panel"
+internal const val OPEN_CODE_TOOL_WINDOW_ID = "OpenCode"
 
 @JvmDefaultWithoutCompatibility
 class OpenCodeWebToolWindowFactoryImpl : ToolWindowFactory, DumbAware {

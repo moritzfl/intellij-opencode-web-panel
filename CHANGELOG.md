@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- The tool window is now labeled "OpenCode" instead of "OpenCode Web Panel".
+
 ## [1.9.1] - 2026-07-19
 
 ### Added

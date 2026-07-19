@@ -22,11 +22,11 @@
         <projectConfigurable id="opencode.web.panel.project.settings" parentId="tools" displayName="OpenCode Web Panel" instance="de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsConfigurable"/>
         <applicationService serviceImplementation="de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager"/>
         <notificationGroup id="OpenCode Web Panel" displayType="BALLOON"/>
-        <toolWindow factoryClass="de.moritzf.opencodewebpanel.toolWindow.OpenCodeWebToolWindowFactoryImpl" id="OpenCode Web Panel" anchor="right" icon="/icons/opencode.svg"/>
+        <toolWindow factoryClass="de.moritzf.opencodewebpanel.toolWindow.OpenCodeWebToolWindowFactoryImpl" id="OpenCode" anchor="right" icon="/icons/opencode.svg"/>
     </extensions>
 
     <actions>
-        <group id="OpenCodeWebPanel.Shortcuts" text="OpenCode Web Panel" popup="false">
+        <group id="OpenCodeWebPanel.Shortcuts" text="OpenCode" popup="false">
             <action id="OpenCodeWebPanel.NewSession"
                     class="com.intellij.openapi.actionSystem.EmptyAction"
                     text="OpenCode: New Session"

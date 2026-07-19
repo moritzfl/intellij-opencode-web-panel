@@ -14,7 +14,7 @@ import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsState
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
 import java.io.File
 
-internal const val OPEN_CODE_TOOL_WINDOW_ID = "OpenCode Web Panel"
+internal const val OPEN_CODE_TOOL_WINDOW_ID = "OpenCode"
 
 /**
  * Adds the selected project files to the OpenCode chat as `@path` references, using the same
