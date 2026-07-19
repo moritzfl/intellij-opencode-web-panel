@@ -427,6 +427,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         }
         browser.jbCefClient.addRequestHandler(requestHandler, browser.cefBrowser)
         browser.jbCefClient.addLoadHandler(loadHandler, browser.cefBrowser)
+        browser.jbCefClient.addContextMenuHandler(OpenCodeBrowserContextMenuHandler(), browser.cefBrowser)
         // onAddressChange also fires for the SPA's history-API route changes, which full-load
         // handlers never see.
         browser.jbCefClient.addDisplayHandler(
