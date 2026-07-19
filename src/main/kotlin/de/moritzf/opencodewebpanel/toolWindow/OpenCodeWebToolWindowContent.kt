@@ -3,12 +3,15 @@ package de.moritzf.opencodewebpanel.toolWindow
 import com.intellij.ide.AppLifecycleListener
 import com.intellij.ide.ui.LafManager
 import com.intellij.ide.ui.LafManagerListener
+import com.intellij.notification.NotificationAction
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationActivationListener
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.thisLogger
+import com.intellij.openapi.ide.CopyPasteManager
+import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.IconLoader
 import com.intellij.openapi.util.text.StringUtil
@@ -41,6 +44,7 @@ import de.moritzf.opencodewebpanel.server.OpenCodeSuspendResumeListener
 import de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager
 import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsListener
 import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsState
+import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsListener
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
 import de.moritzf.opencodewebpanel.settings.OpenCodeUiSetting
@@ -54,6 +58,7 @@ import java.awt.CardLayout
 import java.awt.Component
 import java.awt.Container
 import java.awt.Cursor
+import java.awt.datatransfer.StringSelection
 import javax.swing.JPanel
 
 class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposable {
@@ -74,6 +79,14 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
 
         @Volatile
         private var applicationClosing = false
+
+        /**
+         * One notification per IDE session, application-wide: Chromium caches the entered
+         * credentials for the lifetime of the shared JCEF process, so after the first sign-in
+         * later DevTools windows (from any project) no longer prompt.
+         */
+        @Volatile
+        private var devToolsCredentialsNotified = false
     }
 
     private val project = toolWindow.project
@@ -1196,6 +1209,42 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     fun openBrowserDevTools() {
         if (isContentDisposed()) return
         browser.openDevtools()
+        notifyAboutDevToolsCredentials()
+    }
+
+    /**
+     * The DevTools window is a separate browser without the panel's auth handlers, so its own
+     * server fetches (e.g. source maps) can trigger Chromium's basic-auth prompt. Authenticating
+     * it programmatically is a documented dead end — JPMS blocks the reflective browser lookup,
+     * out-of-process JCEF hides the DevTools browser from the JVM entirely, and auth-cache
+     * priming interfered with the app's own session — so instead tell the user which
+     * credentials to enter, with the password one click away.
+     */
+    private fun notifyAboutDevToolsCredentials() {
+        if (devToolsCredentialsNotified) return
+        val group = NotificationGroupManager.getInstance()
+            .getNotificationGroup(OpenCodeServerProtocol.NOTIFICATION_GROUP_ID)
+            ?: return
+        devToolsCredentialsNotified = true
+        val notification = group.createNotification(
+            "Browser DevTools sign-in",
+            "If DevTools asks you to sign in, use the username \"${OpenCodeServerProtocol.BASIC_AUTH_USERNAME}\" " +
+                "and the OpenCode server password.",
+            NotificationType.INFORMATION,
+        )
+        serverManager.getServerPassword()?.let { password ->
+            notification.addAction(
+                NotificationAction.createSimple("Copy password") {
+                    CopyPasteManager.getInstance().setContents(StringSelection(password))
+                },
+            )
+        }
+        notification.addAction(
+            NotificationAction.createSimple("Open settings") {
+                ShowSettingsUtil.getInstance().showSettingsDialog(project, OpenCodeSettingsConfigurable::class.java)
+            },
+        )
+        notification.notify(project)
     }
 
     private fun executeIdeThemeSyncScript(serverUrl: String): Boolean {
