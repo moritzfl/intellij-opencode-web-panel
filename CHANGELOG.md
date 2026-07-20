@@ -4,9 +4,15 @@
 
 ## [Unreleased]
 
+## [1.9.2] - 2026-07-20
+
 ### Changed
 
 - The tool window is now labeled "OpenCode" instead of "OpenCode Web Panel".
+
+### Fixed
+
+- Right after starting the IDE, the automatic continuation of interrupted sessions could mistake a message you had just sent for a conversation cut off by the previous shutdown and inject a spurious "Continue" into it — leading to unexpected notification sounds and extra responses shortly after startup. Messages sent after the current start are now left alone.
 
 ## [1.9.1] - 2026-07-19
 
@@ -427,7 +433,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.1...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.2...HEAD
+[1.9.2]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.1...1.9.2
 [1.9.1]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.0...1.9.1
 [1.9.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.8.0...1.9.0
 [1.8.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.7.1...1.8.0
