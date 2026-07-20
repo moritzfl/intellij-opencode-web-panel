@@ -26,6 +26,7 @@ class OpenCodeInterruptedSessionRecoveryTest {
         var serverUrl = "http://127.0.0.1:4096"
         var password = "pw"
         var generation = 1L
+        var serverStartedAtMillis = Long.MAX_VALUE
         var listCalls = 0
         var messageCalls = 0
         val sent = mutableListOf<String>()
@@ -44,6 +45,7 @@ class OpenCodeInterruptedSessionRecoveryTest {
                 serverUrl = { serverUrl },
                 serverPassword = { password },
                 serverGeneration = { generation },
+                serverGenerationStartedAtMillis = { serverStartedAtMillis },
                 fetchRecentSessions = { _, _, _ ->
                     listCalls++
                     sessionResults.removeFirst()
@@ -118,6 +120,27 @@ class OpenCodeInterruptedSessionRecoveryTest {
 
         assertEquals(2, harness.messageCalls)
         assertEquals(listOf("ses_1"), harness.sent)
+    }
+
+    @Test
+    fun turnStartedOnLiveServerIsNeverContinued() {
+        // Fresh-start race: the user's first prompt lands while the recovery pass is still
+        // running; its unanswered user message must not be mistaken for a restart casualty.
+        val harness = Harness()
+        harness.serverStartedAtMillis = 1_000L
+        harness.sessionResults.add(harness.sessions("ses_live", "ses_dead"))
+        harness.fetchMessage = { sessionID ->
+            if (sessionID == "ses_live") {
+                OpenCodeProtocolResult.Success("""{"type":"user","time":{"created":2000}}""")
+            } else {
+                OpenCodeProtocolResult.Success("""{"type":"user","time":{"created":500}}""")
+            }
+        }
+        val recovery = harness.recovery()
+
+        recovery.checkAndContinue()
+
+        assertEquals(listOf("ses_dead"), harness.sent)
     }
 
     @Test

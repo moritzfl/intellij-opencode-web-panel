@@ -1913,6 +1913,33 @@ class OpenCodeServerProtocolTest {
         assertTrue(OpenCodeServerProtocol.isInterruptedLastMessage(json))
     }
 
+    @Test
+    fun userMessageCreatedOnLiveServerIsNotInterrupted() {
+        // A prompt sent after the current server launched is an in-flight turn, not a
+        // restart casualty; continuing it would steer a spurious prompt into a live turn.
+        val json = """{"type":"user","time":{"created":2000},"text":"hi"}"""
+        assertFalse(OpenCodeServerProtocol.isInterruptedLastMessage(json, createdBeforeMillis = 1000L))
+    }
+
+    @Test
+    fun userMessageCreatedBeforeServerStartIsInterruptedWhenBounded() {
+        val json = """{"type":"user","time":{"created":500},"text":"hi"}"""
+        assertTrue(OpenCodeServerProtocol.isInterruptedLastMessage(json, createdBeforeMillis = 1000L))
+    }
+
+    @Test
+    fun streamingAssistantMessageCreatedOnLiveServerIsNotInterrupted() {
+        val json = """{"type":"assistant","time":{"created":2000}}"""
+        assertFalse(OpenCodeServerProtocol.isInterruptedLastMessage(json, createdBeforeMillis = 1000L))
+    }
+
+    @Test
+    fun messageWithoutCreationTimeIsNotInterruptedWhenBounded() {
+        // Without a timestamp the pre-restart origin cannot be proven; stay conservative.
+        val json = """{"type":"user","text":"hi"}"""
+        assertFalse(OpenCodeServerProtocol.isInterruptedLastMessage(json, createdBeforeMillis = 1000L))
+    }
+
     // ─── Suspend/resume detection ────────────────────────────────────────────────
 
     @Test

@@ -56,6 +56,7 @@ class SharedOpenCodeServerManager : Disposable {
     private var serverVersion: String? = null
     private var unsupportedVersionWarningShownFor: String? = null
     private var serverGeneration = 0L
+    private var serverGenerationStartedAtMillis = 0L
     private var launcherExitNoticeLogged = false
 
     // Descendants of the launcher process, captured while it is still alive. On Windows the
@@ -228,6 +229,13 @@ class SharedOpenCodeServerManager : Disposable {
      * healthy server, e.g. to run one-shot recovery work per server process.
      */
     fun getServerGeneration(): Long = synchronized(lock) { serverGeneration }
+
+    /**
+     * Wall-clock time the current server generation's process was launched (0 while none was
+     * ever started). Anything created after this instant happened on the live server and can
+     * therefore not have been interrupted by the previous server's death.
+     */
+    fun getServerGenerationStartedAtMillis(): Long = synchronized(lock) { serverGenerationStartedAtMillis }
 
     /** Best-effort, informational only: refreshes the reported OpenCode version off the EDT. */
     private fun refreshServerVersion() {
@@ -808,6 +816,7 @@ class SharedOpenCodeServerManager : Disposable {
             serverUrl = null
             serverPassword = password
             serverGeneration++
+            serverGenerationStartedAtMillis = System.currentTimeMillis()
             launcherExitNoticeLogged = false
             true
         }

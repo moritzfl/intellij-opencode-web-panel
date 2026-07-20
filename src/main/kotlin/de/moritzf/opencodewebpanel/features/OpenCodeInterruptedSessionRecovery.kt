@@ -14,6 +14,8 @@ internal data class OpenCodeRecoveryContext(
     val password: String,
     val directory: String,
     val generation: Long,
+    /** Wall-clock launch time of this server generation; bounds restart-recovery to turns from before it. */
+    val startedAtMillis: Long = Long.MAX_VALUE,
 ) {
     val authHeader: String = OpenCodeServerProtocol.buildBasicAuthHeader(password)
 }
@@ -87,6 +89,7 @@ internal class OpenCodeInterruptedSessionRecovery internal constructor(
     private val serverUrl: () -> String?,
     private val serverPassword: () -> String?,
     private val serverGeneration: () -> Long,
+    private val serverGenerationStartedAtMillis: () -> Long = { Long.MAX_VALUE },
     private val fetchRecentSessions: (
         context: OpenCodeRecoveryContext,
         maxAgeMillis: Long,
@@ -116,6 +119,7 @@ internal class OpenCodeInterruptedSessionRecovery internal constructor(
         serverUrl = serverManager::getServerUrl,
         serverPassword = serverManager::getServerPassword,
         serverGeneration = serverManager::getServerGeneration,
+        serverGenerationStartedAtMillis = serverManager::getServerGenerationStartedAtMillis,
         fetchRecentSessions = { context, maxAgeMillis, limit ->
             OpenCodeServerProtocol.fetchRecentSessionsResult(
                 context.serverUrl,
@@ -292,7 +296,9 @@ internal class OpenCodeInterruptedSessionRecovery internal constructor(
                         continue
                     }
                 }
-                if (!OpenCodeServerProtocol.isInterruptedLastMessage(lastMessage)) continue
+                // Bounded by the current server's launch time: a last message created on the
+                // live server is the user's own in-flight turn, not a restart casualty.
+                if (!OpenCodeServerProtocol.isInterruptedLastMessage(lastMessage, context.startedAtMillis)) continue
                 if (!stillEligible(context)) return false
                 if (!generationClaims.markSessionAttempted(claimKey, context.generation, sessionID)) continue
                 thisLogger().info("OpenCode session $sessionID was interrupted; sending continuation prompt")
@@ -335,7 +341,8 @@ internal class OpenCodeInterruptedSessionRecovery internal constructor(
         val url = serverUrl() ?: return null
         val password = serverPassword() ?: return null
         val generation = serverGeneration().takeIf { it > 0L } ?: return null
-        return OpenCodeRecoveryContext(url, password, directory, generation)
+        val startedAtMillis = serverGenerationStartedAtMillis().takeIf { it > 0L } ?: Long.MAX_VALUE
+        return OpenCodeRecoveryContext(url, password, directory, generation, startedAtMillis)
     }
 
     private fun stillEligible(context: OpenCodeRecoveryContext): Boolean {

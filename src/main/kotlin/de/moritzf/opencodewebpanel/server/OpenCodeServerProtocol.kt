@@ -1270,9 +1270,20 @@ internal object OpenCodeServerProtocol {
      *   state, is an in-flight projection that only an unclean shutdown leaves behind.
      * - A user-initiated stop settles the message: it sets both `time.completed` and the
      *   top-level `error` field, so it is intentionally not treated as a crash here.
+     *
+     * [createdBeforeMillis] bounds the check to turns from before the current server
+     * process was launched: a message created on the live server (a prompt the user just
+     * sent, or its still-streaming reply) can look identical to an interrupted turn but
+     * must never be "continued" — that would steer a spurious prompt into a running turn.
      */
-    fun isInterruptedLastMessage(messageJson: String): Boolean {
+    fun isInterruptedLastMessage(messageJson: String, createdBeforeMillis: Long = Long.MAX_VALUE): Boolean {
         val message = parseJsonObject(messageJson) ?: return false
+        if (createdBeforeMillis != Long.MAX_VALUE) {
+            // Without a creation timestamp the pre-restart origin cannot be proven; treat
+            // the message as live rather than risk a false continuation.
+            val created = message.objectMember("time")?.longMember("created")
+            if (created == null || created >= createdBeforeMillis) return false
+        }
         // A user prompt with no assistant reply after it: the turn died before any part of
         // the reply was persisted. Other non-assistant types (compaction, model-switched,
         // system, ...) do not imply an unanswered prompt.
