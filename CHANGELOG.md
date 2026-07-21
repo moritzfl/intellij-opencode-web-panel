@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+## [1.9.3] - 2026-07-21
+
+### Fixed
+
+- Saved OpenCode UI state (open tabs, layout, home sidebar) no longer breaks when the local OpenCode server comes back on a different port — for example after an IDE restart with automatic port selection.
+- The "agent finished" notification sound no longer plays on IDE startup for conversations that were already idle, and no longer fires twice for the same finished turn.
+
 ## [1.9.2] - 2026-07-20
 
 ### Changed
@@ -433,7 +440,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.2...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.3...HEAD
+[1.9.3]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.2...1.9.3
 [1.9.2]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.1...1.9.2
 [1.9.1]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.0...1.9.1
 [1.9.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.8.0...1.9.0
