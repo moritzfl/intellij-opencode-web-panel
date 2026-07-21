@@ -35,8 +35,9 @@ class OpenCodeSoundServiceTest {
     }
 
     @Test
-    fun idleStatusPlaysAgentSoundOnceUntilSessionBecomesBusyAgain() {
+    fun idleStatusPlaysAgentSoundOncePerBusyTransition() {
         sessions["ses_1"] = OpenCodeServerProtocol.SessionInfo("Done", parentID = null)
+        handle(event("session.status", """{"sessionID":"ses_1","status":{"type":"busy"}}"""))
         handle(event("session.status", """{"sessionID":"ses_1","status":{"type":"idle"}}"""))
         handle(event("session.idle", """{"sessionID":"ses_1"}"""))
         handle(event("session.idle", """{"sessionID":"ses_1"}"""))
@@ -51,9 +52,29 @@ class OpenCodeSoundServiceTest {
     }
 
     @Test
+    fun startupIdleEventsDoNotSpillIntoFirstConversation() {
+        sessions["ses_1"] = OpenCodeServerProtocol.SessionInfo("Already idle", parentID = null)
+        sessions["ses_2"] = OpenCodeServerProtocol.SessionInfo("Also idle", parentID = null)
+
+        handle(event("session.status", """{"sessionID":"ses_1","status":{"type":"idle"}}"""))
+        handle(event("session.idle", """{"sessionID":"ses_1"}"""))
+        handle(event("session.status", """{"sessionID":"ses_2","status":{"type":"idle"}}"""))
+        handle(event("session.idle", """{"sessionID":"ses_2"}"""))
+
+        assertTrue(played.isEmpty())
+
+        handle(event("session.status", """{"sessionID":"ses_1","status":{"type":"busy"}}"""))
+        handle(event("session.status", """{"sessionID":"ses_1","status":{"type":"idle"}}"""))
+
+        assertEquals(listOf(OpenCodeSoundSettings.DEFAULT_AGENT), played)
+    }
+
+    @Test
     fun skipsChildSessionsAndUnresolvedSessionsForAgent() {
         sessions["ses_child"] = OpenCodeServerProtocol.SessionInfo("sub", parentID = "ses_parent")
+        handle(event("session.status", """{"sessionID":"ses_child","status":{"type":"busy"}}"""))
         handle(event("session.idle", """{"sessionID":"ses_child"}"""))
+        handle(event("session.status", """{"sessionID":"ses_missing","status":{"type":"busy"}}"""))
         handle(event("session.idle", """{"sessionID":"ses_missing"}"""))
         assertTrue(played.isEmpty())
     }
@@ -61,10 +82,12 @@ class OpenCodeSoundServiceTest {
     @Test
     fun respectsAgentDisabled() {
         sessions["ses_1"] = OpenCodeServerProtocol.SessionInfo("Done", parentID = null)
+        handle(event("session.status", """{"sessionID":"ses_1","status":{"type":"busy"}}"""))
         handle(
             event("session.idle", """{"sessionID":"ses_1"}"""),
             settings = defaults.copy(agentEnabled = false),
         )
+        handle(event("session.idle", """{"sessionID":"ses_1"}"""))
         assertTrue(played.isEmpty())
     }
 
@@ -88,6 +111,7 @@ class OpenCodeSoundServiceTest {
     fun usesCustomSoundIdsFromSettings() {
         sessions["ses_1"] = OpenCodeServerProtocol.SessionInfo("Done", parentID = null)
         val custom = defaults.copy(agent = "alert-05", permissions = "yup-01", errors = "nope-12")
+        handle(event("session.status", """{"sessionID":"ses_1","status":{"type":"busy"}}"""), settings = custom)
         handle(event("session.idle", """{"sessionID":"ses_1"}"""), settings = custom)
         handle(event("permission.asked", """{"id":"per_1"}"""), settings = custom)
         handle(event("session.error", """{"sessionID":"ses_1"}"""), settings = custom)

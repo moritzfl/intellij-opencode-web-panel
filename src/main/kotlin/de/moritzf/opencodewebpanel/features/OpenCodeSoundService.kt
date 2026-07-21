@@ -27,8 +27,8 @@ internal object OpenCodeSoundService {
         "OpenCode Sound Events",
         1,
     )
-    private data class IdleKey(val directory: String, val sessionID: String)
-    private val idleSessions = mutableSetOf<IdleKey>()
+    private data class SessionKey(val directory: String, val sessionID: String)
+    private val busySessions = mutableSetOf<SessionKey>()
 
     /**
      * Subscribes to the application event bus. Safe to call repeatedly: re-subscribes after the
@@ -59,8 +59,8 @@ internal object OpenCodeSoundService {
 
     @TestOnly
     internal fun resetForTests() {
-        synchronized(idleSessions) {
-            idleSessions.clear()
+        synchronized(busySessions) {
+            busySessions.clear()
         }
     }
 
@@ -85,14 +85,18 @@ internal object OpenCodeSoundService {
         }
         when (type) {
             "session.idle" -> {
-                if (!settings.agentEnabled) return
                 val sessionID = event.properties.stringMember("sessionID") ?: return
                 if (!OpenCodeServerProtocol.isSessionId(sessionID)) return
-                val session = fetchSession(event.directory, sessionID)
+                if (!isBusy(event.directory, sessionID)) return
+                if (!settings.agentEnabled) {
+                    markIdle(event.directory, sessionID)
+                    return
+                }
+                val session = fetchSession(event.directory, sessionID) ?: return
                 // Skip child/subagent sessions and unresolved lookups, mirroring OpenCode's own
                 // `if (!session || session.parentID) return`; the session fetch is reliable.
-                if (session == null || session.parentID != null) return
                 if (!markIdle(event.directory, sessionID)) return
+                if (session.parentID != null) return
                 play(settings.agent)
             }
             "session.error" -> {
@@ -129,16 +133,21 @@ internal object OpenCodeSoundService {
         )
     }
 
+    private fun isBusy(directory: String, sessionID: String): Boolean {
+        synchronized(busySessions) {
+            return SessionKey(directory, sessionID) in busySessions
+        }
+    }
+
     private fun markIdle(directory: String, sessionID: String): Boolean {
-        val key = IdleKey(directory, sessionID)
-        synchronized(idleSessions) {
-            return idleSessions.add(key)
+        synchronized(busySessions) {
+            return busySessions.remove(SessionKey(directory, sessionID))
         }
     }
 
     private fun markBusy(directory: String, sessionID: String) {
-        synchronized(idleSessions) {
-            idleSessions.remove(IdleKey(directory, sessionID))
+        synchronized(busySessions) {
+            busySessions.add(SessionKey(directory, sessionID))
         }
     }
 }
