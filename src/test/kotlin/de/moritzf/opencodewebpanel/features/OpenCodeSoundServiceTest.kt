@@ -12,7 +12,6 @@ class OpenCodeSoundServiceTest {
 
     private val played = mutableListOf<String?>()
     private val sessions = mutableMapOf<String, OpenCodeServerProtocol.SessionInfo>()
-    private var now = 1_000_000L
     private val defaults = OpenCodeSoundSettings()
 
     init {
@@ -32,18 +31,18 @@ class OpenCodeSoundServiceTest {
             settings = settings,
             fetchSession = { _, sessionID -> sessions[sessionID] },
             play = { played.add(it) },
-            nowMillis = { now },
         )
     }
 
     @Test
-    fun idleStatusPlaysAgentSoundOncePerMergeWindow() {
+    fun idleStatusPlaysAgentSoundOnceUntilSessionBecomesBusyAgain() {
         sessions["ses_1"] = OpenCodeServerProtocol.SessionInfo("Done", parentID = null)
         handle(event("session.status", """{"sessionID":"ses_1","status":{"type":"idle"}}"""))
         handle(event("session.idle", """{"sessionID":"ses_1"}"""))
+        handle(event("session.idle", """{"sessionID":"ses_1"}"""))
         assertEquals(listOf(OpenCodeSoundSettings.DEFAULT_AGENT), played)
 
-        now += 6_000L
+        handle(event("session.status", """{"sessionID":"ses_1","status":{"type":"busy"}}"""))
         handle(event("session.idle", """{"sessionID":"ses_1"}"""))
         assertEquals(
             listOf(OpenCodeSoundSettings.DEFAULT_AGENT, OpenCodeSoundSettings.DEFAULT_AGENT),

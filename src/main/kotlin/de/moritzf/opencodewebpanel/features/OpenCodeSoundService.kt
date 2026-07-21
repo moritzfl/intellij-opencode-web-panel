@@ -21,8 +21,6 @@ import org.jetbrains.annotations.TestOnly
  * path stays silent.
  */
 internal object OpenCodeSoundService {
-    private const val IDLE_MERGE_WINDOW_MILLIS = 5_000L
-
     private val lock = Any()
     private var busConnection: com.intellij.openapi.Disposable? = null
     private val eventExecutor = AppExecutorUtil.createBoundedApplicationPoolExecutor(
@@ -30,7 +28,7 @@ internal object OpenCodeSoundService {
         1,
     )
     private data class IdleKey(val directory: String, val sessionID: String)
-    private val recentIdleAtMillis = mutableMapOf<IdleKey, Long>()
+    private val idleSessions = mutableSetOf<IdleKey>()
 
     /**
      * Subscribes to the application event bus. Safe to call repeatedly: re-subscribes after the
@@ -61,8 +59,8 @@ internal object OpenCodeSoundService {
 
     @TestOnly
     internal fun resetForTests() {
-        synchronized(recentIdleAtMillis) {
-            recentIdleAtMillis.clear()
+        synchronized(idleSessions) {
+            idleSessions.clear()
         }
     }
 
@@ -72,11 +70,16 @@ internal object OpenCodeSoundService {
         fetchSession: (directory: String, sessionID: String) -> OpenCodeServerProtocol.SessionInfo? =
             ::fetchSessionInfo,
         play: (String?) -> Unit = OpenCodeSoundPlayer::playById,
-        nowMillis: () -> Long = System::currentTimeMillis,
     ) {
         var type = event.type
         if (type == "session.status") {
             val statusType = event.properties.objectMember("status")?.stringMember("type")
+            if (statusType == "busy" || statusType == "retry") {
+                event.properties.stringMember("sessionID")
+                    ?.takeIf(OpenCodeServerProtocol::isSessionId)
+                    ?.let { markBusy(event.directory, it) }
+                return
+            }
             if (statusType != "idle") return
             type = "session.idle"
         }
@@ -85,11 +88,11 @@ internal object OpenCodeSoundService {
                 if (!settings.agentEnabled) return
                 val sessionID = event.properties.stringMember("sessionID") ?: return
                 if (!OpenCodeServerProtocol.isSessionId(sessionID)) return
-                if (!markIdle(event.directory, sessionID, nowMillis)) return
                 val session = fetchSession(event.directory, sessionID)
                 // Skip child/subagent sessions and unresolved lookups, mirroring OpenCode's own
                 // `if (!session || session.parentID) return`; the session fetch is reliable.
                 if (session == null || session.parentID != null) return
+                if (!markIdle(event.directory, sessionID)) return
                 play(settings.agent)
             }
             "session.error" -> {
@@ -126,14 +129,16 @@ internal object OpenCodeSoundService {
         )
     }
 
-    private fun markIdle(directory: String, sessionID: String, nowMillis: () -> Long): Boolean {
+    private fun markIdle(directory: String, sessionID: String): Boolean {
         val key = IdleKey(directory, sessionID)
-        val now = nowMillis()
-        synchronized(recentIdleAtMillis) {
-            recentIdleAtMillis.entries.removeIf { now - it.value >= IDLE_MERGE_WINDOW_MILLIS }
-            if (recentIdleAtMillis.containsKey(key)) return false
-            recentIdleAtMillis[key] = now
+        synchronized(idleSessions) {
+            return idleSessions.add(key)
         }
-        return true
+    }
+
+    private fun markBusy(directory: String, sessionID: String) {
+        synchronized(idleSessions) {
+            idleSessions.remove(IdleKey(directory, sessionID))
+        }
     }
 }
