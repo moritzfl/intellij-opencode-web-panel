@@ -74,6 +74,45 @@ internal object OpenCodeBrowserSnippets {
         const workspaceKeys = /^opencode\.workspace\.[^:]+:workspace:(model-selection|terminal|project|icon|vcs)${'$'}/;
         const windowKeys = /^opencode\.window\.browser\.dat:tabs(\.(recent|info|closed))?${'$'}/;
         const shouldPersistKey = (key) => typeof key === 'string' && (exactKeys.has(key) || globalKeys.test(key) || workspaceKeys.test(key) || windowKeys.test(key));
+        // Tabs / layout / home.servers persist the server connection key as the full origin
+        // (and base64url(origin) inside session routes). Auto-port relaunches change origin →
+        // restoring a prior snapshot would point at a dead port. Rewrite loopback origins to
+        // the live page origin on restore and before the IDE snapshot is saved.
+        const LOOPBACK_ORIGIN_RE = /^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?${'$'}/i;
+        const LOOPBACK_ORIGIN_IN_TEXT_RE = /https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?/gi;
+        const encodeServerKey = (value) => {
+          const bytes = new TextEncoder().encode(value);
+          let binary = '';
+          bytes.forEach((byte) => binary += String.fromCharCode(byte));
+          return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+${'$'}/g, '');
+        };
+        const decodeServerKey = (value) => {
+          try {
+            const base64 = value.replace(/-/g, '+').replace(/_/g, '/');
+            const padded = base64 + '='.repeat((4 - base64.length % 4) % 4);
+            const binary = atob(padded);
+            const bytes = new Uint8Array(binary.length);
+            for (let index = 0; index < binary.length; index += 1) {
+              bytes[index] = binary.charCodeAt(index);
+            }
+            return new TextDecoder().decode(bytes);
+          } catch (_) {
+            return '';
+          }
+        };
+        const rewriteLoopbackServerRefs = (text) => {
+          if (typeof text !== 'string' || !text) return text;
+          const origin = window.location.origin;
+          if (!LOOPBACK_ORIGIN_RE.test(origin)) return text;
+          let next = text.replace(LOOPBACK_ORIGIN_IN_TEXT_RE, origin);
+          const currentKey = encodeServerKey(origin);
+          next = next.replace(/[A-Za-z0-9_-]{16,64}/g, (token) => {
+            const decoded = decodeServerKey(token);
+            if (!decoded || !LOOPBACK_ORIGIN_RE.test(decoded)) return token;
+            return currentKey;
+          });
+          return next;
+        };
     """.trimIndent()
 
     /**
@@ -274,8 +313,21 @@ internal object OpenCodeBrowserSnippets {
                 for (const [key, value] of Object.entries(snapshot)) {
                   if (!shouldPersistKey(key) || typeof value !== 'string') continue;
                   if (window.localStorage.getItem(key) === null) {
-                    window.localStorage.setItem(key, value);
+                    window.localStorage.setItem(key, rewriteLoopbackServerRefs(value));
                   }
+                }
+                // Port-auto relaunches (and localhost↔127.0.0.1 flips) leave stale server keys
+                // in already-present entries; rewrite those in place too.
+                const existingKeys = [];
+                for (let index = 0; index < window.localStorage.length; index += 1) {
+                  const key = window.localStorage.key(index);
+                  if (shouldPersistKey(key)) existingKeys.push(key);
+                }
+                for (const key of existingKeys) {
+                  const current = window.localStorage.getItem(key);
+                  if (typeof current !== 'string') continue;
+                  const rewritten = rewriteLoopbackServerRefs(current);
+                  if (rewritten !== current) window.localStorage.setItem(key, rewritten);
                 }
               } catch (error) {
                 if (window.console && window.console.warn) {
@@ -302,7 +354,9 @@ internal object OpenCodeBrowserSnippets {
                   const key = window.localStorage.key(index);
                   if (!shouldPersistKey(key)) continue;
                   const value = window.localStorage.getItem(key);
-                  if (typeof value === 'string' && value.length <= MAX_VALUE_CHARS) entries[key] = value;
+                  if (typeof value === 'string' && value.length <= MAX_VALUE_CHARS) {
+                    entries[key] = rewriteLoopbackServerRefs(value);
+                  }
                 }
                 return entries;
               };

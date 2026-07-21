@@ -560,7 +560,11 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("recent|info|closed"))
         assertFalse(script.contains("opencode.settings.dat:defaultServerUrl"))
         assertTrue(script.contains("window.localStorage.getItem(key) === null"))
-        assertTrue(script.contains("window.localStorage.setItem(key, value)"))
+        assertTrue(script.contains("rewriteLoopbackServerRefs(value)"))
+        assertTrue(script.contains("rewriteLoopbackServerRefs(current)"))
+        assertTrue(script.contains("LOOPBACK_ORIGIN_RE"))
+        // Still only-if-absent for snapshot inject; rewrite pass covers already-present keys.
+        assertTrue(script.contains("window.localStorage.setItem(key, rewriteLoopbackServerRefs(value))"))
     }
 
     @Test
@@ -584,6 +588,9 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("MAX_VALUE_CHARS"))
         assertFalse(script.contains("opencode.settings.dat:defaultServerUrl"))
         assertTrue(script.contains("window.intellijStore(payload)"))
+        // Auto-port relaunches: normalize loopback server keys before the IDE snapshot is saved.
+        assertTrue(script.contains("rewriteLoopbackServerRefs(value)"))
+        assertTrue(script.contains("LOOPBACK_ORIGIN_RE"))
         // Containment contract for the only page-wide API patch: the original method runs
         // first, and the mirror tail is try-caught so a bug in it can never break the SPA's
         // own storage operations.
