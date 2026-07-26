@@ -21,9 +21,6 @@
       <a href="https://plugins.jetbrains.com/plugin/32384">
         <img src="https://img.shields.io/jetbrains/plugin/r/rating/32384" alt="JetBrains Marketplace rating" />
       </a>
-      <a href="https://github.com/moritzfl/intellij-opencode-web-panel/releases/latest">
-        <img src="https://img.shields.io/github/v/release/moritzfl/intellij-opencode-web-panel?sort=semver" alt="Latest GitHub release" />
-      </a>
     </td>
   </tr>
 </table>
