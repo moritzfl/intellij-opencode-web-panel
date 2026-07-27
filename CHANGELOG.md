@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Automatic continuation of interrupted sessions works again for conversations started in the panel. The recovery path was reading a message store the embedded OpenCode web app never writes to, so it always saw an empty history and never continued a turn cut off by a restart or suspend.
+
 ## [1.9.3] - 2026-07-21
 
 ### Fixed

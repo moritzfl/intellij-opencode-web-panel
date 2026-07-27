@@ -37,6 +37,7 @@ operations = {
     ("/session/status", "get"): "session.status",
     ("/session/{sessionID}", "get"): "session.get",
     ("/session/{sessionID}/diff", "get"): "session.diff",
+    ("/session/{sessionID}/message", "get"): "session.messages",
     ("/permission", "get"): "permission.list",
     ("/question", "get"): "question.list",
     ("/permission/{requestID}/reply", "post"): "permission.reply",

@@ -1205,13 +1205,21 @@ internal object OpenCodeServerProtocol {
     }
 
     /**
-     * Fetches the last projected message for a session from the v2 API
-     * (`GET /api/session/{sessionID}/message?order=desc&limit=1`). Returns the raw JSON
-     * object string for [isInterruptedLastMessage] to inspect, or null on any error.
+     * Fetches the most recent message of a session and returns it in the classifier shape
+     * used by [isInterruptedLastMessage] / [isSuspendSeveredLastMessage] /
+     * [isUnsettledTurnFromBefore], or null when the session has no messages / on any error.
+     *
+     * The embedded web app writes sessions through the **v1** API
+     * (`POST /session` + `/session/{id}/prompt_async`), so its turns live in
+     * `GET /session/{id}/message?directory=…&limit=1` (bare array of `{info, parts}`). The v2
+     * store at `GET /api/session/{id}/message` stays empty for those sessions. This helper
+     * reads v1 first and falls back to v2 only when the v1 list is empty or missing, so both
+     * SPA sessions and any remaining v2-native ones recover.
      */
     fun fetchLastMessageJson(
         serverUrl: String,
         basicAuthHeader: String,
+        directory: String,
         sessionID: String,
         connectTimeoutMillis: Int = 3000,
         readTimeoutMillis: Int = 3000,
@@ -1219,6 +1227,7 @@ internal object OpenCodeServerProtocol {
         return when (val result = fetchLastMessageJsonResult(
             serverUrl,
             basicAuthHeader,
+            directory,
             sessionID,
             connectTimeoutMillis,
             readTimeoutMillis,
@@ -1231,33 +1240,86 @@ internal object OpenCodeServerProtocol {
     fun fetchLastMessageJsonResult(
         serverUrl: String,
         basicAuthHeader: String,
+        directory: String,
         sessionID: String,
         connectTimeoutMillis: Int = 3000,
         readTimeoutMillis: Int = 3000,
     ): OpenCodeProtocolResult<String?> {
-        if (!isSessionId(sessionID)) {
+        if (!isSessionId(sessionID) || directory.isBlank()) {
             return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_IDENTIFIER)
         }
-        val url = buildServerRootUrl(serverUrl) +
-            "/api/session/$sessionID/message?order=desc&limit=1"
-        return when (val response = httpGetResult(url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)) {
-            is OpenCodeProtocolResult.Failure -> response
+        val root = buildServerRootUrl(serverUrl)
+        val v1Url = "$root/session/$sessionID/message" +
+            "?directory=" + java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8) +
+            "&limit=1"
+        when (val v1 = httpGetResult(v1Url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)) {
             is OpenCodeProtocolResult.Success -> {
-                val root = parseJsonObject(response.value)
+                val raw = extractLastMessageRaw(v1.value)
+                if (raw != null) {
+                    val normalized = normalizeLastMessageForClassification(raw)
+                        ?: return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_BODY)
+                    return OpenCodeProtocolResult.Success(normalized)
+                }
+                // Empty v1 list → try v2 (session may have been created through the v2 API).
+            }
+            is OpenCodeProtocolResult.Failure -> {
+                // A missing v1 route falls through to v2; transport failures must surface so
+                // recovery can retry rather than pretend "no message".
+                if (v1.statusCode != HttpURLConnection.HTTP_NOT_FOUND) return v1
+            }
+        }
+        val v2Url = "$root/api/session/$sessionID/message?order=desc&limit=1"
+        return when (val v2 = httpGetResult(v2Url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)) {
+            is OpenCodeProtocolResult.Failure -> v2
+            is OpenCodeProtocolResult.Success -> {
+                val raw = extractLastMessageRaw(v2.value)
+                    ?: return OpenCodeProtocolResult.Success(null)
+                val normalized = normalizeLastMessageForClassification(raw)
                     ?: return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_BODY)
-                val data = root.get("data")?.takeIf { it.isJsonArray }?.asJsonArray
-                    ?: return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_BODY)
-                OpenCodeProtocolResult.Success(data.firstOrNull { it.isJsonObject }?.toString())
+                OpenCodeProtocolResult.Success(normalized)
             }
         }
     }
 
-    /** Extracts the first JSON object of the `data` array from a `{"data":[{...}]}` response. */
+    /**
+     * Pulls the most-recent message object out of either list shape the two message stores
+     * return: v1 bare array (newest first with `limit=1`) or v2 `{"data":[…],"cursor":…}`.
+     */
     @TestOnly
-    fun extractFirstDataObject(body: String): String? {
-        val data = parseJsonObject(body)?.get("data")?.takeIf { it.isJsonArray }?.asJsonArray
-            ?: return null
-        return data.firstOrNull { it.isJsonObject }?.toString()
+    fun extractLastMessageRaw(body: String): String? {
+        val parsed = runCatching { JsonParser.parseString(body) }.getOrNull() ?: return null
+        val messages = when {
+            parsed.isJsonArray -> parsed.asJsonArray
+            parsed.isJsonObject -> parsed.asJsonObject.get("data")?.takeIf { it.isJsonArray }?.asJsonArray
+            else -> null
+        } ?: return null
+        return messages.firstOrNull { it.isJsonObject }?.toString()
+    }
+
+    /** @deprecated Prefer [extractLastMessageRaw]; kept for existing call sites. */
+    @TestOnly
+    fun extractFirstDataObject(body: String): String? = extractLastMessageRaw(body)
+
+    /**
+     * Maps a raw message from either store onto the flat classifier shape
+     * `{type, time, error?, content[]}` that [isInterruptedLastMessage] and friends read.
+     *
+     * - v2 `SessionMessage` already has top-level `type` → returned unchanged.
+     * - v1 `{info:{role,time,error?}, parts:[…]}` → `type` from `info.role`, `content` from
+     *   `parts` (tool parts already carry `state.status` the same way).
+     */
+    @TestOnly
+    fun normalizeLastMessageForClassification(messageJson: String): String? {
+        val message = parseJsonObject(messageJson) ?: return null
+        if (message.stringMember("type") != null) return messageJson
+        val info = message.objectMember("info") ?: return null
+        val role = info.stringMember("role") ?: return null
+        val normalized = JsonObject()
+        normalized.addProperty("type", role)
+        info.objectMember("time")?.let { normalized.add("time", it) }
+        info.get("error")?.takeUnless { it.isJsonNull }?.let { normalized.add("error", it) }
+        message.get("parts")?.takeIf { it.isJsonArray }?.let { normalized.add("content", it) }
+        return normalized.toString()
     }
 
     /**

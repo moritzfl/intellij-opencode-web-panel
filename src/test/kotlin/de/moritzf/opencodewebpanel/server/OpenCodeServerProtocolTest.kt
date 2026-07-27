@@ -2173,38 +2173,120 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
-    fun fetchLastMessageJsonExtractsFirstObject() {
-        val response = """{"data":[{"type":"assistant","time":{"created":12345}}]}"""
-        val serverSocket = ServerSocket(0)
-        val executor = Executors.newSingleThreadExecutor()
-        val responseFuture = executor.submit {
-            try {
-                serverSocket.accept().use { socket ->
-                    val reader = socket.getInputStream().bufferedReader()
-                    reader.readLine()
-                    while (reader.readLine()?.isNotEmpty() == true) {}
-                    socket.getOutputStream().write(
-                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ${response.length}\r\nConnection: close\r\n\r\n$response"
-                            .toByteArray(Charsets.UTF_8),
-                    )
-                    socket.getOutputStream().flush()
-                }
-            } catch (_: SocketException) {}
+    fun normalizeLastMessageMapsV1InfoPartsOntoClassifierShape() {
+        // Live SPA sessions return `{info:{role,time}, parts:[…]}`; classifiers read the flat
+        // v2 shape. Without this map every real panel session looks empty to recovery.
+        val v1 = """
+            {"info":{"id":"msg_1","role":"assistant","time":{"created":100,"completed":2000},
+              "error":{"name":"FetchError"}},
+             "parts":[]}
+        """.trimIndent()
+        val normalized = OpenCodeServerProtocol.normalizeLastMessageForClassification(v1)
+        assertNotNull(normalized)
+        assertTrue(OpenCodeServerProtocol.isSuspendSeveredLastMessage(normalized!!, 200, 1900))
+        assertFalse(OpenCodeServerProtocol.isInterruptedLastMessage(normalized)) // top-level error
+
+        val running = """
+            {"info":{"role":"assistant","time":{"created":100}},
+             "parts":[{"type":"tool","state":{"status":"running"}}]}
+        """.trimIndent()
+        assertTrue(
+            OpenCodeServerProtocol.isInterruptedLastMessage(
+                OpenCodeServerProtocol.normalizeLastMessageForClassification(running)!!,
+            ),
+        )
+
+        val user = """{"info":{"role":"user","time":{"created":50}},"parts":[]}"""
+        assertTrue(
+            OpenCodeServerProtocol.isInterruptedLastMessage(
+                OpenCodeServerProtocol.normalizeLastMessageForClassification(user)!!,
+            ),
+        )
+
+        // v2 shape is already flat and must pass through unchanged.
+        val v2 = """{"type":"assistant","time":{"created":1}}"""
+        assertEquals(v2, OpenCodeServerProtocol.normalizeLastMessageForClassification(v2))
+    }
+
+    @Test
+    fun extractLastMessageRawAcceptsV1ArrayAndV2Envelope() {
+        assertEquals(
+            """{"type":"assistant"}""",
+            OpenCodeServerProtocol.extractLastMessageRaw("""[{"type":"assistant"},{"type":"user"}]"""),
+        )
+        assertEquals(
+            """{"type":"assistant"}""",
+            OpenCodeServerProtocol.extractLastMessageRaw(
+                """{"data":[{"type":"assistant"}],"cursor":{}}""",
+            ),
+        )
+        assertNull(OpenCodeServerProtocol.extractLastMessageRaw("""[]"""))
+        assertNull(OpenCodeServerProtocol.extractLastMessageRaw("""{"data":[]}"""))
+    }
+
+    @Test
+    fun fetchLastMessageJsonPrefersV1StoreAndFallsBackToV2() {
+        val seen = java.util.Collections.synchronizedList(mutableListOf<String>())
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/session") { exchange ->
+            seen.add(exchange.requestURI.path + "?" + exchange.requestURI.rawQuery.orEmpty())
+            val body = """[{"info":{"role":"assistant","time":{"created":99}},"parts":[]}]"""
+            val bytes = body.toByteArray()
+            exchange.sendResponseHeaders(200, bytes.size.toLong())
+            exchange.responseBody.use { it.write(bytes) }
         }
+        server.createContext("/api/session") { exchange ->
+            seen.add("v2:" + exchange.requestURI.path)
+            val body = """{"data":[{"type":"user","time":{"created":1}}],"cursor":{}}"""
+            val bytes = body.toByteArray()
+            exchange.sendResponseHeaders(200, bytes.size.toLong())
+            exchange.responseBody.use { it.write(bytes) }
+        }
+        server.start()
         try {
-            val auth = OpenCodeServerProtocol.buildBasicAuthHeader("test")
             val msg = OpenCodeServerProtocol.fetchLastMessageJson(
-                "http://127.0.0.1:${serverSocket.localPort}",
-                auth,
+                "http://127.0.0.1:${server.address.port}",
+                OpenCodeServerProtocol.buildBasicAuthHeader("test"),
+                "/tmp/project",
                 "ses_abc123",
             )
             assertNotNull(msg)
             assertTrue(msg!!.contains("\"type\":\"assistant\""))
             assertTrue(OpenCodeServerProtocol.isInterruptedLastMessage(msg))
-            responseFuture.get(5, TimeUnit.SECONDS)
+            // v1 answered → v2 must not be consulted.
+            assertTrue(seen.any { it.startsWith("/session/ses_abc123/message?") })
+            assertTrue(seen.none { it.startsWith("v2:") })
         } finally {
-            serverSocket.close()
-            executor.shutdownNow()
+            server.stop(0)
+        }
+    }
+
+    @Test
+    fun fetchLastMessageJsonFallsBackToV2WhenV1IsEmpty() {
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/session") { exchange ->
+            exchange.sendResponseHeaders(200, 2)
+            exchange.responseBody.use { it.write("[]".toByteArray()) }
+        }
+        server.createContext("/api/session") { exchange ->
+            val body = """{"data":[{"type":"assistant","time":{"created":12345}}],"cursor":{}}"""
+            val bytes = body.toByteArray()
+            exchange.sendResponseHeaders(200, bytes.size.toLong())
+            exchange.responseBody.use { it.write(bytes) }
+        }
+        server.start()
+        try {
+            val msg = OpenCodeServerProtocol.fetchLastMessageJson(
+                "http://127.0.0.1:${server.address.port}",
+                OpenCodeServerProtocol.buildBasicAuthHeader("test"),
+                "/tmp/project",
+                "ses_abc123",
+            )
+            assertNotNull(msg)
+            assertTrue(msg!!.contains("\"type\":\"assistant\""))
+            assertTrue(OpenCodeServerProtocol.isInterruptedLastMessage(msg))
+        } finally {
+            server.stop(0)
         }
     }
 

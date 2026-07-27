@@ -133,6 +133,7 @@ internal class OpenCodeInterruptedSessionRecovery internal constructor(
             OpenCodeServerProtocol.fetchLastMessageJsonResult(
                 context.serverUrl,
                 context.authHeader,
+                context.directory,
                 sessionID,
             )
         },
