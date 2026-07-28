@@ -12,7 +12,6 @@ import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.JBPasswordField
 import com.intellij.ui.components.JBRadioButton
-import com.intellij.ui.components.JBTabbedPane
 import com.intellij.ui.components.JBTextField
 import com.intellij.ui.dsl.builder.AlignX
 import com.intellij.ui.dsl.builder.RightGap
@@ -299,7 +298,7 @@ class OpenCodeSettingsConfigurable : Configurable {
                 }
             }
         }
-        panel = JBTabbedPane().apply {
+        panel = OpenCodeSettingsTabbedPane().apply {
             addTab("OpenCode Server Setup", serverSetupPanel)
             addTab("OpenCode UI Settings", uiSettingsPanel)
         }
