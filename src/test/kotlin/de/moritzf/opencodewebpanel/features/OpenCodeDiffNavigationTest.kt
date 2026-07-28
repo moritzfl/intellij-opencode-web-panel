@@ -17,21 +17,45 @@ class OpenCodeDiffNavigationTest {
     )
 
     @Test
-    fun matchesExactAndSuffixPathsIgnoringSeparatorsAndCase() {
-        assertTrue(OpenCodeDiffNavigation.matchesFile("src/Main.kt", "src/Main.kt"))
-        assertTrue(OpenCodeDiffNavigation.matchesFile("src\\Main.kt", "src/Main.kt"))
-        assertTrue(OpenCodeDiffNavigation.matchesFile("/src/Main.kt", "src/Main.kt"))
-        assertTrue(OpenCodeDiffNavigation.matchesFile("packages/app/src/Main.kt", "src/Main.kt"))
-        assertTrue(OpenCodeDiffNavigation.matchesFile("Src/Main.kt", "src/main.kt"))
-        assertFalse(OpenCodeDiffNavigation.matchesFile("src/a/Main.kt", "src/b/Main.kt"))
-        assertFalse(OpenCodeDiffNavigation.matchesFile("src/Other.kt", "Main.kt"))
+    fun matchesSuffixPathsUsingPlatformCaseSemantics() {
+        assertTrue(OpenCodeDiffNavigation.matchesFile("packages/app/src/Main.kt", "src/Main.kt", caseSensitive = true))
+        assertFalse(OpenCodeDiffNavigation.matchesFile("packages/Src/Main.kt", "src/main.kt", caseSensitive = true))
+        assertTrue(OpenCodeDiffNavigation.matchesFile("packages/Src/Main.kt", "src/main.kt", caseSensitive = false))
+        assertFalse(OpenCodeDiffNavigation.matchesFile("src/a/Main.kt", "src/b/Main.kt", caseSensitive = true))
+        assertFalse(OpenCodeDiffNavigation.matchesFile("src/Other.kt", "Main.kt", caseSensitive = true))
     }
 
     @Test
     fun selectDiffsDoesNotFallBackToWholeTurnOnMismatch() {
         val diffs = listOf(diff("src/a/Main.kt"), diff("src/b/Main.kt"))
-        assertEquals(listOf(diffs[0]), OpenCodeDiffNavigation.selectDiffs(diffs, "src/a/Main.kt"))
-        assertEquals(emptyList<OpenCodeServerProtocol.SnapshotFileDiff>(), OpenCodeDiffNavigation.selectDiffs(diffs, "src/c/Main.kt"))
+        assertEquals(listOf(diffs[0]), OpenCodeDiffNavigation.selectDiffs(diffs, "src/a/Main.kt", caseSensitive = true))
+        assertEquals(emptyList<OpenCodeServerProtocol.SnapshotFileDiff>(), OpenCodeDiffNavigation.selectDiffs(diffs, "src/c/Main.kt", caseSensitive = true))
         assertEquals(diffs, OpenCodeDiffNavigation.selectDiffs(diffs, null))
+    }
+
+    @Test
+    fun exactMatchWinsAndAmbiguousSuffixIsRejected() {
+        val exact = diff("src/Main.kt")
+        val nested = diff("packages/app/src/Main.kt")
+        assertEquals(
+            listOf(exact),
+            OpenCodeDiffNavigation.selectDiffs(listOf(exact, nested), "src/Main.kt", caseSensitive = true),
+        )
+        assertEquals(
+            emptyList<OpenCodeServerProtocol.SnapshotFileDiff>(),
+            OpenCodeDiffNavigation.selectDiffs(
+                listOf(diff("src/a/Main.kt"), diff("src/b/Main.kt")),
+                "Main.kt",
+                caseSensitive = true,
+            ),
+        )
+        assertEquals(
+            emptyList<OpenCodeServerProtocol.SnapshotFileDiff>(),
+            OpenCodeDiffNavigation.selectDiffs(
+                listOf(diff("Foo.kt"), diff("foo.kt")),
+                "FOO.kt",
+                caseSensitive = true,
+            ),
+        )
     }
 }

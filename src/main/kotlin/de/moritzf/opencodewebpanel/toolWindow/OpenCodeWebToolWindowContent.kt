@@ -454,6 +454,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                 override fun onAddressChange(cefBrowser: CefBrowser?, frame: CefFrame?, url: String?) {
                     if (frame?.isMain == true) {
                         browserDocumentRevision++
+                        systemNotifications.browserAddressChanged()
                         scheduleBrowserRepaintNudges()
                         // CEF OSR can drop Chromium-level focus on SPA redirects/route changes
                         // (CEF #3870), which hides the text caret while typing still works.

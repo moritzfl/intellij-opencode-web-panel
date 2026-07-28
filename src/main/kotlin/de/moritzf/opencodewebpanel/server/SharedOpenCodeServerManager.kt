@@ -43,6 +43,12 @@ class SharedOpenCodeServerManager : Disposable {
         val serverPassword: String?,
     )
 
+    private data class HealthRestartReservation(
+        val basePath: String?,
+        val startId: Long,
+        val resources: ServerResourcesToStop,
+    )
+
     private val lock = Any()
     private val pendingStarts = mutableListOf<StartCallback>()
     private var startSequence = 0L
@@ -264,6 +270,7 @@ class SharedOpenCodeServerManager : Disposable {
         checkFuture: ScheduledFuture<*>? = null,
     ) {
         synchronized(lock) {
+            allowHealthRestart = true
             serverProcess = process
             serverUrl = url
             serverPassword = password
@@ -486,27 +493,34 @@ class SharedOpenCodeServerManager : Disposable {
         }
 
         thisLogger().warn("Server is not responding, attempting to restart...")
-        val basePath: String?
-        val startId: Long
-        val resources: ServerResourcesToStop
-        synchronized(lock) {
-            if (starting || disposed || !allowHealthRestart || serverUrl != url) return
-            starting = true
-            basePath = preferredBasePath
-            startId = ++startSequence
-            resources = detachServerResources()
-        }
-        setLifecycleState(OpenCodeServerLifecycleState.RESTARTING)
+        val reservation = reserveHealthRestart(url) ?: return
         // Serialize kill + rebind on stopExecutor (same path as restartServer) so health never
         // races a settings stop on a fixed port.
-        stopResourcesAsync(resources) {
-            if (isCurrentStart(startId) && isHealthRestartAllowed()) {
-                startOpenCodeServer(null, basePath, startId)
-            } else if (isCurrentStart(startId)) {
-                finishStart(startId, success = false)
+        stopResourcesAsync(reservation.resources) {
+            if (isCurrentStart(reservation.startId) && isHealthRestartAllowed()) {
+                startOpenCodeServer(null, reservation.basePath, reservation.startId)
+            } else if (isCurrentStart(reservation.startId)) {
+                finishStart(reservation.startId, success = false)
             }
         }
     }
+
+    /** Reserves and publishes a health restart under one lock so stop cannot be overtaken. */
+    private fun reserveHealthRestart(url: String): HealthRestartReservation? {
+        return synchronized(lock) {
+            if (starting || disposed || !allowHealthRestart || serverUrl != url) return@synchronized null
+            starting = true
+            val startId = ++startSequence
+            val resources = detachServerResources()
+            // Keep the outer lock through publication. Otherwise stopServer can publish STOPPED
+            // between reservation and this call, leaving the final visible state RESTARTING.
+            setLifecycleState(OpenCodeServerLifecycleState.RESTARTING)
+            HealthRestartReservation(preferredBasePath, startId, resources)
+        }
+    }
+
+    @TestOnly
+    internal fun reserveHealthRestartForTests(url: String): Boolean = reserveHealthRestart(url) != null
 
     private fun isHealthRestartAllowed(): Boolean = synchronized(lock) { allowHealthRestart && !disposed }
 

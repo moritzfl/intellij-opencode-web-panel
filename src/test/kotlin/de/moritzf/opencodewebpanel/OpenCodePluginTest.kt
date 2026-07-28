@@ -1,6 +1,7 @@
 package de.moritzf.opencodewebpanel
 
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState
+import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleListener
 import de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager
 import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsConfigurable
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable
@@ -11,6 +12,7 @@ import de.moritzf.opencodewebpanel.toolWindow.OpenCodeBrowserCommand
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodeWebToolWindowFactoryImpl
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.KeyboardShortcut
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
@@ -21,6 +23,8 @@ import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.io.OutputStream
 import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 class OpenCodePluginTest : BasePlatformTestCase() {
@@ -133,6 +137,40 @@ class OpenCodePluginTest : BasePlatformTestCase() {
         assertNull(service.getServerProcess())
         assertNull(service.getServerUrl())
         assertNull(service.getServerPassword())
+    }
+
+    fun testStopCannotBeOvertakenByReservedHealthRestartPublication() {
+        val service = SharedOpenCodeServerManager.getInstance()
+        val url = "http://127.0.0.1:60482"
+        service.installTestServerState(url = url, password = "secret-password")
+        service.setServerRunning(true)
+        val restartingPublished = CountDownLatch(1)
+        val releasePublication = CountDownLatch(1)
+        val connection = ApplicationManager.getApplication().messageBus.connect(testRootDisposable)
+        connection.subscribe(
+            OpenCodeServerLifecycleListener.TOPIC,
+            object : OpenCodeServerLifecycleListener {
+                override fun stateChanged(state: OpenCodeServerLifecycleState) {
+                    if (state != OpenCodeServerLifecycleState.RESTARTING) return
+                    restartingPublished.countDown()
+                    assertTrue(releasePublication.await(5, TimeUnit.SECONDS))
+                }
+            },
+        )
+        val executor = Executors.newFixedThreadPool(2)
+        try {
+            val reserve = executor.submit<Boolean> { service.reserveHealthRestartForTests(url) }
+            assertTrue(restartingPublished.await(5, TimeUnit.SECONDS))
+            val stop = executor.submit { service.stopServer() }
+            assertFalse("stop must wait until restart publication leaves the manager lock", stop.isDone)
+            releasePublication.countDown()
+            assertTrue(reserve.get(5, TimeUnit.SECONDS))
+            stop.get(5, TimeUnit.SECONDS)
+            assertEquals(OpenCodeServerLifecycleState.STOPPED, service.getLifecycleState())
+        } finally {
+            releasePublication.countDown()
+            executor.shutdownNow()
+        }
     }
 
     fun testSharedServerManagerForceKillsStubbornServerProcess() {

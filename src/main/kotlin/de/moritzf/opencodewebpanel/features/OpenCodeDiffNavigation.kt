@@ -11,6 +11,7 @@ import com.intellij.notification.NotificationType
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.fileTypes.FileTypeManager
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.SystemInfo
 import com.intellij.ui.jcef.JBCefBrowser
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.server.OpenCodeProtocolResult
@@ -73,21 +74,37 @@ internal class OpenCodeDiffNavigation(
         internal fun selectDiffs(
             diffs: List<OpenCodeServerProtocol.SnapshotFileDiff>,
             filePath: String?,
+            caseSensitive: Boolean = SystemInfo.isFileSystemCaseSensitive,
         ): List<OpenCodeServerProtocol.SnapshotFileDiff> {
             if (filePath == null) return diffs
-            return diffs.filter { matchesFile(it.file, filePath) }
+            val exact = diffs.filter { pathsEqual(it.file, filePath, caseSensitive) }
+            if (exact.isNotEmpty()) return exact
+            return diffs.filter { matchesFile(it.file, filePath, caseSensitive) }
+                .singleOrNull()
+                ?.let(::listOf)
+                .orEmpty()
         }
 
-        /** Match relative paths from the DOM against REST diff paths, tolerating separators, a
-         *  leading root/slash, and case (Windows) — both sides come from the same OpenCode session. */
-        internal fun matchesFile(diffFile: String?, requested: String): Boolean {
-            val a = diffFile?.replace('\\', '/')?.trim(' ', '/') ?: return false
-            val b = requested.replace('\\', '/').trim(' ', '/')
+        /** Match a unique relative-path suffix after exact matches have been exhausted. */
+        internal fun matchesFile(
+            diffFile: String?,
+            requested: String,
+            caseSensitive: Boolean = SystemInfo.isFileSystemCaseSensitive,
+        ): Boolean {
+            val a = normalizePath(diffFile) ?: return false
+            val b = normalizePath(requested) ?: return false
             if (a.isEmpty() || b.isEmpty()) return false
-            return a.equals(b, ignoreCase = true) ||
-                a.endsWith("/$b", ignoreCase = true) ||
-                b.endsWith("/$a", ignoreCase = true)
+            return a.endsWith("/$b", ignoreCase = !caseSensitive) ||
+                b.endsWith("/$a", ignoreCase = !caseSensitive)
         }
+
+        private fun pathsEqual(first: String?, second: String, caseSensitive: Boolean): Boolean {
+            val a = normalizePath(first) ?: return false
+            val b = normalizePath(second) ?: return false
+            return a.equals(b, ignoreCase = !caseSensitive)
+        }
+
+        private fun normalizePath(path: String?): String? = path?.replace('\\', '/')?.trim(' ', '/')
     }
 
     private fun buildDiffRequest(diff: OpenCodeServerProtocol.SnapshotFileDiff): DiffRequest? {

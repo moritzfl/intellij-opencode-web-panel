@@ -29,6 +29,7 @@ internal object OpenCodeSoundService {
     )
     private data class SessionKey(val directory: String, val sessionID: String)
     private val busySessions = mutableSetOf<SessionKey>()
+    private var connectedGeneration: Long? = null
 
     /**
      * Subscribes to the application event bus. Safe to call repeatedly: re-subscribes after the
@@ -43,7 +44,8 @@ internal object OpenCodeSoundService {
                 OpenCodeGlobalEventListener.TOPIC,
                 object : OpenCodeGlobalEventListener {
                     override fun connected() {
-                        eventExecutor.execute { clearBusySessions() }
+                        val generation = parent.getServerGeneration()
+                        eventExecutor.execute { handleConnected(generation) }
                     }
 
                     override fun eventReceived(event: OpenCodeGlobalEvent) {
@@ -63,13 +65,18 @@ internal object OpenCodeSoundService {
 
     @TestOnly
     internal fun resetForTests() {
-        clearBusySessions()
-    }
-
-    /** Drops reduced busy state on stream (re)connect so failed session lookups cannot leak. */
-    internal fun clearBusySessions() {
         synchronized(busySessions) {
             busySessions.clear()
+            connectedGeneration = null
+        }
+    }
+
+    /** Preserve busy state across a transient SSE reconnect; only a new server invalidates it. */
+    internal fun handleConnected(serverGeneration: Long) {
+        synchronized(busySessions) {
+            if (connectedGeneration == serverGeneration) return
+            busySessions.clear()
+            connectedGeneration = serverGeneration
         }
     }
 
@@ -101,8 +108,8 @@ internal object OpenCodeSoundService {
                     markIdle(event.directory, sessionID)
                     return
                 }
-                // Keep busy on a failed lookup so a later idle can retry; clearBusySessions on
-                // stream reconnect bounds the set. Resolved child sessions still clear busy.
+                // Keep busy on a failed lookup so a later idle can retry. A new server generation
+                // clears reduced state; a transient SSE reconnect preserves the live transition.
                 val session = fetchSession(event.directory, sessionID) ?: return
                 if (!markIdle(event.directory, sessionID)) return
                 if (session.parentID != null) return

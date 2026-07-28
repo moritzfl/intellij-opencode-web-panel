@@ -175,6 +175,10 @@ internal class OpenCodeSystemNotifications(
         }
     }
 
+    fun browserAddressChanged() {
+        dismissNotificationsForViewedSession()
+    }
+
     private fun openSession(sessionID: String) {
         val serverUrl = serverManager.getServerUrl() ?: return
         if (!isProjectOpen()) return
