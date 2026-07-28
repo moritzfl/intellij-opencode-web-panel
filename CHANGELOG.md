@@ -4,6 +4,17 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Saving settings now reports secure-storage failures instead of restarting OpenCode with credentials that were not saved.
+- OpenCode shortcuts on macOS no longer inherit duplicate Control-key variants from the default keymap.
+- Explicitly stopping the server can no longer leave the panel stuck in a restarting state when a health check finishes at the same time.
+- Agent completion sounds survive temporary event-stream reconnects while still discarding stale state after a server restart.
+- Diff navigation prefers exact paths, rejects ambiguous filename-only matches, and respects case-sensitive filesystems.
+- File navigation checks every exact location before guessing, handles Windows path case consistently, and ignores stale results from older clicks.
+- The startup project seed no longer consumes its one-shot conversation target before the page finishes loading.
+- Response notifications are dismissed when their conversation becomes visible through in-panel navigation.
+
 ## [1.9.5] - 2026-07-28
 
 ### Changed
@@ -460,7 +471,9 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.3...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.5...HEAD
+[1.9.5]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.4...1.9.5
+[1.9.4]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.3...1.9.4
 [1.9.3]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.2...1.9.3
 [1.9.2]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.1...1.9.2
 [1.9.1]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.0...1.9.1
