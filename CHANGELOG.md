@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- The panel opens the most recent conversation again when that conversation changed outside the panel — for example after another window, another OpenCode client, or the automatic continuation of an interrupted session worked on it. The embedded web app restored its own last-viewed conversation instead, overriding the one the IDE had selected.
+
 ## [1.9.4] - 2026-07-27
 
 ### Fixed

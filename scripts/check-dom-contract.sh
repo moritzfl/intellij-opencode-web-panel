@@ -102,6 +102,9 @@ MARKERS=(
   # open-project seed (buildOpenProjectScript)
   'opencode.global.dat'
   'lastProject'
+  # per-project session pointer the SPA bootstrap redirects to (buildOpenProjectScript)
+  'lastProjectSession'
+  'layout.page'
   # hide-website button (buildHideWebsiteButtonScript)
   'https://opencode.ai'
 )

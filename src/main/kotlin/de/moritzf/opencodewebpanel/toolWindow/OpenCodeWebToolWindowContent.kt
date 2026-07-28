@@ -202,11 +202,17 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     private val openProjectSeedFeature = EarlyInjectedFeature(
         buildScript = { serverUrl ->
             openCodeProjectDirectory()?.takeIf { it.isNotBlank() }?.let { projectDirectory ->
+                // Pass the resolved boot target so OpenCode's own `lastProjectSession` pointer is
+                // already correct when the SPA bundle reads localStorage. Seeding it only after
+                // load lets the bundle bootstrap onto a stale pointer first, which shows the
+                // wrong conversation until the post-load navigate corrects it. The navigation
+                // itself stays a post-load step (window.location.assign needs a live document).
                 OpenCodeBrowserSnippets.buildOpenProjectScript(
                     projectDirectory,
                     serverUrl,
-                    openMostRecentConversation = false,
-                    mostRecentSessionId = null,
+                    openMostRecentConversation = pendingOpenMostRecentConversation,
+                    mostRecentSessionId = pendingMostRecentSessionId,
+                    navigate = false,
                 )
             }
         },
