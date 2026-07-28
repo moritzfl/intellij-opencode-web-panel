@@ -48,6 +48,10 @@ class SharedOpenCodeServerManager : Disposable {
     private var startSequence = 0L
     private var starting = false
     private var disposed = false
+    // Cleared by stopServer so a health check that already left the "responding?" probe cannot
+    // spawn a new process after the user/settings explicitly stopped the server. ensureStarted /
+    // restartServer re-enable it.
+    private var allowHealthRestart = true
     private var serverRunning = false
     private var lifecycleState = OpenCodeServerLifecycleState.STOPPED
     private var serverProcess: Process? = null
@@ -107,6 +111,7 @@ class SharedOpenCodeServerManager : Disposable {
                 pendingStarts.add(callback)
                 if (starting) return
                 starting = true
+                allowHealthRestart = true
                 ++startSequence
             }
             // Keep RUNNING while merely validating a healthy server; flipping to STARTING here
@@ -124,6 +129,7 @@ class SharedOpenCodeServerManager : Disposable {
             pendingStarts.add(callback)
             if (starting) return
             starting = true
+            allowHealthRestart = true
             ++startSequence
         }
 
@@ -137,6 +143,8 @@ class SharedOpenCodeServerManager : Disposable {
                 {
                     if (isCurrentStart(startId)) {
                         startOpenCodeServer(project.takeUnless { it.isDisposed }, basePath, startId)
+                    } else {
+                        // stop/dispose already cleared starting; nothing to finish.
                     }
                 },
                 backoffMillis,
@@ -269,6 +277,7 @@ class SharedOpenCodeServerManager : Disposable {
             val resources = synchronized(lock) {
                 startSequence++
                 starting = false
+                allowHealthRestart = false
                 callbacks = pendingStarts.toList()
                 pendingStarts.clear()
                 detachServerResources()
@@ -302,6 +311,7 @@ class SharedOpenCodeServerManager : Disposable {
             pendingStarts.add(callback)
             if (starting) return
             starting = true
+            allowHealthRestart = true
             resources = detachServerResources()
             ++startSequence
         }
@@ -378,6 +388,7 @@ class SharedOpenCodeServerManager : Disposable {
                 disposed = true
                 startSequence++
                 starting = false
+                allowHealthRestart = false
                 pendingStarts.clear()
                 detachServerResources()
             }
@@ -459,7 +470,14 @@ class SharedOpenCodeServerManager : Disposable {
 
     private fun checkServerHealth() {
         val url = getServerUrl()
-        if (url == null || checkServerRespondingWithConfirmation(url)) return
+        if (url == null || !isHealthRestartAllowed() || checkServerRespondingWithConfirmation(url)) return
+
+        // Confirmation can sleep for several seconds. Abort if stop/settings/dispose changed
+        // the world while we were probing — never resurrect an explicitly stopped server.
+        if (getServerUrl() != url || isDisposed() || !isHealthRestartAllowed()) {
+            thisLogger().info("Skipping OpenCode health restart; server state changed during confirmation")
+            return
+        }
 
         val backoffMillis = remainingStartBackoffMillis()
         if (backoffMillis > 0) {
@@ -469,23 +487,34 @@ class SharedOpenCodeServerManager : Disposable {
 
         thisLogger().warn("Server is not responding, attempting to restart...")
         val basePath: String?
-        val startId = synchronized(lock) {
-            if (starting) return
+        val startId: Long
+        val resources: ServerResourcesToStop
+        synchronized(lock) {
+            if (starting || disposed || !allowHealthRestart || serverUrl != url) return
             starting = true
             basePath = preferredBasePath
-            ++startSequence
+            startId = ++startSequence
+            resources = detachServerResources()
         }
         setLifecycleState(OpenCodeServerLifecycleState.RESTARTING)
-        cancelPeriodicCheck()
-        destroyCurrentProcess()
-        startOpenCodeServer(null, basePath, startId)
+        // Serialize kill + rebind on stopExecutor (same path as restartServer) so health never
+        // races a settings stop on a fixed port.
+        stopResourcesAsync(resources) {
+            if (isCurrentStart(startId) && isHealthRestartAllowed()) {
+                startOpenCodeServer(null, basePath, startId)
+            } else if (isCurrentStart(startId)) {
+                finishStart(startId, success = false)
+            }
+        }
     }
+
+    private fun isHealthRestartAllowed(): Boolean = synchronized(lock) { allowHealthRestart && !disposed }
 
     private fun startOpenCodeServer(project: Project?, projectBasePath: String?, startId: Long) {
         if (project != null) {
             val task = object : Backgroundable(project, "Starting OpenCode server", true) {
                 override fun run(indicator: ProgressIndicator) {
-                    runOpenCodeServerStart(projectBasePath, startId)
+                    runOpenCodeServerStart(projectBasePath, startId, indicator)
                 }
             }
             ProgressManager.getInstance().run(task)
@@ -493,20 +522,33 @@ class SharedOpenCodeServerManager : Disposable {
         }
 
         ApplicationManager.getApplication().executeOnPooledThread {
-            runOpenCodeServerStart(projectBasePath, startId)
+            runOpenCodeServerStart(projectBasePath, startId, indicator = null)
         }
     }
 
-    private fun runOpenCodeServerStart(projectBasePath: String?, startId: Long) {
+    private fun runOpenCodeServerStart(
+        projectBasePath: String?,
+        startId: Long,
+        indicator: ProgressIndicator?,
+    ) {
         var process: Process? = null
         var capturedDescendants: List<ProcessHandle> = emptyList()
         try {
-            if (!waitForIntellijMcpServerIfNeeded(startId)) return
+            if (!waitForIntellijMcpServerIfNeeded(startId)) {
+                // MCP wait CANCELLED covers both supersession and thread interrupt. Only the
+                // still-current case must finishStart — otherwise starting stays true forever.
+                failStartIfCurrent(startId)
+                return
+            }
             // Last check before actually spawning: a start superseded while queued or waiting
             // (stop, dispose, newer restart) must not launch a process at all — especially on
             // Windows, where the launcher can detach the real server before a post-launch
             // rejection captures its descendants for cleanup.
             if (!isCurrentStart(startId)) return
+            if (indicator?.isCanceled == true) {
+                failStartIfCurrent(startId)
+                return
+            }
             val password = OpenCodePasswordStore.getInstance().ensurePasswordBlocking()
             val settings = OpenCodeSettingsState.getInstance()
             val port = settings.portArgument()
@@ -554,6 +596,12 @@ class SharedOpenCodeServerManager : Disposable {
             val startTime = System.currentTimeMillis()
 
             while (isCurrentStart(startId) && (System.currentTimeMillis() - startTime) < SERVER_START_TIMEOUT_MILLIS) {
+                if (indicator?.isCanceled == true) {
+                    destroyCurrentProcess()
+                    clearServerStateForStart(startId)
+                    failStartIfCurrent(startId)
+                    return
+                }
                 urlLatch.await(SERVER_START_POLL_MILLIS, TimeUnit.MILLISECONDS)
                 capturedDescendants = captureDescendants(startId, process, capturedDescendants)
                 val url = getServerUrl()
@@ -597,6 +645,13 @@ class SharedOpenCodeServerManager : Disposable {
             } else {
                 processTerminator.destroy(process, capturedDescendants)
             }
+        }
+    }
+
+    /** Clears [starting] and fails pending callbacks when [startId] is still the active start. */
+    private fun failStartIfCurrent(startId: Long) {
+        if (isCurrentStart(startId)) {
+            finishStart(startId, success = false)
         }
     }
 
