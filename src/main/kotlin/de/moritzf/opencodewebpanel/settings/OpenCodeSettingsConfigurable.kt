@@ -6,6 +6,7 @@ import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
 import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.options.ConfigurationException
+import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.ui.TextFieldWithBrowseButton
 import com.intellij.ui.components.JBLabel
@@ -339,7 +340,8 @@ class OpenCodeSettingsConfigurable : Configurable {
         }
 
         val nextPassword = passwordForApply ?: OpenCodePasswordStore.getInstance().generatePasswordForEditing()
-        OpenCodePasswordStore.getInstance().saveBlocking(nextPassword)
+        // PasswordSafe may unlock the OS keychain; never block the EDT on that I/O.
+        savePasswordOffEdt(nextPassword)
         savedPassword = nextPassword
         setPasswordText(nextPassword)
         passwordLoadError = null
@@ -418,6 +420,21 @@ class OpenCodeSettingsConfigurable : Configurable {
         passwordLoadGeneration.incrementAndGet()
         lifecycleConnection?.disconnect()
         lifecycleConnection = null
+    }
+
+    private fun savePasswordOffEdt(password: String) {
+        val store = OpenCodePasswordStore.getInstance()
+        val app = ApplicationManager.getApplication()
+        if (app.isDispatchThread && !app.isUnitTestMode) {
+            ProgressManager.getInstance().runProcessWithProgressSynchronously(
+                { store.saveBlocking(password) },
+                "Saving OpenCode password",
+                false,
+                null,
+            )
+        } else {
+            store.saveBlocking(password)
+        }
     }
 
     /**

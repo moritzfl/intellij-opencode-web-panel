@@ -15,12 +15,17 @@ internal const val OPEN_CODE_TOOL_WINDOW_ID = "OpenCode"
 @JvmDefaultWithoutCompatibility
 class OpenCodeWebToolWindowFactoryImpl : ToolWindowFactory, DumbAware {
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
+        // Build content + disposer on this call (typically EDT) so a fast project close cannot
+        // orphan JCEF before an invokeLater runs. Only the initial server/page load is deferred.
         val toolWindowContent = OpenCodeWebToolWindowContent(toolWindow)
+        val content = ContentFactory.getInstance().createContent(toolWindowContent.getContent(), null, false)
+        content.setDisposer(toolWindowContent)
+        toolWindow.contentManager.addContent(content)
+        installTitleActions(toolWindow)
         ApplicationManager.getApplication().invokeLater {
-            val content = ContentFactory.getInstance().createContent(toolWindowContent.getContent(), null, false)
-            content.setDisposer(toolWindowContent)
-            toolWindow.contentManager.addContent(content)
-            installTitleActions(toolWindow)
+            if (project.isDisposed || toolWindow.isDisposed || project != toolWindow.project) {
+                return@invokeLater
+            }
             toolWindowContent.checkAndLoadContent()
         }
     }

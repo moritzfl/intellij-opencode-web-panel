@@ -17,8 +17,13 @@ import javax.swing.JComponent
 
 class OpenCodeProjectSettingsConfigurable(private val project: Project) : Configurable {
     private var panel: JComponent? = null
+    private var controlListenersInstalled = false
     private val autoProjectDirectoryRadioButton = JBRadioButton("Auto detect")
     private val customProjectDirectoryRadioButton = JBRadioButton("Custom directory")
+    private val projectDirectoryModeGroup = ButtonGroup().apply {
+        add(autoProjectDirectoryRadioButton)
+        add(customProjectDirectoryRadioButton)
+    }
     private val projectDirectoryField = TextFieldWithBrowseButton().apply {
         textField.columns = 40
         toolTipText = "Directory OpenCode should open for this IDE project"
@@ -34,13 +39,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
     override fun getDisplayName(): String = PROJECT_SETTINGS_DISPLAY_NAME
 
     override fun createComponent(): JComponent {
-        ButtonGroup().apply {
-            add(autoProjectDirectoryRadioButton)
-            add(customProjectDirectoryRadioButton)
-        }
-        autoProjectDirectoryRadioButton.addItemListener { updateProjectDirectoryControls() }
-        customProjectDirectoryRadioButton.addItemListener { updateProjectDirectoryControls() }
-        detectProjectDirectoryButton.addActionListener { detectProjectDirectory() }
+        installControlListenersOnce()
 
         panel = panel {
             buttonsGroup("OpenCode project directory:") {
@@ -104,6 +103,14 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
 
     override fun disposeUIResources() {
         panel = null
+    }
+
+    private fun installControlListenersOnce() {
+        if (controlListenersInstalled) return
+        controlListenersInstalled = true
+        autoProjectDirectoryRadioButton.addItemListener { updateProjectDirectoryControls() }
+        customProjectDirectoryRadioButton.addItemListener { updateProjectDirectoryControls() }
+        detectProjectDirectoryButton.addActionListener { detectProjectDirectory() }
     }
 
     private fun projectDirectory(): String {
