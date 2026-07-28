@@ -6,31 +6,31 @@ import com.intellij.ide.passwordSafe.PasswordSafe
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
-import java.util.concurrent.atomic.AtomicReference
 
 @Service(Service.Level.APP)
 class OpenCodePasswordStore {
     private val attributes = CredentialAttributes(SERVICE_NAME, USER_NAME)
-    private val cachedPassword = AtomicReference<String?>()
+    private val lock = Any()
+    private var cachedPassword: String? = null
 
     private fun loadBlocking(): String? {
-        cachedPassword.get()?.let { return it }
-        val password = readPasswordSafe()
-        cachedPassword.set(password)
-        return password
+        return synchronized(lock) {
+            cachedPassword ?: readPasswordSafe().also { cachedPassword = it }
+        }
     }
 
     fun loadFreshBlocking(): String? {
-        val password = readPasswordSafe()
-        cachedPassword.set(password)
-        return password
+        return synchronized(lock) {
+            readPasswordSafe().also { cachedPassword = it }
+        }
     }
 
-    fun cachedPassword(): String? = cachedPassword.get()
+    fun cachedPassword(): String? = synchronized(lock) { cachedPassword }
 
     fun ensurePasswordBlocking(): String {
-        loadBlocking()?.let { return it }
-        return regenerateBlocking()
+        return synchronized(lock) {
+            loadBlocking() ?: regenerateBlocking()
+        }
     }
 
     private fun regenerateBlocking(): String {
@@ -45,8 +45,10 @@ class OpenCodePasswordStore {
 
     fun saveBlocking(password: String?) {
         val sanitized = password?.ifBlank { null }
-        PasswordSafe.instance.set(attributes, sanitized?.let { Credentials(USER_NAME, it) })
-        cachedPassword.set(sanitized)
+        synchronized(lock) {
+            PasswordSafe.instance.set(attributes, sanitized?.let { Credentials(USER_NAME, it) })
+            cachedPassword = sanitized
+        }
     }
 
     /**

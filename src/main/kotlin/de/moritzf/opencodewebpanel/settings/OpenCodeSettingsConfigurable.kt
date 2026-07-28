@@ -9,6 +9,7 @@ import com.intellij.openapi.options.ConfigurationException
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.ui.TextFieldWithBrowseButton
+import com.intellij.openapi.util.ThrowableComputable
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.JBPasswordField
@@ -323,7 +324,9 @@ class OpenCodeSettingsConfigurable : Configurable {
     }
 
     override fun apply() {
-        val passwordForApply = passwordForApply()
+        passwordLoadGeneration.incrementAndGet()
+        passwordLoading = false
+        val editedPassword = password()
         val settings = OpenCodeSettingsState.getInstance()
         val oldPortMode = settings.portModeValue()
         val oldFixedPort = OpenCodeSettingsState.sanitizePort(settings.fixedPort)
@@ -339,9 +342,7 @@ class OpenCodeSettingsConfigurable : Configurable {
             uiSetting to newValue
         }
 
-        val nextPassword = passwordForApply ?: OpenCodePasswordStore.getInstance().generatePasswordForEditing()
-        // PasswordSafe may unlock the OS keychain; never block the EDT on that I/O.
-        savePasswordOffEdt(nextPassword)
+        val nextPassword = resolveAndSavePasswordOffEdt(editedPassword)
         savedPassword = nextPassword
         setPasswordText(nextPassword)
         passwordLoadError = null
@@ -422,18 +423,31 @@ class OpenCodeSettingsConfigurable : Configurable {
         lifecycleConnection = null
     }
 
-    private fun savePasswordOffEdt(password: String) {
+    private fun resolveAndSavePasswordOffEdt(editedPassword: String?): String {
         val store = OpenCodePasswordStore.getInstance()
-        val app = ApplicationManager.getApplication()
-        if (app.isDispatchThread && !app.isUnitTestMode) {
-            ProgressManager.getInstance().runProcessWithProgressSynchronously(
-                { store.saveBlocking(password) },
-                "Saving OpenCode password",
-                false,
-                null,
-            )
-        } else {
+        val operation = ThrowableComputable<String, Exception> {
+            val password = editedPassword
+                ?: store.loadFreshBlocking()
+                ?: store.generatePasswordForEditing()
             store.saveBlocking(password)
+            password
+        }
+        val app = ApplicationManager.getApplication()
+        return try {
+            if (app.isDispatchThread && !app.isUnitTestMode) {
+                ProgressManager.getInstance().runProcessWithProgressSynchronously(
+                    operation,
+                    "Saving OpenCode Password",
+                    false,
+                    null,
+                )
+            } else {
+                operation.compute()
+            }
+        } catch (error: Exception) {
+            passwordLoadError = "Could not save password to secure storage: ${error.message ?: error::class.java.simpleName}"
+            updatePasswordHint()
+            throw ConfigurationException(passwordLoadError!!)
         }
     }
 
@@ -503,31 +517,6 @@ class OpenCodeSettingsConfigurable : Configurable {
     }
 
     private fun password(): String? = String(passwordField.password).trim().ifBlank { null }
-
-    private fun passwordForApply(): String? {
-        passwordLoadGeneration.incrementAndGet()
-        val currentPassword = password()
-        passwordLoading = false
-        if (currentPassword != null) {
-            passwordLoadError = null
-            return currentPassword
-        }
-        val store = OpenCodePasswordStore.getInstance()
-        // Prefer the already-loaded value to avoid a blocking secure-storage read on the EDT;
-        // only fall back to a fresh read when nothing has been cached yet.
-        val result = store.cachedPassword()?.let { Result.success(it) }
-            ?: runCatching { store.loadFreshBlocking() }
-        val loadedPassword = result.getOrElse { error ->
-            passwordLoadError = "Could not load password from secure storage: ${error.message ?: error::class.java.simpleName}"
-            updatePasswordHint()
-            throw ConfigurationException(passwordLoadError!!)
-        }
-        savedPassword = loadedPassword
-        setPasswordText(loadedPassword)
-        passwordLoadError = null
-        updatePasswordHint()
-        return loadedPassword
-    }
 
     private fun selectedPortMode(): OpenCodePortMode {
         return if (fixedPortRadioButton.isSelected) OpenCodePortMode.FIXED else OpenCodePortMode.AUTO

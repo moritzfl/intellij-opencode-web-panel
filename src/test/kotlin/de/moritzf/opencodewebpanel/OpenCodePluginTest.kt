@@ -71,6 +71,12 @@ class OpenCodePluginTest : BasePlatformTestCase() {
     }
 
     fun testBrowserShortcutActionsAreRegisteredForKeymapCustomization() {
+        val pluginXml = javaClass.classLoader.getResource("META-INF/plugin.xml")!!.readText()
+        assertEquals(
+            "Mac shortcut declarations must replace inherited Ctrl variants",
+            9,
+            Regex("""keymap="Mac OS X"[^>]*replace-all="true"""").findAll(pluginXml).count(),
+        )
         val actionIDs = OpenCodeBrowserCommand.entries.map { it.intellijActionID } + listOf(
             OPEN_CODE_ZOOM_IN_ACTION_ID,
             OPEN_CODE_ZOOM_OUT_ACTION_ID,

@@ -32,43 +32,42 @@
                     text="OpenCode: New Session"
                     description="Start a new OpenCode session">
                 <keyboard-shortcut keymap="$default" first-keystroke="control T"/>
-                <!-- No replace-all: keep IDE New Tab etc. Component-local shortcutSet wins while the panel is focused. -->
-                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta T"/>
+                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta T" replace-all="true"/>
             </action>
             <action id="OpenCodeWebPanel.ToggleHome"
                     class="com.intellij.openapi.actionSystem.EmptyAction"
                     text="OpenCode: Home / Sidebar"
                     description="Toggle the OpenCode home view or classic sidebar">
                 <keyboard-shortcut keymap="$default" first-keystroke="control B"/>
-                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta B"/>
+                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta B" replace-all="true"/>
             </action>
             <action id="OpenCodeWebPanel.ChooseModel"
                     class="com.intellij.openapi.actionSystem.EmptyAction"
                     text="OpenCode: Choose Model"
                     description="Choose the model for the OpenCode session">
                 <keyboard-shortcut keymap="$default" first-keystroke="control QUOTE"/>
-                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta QUOTE"/>
+                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta QUOTE" replace-all="true"/>
             </action>
             <action id="OpenCodeWebPanel.CycleAgent"
                     class="com.intellij.openapi.actionSystem.EmptyAction"
                     text="OpenCode: Cycle Agent"
                     description="Select the next OpenCode agent">
                 <keyboard-shortcut keymap="$default" first-keystroke="control PERIOD"/>
-                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta PERIOD"/>
+                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta PERIOD" replace-all="true"/>
             </action>
             <action id="OpenCodeWebPanel.CycleThinkingEffort"
                     class="com.intellij.openapi.actionSystem.EmptyAction"
                     text="OpenCode: Cycle Thinking Effort"
                     description="Select the next model thinking effort">
                 <keyboard-shortcut keymap="$default" first-keystroke="control shift D"/>
-                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta shift D"/>
+                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta shift D" replace-all="true"/>
             </action>
             <action id="OpenCodeWebPanel.AttachFiles"
                     class="com.intellij.openapi.actionSystem.EmptyAction"
                     text="OpenCode: Attach Files"
                     description="Choose files to attach to the OpenCode prompt">
                 <keyboard-shortcut keymap="$default" first-keystroke="control U"/>
-                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta U"/>
+                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta U" replace-all="true"/>
             </action>
             <action id="OpenCodeWebPanel.CancelOrStop"
                     class="com.intellij.openapi.actionSystem.EmptyAction"
@@ -84,7 +83,7 @@
                 <keyboard-shortcut keymap="$default" first-keystroke="control shift EQUALS"/>
                 <keyboard-shortcut keymap="$default" first-keystroke="control PLUS"/>
                 <keyboard-shortcut keymap="$default" first-keystroke="control ADD"/>
-                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta EQUALS"/>
+                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta EQUALS" replace-all="true"/>
                 <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta shift EQUALS"/>
                 <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta PLUS"/>
                 <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta ADD"/>
@@ -95,7 +94,7 @@
                     description="Decrease the OpenCode panel zoom">
                 <keyboard-shortcut keymap="$default" first-keystroke="control MINUS"/>
                 <keyboard-shortcut keymap="$default" first-keystroke="control SUBTRACT"/>
-                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta MINUS"/>
+                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta MINUS" replace-all="true"/>
                 <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta SUBTRACT"/>
             </action>
             <action id="OpenCodeWebPanel.ResetZoom"
@@ -104,7 +103,7 @@
                     description="Reset the OpenCode panel zoom">
                 <keyboard-shortcut keymap="$default" first-keystroke="control 0"/>
                 <keyboard-shortcut keymap="$default" first-keystroke="control NUMPAD0"/>
-                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta 0"/>
+                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta 0" replace-all="true"/>
                 <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta NUMPAD0"/>
             </action>
         </group>
