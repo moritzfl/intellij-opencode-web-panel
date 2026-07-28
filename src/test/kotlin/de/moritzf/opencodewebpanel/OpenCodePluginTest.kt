@@ -60,7 +60,14 @@ class OpenCodePluginTest : BasePlatformTestCase() {
 
         assertTrue(pluginXml.contains("displayName=\"OpenCode Web Panel\""))
         assertEquals("OpenCode Web Panel", OpenCodeSettingsConfigurable().displayName)
-        assertEquals("OpenCode Web Panel", OpenCodeProjectSettingsConfigurable(project).displayName)
+
+        // Both pages sit under Tools; the project-scoped one is suffixed so the tree does not
+        // show the same label twice. The descriptor supplies the tree label before the class is
+        // instantiated, so the two spellings must match.
+        val projectDisplayName = OpenCodeProjectSettingsConfigurable.PROJECT_SETTINGS_DISPLAY_NAME
+        assertEquals("OpenCode Web Panel (Project)", projectDisplayName)
+        assertEquals(projectDisplayName, OpenCodeProjectSettingsConfigurable(project).displayName)
+        assertTrue(pluginXml.contains("displayName=\"$projectDisplayName\""))
     }
 
     fun testBrowserShortcutActionsAreRegisteredForKeymapCustomization() {

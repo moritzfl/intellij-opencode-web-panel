@@ -42,6 +42,8 @@ Project-specific guidance for future implementation work.
 ## Settings UI
 
 - Path `Settings > Tools > OpenCode Web Panel`; server group label `OpenCode Server`; order: binary, port, password.
+- Two pages sit under Tools: the application one (`OpenCode Web Panel`) and the project-scoped one (`OpenCode Web Panel (Project)`, just the project directory). The suffix keeps the tree from showing the same label twice; `plugin.xml`'s `displayName` supplies the label before the class loads, so it must match `PROJECT_SETTINGS_DISPLAY_NAME`.
+- The application page is a tabbed pane sized to the **selected** tab (`OpenCodeSettingsTabbedPane`) — `JTabbedPane` otherwise reports the tallest tab and gives a short tab the long tab's scrollbar.
 - Binary: `Auto detect` or `OpenCode path` (with a `Detect` action that fills an editable path).
 - Password controls: edit, generate, show, copy.
 

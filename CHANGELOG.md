@@ -4,14 +4,17 @@
 
 ## [Unreleased]
 
+### Changed
+
+- The project-specific settings page under Tools is now called "OpenCode Web Panel (Project)", so it is no longer listed with the same name as the main settings page right above it.
+
 ### Fixed
 
 - File references in chat now open in the IDE even when the path contains spaces or non-ASCII characters (umlauts, accents). OpenCode escapes those characters in links, and the panel previously failed to find the file, so only plain ASCII paths worked reliably.
 - Relative references written with a leading slash (`/src/Main.kt`) or as `file:src/Main.kt` now open as well, and stray spaces around a link no longer prevent it from opening.
-- The settings page no longer shows a scrollbar on a tab whose content fits. Both tabs were sized to the longer one, so "OpenCode Server Setup" scrolled even with empty space below it.
 - Incomplete references are now resolved as best as possible: a reference to `src/Main.kt` (or just `Main.kt`) opens the matching file even when it actually lives deeper in the project, and a reference that repeats folders the panel is already inside still works. Exact matches always win; build output, `node_modules` and version-control folders are skipped.
-
 - The panel opens the most recent conversation again when that conversation changed outside the panel — for example after another window, another OpenCode client, or the automatic continuation of an interrupted session worked on it. The embedded web app restored its own last-viewed conversation instead, overriding the one the IDE had selected.
+- The settings page no longer shows a scrollbar on a tab whose content fits. Both tabs were sized to the longer one, so "OpenCode Server Setup" scrolled even with empty space below it.
 
 ## [1.9.4] - 2026-07-27
 

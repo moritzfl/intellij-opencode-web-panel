@@ -29,7 +29,9 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         accessibleContext.accessibleName = "Detect OpenCode project directory"
     }
 
-    override fun getDisplayName(): String = "OpenCode Web Panel"
+    // Distinguishes this project-scoped page from the application-level one, which sits directly
+    // above it under Tools with the same product name.
+    override fun getDisplayName(): String = PROJECT_SETTINGS_DISPLAY_NAME
 
     override fun createComponent(): JComponent {
         ButtonGroup().apply {
@@ -131,5 +133,10 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         customProjectDirectoryRadioButton.isSelected = true
         projectDirectoryField.text = detectedDirectory
         updateProjectDirectoryControls()
+    }
+
+    companion object {
+        /** Keep in sync with the `projectConfigurable` displayName in `plugin.xml`. */
+        const val PROJECT_SETTINGS_DISPLAY_NAME = "OpenCode Web Panel (Project)"
     }
 }
