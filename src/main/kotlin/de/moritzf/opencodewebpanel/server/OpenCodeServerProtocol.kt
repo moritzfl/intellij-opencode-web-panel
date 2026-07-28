@@ -203,12 +203,16 @@ internal object OpenCodeServerProtocol {
         val basePaths = listOfNotNull(routeBasePath?.takeIf { it.isNotBlank() }, projectBasePath?.takeIf { it.isNotBlank() })
             .distinct()
         if (href.isNullOrBlank() || basePaths.isEmpty()) return null
-        if (isOpenCodeSessionRouteHref(href)) return null
-        val parsed = parseFileLink(href, basePaths) ?: return null
-        val path = candidateFileLinkPaths(parsed, basePaths)
-            .firstOrNull { Files.exists(it) && Files.isRegularFile(it) }
+        val cleanedHref = cleanFileLinkHref(href).ifBlank { return null }
+        // Check the route exclusion on the cleaned spelling too: a decorated SPA route must not
+        // slip past it and get preventDefault-ed as a file.
+        if (isOpenCodeSessionRouteHref(href) || isOpenCodeSessionRouteHref(cleanedHref)) return null
+        val parsed = parseFileLink(cleanedHref, basePaths) ?: return null
+        val hit = candidateFileLinkPaths(parsed, basePaths).firstOrNull { Files.isRegularFile(it.second) }
+            ?: bestGuessFileLinkPath(parsed, basePaths)
             ?: return null
-        return FileLinkTarget(path, parsed.line?.coerceAtLeast(0), parsed.column?.coerceAtLeast(0))
+        val (spelling, path) = hit
+        return FileLinkTarget(path, spelling.line?.coerceAtLeast(0), spelling.column?.coerceAtLeast(0))
     }
 
     fun isOpenCodeSessionRouteHref(href: String?): Boolean {
@@ -376,51 +380,122 @@ internal object OpenCodeServerProtocol {
         val fragment = href.substringAfter('#', missingDelimiterValue = "")
         val pathPart = withoutFragment.substringBefore('?')
         val query = withoutFragment.substringAfter('?', missingDelimiterValue = "")
-        val decodedPath = decodeFileLinkPath(pathPart).ifBlank { return null }
+        val decodedPaths = decodeFileLinkPaths(pathPart).takeIf { it.isNotEmpty() } ?: return null
         val fragmentLineColumn = parseLineColumn(fragment)
         val queryLine = parseQueryLine(query)
-        val trailingLineColumn = if (fragmentLineColumn == null && queryLine == null) {
-            parseTrailingLineColumn(decodedPath, basePaths)
-        } else {
-            null
-        }
-        val pathText = trailingLineColumn?.first ?: decodedPath
-        return runCatching {
-            ParsedFileLink(
-                Path.of(pathText).normalize(),
-                fragmentLineColumn?.first ?: queryLine ?: trailingLineColumn?.second,
-                fragmentLineColumn?.second ?: trailingLineColumn?.third,
-                fallbackToProjectFileName = pathPart.startsWith("sandbox:", ignoreCase = true),
+        val explicitLine = fragmentLineColumn?.first ?: queryLine
+        val explicitColumn = fragmentLineColumn?.second
+        // Each spelling carries the position that applies when *it* is the one found on disk, so
+        // a `src/Main.kt:42` reference can be probed both stripped (a line reference, by far the
+        // common case) and whole (a file whose name really ends in `:42`) without the line number
+        // leaking onto the wrong reading.
+        val spellings = decodedPaths.flatMap { text ->
+            val trailing = if (explicitLine == null) parseTrailingLineColumn(text) else null
+            listOfNotNull(
+                trailing?.let { spellingOf(it.first, it.second, it.third) },
+                spellingOf(text, explicitLine, explicitColumn),
             )
-        }.getOrNull()
+        }.distinctBy { it.text }
+        if (spellings.isEmpty()) return null
+        return ParsedFileLink(
+            spellings,
+            fallbackToProjectFileName = pathPart.startsWith("sandbox:", ignoreCase = true),
+        )
     }
 
-    private fun candidateFileLinkPaths(parsed: ParsedFileLink, basePaths: List<String>): List<Path> {
-        val paths = if (parsed.path.isAbsolute) {
-            listOf(parsed.path)
-        } else {
-            basePaths.map { Path.of(it).resolve(parsed.path).normalize() }
+    /** Parses one path text; returns null for text that is not a legal path on this platform. */
+    private fun spellingOf(text: String, line: Int?, column: Int?): PathSpelling? {
+        val path = runCatching { Path.of(text).normalize() }.getOrNull() ?: return null
+        return PathSpelling(text, path, line, column)
+    }
+
+    /**
+     * A root-relative link (`/src/Main.kt`) is absolute on Unix but on Windows `Path.isAbsolute`
+     * is false for it — and `Path.of("C:/proj").resolve("/src/Main.kt")` keeps only the drive
+     * root, silently dropping the project directory. Decide on the href text, which is the same
+     * on every platform, and strip the separator before resolving under a base.
+     */
+    private fun isRootRelative(text: String): Boolean = text.startsWith('/') || text.startsWith('\\')
+
+    private fun candidateFileLinkPaths(
+        parsed: ParsedFileLink,
+        basePaths: List<String>,
+    ): List<Pair<PathSpelling, Path>> {
+        val paths = parsed.paths.flatMap { spelling ->
+            candidatesFor(spelling, basePaths).map { spelling to it }
         }
         val fallbacks = if (parsed.fallbackToProjectFileName) {
-            parsed.path.fileName?.let { fileName -> basePaths.map { Path.of(it).resolve(fileName).normalize() } }.orEmpty()
+            parsed.paths.flatMap { spelling ->
+                val fileName = spelling.path.fileName ?: return@flatMap emptyList()
+                basePaths.mapNotNull { base ->
+                    runCatching { Path.of(base).resolve(fileName).normalize() }.getOrNull()?.let { spelling to it }
+                }
+            }
         } else {
             emptyList()
         }
-        return (paths + fallbacks)
-            .distinct()
+        return (paths + fallbacks).distinctBy { it.second }
     }
 
-    private fun decodeFileLinkPath(value: String): String {
-        if (value.startsWith("sandbox:", ignoreCase = true)) return value.substringAfter(':')
-        if (!value.startsWith("file:", ignoreCase = true)) return URI(null, null, value, null).path ?: value
-        val uri = runCatching { URI(value) }.getOrNull() ?: return value.removePrefix("file:")
+    private fun candidatesFor(spelling: PathSpelling, basePaths: List<String>): List<Path> {
+        val underBases = { relative: String ->
+            basePaths.mapNotNull { base ->
+                runCatching { Path.of(base).resolve(relative).normalize() }.getOrNull()
+            }
+        }
+        return when {
+            // Real absolute path (Unix `/x` or Windows `C:\x`): the literal target wins, but a
+            // project-relative reading is still tried so `/src/Main.kt` works in both worlds.
+            spelling.path.isAbsolute -> listOf(spelling.path) + underBases(spelling.text.trimStart('/', '\\'))
+            isRootRelative(spelling.text) -> underBases(spelling.text.trimStart('/', '\\'))
+            else -> underBases(spelling.text)
+        }
+    }
+
+    /** Strips surrounding whitespace a chat link can pick up before it reaches the resolver. */
+    private fun cleanFileLinkHref(href: String): String = href.trim()
+
+    /** Bidi marks survive percent-decoding, so they are stripped from the decoded spelling. */
+    private fun stripBidiMarks(value: String): String =
+        value.replace(Regex("[\\u202A-\\u202E\\u2066-\\u2069]"), "")
+
+    /**
+     * Turns one href into the path spellings worth probing on disk, most specific first.
+     *
+     * OpenCode renders markdown links through marked, which runs `encodeURI` on every href, so a
+     * relative link to a path containing a space or any non-ASCII character arrives
+     * percent-encoded (`docs/My%20File.md`). Plain ASCII paths are untouched, which is why only
+     * some relative links used to fail. Both spellings are returned because a file name may also
+     * legitimately contain a literal `%`.
+     */
+    private fun decodeFileLinkPaths(value: String): List<String> {
+        if (value.startsWith("sandbox:", ignoreCase = true)) {
+            return withPercentDecoded(value.substringAfter(':'))
+        }
+        if (!value.startsWith("file:", ignoreCase = true)) return withPercentDecoded(value)
+        val uri = runCatching { URI(value) }.getOrNull() ?: return withPercentDecoded(value.removePrefix("file:"))
         val host = uri.host.orEmpty()
-        val path = uri.path.orEmpty()
+        // `file:src/Main.kt` (no authority) is an opaque URI: `path` is null and the payload sits
+        // in the scheme-specific part. That is the form the panel itself writes for dropped files.
+        // Take the *raw* form so the single decode below is not applied twice.
+        val path = uri.rawPath ?: uri.rawSchemeSpecificPart.orEmpty()
         val decoded = when {
             host.isNotEmpty() && !host.equals("localhost", ignoreCase = true) -> "$host/${path.trimStart('/')}"
             else -> path
         }
-        return decoded.replace(Regex("^/([A-Za-z]:/)"), "$1")
+        return withPercentDecoded(decoded.replace(Regex("^/([A-Za-z]:/)"), "$1"))
+    }
+
+    private fun withPercentDecoded(value: String): List<String> {
+        val trimmed = value.trim()
+        if (trimmed.isBlank()) return emptyList()
+        if (!trimmed.contains('%')) return listOf(stripBidiMarks(trimmed)).filter { it.isNotBlank() }
+        // `+` is a literal in a path segment, so decode percent escapes only. A malformed escape
+        // (`%zz`, a trailing `%`) throws, leaving just the raw spelling.
+        val decoded = runCatching {
+            URLDecoder.decode(trimmed.replace("+", "%2B"), StandardCharsets.UTF_8)
+        }.getOrNull()?.let(::stripBidiMarks)?.takeIf { it.isNotBlank() && it != trimmed }
+        return listOfNotNull(decoded, trimmed)
     }
 
     private fun parseLineColumn(fragment: String): Pair<Int?, Int?>? {
@@ -437,16 +512,111 @@ internal object OpenCodeServerProtocol {
             ?.minus(1)
     }
 
-    private fun parseTrailingLineColumn(path: String, basePaths: List<String>): Triple<String, Int?, Int?>? {
+    private fun parseTrailingLineColumn(path: String): Triple<String, Int?, Int?>? {
         val match = Regex("^(.+?):(\\d+)(?::(\\d+))?$").find(path) ?: return null
-        val candidate = match.groupValues[1]
-        val exists = if (Path.of(candidate).isAbsolute) {
-            Files.exists(Path.of(candidate))
-        } else {
-            basePaths.any { Files.exists(Path.of(it).resolve(candidate).normalize()) }
+        return Triple(
+            match.groupValues[1],
+            match.groupValues[2].toIntOrNull()?.minus(1),
+            match.groupValues.getOrNull(3)?.toIntOrNull()?.minus(1),
+        )
+    }
+
+    /**
+     * Last-resort resolution for a reference whose path is incomplete or anchored at a different
+     * level than the panel's project directory — a model writing `src/Main.kt` for
+     * `packages/app/src/Main.kt`, or `packages/app/src/Main.kt` while the panel is already inside
+     * `packages/app`. Both readings are guesses, so this only runs after every exact candidate
+     * missed, and it prefers the most specific match it can prove.
+     *
+     * Order: drop leading segments of the reference (cheap, no directory walk), then a bounded
+     * search under each base for a file whose trailing segments match the reference.
+     */
+    private fun bestGuessFileLinkPath(
+        parsed: ParsedFileLink,
+        basePaths: List<String>,
+    ): Pair<PathSpelling, Path>? {
+        val references = parsed.paths.filter { it.path.nameCount > 0 }
+        if (references.isEmpty()) return null
+        // 1. The base may already sit inside the referenced path: try `a/b/c` → `b/c` → `c`.
+        for (spelling in references) {
+            val reference = spelling.path
+            for (start in 1 until reference.nameCount) {
+                val suffix = reference.subpath(start, reference.nameCount)
+                val hit = basePaths.asSequence()
+                    .mapNotNull { runCatching { Path.of(it).resolve(suffix).normalize() }.getOrNull() }
+                    .firstOrNull { Files.isRegularFile(it) }
+                if (hit != null) return spelling to hit
+            }
         }
-        if (!exists) return null
-        return Triple(candidate, match.groupValues[2].toIntOrNull()?.minus(1), match.groupValues.getOrNull(3)?.toIntOrNull()?.minus(1))
+        // 2. The reference may be missing leading segments: search for a matching tail.
+        return references.firstNotNullOfOrNull { spelling ->
+            basePaths.firstNotNullOfOrNull { base ->
+                searchBySuffix(base, spelling.path)?.let { spelling to it }
+            }
+        }
+    }
+
+    /** Directories that never hold sources but dominate a naive walk. */
+    private val SEARCH_PRUNED_DIRECTORIES = setOf(
+        ".git", ".hg", ".svn", ".idea", ".gradle", ".venv", "venv", "node_modules",
+        "build", "out", "dist", "target", "bin", "obj", ".next", ".cache", "__pycache__",
+    )
+    private const val SEARCH_MAX_VISITED_FILES = 20_000
+    private const val SEARCH_MAX_DEPTH = 12
+
+    /**
+     * Finds the file under [base] whose path ends with the segments of [reference]. Ranked by
+     * matched segments (most specific first), then by depth and path so the pick is stable;
+     * bounded in depth and visited files so a click can never hang on a huge tree.
+     */
+    private fun searchBySuffix(base: String, reference: Path): Path? {
+        val root = runCatching { Path.of(base) }.getOrNull()?.takeIf { Files.isDirectory(it) } ?: return null
+        val segments = (0 until reference.nameCount).map { reference.getName(it).toString() }
+        val fileName = segments.lastOrNull()?.takeIf { it.isNotBlank() } ?: return null
+        var visited = 0
+        var best: Path? = null
+        var bestScore = -1
+        var bestDepth = Int.MAX_VALUE
+        val stack = ArrayDeque(listOf(root to 0))
+        while (stack.isNotEmpty()) {
+            val (directory, depth) = stack.removeLast()
+            if (depth > SEARCH_MAX_DEPTH) continue
+            val entries = runCatching { Files.newDirectoryStream(directory).use { it.toList() } }.getOrNull() ?: continue
+            for (entry in entries) {
+                val name = entry.fileName?.toString() ?: continue
+                if (Files.isDirectory(entry)) {
+                    if (name.startsWith('.') || name in SEARCH_PRUNED_DIRECTORIES) continue
+                    stack.addLast(entry to depth + 1)
+                    continue
+                }
+                if (++visited > SEARCH_MAX_VISITED_FILES) return best
+                if (name != fileName) continue
+                val score = matchedSuffixSegments(entry, segments)
+                val entryDepth = entry.nameCount
+                val better = score > bestScore || (score == bestScore && entryDepth < bestDepth) ||
+                    (score == bestScore && entryDepth == bestDepth && best != null && entry.toString() < best.toString())
+                if (better) {
+                    best = entry
+                    bestScore = score
+                    bestDepth = entryDepth
+                }
+            }
+        }
+        return best
+    }
+
+    /** How many trailing segments of [candidate] match [segments]; at least 1 (the file name). */
+    private fun matchedSuffixSegments(candidate: Path, segments: List<String>): Int {
+        var matched = 0
+        var candidateIndex = candidate.nameCount - 1
+        var segmentIndex = segments.size - 1
+        while (candidateIndex >= 0 && segmentIndex >= 0) {
+            if (candidate.getName(candidateIndex).toString() != segments[segmentIndex]) break
+            matched++
+            candidateIndex--
+            segmentIndex--
+        }
+        return matched
     }
 
     data class FileLinkTarget(val path: Path, val line: Int?, val column: Int?)
@@ -460,10 +630,15 @@ internal object OpenCodeServerProtocol {
         val base64: String,
     )
 
+    /**
+     * One spelling of a linked path: the text, its parsed form, and the position that applies
+     * when this spelling is the one found on disk.
+     */
+    private data class PathSpelling(val text: String, val path: Path, val line: Int?, val column: Int?)
+
     private data class ParsedFileLink(
-        val path: Path,
-        val line: Int?,
-        val column: Int?,
+        /** Path spellings to probe, most specific first (see [decodeFileLinkPaths]). */
+        val paths: List<PathSpelling>,
         val fallbackToProjectFileName: Boolean,
     )
 

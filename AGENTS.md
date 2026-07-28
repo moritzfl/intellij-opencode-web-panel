@@ -81,6 +81,16 @@ Two review panels exist, selected by width: the plugin's default forced-compact 
 
 Diff Alt+Click from either review panel is inherently empty (session-scoped, no `[data-message-id]` ancestor); the meaningful diff nav is the chat timeline.
 
+**Chat links arrive percent-encoded.** OpenCode renders markdown through marked, whose `cleanUrl` runs `encodeURI(href)` and then restores literal `%` via `.replace(/%25/g, "%")`; models also emit escaped paths themselves. A relative link to a path with a space or any non-ASCII character therefore reaches the JVM as `docs/My%20File.md` / `docs/%C3%9Cmlaut.md`, while plain ASCII paths pass through untouched — the reason only *some* relative links resolved. Rules the resolver must keep:
+
+- `decodeFileLinkPaths` returns the decoded **and** the raw spelling (a name may legitimately contain `%`, and `cleanUrl` passes it through). `file:` URLs take `rawPath`/`rawSchemeSpecificPart` so the single decode is not applied twice.
+- Each spelling carries the position that applies when *it* resolves, so `src/Main.kt:42` can be probed stripped (line reference) and whole (a file really named `…:42`) without the line leaking onto the wrong reading.
+- `file:<relative>` is an **opaque** URI (`path` is null) — the exact form `localFileDropText` writes.
+- Root-relative `/src/Main.kt` is absolute on Unix but *not* on Windows, where `resolve` would keep only the drive root. Decide on the href **text** (`startsWith('/')`), never `Path.isAbsolute`. A genuinely absolute path is tried literally first, so a project that also has `etc/`/`tmp/` yields the system file for `/etc/x`.
+- Percent-decoding can produce text that is not a legal path (NUL anywhere, `<>?*|"` on Windows); every `Path.of` on link input must be guarded or the exception escapes the click handler.
+
+**Incomplete references are guessed** (`bestGuessFileLinkPath`), only after every exact candidate missed: first drop leading segments (`packages/app/src/x` under a base already inside `packages/app`), then a bounded walk for a file whose trailing segments match, ranked by matched segments → depth → path. The walk prunes `.`-directories plus build/VCS output and is capped (`SEARCH_MAX_DEPTH`, `SEARCH_MAX_VISITED_FILES`). Because this can touch the filesystem broadly, `OpenCodeIdeNavigation.openFileLinkInIde` resolves on a pooled thread — never on the browser callback thread.
+
 **SPA routes are not files.** The capture-phase file-link handler treats many `href`s that start with `/` as local paths. Keep `isOpenCodeAppRoute` (JS) and `isOpenCodeSessionRouteHref` (JVM) in sync and exclude at least:
 
 - `/server/<key>/session[/<id>]` — 1.18 session routes (task/subagent cards, notifications, boot)

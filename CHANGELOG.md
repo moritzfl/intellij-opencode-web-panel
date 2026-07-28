@@ -6,6 +6,10 @@
 
 ### Fixed
 
+- File references in chat now open in the IDE even when the path contains spaces or non-ASCII characters (umlauts, accents). OpenCode escapes those characters in links, and the panel previously failed to find the file, so only plain ASCII paths worked reliably.
+- Relative references written with a leading slash (`/src/Main.kt`) or as `file:src/Main.kt` now open as well, and stray spaces around a link no longer prevent it from opening.
+- Incomplete references are now resolved as best as possible: a reference to `src/Main.kt` (or just `Main.kt`) opens the matching file even when it actually lives deeper in the project, and a reference that repeats folders the panel is already inside still works. Exact matches always win; build output, `node_modules` and version-control folders are skipped.
+
 - The panel opens the most recent conversation again when that conversation changed outside the panel — for example after another window, another OpenCode client, or the automatic continuation of an interrupted session worked on it. The embedded web app restored its own last-viewed conversation instead, overriding the one the IDE had selected.
 
 ## [1.9.4] - 2026-07-27

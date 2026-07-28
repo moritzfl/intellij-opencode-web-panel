@@ -29,17 +29,21 @@ internal class OpenCodeIdeNavigation(
         val targetHref = payload?.href ?: href
         val routeBasePath = OpenCodeServerProtocol.routeDirectoryFromUrl(browser.cefBrowser.url)
         val projectBasePath = projectDirectory()
-        val target = listOfNotNull(basePath, payload?.basePath, routeBasePath)
-            .distinct()
-            .asSequence()
-            .mapNotNull { OpenCodeServerProtocol.resolveFileLink(targetHref, projectBasePath, it) }
-            .firstOrNull()
-            ?: OpenCodeServerProtocol.resolveFileLink(targetHref, projectBasePath)
-            ?: return
-        val virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(target.path) ?: return
-        ApplicationManager.getApplication().invokeLater {
-            if (project.isDisposed) return@invokeLater
-            OpenFileDescriptor(project, virtualFile, target.line ?: -1, target.column ?: -1).navigate(true)
+        val baseCandidates = listOfNotNull(basePath, payload?.basePath, routeBasePath).distinct()
+        // Resolution hits the filesystem and may fall back to a bounded project search, so it
+        // must not run on the browser callback thread. Neither caller uses the result.
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val target = baseCandidates.asSequence()
+                .mapNotNull { OpenCodeServerProtocol.resolveFileLink(targetHref, projectBasePath, it) }
+                .firstOrNull()
+                ?: OpenCodeServerProtocol.resolveFileLink(targetHref, projectBasePath)
+                ?: return@executeOnPooledThread
+            val virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(target.path)
+                ?: return@executeOnPooledThread
+            ApplicationManager.getApplication().invokeLater {
+                if (project.isDisposed) return@invokeLater
+                OpenFileDescriptor(project, virtualFile, target.line ?: -1, target.column ?: -1).navigate(true)
+            }
         }
     }
 

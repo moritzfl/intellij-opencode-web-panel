@@ -1555,6 +1555,187 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun resolveFileLinkDecodesPercentEncodedRelativeLinks() {
+        // OpenCode renders markdown links through marked, which runs encodeURI on every href, so
+        // any relative path with a space or non-ASCII character arrives percent-encoded. Plain
+        // ASCII paths are untouched, which is why only *some* relative links used to fail.
+        val base = Files.createTempDirectory("opencode-encoded")
+        Files.createDirectories(base.resolve("docs"))
+        val spaced = Files.writeString(base.resolve("docs/My File.md"), "x")
+        val umlaut = Files.writeString(base.resolve("docs/Ümlaut.md"), "x")
+        val plus = Files.writeString(base.resolve("docs/a+b.txt"), "x")
+
+        assertEquals(spaced.normalize(), OpenCodeServerProtocol.resolveFileLink("docs/My%20File.md", base.toString(), null)?.path)
+        assertEquals(umlaut.normalize(), OpenCodeServerProtocol.resolveFileLink("docs/%C3%9Cmlaut.md", base.toString(), null)?.path)
+        // `+` is a literal in a path segment: both spellings must land on the same file.
+        assertEquals(plus.normalize(), OpenCodeServerProtocol.resolveFileLink("docs/a+b.txt", base.toString(), null)?.path)
+        assertEquals(plus.normalize(), OpenCodeServerProtocol.resolveFileLink("docs/a%2Bb.txt", base.toString(), null)?.path)
+        // The raw spelling still wins for a name that really contains a percent escape.
+        val literal = Files.writeString(base.resolve("docs/100%25.md"), "x")
+        assertEquals(literal.normalize(), OpenCodeServerProtocol.resolveFileLink("docs/100%25.md", base.toString(), null)?.path)
+    }
+
+    @Test
+    fun resolveFileLinkReadsRelativeFileUrlsWithoutAuthority() {
+        // `file:<relative>` is the exact spelling the panel writes for dropped files.
+        val base = Files.createTempDirectory("opencode-file-scheme")
+        Files.createDirectories(base.resolve("src"))
+        val file = Files.writeString(base.resolve("src/Main.kt"), "x")
+
+        assertEquals(file.normalize(), OpenCodeServerProtocol.resolveFileLink("file:src/Main.kt", base.toString(), null)?.path)
+        assertEquals(file.normalize(), OpenCodeServerProtocol.resolveFileLink("file://src/Main.kt", base.toString(), null)?.path)
+    }
+
+    @Test
+    fun resolveFileLinkFallsBackToProjectRootForRootRelativeLinks() {
+        // `/src/Main.kt` is absolute on Unix but is just as often meant project-relative, and on
+        // Windows it is not absolute at all (resolve would drop the drive).
+        val base = Files.createTempDirectory("opencode-root-relative")
+        Files.createDirectories(base.resolve("src"))
+        val file = Files.writeString(base.resolve("src/Main.kt"), "x")
+
+        assertEquals(file.normalize(), OpenCodeServerProtocol.resolveFileLink("/src/Main.kt", base.toString(), null)?.path)
+        // A real absolute path still wins over the project-relative reading.
+        val outside = Files.createTempDirectory("opencode-outside")
+        val outsideFile = Files.writeString(outside.resolve("Other.kt"), "x")
+        assertEquals(
+            outsideFile.normalize(),
+            OpenCodeServerProtocol.resolveFileLink(outsideFile.toString(), base.toString(), null)?.path,
+        )
+    }
+
+    @Test
+    fun resolveFileLinkTrimsDecoratedHrefs() {
+        val base = Files.createTempDirectory("opencode-decorated")
+        Files.createDirectories(base.resolve("src"))
+        val file = Files.writeString(base.resolve("src/Main.kt"), "x")
+
+        for (href in listOf(" src/Main.kt", "src/Main.kt ", "\u202Asrc/Main.kt\u202C")) {
+            assertEquals(
+                "href $href",
+                file.normalize(),
+                OpenCodeServerProtocol.resolveFileLink(href, base.toString(), null)?.path,
+            )
+        }
+    }
+
+    @Test
+    fun resolveFileLinkComposesRootRelativeLinksWithTrailingLineNumbers() {
+        val base = Files.createTempDirectory("opencode-root-line")
+        Files.createDirectories(base.resolve("src"))
+        val file = Files.writeString(base.resolve("src/Main.kt"), "x")
+
+        val target = OpenCodeServerProtocol.resolveFileLink("/src/Main.kt:42", base.toString(), null)
+        assertEquals(file.normalize(), target?.path)
+        assertEquals(41, target?.line)
+    }
+
+    @Test
+    fun resolveFileLinkKeepsTrailingColonWhenItIsPartOfTheName() {
+        val base = Files.createTempDirectory("opencode-colon")
+        Files.createDirectories(base.resolve("src"))
+        val literal = Files.writeString(base.resolve("src/Main.kt:42"), "x")
+
+        // The whole spelling exists, so it wins and no line number leaks onto it.
+        val target = OpenCodeServerProtocol.resolveFileLink("src/Main.kt:42", base.toString(), null)
+        assertEquals(literal.normalize(), target?.path)
+        assertNull(target?.line)
+
+        // With the stripped file present too, the line reading wins — the common case.
+        val stripped = Files.writeString(base.resolve("src/Main.kt"), "x")
+        val lineTarget = OpenCodeServerProtocol.resolveFileLink("src/Main.kt:42", base.toString(), null)
+        assertEquals(stripped.normalize(), lineTarget?.path)
+        assertEquals(41, lineTarget?.line)
+    }
+
+    @Test
+    fun resolveFileLinkCarriesPositionsThroughEncodedSpellings() {
+        val base = Files.createTempDirectory("opencode-encoded-line")
+        Files.createDirectories(base.resolve("docs"))
+        val file = Files.writeString(base.resolve("docs/My File.md"), "x")
+
+        val fragment = OpenCodeServerProtocol.resolveFileLink("docs/My%20File.md#L12:5", base.toString(), null)
+        assertEquals(file.normalize(), fragment?.path)
+        assertEquals(11, fragment?.line)
+        assertEquals(4, fragment?.column)
+
+        val query = OpenCodeServerProtocol.resolveFileLink("docs/My%20File.md?start=10", base.toString(), null)
+        assertEquals(file.normalize(), query?.path)
+        assertEquals(9, query?.line)
+
+        val trailing = OpenCodeServerProtocol.resolveFileLink("docs/My%20File.md:8", base.toString(), null)
+        assertEquals(file.normalize(), trailing?.path)
+        assertEquals(7, trailing?.line)
+    }
+
+    @Test
+    fun resolveFileLinkSurvivesPathCharactersThatCannotBeParsed() {
+        val base = Files.createTempDirectory("opencode-illegal")
+        // Percent-decoding can produce characters that are illegal in a path (NUL everywhere,
+        // `<>?*|"` on Windows). Those must fail closed, not throw out of the click handler.
+        for (href in listOf("docs/a%00b.md", "docs/a%00b.md:12", "src/%3Cname%3E.kt:10", "docs/a%zz.md", "docs/trailing%")) {
+            assertNull("href $href", OpenCodeServerProtocol.resolveFileLink(href, base.toString(), null))
+        }
+    }
+
+    @Test
+    fun resolveFileLinkGuessesIncompleteSubPaths() {
+        val base = Files.createTempDirectory("opencode-guess")
+        Files.createDirectories(base.resolve("packages/app/src"))
+        val nested = Files.writeString(base.resolve("packages/app/src/Main.kt"), "x")
+
+        // Reference is missing the leading segments the project actually has.
+        assertEquals(nested.normalize(), OpenCodeServerProtocol.resolveFileLink("src/Main.kt", base.toString(), null)?.path)
+        assertEquals(nested.normalize(), OpenCodeServerProtocol.resolveFileLink("Main.kt", base.toString(), null)?.path)
+        // …and keeps the line number from the reference.
+        val withLine = OpenCodeServerProtocol.resolveFileLink("src/Main.kt:7", base.toString(), null)
+        assertEquals(nested.normalize(), withLine?.path)
+        assertEquals(6, withLine?.line)
+
+        // Reference is anchored above the panel's directory: the base already sits inside it.
+        val inner = base.resolve("packages/app").toString()
+        assertEquals(nested.normalize(), OpenCodeServerProtocol.resolveFileLink("packages/app/src/Main.kt", inner, null)?.path)
+
+        // An exact match always wins over a guess.
+        Files.createDirectories(base.resolve("src"))
+        val exact = Files.writeString(base.resolve("src/Main.kt"), "x")
+        assertEquals(exact.normalize(), OpenCodeServerProtocol.resolveFileLink("src/Main.kt", base.toString(), null)?.path)
+    }
+
+    @Test
+    fun resolveFileLinkGuessPrefersTheMostSpecificMatch() {
+        val base = Files.createTempDirectory("opencode-guess-rank")
+        Files.createDirectories(base.resolve("a/src"))
+        Files.createDirectories(base.resolve("b/other"))
+        val wanted = Files.writeString(base.resolve("a/src/Main.kt"), "x")
+        Files.writeString(base.resolve("b/other/Main.kt"), "x")
+
+        // Both files share the name; only one also matches the `src` segment.
+        assertEquals(wanted.normalize(), OpenCodeServerProtocol.resolveFileLink("src/Main.kt", base.toString(), null)?.path)
+    }
+
+    @Test
+    fun resolveFileLinkGuessSkipsBuildAndVcsDirectories() {
+        val base = Files.createTempDirectory("opencode-guess-prune")
+        Files.createDirectories(base.resolve("node_modules/pkg/src"))
+        Files.createDirectories(base.resolve("build/generated"))
+        Files.writeString(base.resolve("node_modules/pkg/src/Only.kt"), "x")
+        Files.writeString(base.resolve("build/generated/Only.kt"), "x")
+
+        assertNull(OpenCodeServerProtocol.resolveFileLink("Only.kt", base.toString(), null))
+    }
+
+    @Test
+    fun resolveFileLinkDoesNotGuessForMissingFiles() {
+        val base = Files.createTempDirectory("opencode-guess-miss")
+        Files.createDirectories(base.resolve("src"))
+        Files.writeString(base.resolve("src/Main.kt"), "x")
+
+        assertNull(OpenCodeServerProtocol.resolveFileLink("src/Missing.kt", base.toString(), null))
+        assertNull(OpenCodeServerProtocol.resolveFileLink("Missing.kt", base.toString(), null))
+    }
+
+    @Test
     fun isOpenCodeSessionRouteHrefDetectsOpenCodeAppSessionRoutes() {
         val projectRoute = "/${OpenCodeServerProtocol.encodeDirectory("/tmp/project")}/session/session-id"
         val serverRoute = "/server/aHR0cDovLzEyNy4wLjAuMTo2MDQ4Mg/session/ses_child"
