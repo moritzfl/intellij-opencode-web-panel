@@ -458,6 +458,7 @@ class OpenCodeServerProtocolTest {
         assertEquals(1, Regex("sessionStorage\\.setItem\\(navigationKey").findAll(script).count())
         assertTrue(script.contains("if (pointerAligned) { try { window.sessionStorage.setItem(navigationKey, target); }"))
         assertTrue(script.indexOf("pointerAligned = true") < script.indexOf("if (onTarget)"))
+        assertTrue(script.indexOf("pointerAligned = true") > script.indexOf("previous.id !== sessionId"))
     }
 
     @Test

@@ -337,8 +337,8 @@ internal object OpenCodeBrowserSnippets {
                     };
                     const nextPageRaw = JSON.stringify(pageState);
                     if (nextPageRaw !== pageRaw) window.localStorage.setItem(pageKey, nextPageRaw);
-                    pointerAligned = true;
                   }
+                  pointerAligned = true;
                 }
               } catch (error) {
                 if (window.console && window.console.warn) {

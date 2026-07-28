@@ -9,6 +9,8 @@ import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 
 @Service(Service.Level.APP)
 class OpenCodePasswordStore {
+    data class PasswordUpdate(val previous: String?, val current: String)
+
     private val attributes = CredentialAttributes(SERVICE_NAME, USER_NAME)
     private val lock = Any()
     private var cachedPassword: String? = null
@@ -48,6 +50,21 @@ class OpenCodePasswordStore {
         synchronized(lock) {
             PasswordSafe.instance.set(attributes, sanitized?.let { Credentials(USER_NAME, it) })
             cachedPassword = sanitized
+        }
+    }
+
+    /** Resolves the current credential and applies an optional edit as one serialized operation. */
+    fun resolveAndSaveBlocking(editedPassword: String?): PasswordUpdate {
+        return synchronized(lock) {
+            val previous = readPasswordSafe().also { cachedPassword = it }
+            val current = editedPassword
+                ?: previous
+                ?: generatePasswordForEditing()
+            if (current != previous) {
+                PasswordSafe.instance.set(attributes, Credentials(USER_NAME, current))
+            }
+            cachedPassword = current
+            PasswordUpdate(previous, current)
         }
     }
 

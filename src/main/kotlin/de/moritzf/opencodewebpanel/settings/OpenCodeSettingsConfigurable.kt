@@ -326,7 +326,7 @@ class OpenCodeSettingsConfigurable : Configurable {
     override fun apply() {
         passwordLoadGeneration.incrementAndGet()
         passwordLoading = false
-        val editedPassword = password()
+        val editedPassword = password().takeIf { it != savedPassword }
         val settings = OpenCodeSettingsState.getInstance()
         val oldPortMode = settings.portModeValue()
         val oldFixedPort = OpenCodeSettingsState.sanitizePort(settings.fixedPort)
@@ -334,7 +334,6 @@ class OpenCodeSettingsConfigurable : Configurable {
         val oldBinaryPath = settings.binaryPath.trim()
         val oldUiZoomPercent = OpenCodeSettingsState.sanitizeUiZoomPercent(settings.uiZoomPercent)
         val oldSystemNotificationsEnabled = settings.enableSystemNotifications
-        val oldPassword = savedPassword
         val pendingBroadcasts = checkBoxSettingBindings.mapNotNull { binding ->
             val uiSetting = binding.uiSetting ?: return@mapNotNull null
             val newValue = binding.checkBox.isSelected
@@ -342,7 +341,9 @@ class OpenCodeSettingsConfigurable : Configurable {
             uiSetting to newValue
         }
 
-        val nextPassword = resolveAndSavePasswordOffEdt(editedPassword)
+        val passwordUpdate = resolveAndSavePasswordOffEdt(editedPassword)
+        val oldPassword = passwordUpdate.previous
+        val nextPassword = passwordUpdate.current
         savedPassword = nextPassword
         setPasswordText(nextPassword)
         passwordLoadError = null
@@ -423,14 +424,10 @@ class OpenCodeSettingsConfigurable : Configurable {
         lifecycleConnection = null
     }
 
-    private fun resolveAndSavePasswordOffEdt(editedPassword: String?): String {
+    private fun resolveAndSavePasswordOffEdt(editedPassword: String?): OpenCodePasswordStore.PasswordUpdate {
         val store = OpenCodePasswordStore.getInstance()
-        val operation = ThrowableComputable<String, Exception> {
-            val password = editedPassword
-                ?: store.loadFreshBlocking()
-                ?: store.generatePasswordForEditing()
-            store.saveBlocking(password)
-            password
+        val operation = ThrowableComputable<OpenCodePasswordStore.PasswordUpdate, Exception> {
+            store.resolveAndSaveBlocking(editedPassword)
         }
         val app = ApplicationManager.getApplication()
         return try {
