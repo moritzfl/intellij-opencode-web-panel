@@ -2430,7 +2430,12 @@ class OpenCodeServerProtocolTest {
                 (result as OpenCodeProtocolResult.Success).value.map { it.id },
             )
             assertEquals(2, requests.get())
+            assertTrue(queries[0].contains("directory="))
+            assertTrue(queries[0].contains("order=desc"))
             assertTrue(queries[1].contains("limit=20"))
+            assertTrue(queries[1].contains("directory="))
+            assertTrue(queries[1].contains("order=desc"))
+            assertTrue(queries[1].contains("cursor="))
         } finally {
             server.stop(0)
         }

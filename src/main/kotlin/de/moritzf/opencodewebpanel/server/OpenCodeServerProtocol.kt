@@ -1348,8 +1348,11 @@ internal object OpenCodeServerProtocol {
             if (!seenCursors.add(cursor)) {
                 return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_BODY)
             }
-            url = rootUrl + "/api/session?cursor=" +
-                java.net.URLEncoder.encode(cursor, StandardCharsets.UTF_8) + "&limit=$limit"
+            // Cursor pages still need directory (+ order). OpenCode scopes lists per project;
+            // dropping directory lets page 2+ mix in other workspaces.
+            url = rootUrl + "/api/session?order=desc&limit=$limit&cursor=" +
+                java.net.URLEncoder.encode(cursor, StandardCharsets.UTF_8) +
+                "&directory=" + java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
         }
         return OpenCodeProtocolResult.Success(sessions.values.toList())
     }
