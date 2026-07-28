@@ -42,6 +42,10 @@ internal object OpenCodeSoundService {
             connection.subscribe(
                 OpenCodeGlobalEventListener.TOPIC,
                 object : OpenCodeGlobalEventListener {
+                    override fun connected() {
+                        eventExecutor.execute { clearBusySessions() }
+                    }
+
                     override fun eventReceived(event: OpenCodeGlobalEvent) {
                         eventExecutor.execute { handleEvent(event) }
                     }
@@ -59,6 +63,11 @@ internal object OpenCodeSoundService {
 
     @TestOnly
     internal fun resetForTests() {
+        clearBusySessions()
+    }
+
+    /** Drops reduced busy state on stream (re)connect so failed session lookups cannot leak. */
+    internal fun clearBusySessions() {
         synchronized(busySessions) {
             busySessions.clear()
         }
@@ -92,9 +101,9 @@ internal object OpenCodeSoundService {
                     markIdle(event.directory, sessionID)
                     return
                 }
+                // Keep busy on a failed lookup so a later idle can retry; clearBusySessions on
+                // stream reconnect bounds the set. Resolved child sessions still clear busy.
                 val session = fetchSession(event.directory, sessionID) ?: return
-                // Skip child/subagent sessions and unresolved lookups, mirroring OpenCode's own
-                // `if (!session || session.parentID) return`; the session fetch is reliable.
                 if (!markIdle(event.directory, sessionID)) return
                 if (session.parentID != null) return
                 play(settings.agent)

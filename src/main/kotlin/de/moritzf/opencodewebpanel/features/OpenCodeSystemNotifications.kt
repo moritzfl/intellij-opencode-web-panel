@@ -159,6 +159,13 @@ internal class OpenCodeSystemNotifications(
         return WindowManager.getInstance().getFrame(project)?.isActive == true
     }
 
+    /** True when the tool window is visible, the IDE frame is active, and the browser URL is [sessionID]. */
+    private fun isViewingSession(sessionID: String): Boolean {
+        if (!OpenCodeServerProtocol.isSessionId(sessionID)) return false
+        if (!isPanelInView()) return false
+        return OpenCodeServerProtocol.sessionIdFromUrl(browser.cefBrowser.url) == sessionID
+    }
+
     private fun dismissNotificationsForViewedSession() {
         ApplicationManager.getApplication().invokeLater {
             if (project.isDisposed) return@invokeLater
@@ -395,8 +402,9 @@ internal class OpenCodeSystemNotifications(
             val target = targetFor(openCodeNotification.directory) ?: return
             if (!target.isCurrentServer(identity)) return
             if (!target.isProjectOpen()) return
-            // The user is looking at the panel; the OpenCode UI itself shows the state.
-            if (target.isPanelInView()) return
+            // Suppress only when the user is already looking at *this* session in the panel.
+            // A permission on session B must still surface while the panel shows session A.
+            if (target.isViewingSession(openCodeNotification.sessionID)) return
             val requestKey = openCodeNotification.requestID
                 .takeIf { OpenCodeServerProtocol.isOpenCodeRecordId(it) }
                 ?.let { "request:$it" }

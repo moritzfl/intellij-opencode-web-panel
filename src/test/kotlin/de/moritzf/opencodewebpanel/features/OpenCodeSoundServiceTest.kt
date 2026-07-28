@@ -80,6 +80,22 @@ class OpenCodeSoundServiceTest {
     }
 
     @Test
+    fun failedSessionLookupKeepsBusyForRetryThenClearsOnReconnect() {
+        handle(event("session.status", """{"sessionID":"ses_1","status":{"type":"busy"}}"""))
+        handle(event("session.idle", """{"sessionID":"ses_1"}"""))
+        assertTrue(played.isEmpty())
+
+        sessions["ses_1"] = OpenCodeServerProtocol.SessionInfo("Done", parentID = null)
+        handle(event("session.idle", """{"sessionID":"ses_1"}"""))
+        assertEquals(listOf(OpenCodeSoundSettings.DEFAULT_AGENT), played)
+
+        handle(event("session.status", """{"sessionID":"ses_2","status":{"type":"busy"}}"""))
+        OpenCodeSoundService.clearBusySessions()
+        handle(event("session.idle", """{"sessionID":"ses_2"}"""))
+        assertEquals(listOf(OpenCodeSoundSettings.DEFAULT_AGENT), played)
+    }
+
+    @Test
     fun respectsAgentDisabled() {
         sessions["ses_1"] = OpenCodeServerProtocol.SessionInfo("Done", parentID = null)
         handle(event("session.status", """{"sessionID":"ses_1","status":{"type":"busy"}}"""))

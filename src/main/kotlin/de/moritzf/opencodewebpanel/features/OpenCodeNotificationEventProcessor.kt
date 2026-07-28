@@ -151,7 +151,8 @@ internal class OpenCodeNotificationEventProcessor(
     }
 
     private fun markIdle(scope: Any, directory: String, sessionID: String): Boolean {
-        val idleKey = IdleKey(scope, directory, sessionID)
+        val directoryKey = OpenCodeServerProtocol.filesystemPathKey(directory) ?: directory
+        val idleKey = IdleKey(scope, directoryKey, sessionID)
         val now = nowMillis()
         synchronized(recentIdleAtMillis) {
             recentIdleAtMillis.entries.removeIf { now - it.value >= IDLE_MERGE_WINDOW_MILLIS }

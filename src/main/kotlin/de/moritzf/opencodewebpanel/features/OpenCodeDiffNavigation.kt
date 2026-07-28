@@ -65,24 +65,29 @@ internal class OpenCodeDiffNavigation(
         }
     }
 
-    /** Keeps only the requested file's diff; falls back to all files when it cannot be matched. */
-    private fun selectDiffs(
-        diffs: List<OpenCodeServerProtocol.SnapshotFileDiff>,
-        filePath: String?,
-    ): List<OpenCodeServerProtocol.SnapshotFileDiff> {
-        if (filePath == null) return diffs
-        return diffs.filter { matchesFile(it.file, filePath) }.ifEmpty { diffs }
-    }
+    companion object {
+        /**
+         * Keeps only the requested file's diff. A path that cannot be matched yields empty — never
+         * the whole turn (basename-only matching used to open the wrong sibling file).
+         */
+        internal fun selectDiffs(
+            diffs: List<OpenCodeServerProtocol.SnapshotFileDiff>,
+            filePath: String?,
+        ): List<OpenCodeServerProtocol.SnapshotFileDiff> {
+            if (filePath == null) return diffs
+            return diffs.filter { matchesFile(it.file, filePath) }
+        }
 
-    /** Match relative paths from the DOM against REST diff paths, tolerating separators, a leading
-     *  root/slash, and case (Windows) — both sides come from the same OpenCode session. */
-    private fun matchesFile(diffFile: String?, requested: String): Boolean {
-        val a = diffFile?.replace('\\', '/')?.trim(' ', '/') ?: return false
-        val b = requested.replace('\\', '/').trim(' ', '/')
-        if (a.isEmpty() || b.isEmpty()) return false
-        return a.equals(b, ignoreCase = true) ||
-            a.endsWith("/$b", ignoreCase = true) || b.endsWith("/$a", ignoreCase = true) ||
-            a.substringAfterLast('/').equals(b.substringAfterLast('/'), ignoreCase = true)
+        /** Match relative paths from the DOM against REST diff paths, tolerating separators, a
+         *  leading root/slash, and case (Windows) — both sides come from the same OpenCode session. */
+        internal fun matchesFile(diffFile: String?, requested: String): Boolean {
+            val a = diffFile?.replace('\\', '/')?.trim(' ', '/') ?: return false
+            val b = requested.replace('\\', '/').trim(' ', '/')
+            if (a.isEmpty() || b.isEmpty()) return false
+            return a.equals(b, ignoreCase = true) ||
+                a.endsWith("/$b", ignoreCase = true) ||
+                b.endsWith("/$a", ignoreCase = true)
+        }
     }
 
     private fun buildDiffRequest(diff: OpenCodeServerProtocol.SnapshotFileDiff): DiffRequest? {

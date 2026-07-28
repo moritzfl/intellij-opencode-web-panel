@@ -58,21 +58,24 @@ internal class OpenCodeIdeNavigation(
     fun openCodeReferenceInIde(ref: String?) {
         val text = ref?.trim()?.ifBlank { null } ?: return
         val parsed = OpenCodeServerProtocol.parseCodeReference(text) ?: return
-        val directVirtualFile = resolveCodeReferencePath(parsed)
-        if (directVirtualFile != null) {
-            ApplicationManager.getApplication().invokeLater {
-                if (project.isDisposed) return@invokeLater
-                OpenFileDescriptor(project, directVirtualFile, parsed.line ?: -1, -1).navigate(true)
+        // Path resolve hits the filesystem; keep it off the browser JS-query callback thread.
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val directVirtualFile = resolveCodeReferencePath(parsed)
+            if (directVirtualFile != null) {
+                ApplicationManager.getApplication().invokeLater {
+                    if (project.isDisposed) return@invokeLater
+                    OpenFileDescriptor(project, directVirtualFile, parsed.line ?: -1, -1).navigate(true)
+                }
+                return@executeOnPooledThread
             }
-            return
+            ReadAction.nonBlocking<VirtualFile?> {
+                resolveCodeReferenceFileName(parsed, GlobalSearchScope.projectScope(project))
+            }.finishOnUiThread(ModalityState.defaultModalityState()) { virtualFile ->
+                if (project.isDisposed || virtualFile == null) return@finishOnUiThread
+                OpenFileDescriptor(project, virtualFile, parsed.line ?: -1, -1).navigate(true)
+            }.coalesceBy(coalesceKey)
+                .submit(AppExecutorUtil.getAppExecutorService())
         }
-        ReadAction.nonBlocking<VirtualFile?> {
-            resolveCodeReferenceFileName(parsed, GlobalSearchScope.projectScope(project))
-        }.finishOnUiThread(ModalityState.defaultModalityState()) { virtualFile ->
-            if (project.isDisposed || virtualFile == null) return@finishOnUiThread
-            OpenFileDescriptor(project, virtualFile, parsed.line ?: -1, -1).navigate(true)
-        }.coalesceBy(coalesceKey)
-            .submit(AppExecutorUtil.getAppExecutorService())
     }
 
     private fun resolveCodeReferencePath(parsed: OpenCodeServerProtocol.ParsedCodeReference): VirtualFile? {
