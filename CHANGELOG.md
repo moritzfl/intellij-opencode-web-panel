@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [1.9.5] - 2026-07-28
+
 ### Changed
 
 - The project-specific settings page under Tools is now called "OpenCode Web Panel (Project)", so it is no longer listed with the same name as the main settings page right above it.
