@@ -597,7 +597,8 @@ internal object OpenCodeServerProtocol {
                     if (++visited > SEARCH_MAX_VISITED_ENTRIES) return best
                     val name = entry.fileName?.toString() ?: continue
                     if (Files.isDirectory(entry)) {
-                        if (name.startsWith('.') || name.lowercase(Locale.ROOT) in SEARCH_PRUNED_DIRECTORIES) continue
+                        val prunedName = if (caseSensitive) name else name.lowercase(Locale.ROOT)
+                        if (name.startsWith('.') || prunedName in SEARCH_PRUNED_DIRECTORIES) continue
                         stack.addLast(entry to depth + 1)
                         continue
                     }

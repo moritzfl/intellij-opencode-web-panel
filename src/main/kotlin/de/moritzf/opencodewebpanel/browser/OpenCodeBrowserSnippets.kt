@@ -170,10 +170,9 @@ internal object OpenCodeBrowserSnippets {
             ?.takeIf { openMostRecentConversation && OpenCodeServerProtocol.isSessionId(it) }
             ?.let(::escapeJavaScript)
             .orEmpty()
-        // The early (onLoadStart) injection only aligns OpenCode's pointer with the boot target;
-        // navigating needs a live document, so that stays with the post-load series. The
-        // seed-only form must also leave the one-shot navigation guard untouched, otherwise the
-        // post-load series would see the target as "already opened" and never navigate.
+        // The early (onLoadStart) injection aligns OpenCode's pointer with the boot target;
+        // navigating needs a live document, so that stays with the post-load series. Seed-only
+        // may mark an already-open target only after the pointer was aligned successfully.
         @Language("JavaScript")
         val navigateStatement = if (navigate) {
             """
@@ -186,7 +185,7 @@ internal object OpenCodeBrowserSnippets {
         val markTargetOpenedStatement = if (navigate) {
             "try { window.sessionStorage.setItem(navigationKey, target); } catch (_) {}"
         } else {
-            ""
+            "if (pointerAligned) { try { window.sessionStorage.setItem(navigationKey, target); } catch (_) {} }"
         }
         val originGuard = serverUrl?.let(OpenCodeServerProtocol::buildOrigin)
             ?.let(::escapeJavaScript)
@@ -300,6 +299,7 @@ internal object OpenCodeBrowserSnippets {
               // with whatever it showed last (verified against opencode 1.18.5). Written only
               // when this script is about to navigate or is already on the target, so a
               // deliberate in-panel session switch is never persisted away.
+              let pointerAligned = false;
               try {
                 const pageKey = 'opencode.global.dat:layout.page';
                 const pageRaw = window.localStorage.getItem(pageKey);
@@ -337,6 +337,7 @@ internal object OpenCodeBrowserSnippets {
                     };
                     const nextPageRaw = JSON.stringify(pageState);
                     if (nextPageRaw !== pageRaw) window.localStorage.setItem(pageKey, nextPageRaw);
+                    pointerAligned = true;
                   }
                 }
               } catch (error) {

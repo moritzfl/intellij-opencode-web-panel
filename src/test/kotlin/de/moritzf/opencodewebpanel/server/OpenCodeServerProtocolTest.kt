@@ -455,7 +455,9 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("pageState.lastProjectSession[pointerKey] = {"))
         assertFalse(script.contains("window.location.assign(target)"))
         // Must not consume the one-shot guard — the post-load series still has to navigate.
-        assertEquals(0, Regex("sessionStorage\\.setItem\\(navigationKey").findAll(script).count())
+        assertEquals(1, Regex("sessionStorage\\.setItem\\(navigationKey").findAll(script).count())
+        assertTrue(script.contains("if (pointerAligned) { try { window.sessionStorage.setItem(navigationKey, target); }"))
+        assertTrue(script.indexOf("pointerAligned = true") < script.indexOf("if (onTarget)"))
     }
 
     @Test
@@ -1578,6 +1580,21 @@ class OpenCodeServerProtocolTest {
             "SRC/main.kt",
             listOf(base.toString()),
             caseSensitive = false,
+        )
+
+        assertEquals(actual.normalize(), target?.path)
+    }
+
+    @Test
+    fun resolveFileLinkDoesNotPruneCaseDistinctSourceDirectories() {
+        val base = Files.createTempDirectory("opencode-case-prune")
+        Files.createDirectories(base.resolve("Build/src"))
+        val actual = Files.writeString(base.resolve("Build/src/Main.kt"), "x")
+
+        val target = OpenCodeServerProtocol.resolveFileLinkWithBases(
+            "src/Main.kt",
+            listOf(base.toString()),
+            caseSensitive = true,
         )
 
         assertEquals(actual.normalize(), target?.path)

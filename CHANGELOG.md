@@ -12,7 +12,7 @@
 - Agent completion sounds survive temporary event-stream reconnects while still discarding stale state after a server restart.
 - Diff navigation prefers exact paths, rejects ambiguous filename-only matches, and respects case-sensitive filesystems.
 - File navigation checks every exact location before guessing, handles Windows path case consistently, and ignores stale results from older clicks.
-- The startup project seed no longer consumes its one-shot conversation target before the page finishes loading.
+- The startup project seed no longer loses its one-shot conversation target when the page's session pointer cannot be saved early.
 - Response notifications are dismissed when their conversation becomes visible through in-panel navigation.
 
 ## [1.9.5] - 2026-07-28
