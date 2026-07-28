@@ -14,6 +14,7 @@ import com.intellij.ui.jcef.JBCefBrowser
 import com.intellij.util.concurrency.AppExecutorUtil
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.concurrent.atomic.AtomicLong
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager
 
@@ -24,24 +25,25 @@ internal class OpenCodeIdeNavigation(
     private val projectDirectory: () -> String?,
     private val coalesceKey: Any,
 ) {
+    private val fileLinkRequestGeneration = AtomicLong()
+
     fun openFileLinkInIde(href: String?, basePath: String? = null) {
         val payload = OpenCodeServerProtocol.parseOpenFileLinkPayload(href)
         val targetHref = payload?.href ?: href
         val routeBasePath = OpenCodeServerProtocol.routeDirectoryFromUrl(browser.cefBrowser.url)
         val projectBasePath = projectDirectory()
-        val baseCandidates = listOfNotNull(basePath, payload?.basePath, routeBasePath).distinct()
+        val baseCandidates = listOfNotNull(basePath, payload?.basePath, routeBasePath, projectBasePath).distinct()
+        val requestGeneration = fileLinkRequestGeneration.incrementAndGet()
         // Resolution hits the filesystem and may fall back to a bounded project search, so it
         // must not run on the browser callback thread. Neither caller uses the result.
         ApplicationManager.getApplication().executeOnPooledThread {
-            val target = baseCandidates.asSequence()
-                .mapNotNull { OpenCodeServerProtocol.resolveFileLink(targetHref, projectBasePath, it) }
-                .firstOrNull()
-                ?: OpenCodeServerProtocol.resolveFileLink(targetHref, projectBasePath)
+            val target = OpenCodeServerProtocol.resolveFileLinkWithBases(targetHref, baseCandidates)
                 ?: return@executeOnPooledThread
+            if (requestGeneration != fileLinkRequestGeneration.get()) return@executeOnPooledThread
             val virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(target.path)
                 ?: return@executeOnPooledThread
             ApplicationManager.getApplication().invokeLater {
-                if (project.isDisposed) return@invokeLater
+                if (project.isDisposed || requestGeneration != fileLinkRequestGeneration.get()) return@invokeLater
                 OpenFileDescriptor(project, virtualFile, target.line ?: -1, target.column ?: -1).navigate(true)
             }
         }

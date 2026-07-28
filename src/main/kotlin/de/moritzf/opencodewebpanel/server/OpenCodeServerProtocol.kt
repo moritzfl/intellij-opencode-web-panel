@@ -3,6 +3,7 @@ package de.moritzf.opencodewebpanel.server
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import com.intellij.openapi.util.SystemInfo
 import com.intellij.util.text.SemVer
 import java.io.BufferedReader
 import java.io.File
@@ -202,14 +203,22 @@ internal object OpenCodeServerProtocol {
     fun resolveFileLink(href: String?, projectBasePath: String?, routeBasePath: String?): FileLinkTarget? {
         val basePaths = listOfNotNull(routeBasePath?.takeIf { it.isNotBlank() }, projectBasePath?.takeIf { it.isNotBlank() })
             .distinct()
+        return resolveFileLinkWithBases(href, basePaths)
+    }
+
+    internal fun resolveFileLinkWithBases(
+        href: String?,
+        basePaths: List<String>,
+        caseSensitive: Boolean = SystemInfo.isFileSystemCaseSensitive,
+    ): FileLinkTarget? {
         if (href.isNullOrBlank() || basePaths.isEmpty()) return null
         val cleanedHref = cleanFileLinkHref(href).ifBlank { return null }
         // Check the route exclusion on the cleaned spelling too: a decorated SPA route must not
         // slip past it and get preventDefault-ed as a file.
         if (isOpenCodeSessionRouteHref(href) || isOpenCodeSessionRouteHref(cleanedHref)) return null
-        val parsed = parseFileLink(cleanedHref, basePaths) ?: return null
+        val parsed = parseFileLink(cleanedHref) ?: return null
         val hit = candidateFileLinkPaths(parsed, basePaths).firstOrNull { Files.isRegularFile(it.second) }
-            ?: bestGuessFileLinkPath(parsed, basePaths)
+            ?: bestGuessFileLinkPath(parsed, basePaths, caseSensitive)
             ?: return null
         val (spelling, path) = hit
         return FileLinkTarget(path, spelling.line?.coerceAtLeast(0), spelling.column?.coerceAtLeast(0))
@@ -375,7 +384,7 @@ internal object OpenCodeServerProtocol {
             Regex("^[A-Za-z]:[\\\\/]").containsMatchIn(value)
     }
 
-    private fun parseFileLink(href: String, basePaths: List<String>): ParsedFileLink? {
+    private fun parseFileLink(href: String): ParsedFileLink? {
         val withoutFragment = href.substringBefore('#')
         val fragment = href.substringAfter('#', missingDelimiterValue = "")
         val pathPart = withoutFragment.substringBefore('?')
@@ -534,6 +543,7 @@ internal object OpenCodeServerProtocol {
     private fun bestGuessFileLinkPath(
         parsed: ParsedFileLink,
         basePaths: List<String>,
+        caseSensitive: Boolean,
     ): Pair<PathSpelling, Path>? {
         val references = parsed.paths.filter { it.path.nameCount > 0 }
         if (references.isEmpty()) return null
@@ -551,7 +561,7 @@ internal object OpenCodeServerProtocol {
         // 2. The reference may be missing leading segments: search for a matching tail.
         return references.firstNotNullOfOrNull { spelling ->
             basePaths.firstNotNullOfOrNull { base ->
-                searchBySuffix(base, spelling.path)?.let { spelling to it }
+                searchBySuffix(base, spelling.path, caseSensitive)?.let { spelling to it }
             }
         }
     }
@@ -561,7 +571,7 @@ internal object OpenCodeServerProtocol {
         ".git", ".hg", ".svn", ".idea", ".gradle", ".venv", "venv", "node_modules",
         "build", "out", "dist", "target", "bin", "obj", ".next", ".cache", "__pycache__",
     )
-    private const val SEARCH_MAX_VISITED_FILES = 20_000
+    private const val SEARCH_MAX_VISITED_ENTRIES = 20_000
     private const val SEARCH_MAX_DEPTH = 12
 
     /**
@@ -569,7 +579,7 @@ internal object OpenCodeServerProtocol {
      * matched segments (most specific first), then by depth and path so the pick is stable;
      * bounded in depth and visited files so a click can never hang on a huge tree.
      */
-    private fun searchBySuffix(base: String, reference: Path): Path? {
+    private fun searchBySuffix(base: String, reference: Path, caseSensitive: Boolean): Path? {
         val root = runCatching { Path.of(base) }.getOrNull()?.takeIf { Files.isDirectory(it) } ?: return null
         val segments = (0 until reference.nameCount).map { reference.getName(it).toString() }
         val fileName = segments.lastOrNull()?.takeIf { it.isNotBlank() } ?: return null
@@ -581,24 +591,26 @@ internal object OpenCodeServerProtocol {
         while (stack.isNotEmpty()) {
             val (directory, depth) = stack.removeLast()
             if (depth > SEARCH_MAX_DEPTH) continue
-            val entries = runCatching { Files.newDirectoryStream(directory).use { it.toList() } }.getOrNull() ?: continue
-            for (entry in entries) {
-                val name = entry.fileName?.toString() ?: continue
-                if (Files.isDirectory(entry)) {
-                    if (name.startsWith('.') || name in SEARCH_PRUNED_DIRECTORIES) continue
-                    stack.addLast(entry to depth + 1)
-                    continue
-                }
-                if (++visited > SEARCH_MAX_VISITED_FILES) return best
-                if (name != fileName) continue
-                val score = matchedSuffixSegments(entry, segments)
-                val entryDepth = entry.nameCount
-                val better = score > bestScore || (score == bestScore && entryDepth < bestDepth) ||
-                    (score == bestScore && entryDepth == bestDepth && best != null && entry.toString() < best.toString())
-                if (better) {
-                    best = entry
-                    bestScore = score
-                    bestDepth = entryDepth
+            val entries = runCatching { Files.newDirectoryStream(directory) }.getOrNull() ?: continue
+            entries.use { directoryEntries ->
+                for (entry in directoryEntries) {
+                    if (++visited > SEARCH_MAX_VISITED_ENTRIES) return best
+                    val name = entry.fileName?.toString() ?: continue
+                    if (Files.isDirectory(entry)) {
+                        if (name.startsWith('.') || name.lowercase(Locale.ROOT) in SEARCH_PRUNED_DIRECTORIES) continue
+                        stack.addLast(entry to depth + 1)
+                        continue
+                    }
+                    if (!name.equals(fileName, ignoreCase = !caseSensitive)) continue
+                    val score = matchedSuffixSegments(entry, segments, caseSensitive)
+                    val entryDepth = entry.nameCount
+                    val better = score > bestScore || (score == bestScore && entryDepth < bestDepth) ||
+                        (score == bestScore && entryDepth == bestDepth && best != null && entry.toString() < best.toString())
+                    if (better) {
+                        best = entry
+                        bestScore = score
+                        bestDepth = entryDepth
+                    }
                 }
             }
         }
@@ -606,12 +618,16 @@ internal object OpenCodeServerProtocol {
     }
 
     /** How many trailing segments of [candidate] match [segments]; at least 1 (the file name). */
-    private fun matchedSuffixSegments(candidate: Path, segments: List<String>): Int {
+    private fun matchedSuffixSegments(candidate: Path, segments: List<String>, caseSensitive: Boolean): Int {
         var matched = 0
         var candidateIndex = candidate.nameCount - 1
         var segmentIndex = segments.size - 1
         while (candidateIndex >= 0 && segmentIndex >= 0) {
-            if (candidate.getName(candidateIndex).toString() != segments[segmentIndex]) break
+            if (!candidate.getName(candidateIndex).toString()
+                    .equals(segments[segmentIndex], ignoreCase = !caseSensitive)
+            ) {
+                break
+            }
             matched++
             candidateIndex--
             segmentIndex--

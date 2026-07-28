@@ -334,6 +334,7 @@ class OpenCodeServerProtocolTest {
         assertFalse(script.contains("state.list ="))
         assertTrue(script.contains("const sameWorktree = (left, right) =>"))
         assertTrue(script.contains("!sameWorktree(project.worktree, directory)"))
+        assertTrue(script.contains("next.startsWith('//')) next = next.toLowerCase()"))
         assertTrue(script.contains("const directory = '/tmp/my \\'project\\''"))
         // Without a resolved recent session the injected id is empty, so the runtime guard skips
         // navigation and the script only seeds.
@@ -454,11 +455,7 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("pageState.lastProjectSession[pointerKey] = {"))
         assertFalse(script.contains("window.location.assign(target)"))
         // Must not consume the one-shot guard — the post-load series still has to navigate.
-        assertEquals(1, Regex("sessionStorage\\.setItem\\(navigationKey").findAll(script).count())
-        assertTrue(
-            script.indexOf("if (onTarget) {") <
-                script.indexOf("sessionStorage.setItem(navigationKey"),
-        )
+        assertEquals(0, Regex("sessionStorage\\.setItem\\(navigationKey").findAll(script).count())
     }
 
     @Test
@@ -1552,6 +1549,38 @@ class OpenCodeServerProtocolTest {
 
         assertNotNull(target)
         assertEquals(file.normalize(), target!!.path)
+    }
+
+    @Test
+    fun resolveFileLinkChecksEveryExactBaseBeforeGuessing() {
+        val guessBase = Files.createTempDirectory("opencode-guess-base")
+        val exactBase = Files.createTempDirectory("opencode-exact-base")
+        Files.createDirectories(guessBase.resolve("nested/src"))
+        Files.writeString(guessBase.resolve("nested/src/Main.kt"), "guess")
+        Files.createDirectories(exactBase.resolve("src"))
+        val exact = Files.writeString(exactBase.resolve("src/Main.kt"), "exact")
+
+        val target = OpenCodeServerProtocol.resolveFileLinkWithBases(
+            "src/Main.kt",
+            listOf(guessBase.toString(), exactBase.toString()),
+        )
+
+        assertEquals(exact.normalize(), target?.path)
+    }
+
+    @Test
+    fun resolveFileLinkGuessUsesCaseInsensitiveFilesystemSemanticsWhenRequested() {
+        val base = Files.createTempDirectory("opencode-case-guess")
+        Files.createDirectories(base.resolve("nested/src"))
+        val actual = Files.writeString(base.resolve("nested/src/Main.kt"), "x")
+
+        val target = OpenCodeServerProtocol.resolveFileLinkWithBases(
+            "SRC/main.kt",
+            listOf(base.toString()),
+            caseSensitive = false,
+        )
+
+        assertEquals(actual.normalize(), target?.path)
     }
 
     @Test

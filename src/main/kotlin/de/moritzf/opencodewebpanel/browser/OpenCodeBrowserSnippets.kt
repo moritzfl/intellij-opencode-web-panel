@@ -183,6 +183,11 @@ internal object OpenCodeBrowserSnippets {
         } else {
             "return;"
         }
+        val markTargetOpenedStatement = if (navigate) {
+            "try { window.sessionStorage.setItem(navigationKey, target); } catch (_) {}"
+        } else {
+            ""
+        }
         val originGuard = serverUrl?.let(OpenCodeServerProtocol::buildOrigin)
             ?.let(::escapeJavaScript)
             ?.let {
@@ -206,7 +211,7 @@ internal object OpenCodeBrowserSnippets {
                 if (typeof left !== 'string' || typeof right !== 'string') return false;
                 const norm = (value) => {
                   let next = value.replace(/\\/g, '/').replace(/\/+${'$'}/g, '');
-                  if (/^[A-Za-z]:\//.test(next)) next = next.charAt(0).toLowerCase() + next.slice(1);
+                  if (/^[A-Za-z]:\//.test(next) || next.startsWith('//')) next = next.toLowerCase();
                   return next;
                 };
                 return norm(left) === norm(right);
@@ -340,7 +345,7 @@ internal object OpenCodeBrowserSnippets {
                 }
               }
               if (onTarget) {
-                try { window.sessionStorage.setItem(navigationKey, target); } catch (_) {}
+                $markTargetOpenedStatement
                 return;
               }
               $navigateStatement
