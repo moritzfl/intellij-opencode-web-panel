@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [1.9.6] - 2026-07-29
+
 ### Fixed
 
 - Saving settings now reports secure-storage failures instead of restarting OpenCode with credentials that were not saved.
@@ -471,7 +473,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.5...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.6...HEAD
+[1.9.6]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.5...1.9.6
 [1.9.5]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.4...1.9.5
 [1.9.4]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.3...1.9.4
 [1.9.3]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.2...1.9.3
