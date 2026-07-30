@@ -93,6 +93,7 @@ class OpenCodeSettingsConfigurable : Configurable {
     private val syncThemeWithIdeCheckBox = JBCheckBox("Sync OpenCode color scheme with the IDE theme")
     private val suppressProjectSwitchPromptsCheckBox = JBCheckBox("Suppress project-switch prompts")
     private val mirrorBrowserCursorCheckBox = JBCheckBox("Mirror the web page mouse cursor")
+    private val recoverStalledEventStreamCheckBox = JBCheckBox("Reconnect the panel after a stalled connection")
     private val enableSystemNotificationsCheckBox = JBCheckBox("Forward OpenCode system notifications to the IDE")
     private val enablePermissionNotificationActionsCheckBox = JBCheckBox("Offer Allow/Deny actions on permission notifications")
     private val showAgentStatusBadgeCheckBox = JBCheckBox("Show agent status on the tool window icon")
@@ -138,6 +139,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         CheckBoxSettingBinding(syncThemeWithIdeCheckBox, { syncThemeWithIde }, { value -> syncThemeWithIde = value }, OpenCodeUiSetting.IDE_THEME_SYNC),
         CheckBoxSettingBinding(suppressProjectSwitchPromptsCheckBox, { suppressProjectSwitchPrompts }, { value -> suppressProjectSwitchPrompts = value }, OpenCodeUiSetting.PROJECT_SWITCH_PROMPT_SUPPRESSION),
         CheckBoxSettingBinding(mirrorBrowserCursorCheckBox, { mirrorBrowserCursor }, { value -> mirrorBrowserCursor = value }, OpenCodeUiSetting.BROWSER_CURSOR_MIRROR),
+        CheckBoxSettingBinding(recoverStalledEventStreamCheckBox, { recoverStalledEventStream }, { value -> recoverStalledEventStream = value }, OpenCodeUiSetting.EVENT_STREAM_WATCHDOG),
         // System notifications need no page interaction: the Kotlin-side event consumer
         // re-checks the setting on every event.
         CheckBoxSettingBinding(enableSystemNotificationsCheckBox, { enableSystemNotifications }, { value -> enableSystemNotifications = value }),
@@ -297,6 +299,10 @@ class OpenCodeSettingsConfigurable : Configurable {
                 row {
                     cell(autoContinueInterruptedSessionsCheckBox)
                         .comment("Send a continuation prompt to recently active sessions after the server restarts or recovers, if their last assistant turn was interrupted.")
+                }
+                row {
+                    cell(recoverStalledEventStreamCheckBox)
+                        .comment("Reopen the panel's connection to OpenCode when it goes silent, which happens when sleep or a network change severs it without closing it. Without this the panel keeps showing answered permission prompts and refuses new messages until you reload it.")
                 }
             }
         }

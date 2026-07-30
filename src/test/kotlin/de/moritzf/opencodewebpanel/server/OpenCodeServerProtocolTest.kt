@@ -1052,6 +1052,49 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun buildEventStreamWatchdogScriptIsMissingWhenDisabled() {
+        assertNull(OpenCodeBrowserSnippets.buildEventStreamWatchdogScript(enabled = false))
+    }
+
+    @Test
+    fun buildEventStreamWatchdogScriptWatchesEveryEventRouteGeneration() {
+        val script = OpenCodeBrowserSnippets.buildEventStreamWatchdogScript(enabled = true)!!
+
+        assertTrue(script.contains("window.__opencodeIntellijEventWatchdogInstalled"))
+        // All event route generations the SPA may pick, matched by pathname (not full URL) so
+        // origin rewrites and directory/workspace query parameters cannot bypass the watchdog.
+        assertTrue(script.contains("'/global/event'"))
+        assertTrue(script.contains("'/event'"))
+        assertTrue(script.contains("'/api/event'"))
+        assertTrue(script.contains("new URL(raw, location.href).pathname"))
+        // Recovery works by aborting so OpenCode's own reconnect loop sees a stream error;
+        // the plugin must never reimplement the stream or reload the page here.
+        assertTrue(script.contains("controller.abort()"))
+        assertFalse(script.contains("location.reload"))
+    }
+
+    @Test
+    fun buildEventStreamWatchdogScriptChainsTheCallerAbortSignal() {
+        val script = OpenCodeBrowserSnippets.buildEventStreamWatchdogScript(enabled = true)!!
+
+        // The SPA cancels its own stream on stop()/cleanup; dropping that signal would leak
+        // the previous connection on every reconnect.
+        assertTrue(script.contains("outer.addEventListener('abort'"))
+        assertTrue(script.contains("if (outer.aborted) controller.abort();"))
+    }
+
+    @Test
+    fun buildEventStreamWatchdogScriptKeepsTimeoutAboveTheHeartbeatInterval() {
+        // Heartbeats arrive every 10s; a timeout at or below that would reconnect endlessly on
+        // a perfectly healthy stream.
+        val script = OpenCodeBrowserSnippets.buildEventStreamWatchdogScript(enabled = true)!!
+        assertTrue(script.contains("const STALL_MS = ${OpenCodeBrowserSnippets.EVENT_STREAM_STALL_TIMEOUT_MILLIS};"))
+
+        val clamped = OpenCodeBrowserSnippets.buildEventStreamWatchdogScript(enabled = true, stallTimeoutMillis = 1_000)!!
+        assertTrue(clamped.contains("const STALL_MS = ${OpenCodeBrowserSnippets.MIN_EVENT_STREAM_STALL_TIMEOUT_MILLIS};"))
+    }
+
+    @Test
     fun buildCompactLayoutScriptIsIdempotent() {
         val script = OpenCodeBrowserSnippets.buildCompactLayoutScript(enabled = true)!!
 

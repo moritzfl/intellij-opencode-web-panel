@@ -5,6 +5,16 @@ import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 
 internal object OpenCodeBrowserSnippets {
 
+    /**
+     * How long the embedded page's event stream may stay byte-silent before it is treated as
+     * dead. OpenCode emits `server.heartbeat` every 10 seconds, so this allows three to four
+     * missed beats — the same budget the JVM-side reader uses for its read timeout.
+     */
+    const val EVENT_STREAM_STALL_TIMEOUT_MILLIS = 45_000
+
+    /** Floor that keeps a misconfigured timeout from reconnect-looping through normal heartbeats. */
+    const val MIN_EVENT_STREAM_STALL_TIMEOUT_MILLIS = 15_000
+
     /** Decodes a base64url route segment back to the project directory. Shared by the builders below. */
     @Language("JavaScript")
     private val DECODE_ROUTE_DIRECTORY_JS = """
@@ -716,6 +726,92 @@ internal object OpenCodeBrowserSnippets {
                 if (key === WIDE_KEY) return stub(q, false);
                 if (key === NARROW_KEY) return stub(q, true);
                 return orig(q);
+              };
+            })();
+        """
+        return script.trimIndent()
+    }
+
+    /**
+     * Gives the SPA's `/global/event` reader the stall detection it does not have, so a socket
+     * the OS severed silently (laptop sleep, VPN/adapter change — common on Windows, where a
+     * half-open TCP connection is not reset) cannot leave the page permanently deaf.
+     *
+     * OpenCode's stream loop (`packages/app/src/context/server-sdk.tsx`) reconnects only when the
+     * response iterator *ends or throws*; it has no read timeout and its only resume hook is
+     * `pageshow` with `event.persisted`, which never fires for a live JCEF page. A half-open
+     * socket therefore delivers neither bytes nor an error and `for await` blocks forever: the
+     * page keeps its last state, never learns about `permission.replied` (so an IDE-answered
+     * permission prompt stays on screen) and cannot start a new turn until a manual reload.
+     *
+     * The fix stays outside SPA internals: [window.fetch] is wrapped so the event-stream response
+     * body is piped through a reader that aborts the request after [stallTimeoutMillis] without a
+     * single byte. The abort surfaces as a normal stream error, which is exactly the signal
+     * OpenCode's own reconnect loop already handles. The server emits `server.heartbeat` every
+     * 10s, so silence well past that is unambiguous evidence of a dead transport.
+     *
+     * Must run before the SPA bundle captures `window.fetch` (`onLoadStart`).
+     */
+    fun buildEventStreamWatchdogScript(enabled: Boolean, stallTimeoutMillis: Int = EVENT_STREAM_STALL_TIMEOUT_MILLIS): String? {
+        if (!enabled) return null
+        val timeout = stallTimeoutMillis.coerceAtLeast(MIN_EVENT_STREAM_STALL_TIMEOUT_MILLIS)
+        @Language("JavaScript")
+        val script = """
+            (() => {
+              if (window.__opencodeIntellijEventWatchdogInstalled) return;
+              window.__opencodeIntellijEventWatchdogInstalled = true;
+              const STALL_MS = $timeout;
+              // Every generation of the event route the SPA may use. Matching on pathname keeps
+              // this independent of origin rewrites and query parameters (directory, workspace).
+              const EVENT_PATHS = ['/global/event', '/event', '/api/event'];
+              const realFetch = window.fetch;
+              if (typeof realFetch !== 'function' || typeof AbortController !== 'function') return;
+              const isEventStream = (input) => {
+                const raw = typeof input === 'string' ? input : (input && input.url) || '';
+                try { return EVENT_PATHS.indexOf(new URL(raw, location.href).pathname) !== -1; }
+                catch (_) { return false; }
+              };
+              window.fetch = function (input, init) {
+                if (!isEventStream(input)) return realFetch.apply(this, arguments);
+                // Chain the caller's signal into ours so the SPA can still cancel normally.
+                const controller = new AbortController();
+                const outer = (init && init.signal) || (input && input.signal);
+                if (outer) {
+                  if (outer.aborted) controller.abort();
+                  else outer.addEventListener('abort', () => controller.abort(), { once: true });
+                }
+                const options = Object.assign({}, init, { signal: controller.signal });
+                return realFetch.call(this, input, options).then((response) => {
+                  if (!response.body) return response;
+                  let timer;
+                  const arm = () => {
+                    clearTimeout(timer);
+                    timer = setTimeout(() => {
+                      // Aborting the request makes the body reader throw, which is the error
+                      // OpenCode's reconnect loop waits for. It reopens the stream itself.
+                      try { controller.abort(); } catch (_) {}
+                    }, STALL_MS);
+                  };
+                  const reader = response.body.getReader();
+                  const watched = new ReadableStream({
+                    start(target) {
+                      arm();
+                      const pump = () => reader.read().then((result) => {
+                        if (result.done) { clearTimeout(timer); target.close(); return; }
+                        arm();
+                        target.enqueue(result.value);
+                        return pump();
+                      }).catch((error) => { clearTimeout(timer); target.error(error); });
+                      pump();
+                    },
+                    cancel(reason) { clearTimeout(timer); return reader.cancel(reason); },
+                  });
+                  return new Response(watched, {
+                    status: response.status,
+                    statusText: response.statusText,
+                    headers: response.headers,
+                  });
+                });
               };
             })();
         """

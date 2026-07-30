@@ -234,6 +234,10 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         enabledInSettings = { OpenCodeSettingsState.getInstance().hideWebsiteButton },
         buildScript = { OpenCodeBrowserSnippets.buildHideWebsiteButtonScript(enabled = true) },
     )
+    private val eventStreamWatchdogFeature = EarlyInjectedFeature(
+        enabledInSettings = { OpenCodeSettingsState.getInstance().recoverStalledEventStream },
+        buildScript = { OpenCodeBrowserSnippets.buildEventStreamWatchdogScript(enabled = true) },
+    )
 
     /** Injection order matters: the project seed must precede everything else. */
     private val earlyInjectedFeatures = listOf(
@@ -241,6 +245,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         ideThemeSyncFeature,
         compactLayoutFeature,
         hideWebsiteButtonFeature,
+        eventStreamWatchdogFeature,
     )
 
     private val fileLinkFeature = InjectedFeature(
@@ -568,6 +573,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                         OpenCodeUiSetting.IDE_THEME_SYNC -> applyIdeThemeSync(enabled)
                         OpenCodeUiSetting.PROJECT_SWITCH_PROMPT_SUPPRESSION -> applyFeature(projectSwitchPromptSuppressionFeature, enabled)
                         OpenCodeUiSetting.BROWSER_CURSOR_MIRROR -> applyFeature(cursorMirrorFeature, enabled)
+                        OpenCodeUiSetting.EVENT_STREAM_WATCHDOG -> applyEventStreamWatchdog()
                         OpenCodeUiSetting.AGENT_STATUS_BADGE -> applyAgentStatusBadge(enabled)
                     }
                 }
@@ -1276,6 +1282,12 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         // Off → reload so listeners/stylesheets are fully removed (safeguard contract).
         // On → reload so early inject runs before SPA chrome mounts.
         reloadForEarlyFeatureToggle(hideWebsiteButtonFeature)
+    }
+
+    private fun applyEventStreamWatchdog() {
+        // Off → reload so the patched window.fetch is replaced by the untouched original.
+        // On → reload so the patch is in place before the SPA bundle captures window.fetch.
+        reloadForEarlyFeatureToggle(eventStreamWatchdogFeature)
     }
 
     /**
