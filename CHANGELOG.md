@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- The panel now reconnects on its own when its connection to OpenCode goes quiet. Sleeping the machine or switching network could leave the connection open but dead, and the panel had no way to notice: it kept showing the conversation as it was, ignored anything that happened afterwards, and refused to send the next message until the page was reloaded. This was most common on Windows and after longer breaks.
+- Answering a permission request from an IDE notification now clears the request in the panel. When the connection had died in the meantime, the answer still reached OpenCode but the panel never heard about it and left the request on screen.
+- Waking the machine from sleep reconnects the panel immediately instead of after a short delay.
+
 ## [1.9.6] - 2026-07-29
 
 ### Fixed

@@ -59,8 +59,23 @@ UI-behavior settings (`openFileLinksInIde`, `enableCodeNavigation`, `openDiffsIn
 - Add unit tests asserting disabled builders return `null` and that a toggle-off reloads rather than injects a "disable" script.
 - Validate injected JS against a real page before claiming it works (see Validating Against a Real Server) — unit tests only check the script *text*, never real DOM behavior.
 - Prefer **locale- and design-independent DOM signals** over label text or Tailwind utility classes: `data-slot`/`data-component` attributes, `href` targets, and sprite-icon references (`use[href="#opencode-icon-<name>"]` — both toast generations render icon *names* into the DOM this way). The project-switch toast suppression matches the permission/question toast purely structurally: toast container + icon slot containing the `checklist`/`bubble-5` sprite icon + an action row; never translated strings.
-- Early injection is centralized: `EarlyInjectedFeature` instances (seed → theme → compact → hide-website, order matters) run through `injectEarlyFeature` from `onLoadStart` with early-series retries; builders are re-invoked per attempt and must be idempotent in-page. Post-load features use `InjectedFeature`/`scheduleFeatureScript`. Add new injections to one of these lists — do not hand-roll per-feature flags.
+- Early injection is centralized: `EarlyInjectedFeature` instances (seed → theme → compact → hide-website → event-stream watchdog, order matters) run through `injectEarlyFeature` from `onLoadStart` with early-series retries; builders are re-invoked per attempt and must be idempotent in-page. Post-load features use `InjectedFeature`/`scheduleFeatureScript`. Add new injections to one of these lists — do not hand-roll per-feature flags.
 - Injected MutationObservers must be cheap in steady state: hiding is done by an installed stylesheet, and the observer only re-attaches the `<style>` (rAF-debounced) if the SPA replaces `<head>` — never per-mutation `querySelectorAll` work on the whole document.
+
+### Page event-stream watchdog (`recoverStalledEventStream`)
+
+OpenCode's page-side reader (`packages/app/src/context/server-sdk.tsx`) reconnects **only when its response iterator ends or throws**. It has no read timeout, and its only resume hook is `pageshow` with `event.persisted` — which never fires for a live JCEF page. A socket the OS severed without resetting it (sleep, VPN/adapter change; routinely half-open on Windows) therefore delivers neither bytes nor an error and `for await` blocks forever. Verified live against 1.18.10 behind a stalling proxy: the page issues **one** `/global/event` request and then ignores every server-side change until reloaded.
+
+Two user-visible bugs share this single root cause, so treat them as one:
+
+- the panel refuses new messages and looks frozen until a manual reload;
+- a permission answered from an IDE notification stays on screen — the SPA removes a request **only** on the `permission.replied` event (`server-session.ts`), never by polling, while the plugin's JVM reply succeeds on its own connection.
+
+`buildEventStreamWatchdogScript` wraps `window.fetch` in `onLoadStart` (before the bundle captures it) and pipes the event-stream body through a reader that aborts the request after 45s without a byte — three to four missed `server.heartbeat`s (10s cadence), the same budget as the JVM reader's read timeout. The abort surfaces as an ordinary stream error, which is the signal OpenCode's own reconnect loop already handles, so **recovery must stay out of SPA internals — never reload the page or reimplement the stream here.** `buildForceEventReconnectScript` cuts the stream on demand and is fired from the suspend-resume listener; it is a no-op when the watchdog is off.
+
+Reconnect also repairs state missed while dead: the server emits `server.connected` on **every** new connection (verified), and the SPA re-bootstraps active directories on it, re-seeding pending permissions from `GET /permission` and clearing sessions that have none.
+
+Match on `URL.pathname` for `/global/event`, `/event`, and `/api/event` so origin rewrites and `directory`/`workspace` query params cannot bypass the watchdog, and chain the caller's `AbortSignal` into the wrapper or the SPA's own `stop()` leaks the previous connection on every reconnect.
 
 ### Diff navigation DOM contract (`openDiffsInIde`)
 
@@ -154,6 +169,8 @@ Reproduce: start a server (above), then in one terminal `curl -N -u opencode:tes
 - `session.error` → `{sessionID?, error?}`
 - `permission.asked` → `{id, sessionID, permission, patterns, metadata, always, tool?}` (NOT `permission.updated` — that only exists in the stale legacy SDK gen)
 - `permission.replied` → `{sessionID, requestID, reply}`, `reply ∈ {"once","always","reject"}` (NOT `{permissionID, response}` — stale gen)
+
+**Permission v1/v2 are two disjoint stores — the panel is on v1.** The SPA's `detectServerProtocol` probes `/global/health` first and picks **v1** whenever it answers `{"healthy":true}` (it does on 1.18.10), so the embedded panel uses the v1 prompt path. There, `SessionTools.resolve` hands tools a `Tool.Context.ask` bound to the **v1** `Permission.Service`, which emits `permission.asked`/`permission.replied` and is answered by `POST /permission/{requestID}/reply`. The parallel v2 service (`POST /api/session/{sessionID}/permission`, `…/permission/{requestID}/reply`) emits **only** `permission.v2.asked` and its requests appear **only** in `GET /api/session/{id}/permission` — never in v1 `GET /permission` (verified live on 1.18.10 by creating one). Consequence: v1-only handling is correct today, but if a future server drops `/global/health` the SPA flips to v2 and the plugin would stop seeing permissions entirely rather than degrade — re-check this before assuming a permission bug is a reply-endpoint problem.
 - `question.asked` → `{id, sessionID, questions: QuestionInfo[], tool?}`
 - `question.replied` → `{sessionID, requestID, answers: string[][]}`
 - `question.rejected` → `{sessionID, requestID}`
