@@ -766,6 +766,15 @@ internal object OpenCodeBrowserSnippets {
               const EVENT_PATHS = ['/global/event', '/event', '/api/event'];
               const realFetch = window.fetch;
               if (typeof realFetch !== 'function' || typeof AbortController !== 'function') return;
+              // Live stream controllers, so the IDE can cut a stream the moment it knows the
+              // transport is gone (resume from suspend) instead of waiting out the timeout.
+              const active = new Set();
+              window.__opencodeIntellijForceEventReconnect = () => {
+                const current = Array.from(active);
+                active.clear();
+                current.forEach((controller) => { try { controller.abort(); } catch (_) {} });
+                return current.length;
+              };
               const isEventStream = (input) => {
                 const raw = typeof input === 'string' ? input : (input && input.url) || '';
                 try { return EVENT_PATHS.indexOf(new URL(raw, location.href).pathname) !== -1; }
@@ -781,9 +790,11 @@ internal object OpenCodeBrowserSnippets {
                   else outer.addEventListener('abort', () => controller.abort(), { once: true });
                 }
                 const options = Object.assign({}, init, { signal: controller.signal });
+                active.add(controller);
                 return realFetch.call(this, input, options).then((response) => {
-                  if (!response.body) return response;
+                  if (!response.body) { active.delete(controller); return response; }
                   let timer;
+                  const done = () => { clearTimeout(timer); active.delete(controller); };
                   const arm = () => {
                     clearTimeout(timer);
                     timer = setTimeout(() => {
@@ -797,22 +808,40 @@ internal object OpenCodeBrowserSnippets {
                     start(target) {
                       arm();
                       const pump = () => reader.read().then((result) => {
-                        if (result.done) { clearTimeout(timer); target.close(); return; }
+                        if (result.done) { done(); target.close(); return; }
                         arm();
                         target.enqueue(result.value);
                         return pump();
-                      }).catch((error) => { clearTimeout(timer); target.error(error); });
+                      }).catch((error) => { done(); target.error(error); });
                       pump();
                     },
-                    cancel(reason) { clearTimeout(timer); return reader.cancel(reason); },
+                    cancel(reason) { done(); return reader.cancel(reason); },
                   });
                   return new Response(watched, {
                     status: response.status,
                     statusText: response.statusText,
                     headers: response.headers,
                   });
-                });
+                }).catch((error) => { active.delete(controller); throw error; });
               };
+            })();
+        """
+        return script.trimIndent()
+    }
+
+    /**
+     * Drops the page's event stream immediately so OpenCode's reconnect loop reopens it. Used
+     * when the IDE already knows the transport cannot have survived (resume from system
+     * suspend), instead of waiting out the watchdog's silence budget.
+     *
+     * No-op when the watchdog is not installed, so it is safe to fire unconditionally.
+     */
+    fun buildForceEventReconnectScript(): String {
+        @Language("JavaScript")
+        val script = """
+            (() => {
+              const force = window.__opencodeIntellijForceEventReconnect;
+              if (typeof force === 'function') force();
             })();
         """
         return script.trimIndent()

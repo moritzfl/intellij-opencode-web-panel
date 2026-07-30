@@ -546,6 +546,9 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             object : OpenCodeSuspendResumeListener {
                 override fun resumedFromSuspend(lastAliveMillis: Long, resumedAtMillis: Long) {
                     interruptedSessionRecovery.onResumedFromSuspend(lastAliveMillis, resumedAtMillis)
+                    // The page's stream cannot have survived the suspend; cut it now so the SPA
+                    // reconnects at once rather than after the watchdog's silence budget.
+                    forceEventStreamReconnect()
                 }
             },
         )
@@ -1282,6 +1285,20 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         // Off → reload so listeners/stylesheets are fully removed (safeguard contract).
         // On → reload so early inject runs before SPA chrome mounts.
         reloadForEarlyFeatureToggle(hideWebsiteButtonFeature)
+    }
+
+    private fun forceEventStreamReconnect() {
+        if (!OpenCodeSettingsState.getInstance().recoverStalledEventStream) return
+        val serverUrl = serverManager.getServerUrl() ?: return
+        ApplicationManager.getApplication().invokeLater {
+            if (isContentDisposed()) return@invokeLater
+            if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)) return@invokeLater
+            browser.cefBrowser.executeJavaScript(
+                OpenCodeBrowserSnippets.buildForceEventReconnectScript(),
+                OpenCodeServerProtocol.buildServerRootUrl(serverUrl),
+                0,
+            )
+        }
     }
 
     private fun applyEventStreamWatchdog() {

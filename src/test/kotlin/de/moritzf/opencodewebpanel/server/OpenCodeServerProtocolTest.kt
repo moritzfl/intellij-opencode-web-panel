@@ -1095,6 +1095,26 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun buildForceEventReconnectScriptIsANoOpWithoutTheWatchdog() {
+        val script = OpenCodeBrowserSnippets.buildForceEventReconnectScript()
+
+        // Fired unconditionally on resume, including when the safeguard is off and the hook
+        // was never installed, so it must guard before calling.
+        assertTrue(script.contains("typeof force === 'function'"))
+        assertTrue(script.contains("window.__opencodeIntellijForceEventReconnect"))
+    }
+
+    @Test
+    fun buildEventStreamWatchdogScriptExposesTheForceReconnectHook() {
+        val script = OpenCodeBrowserSnippets.buildEventStreamWatchdogScript(enabled = true)!!
+
+        assertTrue(script.contains("window.__opencodeIntellijForceEventReconnect = () =>"))
+        // Finished streams must leave the tracking set or the hook would abort dead controllers
+        // and leak them for the lifetime of the page.
+        assertTrue(script.contains("active.delete(controller)"))
+    }
+
+    @Test
     fun buildCompactLayoutScriptIsIdempotent() {
         val script = OpenCodeBrowserSnippets.buildCompactLayoutScript(enabled = true)!!
 
