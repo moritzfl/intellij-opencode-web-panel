@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [1.9.7] - 2026-07-30
+
 ### Fixed
 
 - The panel now reconnects on its own when its connection to OpenCode goes quiet. Sleeping the machine or switching network could leave the connection open but dead, and the panel had no way to notice: it kept showing the conversation as it was, ignored anything that happened afterwards, and refused to send the next message until the page was reloaded. This was most common on Windows and after longer breaks.
@@ -479,7 +481,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.6...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.7...HEAD
+[1.9.7]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.6...1.9.7
 [1.9.6]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.5...1.9.6
 [1.9.5]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.4...1.9.5
 [1.9.4]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.3...1.9.4
