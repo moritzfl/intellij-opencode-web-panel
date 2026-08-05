@@ -1350,12 +1350,22 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         return OpenCodeServerProtocol.sessionIdFromUrl(browser.cefBrowser.url)
     }
 
+    /** Session-scoped and includes subagent children through their parent lineage. */
     internal fun isPermissionAutoAcceptEnabled(): Boolean {
-        return displayedSessionID()?.let(permissionAutoResponder::isEnabled) == true
+        val sessionID = displayedSessionID() ?: return false
+        permissionAutoResponder.prepareSession(sessionID)
+        return permissionAutoResponder.isEffectivelyEnabled(sessionID)
     }
 
     internal fun setPermissionAutoAcceptEnabled(enabled: Boolean) {
-        displayedSessionID()?.let { permissionAutoResponder.setEnabled(it, enabled) }
+        displayedSessionID()?.let { permissionAutoResponder.setEffectivelyEnabled(it, enabled) }
+    }
+
+    internal fun canTogglePermissionAutoAccept(): Boolean {
+        val sessionID = displayedSessionID() ?: return false
+        permissionAutoResponder.prepareSession(sessionID)
+        return permissionAutoResponder.isEffectivelyEnabled(sessionID) ||
+            permissionAutoResponder.isLineagePrepared(sessionID)
     }
 
     private fun isContentDisposed(): Boolean {
@@ -1364,6 +1374,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
 
     override fun dispose() {
         disposed = true
+        permissionAutoResponder.dispose()
         if (!project.isDisposed) {
             OpenCodeChatInputService.getInstance(project).setDispatcher(null)
         }

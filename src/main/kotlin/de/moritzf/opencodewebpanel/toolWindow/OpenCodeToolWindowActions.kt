@@ -129,10 +129,13 @@ internal class OpenCodeReloadPageAction : DumbAwareAction(
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 }
 
-/** Gear-menu-only, per-session bridge until OpenCode's own web UI exposes auto mode. */
+/**
+ * Gear-menu bridge for OpenCode's broken web auto-accept. Scoped to the displayed conversation
+ * and its subagents; state is in-memory only.
+ */
 internal class OpenCodeAutoAcceptPermissionsAction : ToggleAction(
     "Auto-Accept Permissions",
-    "Automatically allow permission requests in the displayed session until switched off (dangerous)",
+    "Automatically allow permission requests for this conversation (and its subagents) until switched off (dangerous)",
     null,
 ), DumbAware {
     override fun isSelected(e: AnActionEvent): Boolean {
@@ -146,11 +149,11 @@ internal class OpenCodeAutoAcceptPermissionsAction : ToggleAction(
     override fun update(e: AnActionEvent) {
         super.update(e)
         val content = openCodePanelContent(e)
-        e.presentation.isEnabled = content?.displayedSessionID() != null
+        e.presentation.isEnabled = content?.canTogglePermissionAutoAccept() == true
         e.presentation.description = if (content?.isPermissionAutoAcceptEnabled() == true) {
-            "Automatically allowing permission requests in this session; switch off to ask again"
+            "Automatically allowing permission requests in this conversation and its subagents; switch off to ask again"
         } else {
-            "Automatically allow permission requests in the displayed session until switched off (dangerous)"
+            "Automatically allow permission requests for this conversation and its subagents until switched off (dangerous)"
         }
     }
 
