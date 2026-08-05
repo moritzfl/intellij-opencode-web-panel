@@ -4,11 +4,13 @@ import com.intellij.icons.AllIcons
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.PlatformDataKeys
+import com.intellij.openapi.actionSystem.ToggleAction
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.project.DumbAwareAction
+import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.MessageDialogBuilder
 import com.intellij.openapi.ui.Messages
@@ -122,6 +124,34 @@ internal class OpenCodeReloadPageAction : DumbAwareAction(
 
     override fun update(e: AnActionEvent) {
         e.presentation.isEnabled = e.project != null
+    }
+
+    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+}
+
+/** Gear-menu-only, per-session bridge until OpenCode's own web UI exposes auto mode. */
+internal class OpenCodeAutoAcceptPermissionsAction : ToggleAction(
+    "Auto-Accept Permissions",
+    "Automatically allow permission requests in the displayed session until switched off (dangerous)",
+    null,
+), DumbAware {
+    override fun isSelected(e: AnActionEvent): Boolean {
+        return openCodePanelContent(e)?.isPermissionAutoAcceptEnabled() == true
+    }
+
+    override fun setSelected(e: AnActionEvent, state: Boolean) {
+        openCodePanelContent(e)?.setPermissionAutoAcceptEnabled(state)
+    }
+
+    override fun update(e: AnActionEvent) {
+        super.update(e)
+        val content = openCodePanelContent(e)
+        e.presentation.isEnabled = content?.displayedSessionID() != null
+        e.presentation.description = if (content?.isPermissionAutoAcceptEnabled() == true) {
+            "Automatically allowing permission requests in this session; switch off to ask again"
+        } else {
+            "Automatically allow permission requests in the displayed session until switched off (dangerous)"
+        }
     }
 
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT

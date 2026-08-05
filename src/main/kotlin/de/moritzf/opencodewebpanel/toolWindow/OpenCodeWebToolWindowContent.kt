@@ -33,6 +33,7 @@ import de.moritzf.opencodewebpanel.features.OpenCodeFileDropHandler
 import de.moritzf.opencodewebpanel.features.OpenCodeIdeNavigation
 import de.moritzf.opencodewebpanel.features.OpenCodeInterruptedSessionRecovery
 import de.moritzf.opencodewebpanel.features.OpenCodeLocalStorageBridge
+import de.moritzf.opencodewebpanel.features.OpenCodePermissionAutoResponder
 import de.moritzf.opencodewebpanel.features.OpenCodeSystemNotifications
 import de.moritzf.opencodewebpanel.features.OpenCodeWorkspaceRefreshCoordinator
 import de.moritzf.opencodewebpanel.server.OpenCodeGlobalEvent
@@ -130,6 +131,11 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     )
     private val requestHandler = OpenCodeBrowserRequestHandler(serverManager, ideNavigation, ::recoverFromRendererCrash)
     private val interruptedSessionRecovery = OpenCodeInterruptedSessionRecovery(project, serverManager, ::openCodeProjectDirectory)
+    private val permissionAutoResponder = OpenCodePermissionAutoResponder(
+        ::openCodeProjectDirectory,
+        serverManager::getServerUrl,
+        serverManager::getServerPassword,
+    )
     private val openProjectAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
     private val repaintAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
     private val componentSizeRestoreAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
@@ -508,6 +514,10 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         ApplicationManager.getApplication().messageBus.connect(this).subscribe(
             OpenCodeGlobalEventListener.TOPIC,
             workspaceRefreshCoordinator,
+        )
+        ApplicationManager.getApplication().messageBus.connect(this).subscribe(
+            OpenCodeGlobalEventListener.TOPIC,
+            permissionAutoResponder,
         )
         // Permission/question sections appear in-place, without an address change, so the
         // onAddressChange repaint hook never sees them. Nudge the compositor from the JVM-side
@@ -1334,6 +1344,18 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         centerCardLayout.show(centerCardPanel, card)
         centerCardPanel.revalidate()
         centerCardPanel.repaint()
+    }
+
+    internal fun displayedSessionID(): String? {
+        return OpenCodeServerProtocol.sessionIdFromUrl(browser.cefBrowser.url)
+    }
+
+    internal fun isPermissionAutoAcceptEnabled(): Boolean {
+        return displayedSessionID()?.let(permissionAutoResponder::isEnabled) == true
+    }
+
+    internal fun setPermissionAutoAcceptEnabled(enabled: Boolean) {
+        displayedSessionID()?.let { permissionAutoResponder.setEnabled(it, enabled) }
     }
 
     private fun isContentDisposed(): Boolean {

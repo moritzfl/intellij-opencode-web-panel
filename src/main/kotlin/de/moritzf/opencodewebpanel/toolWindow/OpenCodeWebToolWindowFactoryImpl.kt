@@ -46,6 +46,7 @@ class OpenCodeWebToolWindowFactoryImpl : ToolWindowFactory, DumbAware {
                 OpenCodeZoomOutAction(),
                 OpenCodeZoomInAction(),
                 OpenCodeResetZoomAction(),
+                OpenCodeAutoAcceptPermissionsAction(),
                 OpenCodeReloadPageAction(),
                 OpenCodeRestartServerAction(),
                 OpenCodeResetWebStateAction(),
