@@ -6,7 +6,7 @@
 
 ### Added
 
-- The panel menu now has a non-persistent **Auto-Accept Permissions** toggle for the displayed conversation. Each conversation keeps its own in-memory toggle state, and explicit deny rules still apply.
+- The panel menu now has a non-persistent **Auto-Accept Permissions** toggle for the displayed conversation and its subagent children. Each conversation keeps its own in-memory toggle state, and explicit deny rules still apply.
 
 ## [1.9.7] - 2026-07-30
 
