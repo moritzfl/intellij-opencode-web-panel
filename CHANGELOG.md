@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [1.9.8] - 2026-08-06
+
 ### Added
 
 - The panel menu now has a non-persistent **Auto-Accept Permissions** toggle for the displayed conversation and its subagent children. Each conversation keeps its own in-memory toggle state, and explicit deny rules still apply.
@@ -485,7 +487,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.7...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.8...HEAD
+[1.9.8]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.7...1.9.8
 [1.9.7]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.6...1.9.7
 [1.9.6]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.5...1.9.6
 [1.9.5]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.4...1.9.5
