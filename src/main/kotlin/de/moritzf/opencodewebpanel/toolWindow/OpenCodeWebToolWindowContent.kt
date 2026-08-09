@@ -382,6 +382,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             scheduleIdeThemeSyncScript()
             scheduleFlushPendingChatInput()
             interruptedSessionRecovery.checkAndContinue()
+            prepareDisplayedSessionLineage(frame.url)
         }
 
         override fun onLoadError(
@@ -466,6 +467,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                     if (frame?.isMain == true) {
                         browserDocumentRevision++
                         systemNotifications.browserAddressChanged()
+                        prepareDisplayedSessionLineage(url)
                         scheduleBrowserRepaintNudges()
                         // CEF OSR can drop Chromium-level focus on SPA redirects/route changes
                         // (CEF #3870), which hides the text caret while typing still works.
@@ -1350,6 +1352,17 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         return OpenCodeServerProtocol.sessionIdFromUrl(browser.cefBrowser.url)
     }
 
+    /**
+     * Resolves the displayed session's lineage as soon as its route appears (full load or SPA
+     * navigation), so the Auto-Accept Permissions gear action reflects an inherited parent
+     * enable on the first menu open instead of only after the menu's own update kicked the
+     * async fetch. Safe to call from CEF handler threads: [prepareSession][OpenCodePermissionAutoResponder.prepareSession]
+     * only touches concurrent maps and hops to a pooled thread for the REST walk.
+     */
+    private fun prepareDisplayedSessionLineage(url: String?) {
+        OpenCodeServerProtocol.sessionIdFromUrl(url)?.let(permissionAutoResponder::prepareSession)
+    }
+
     /** Session-scoped and includes subagent children through their parent lineage. */
     internal fun isPermissionAutoAcceptEnabled(): Boolean {
         val sessionID = displayedSessionID() ?: return false
@@ -1362,10 +1375,15 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     }
 
     internal fun canTogglePermissionAutoAccept(): Boolean {
+        // Enabled whenever a session is displayed. Toggling is valid without a resolved
+        // lineage: a session's own override wins over any inherited one, and the lineage is
+        // prepared proactively on navigation so the check state reflects parent enables.
+        // Gating on isLineagePrepared blocked the action until the menu's own update had
+        // triggered (and a round-trip had finished) the async lineage fetch — the menu had
+        // to be opened twice.
         val sessionID = displayedSessionID() ?: return false
         permissionAutoResponder.prepareSession(sessionID)
-        return permissionAutoResponder.isEffectivelyEnabled(sessionID) ||
-            permissionAutoResponder.isLineagePrepared(sessionID)
+        return true
     }
 
     private fun isContentDisposed(): Boolean {
