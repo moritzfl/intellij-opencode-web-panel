@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [1.9.9] - 2026-08-09
+
+### Fixed
+
+- The **Auto-Accept Permissions** menu item is now enabled as soon as a conversation is open. It previously stayed greyed out on the first menu open and only became clickable when the menu was opened a second time.
+
 ## [1.9.8] - 2026-08-06
 
 ### Added
@@ -487,7 +493,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.8...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.9...HEAD
+[1.9.9]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.8...1.9.9
 [1.9.8]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.7...1.9.8
 [1.9.7]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.6...1.9.7
 [1.9.6]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.5...1.9.6
