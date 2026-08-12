@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-08-12
+
 ### Added
 
 - A **Stop OpenCode Server** action is available in the tool-window gear menu.
@@ -498,7 +500,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.9...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.10.0...HEAD
+[1.10.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.9...1.10.0
 [1.9.9]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.8...1.9.9
 [1.9.8]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.7...1.9.8
 [1.9.7]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.6...1.9.7
