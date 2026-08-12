@@ -22,4 +22,22 @@ class OpenCodeServerLifecycleTest {
         assertEquals("Retry", openCodeServerRetryLabel(OpenCodeServerLifecycleState.FAILED))
         assertEquals("Retry", openCodeServerRetryLabel(OpenCodeServerLifecycleState.RUNNING))
     }
+
+    @Test
+    fun reloadActionIsDisabledOnlyWhenServerIsStopped() {
+        assertTrue(isOpenCodePageReloadEnabled(OpenCodeServerLifecycleState.STARTING))
+        assertTrue(isOpenCodePageReloadEnabled(OpenCodeServerLifecycleState.RUNNING))
+        assertTrue(isOpenCodePageReloadEnabled(OpenCodeServerLifecycleState.FAILED))
+        assertTrue(isOpenCodePageReloadEnabled(OpenCodeServerLifecycleState.RESTARTING))
+        assertFalse(isOpenCodePageReloadEnabled(OpenCodeServerLifecycleState.STOPPED))
+    }
+
+    @Test
+    fun stopActionIsEnabledForRunningOrStartingServer() {
+        assertTrue(isOpenCodeServerStopEnabled(OpenCodeServerLifecycleState.STARTING))
+        assertTrue(isOpenCodeServerStopEnabled(OpenCodeServerLifecycleState.RUNNING))
+        assertTrue(isOpenCodeServerStopEnabled(OpenCodeServerLifecycleState.RESTARTING))
+        assertFalse(isOpenCodeServerStopEnabled(OpenCodeServerLifecycleState.FAILED))
+        assertFalse(isOpenCodeServerStopEnabled(OpenCodeServerLifecycleState.STOPPED))
+    }
 }

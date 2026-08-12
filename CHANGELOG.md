@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+### Added
+
+- A **Stop OpenCode Server** action is available in the tool-window gear menu.
+  Health checks will not bring it back; **Start**, **Restart**, Reload, or opening the panel starts it again.
+
 ## [1.9.9] - 2026-08-09
 
 ### Fixed

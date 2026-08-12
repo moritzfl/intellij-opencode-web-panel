@@ -15,8 +15,6 @@ internal class OpenCodeLifecycleStatusPanel(onRetry: () -> Unit) {
     private val lifecycleStatusLabel = JBLabel()
     private val retryServerButton = JButton("Retry", AllIcons.Actions.Restart).apply {
         isVisible = false
-        toolTipText = "Retry starting the OpenCode server"
-        accessibleContext.accessibleName = "Retry starting OpenCode server"
         addActionListener { onRetry() }
     }
 
@@ -30,9 +28,22 @@ internal class OpenCodeLifecycleStatusPanel(onRetry: () -> Unit) {
     fun update(state: OpenCodeServerLifecycleState) {
         lifecycleStatusLabel.text = formatOpenCodeServerLifecycleStatusText(state)
         lifecycleStatusLabel.toolTipText = "OpenCode server is ${state.displayLabel.lowercase()}"
-        retryServerButton.isVisible = isOpenCodeServerRetryVisible(state)
-        retryServerButton.isEnabled = isOpenCodeServerRetryVisible(state)
+        val retryVisible = isOpenCodeServerRetryVisible(state)
+        val startLabel = state == OpenCodeServerLifecycleState.STOPPED
+        retryServerButton.isVisible = retryVisible
+        retryServerButton.isEnabled = retryVisible
         retryServerButton.text = openCodeServerRetryLabel(state)
+        retryServerButton.icon = if (startLabel) AllIcons.Actions.Execute else AllIcons.Actions.Restart
+        retryServerButton.toolTipText = if (startLabel) {
+            "Start the OpenCode server"
+        } else {
+            "Retry starting the OpenCode server"
+        }
+        retryServerButton.accessibleContext.accessibleName = if (startLabel) {
+            "Start OpenCode server"
+        } else {
+            "Retry starting OpenCode server"
+        }
         component.isVisible = isOpenCodeServerLifecycleStatusVisible(state)
     }
 

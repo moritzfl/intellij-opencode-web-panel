@@ -18,6 +18,8 @@ import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.wm.ToolWindowManager
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState
 import de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager
+import de.moritzf.opencodewebpanel.server.isOpenCodePageReloadEnabled
+import de.moritzf.opencodewebpanel.server.isOpenCodeServerStopEnabled
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsListener
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
@@ -94,7 +96,7 @@ internal class OpenCodeResetZoomAction : DumbAwareAction(
 internal class OpenCodeRestartServerAction : DumbAwareAction(
     "Restart OpenCode Server",
     "Stop and restart the shared OpenCode server",
-    AllIcons.Actions.Restart,
+    AllIcons.Actions.StopAndRestart,
 ) {
     override fun actionPerformed(e: AnActionEvent) {
         if (!confirmOpenCodeServerRestart(e.project)) return
@@ -113,6 +115,25 @@ internal class OpenCodeRestartServerAction : DumbAwareAction(
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 }
 
+internal class OpenCodeStopServerAction : DumbAwareAction(
+    "Stop OpenCode Server",
+    "Stop the shared OpenCode server without restarting it",
+    AllIcons.Actions.Suspend,
+) {
+    override fun actionPerformed(e: AnActionEvent) {
+        if (!confirmOpenCodeServerStop(e.project)) return
+        SharedOpenCodeServerManager.getInstance().stopServer()
+    }
+
+    override fun update(e: AnActionEvent) {
+        val state = SharedOpenCodeServerManager.getInstance().getLifecycleState()
+        e.presentation.isEnabled = isOpenCodeServerStopEnabled(state)
+        e.presentation.description = "Stop the shared OpenCode server (currently ${state.displayLabel.lowercase()})"
+    }
+
+    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+}
+
 internal class OpenCodeReloadPageAction : DumbAwareAction(
     "Reload OpenCode Page",
     "Reload the OpenCode web UI without restarting the server",
@@ -123,7 +144,8 @@ internal class OpenCodeReloadPageAction : DumbAwareAction(
     }
 
     override fun update(e: AnActionEvent) {
-        e.presentation.isEnabled = e.project != null
+        e.presentation.isEnabled = e.project != null &&
+            isOpenCodePageReloadEnabled(SharedOpenCodeServerManager.getInstance().getLifecycleState())
     }
 
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
@@ -186,6 +208,27 @@ internal fun confirmOpenCodeServerRestart(project: Project?): Boolean {
             "Restarting interrupts everything currently in progress in every OpenCode panel.",
     )
         .yesText("Restart")
+        .noText("Cancel")
+        .icon(Messages.getWarningIcon())
+        .ask(project)
+}
+
+internal fun confirmOpenCodeServerStop(project: Project?): Boolean {
+    val state = SharedOpenCodeServerManager.getInstance().getLifecycleState()
+    if (!isOpenCodeServerStopEnabled(state)) return true
+    val consequence = when (state) {
+        OpenCodeServerLifecycleState.RUNNING ->
+            "Stopping it interrupts everything currently in progress in every OpenCode panel."
+        OpenCodeServerLifecycleState.RESTARTING ->
+            "Stopping cancels the restart that is currently in progress."
+        else ->
+            "Stopping cancels the start that is currently in progress."
+    }
+    return MessageDialogBuilder.yesNo(
+        "Stop OpenCode Server",
+        "The OpenCode server is shared by all open projects. $consequence",
+    )
+        .yesText("Stop")
         .noText("Cancel")
         .icon(Messages.getWarningIcon())
         .ask(project)

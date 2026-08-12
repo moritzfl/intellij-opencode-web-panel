@@ -42,3 +42,13 @@ internal fun isOpenCodeServerRetryVisible(state: OpenCodeServerLifecycleState): 
 internal fun openCodeServerRetryLabel(state: OpenCodeServerLifecycleState): String {
     return if (state == OpenCodeServerLifecycleState.STOPPED) "Start" else "Retry"
 }
+
+internal fun isOpenCodePageReloadEnabled(state: OpenCodeServerLifecycleState): Boolean {
+    return state != OpenCodeServerLifecycleState.STOPPED
+}
+
+internal fun isOpenCodeServerStopEnabled(state: OpenCodeServerLifecycleState): Boolean {
+    return state == OpenCodeServerLifecycleState.STARTING ||
+        state == OpenCodeServerLifecycleState.RUNNING ||
+        state == OpenCodeServerLifecycleState.RESTARTING
+}
