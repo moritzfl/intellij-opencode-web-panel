@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [1.10.1] - 2026-08-13
+
 ### Fixed
 
 - Stopping the OpenCode server and starting it again no longer leaves the panel blank on Windows.
@@ -507,7 +509,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.10.0...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.10.1...HEAD
+[1.10.1]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.10.0...1.10.1
 [1.10.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.9...1.10.0
 [1.9.9]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.8...1.9.9
 [1.9.8]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.7...1.9.8
