@@ -40,4 +40,45 @@ class OpenCodeServerLifecycleTest {
         assertFalse(isOpenCodeServerStopEnabled(OpenCodeServerLifecycleState.FAILED))
         assertFalse(isOpenCodeServerStopEnabled(OpenCodeServerLifecycleState.STOPPED))
     }
+
+    @Test
+    fun staleLifecycleEventsAreIgnored() {
+        assertTrue(
+            shouldApplyPublishedLifecycleState(
+                OpenCodeServerLifecycleState.STOPPED,
+                OpenCodeServerLifecycleState.STOPPED,
+            ),
+        )
+        assertFalse(
+            shouldApplyPublishedLifecycleState(
+                OpenCodeServerLifecycleState.STOPPED,
+                OpenCodeServerLifecycleState.RUNNING,
+            ),
+        )
+        assertFalse(
+            shouldApplyPublishedLifecycleState(
+                OpenCodeServerLifecycleState.RUNNING,
+                OpenCodeServerLifecycleState.STOPPED,
+            ),
+        )
+    }
+
+    @Test
+    fun stopAndRestartHideTheEmbeddedPageWithoutACefNavigation() {
+        assertTrue(shouldHideEmbeddedPage(OpenCodeServerLifecycleState.STOPPED))
+        assertTrue(shouldHideEmbeddedPage(OpenCodeServerLifecycleState.RESTARTING))
+        assertFalse(shouldHideEmbeddedPage(OpenCodeServerLifecycleState.FAILED))
+        assertFalse(shouldHideEmbeddedPage(OpenCodeServerLifecycleState.RUNNING))
+        assertFalse(shouldHideEmbeddedPage(OpenCodeServerLifecycleState.STARTING))
+    }
+
+    @Test
+    fun documentLoadTreatsCefStatusZeroAsSuccess() {
+        assertTrue(isSuccessfulOpenCodeDocumentLoad(0))
+        assertTrue(isSuccessfulOpenCodeDocumentLoad(200))
+        assertTrue(isSuccessfulOpenCodeDocumentLoad(304))
+        assertFalse(isSuccessfulOpenCodeDocumentLoad(401))
+        assertFalse(isSuccessfulOpenCodeDocumentLoad(404))
+        assertFalse(isSuccessfulOpenCodeDocumentLoad(500))
+    }
 }

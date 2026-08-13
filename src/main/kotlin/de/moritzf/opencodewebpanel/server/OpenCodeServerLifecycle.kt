@@ -52,3 +52,24 @@ internal fun isOpenCodeServerStopEnabled(state: OpenCodeServerLifecycleState): B
         state == OpenCodeServerLifecycleState.RUNNING ||
         state == OpenCodeServerLifecycleState.RESTARTING
 }
+
+/** Drop lifecycle events that were queued before a newer state replaced them. */
+internal fun shouldApplyPublishedLifecycleState(
+    published: OpenCodeServerLifecycleState,
+    current: OpenCodeServerLifecycleState,
+): Boolean = published == current
+
+/**
+ * Hide the embedded page with a native card. Do not navigate CEF to about:blank — sitting on
+ * that document (the Stop-then-Start path) leaves JCEF blank on Windows after the renderer
+ * is discarded. Restart stays healthy because its blank interval is only the process kill.
+ */
+internal fun shouldHideEmbeddedPage(state: OpenCodeServerLifecycleState): Boolean {
+    return state == OpenCodeServerLifecycleState.STOPPED ||
+        state == OpenCodeServerLifecycleState.RESTARTING
+}
+
+/** CEF reports 0 for some successful document loads, especially after basic-auth on Windows. */
+internal fun isSuccessfulOpenCodeDocumentLoad(httpStatusCode: Int): Boolean {
+    return httpStatusCode == 0 || httpStatusCode in 200..399
+}

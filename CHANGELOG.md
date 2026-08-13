@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Stopping the OpenCode server and starting it again no longer leaves the panel blank on Windows.
+  The stopped state now hides the page with a native placeholder instead of parking Chromium on
+  `about:blank`, and a later start waits for the previous process to finish exiting before binding
+  a new one.
+
 ## [1.10.0] - 2026-08-12
 
 ### Added

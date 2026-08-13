@@ -140,25 +140,29 @@ class SharedOpenCodeServerManager : Disposable {
         }
 
         setLifecycleState(OpenCodeServerLifecycleState.STARTING)
-        destroyCurrentProcess()
-
-        val backoffMillis = remainingStartBackoffMillis()
-        if (backoffMillis > 0) {
-            thisLogger().warn("Delaying OpenCode server start after recent failure by ${backoffMillis}ms")
-            scheduler.schedule(
-                {
-                    if (isCurrentStart(startId)) {
-                        startOpenCodeServer(project.takeUnless { it.isDisposed }, basePath, startId)
-                    } else {
-                        // stop/dispose already cleared starting; nothing to finish.
-                    }
-                },
-                backoffMillis,
-                TimeUnit.MILLISECONDS,
-            )
-            return
+        // Drain the stop queue first. After an explicit Stop the kill is still running on
+        // stopExecutor; spawning here races it on Windows (port still bound, or the new
+        // process starts while descendants of the previous launcher are being signalled).
+        // restartServer already waits; opening the panel / ensureStarted must too.
+        stopResourcesAsync(ServerResourcesToStop(null, null, emptyList(), null, null)) {
+            if (!isCurrentStart(startId)) return@stopResourcesAsync
+            destroyCurrentProcess()
+            val backoffMillis = remainingStartBackoffMillis()
+            if (backoffMillis > 0) {
+                thisLogger().warn("Delaying OpenCode server start after recent failure by ${backoffMillis}ms")
+                scheduler.schedule(
+                    {
+                        if (isCurrentStart(startId)) {
+                            startOpenCodeServer(project.takeUnless { it.isDisposed }, basePath, startId)
+                        }
+                    },
+                    backoffMillis,
+                    TimeUnit.MILLISECONDS,
+                )
+                return@stopResourcesAsync
+            }
+            startOpenCodeServer(project.takeUnless { it.isDisposed }, basePath, startId)
         }
-        startOpenCodeServer(project, basePath, startId)
     }
 
     private fun validateExistingServerOrStart(project: Project, projectBasePath: String?, url: String, startId: Long) {

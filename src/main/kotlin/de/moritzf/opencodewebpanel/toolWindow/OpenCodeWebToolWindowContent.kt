@@ -43,6 +43,9 @@ import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.server.OpenCodeSuspendResumeListener
 import de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager
+import de.moritzf.opencodewebpanel.server.isSuccessfulOpenCodeDocumentLoad
+import de.moritzf.opencodewebpanel.server.shouldApplyPublishedLifecycleState
+import de.moritzf.opencodewebpanel.server.shouldHideEmbeddedPage
 import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsListener
 import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsState
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable
@@ -67,6 +70,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     private companion object {
         private const val BROWSER_CARD = "browser"
         private const val ERROR_CARD = "error"
+        private const val IDLE_CARD = "idle"
         private const val BROWSER_RECOVERY_THROTTLE_MILLIS = 10_000L
 
         // Delay after a project-page load before flushing queued chat input, so the SPA's own
@@ -99,6 +103,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         isOpaque = false
         add(browser.component, BROWSER_CARD)
         add(startupErrorPanel.component, ERROR_CARD)
+        add(JPanel().apply { isOpaque = false }, IDLE_CARD)
     }
     private val contentPanel = BorderLayoutPanel().apply {
         isOpaque = false
@@ -368,7 +373,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             // JBCef's own focus forwarding is transition-based and can be dropped around
             // loads (e.g. before native browser init); re-sync so the text caret is rendered.
             browserFocusSync.reassertIfFocused()
-            if (httpStatusCode !in 200..399) return
+            if (!isSuccessfulOpenCodeDocumentLoad(httpStatusCode)) return
             if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverManager.getServerUrl(), frame.url)) return
 
             // Restore the mirrored localStorage snapshot again on load end. The restore in
@@ -543,11 +548,11 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             object : OpenCodeServerLifecycleListener {
                 override fun stateChanged(state: OpenCodeServerLifecycleState) {
                     ApplicationManager.getApplication().invokeLater {
-                        if (!isContentDisposed()) {
-                            clearStaleBrowserPage(state)
-                            updateLifecycleIndicator(state)
-                            reloadContentAfterRecovery(state)
-                        }
+                        if (isContentDisposed()) return@invokeLater
+                        if (!shouldApplyPublishedLifecycleState(state, serverManager.getLifecycleState())) return@invokeLater
+                        clearStaleBrowserPage(state)
+                        updateLifecycleIndicator(state)
+                        reloadContentAfterRecovery(state)
                     }
                 }
             },
@@ -810,7 +815,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     /**
      * Reloads the OpenCode page after the shared server recovered without this panel's involvement,
      * e.g. an automatic health-check restart or a restart initiated from another project window.
-     * Without this, the panel would stay on the blank page installed by [clearStaleBrowserPage].
+     * Without this, the panel would stay on the idle card installed by [clearStaleBrowserPage].
      */
     private fun reloadContentAfterRecovery(state: OpenCodeServerLifecycleState) {
         if (state != OpenCodeServerLifecycleState.RUNNING) return
@@ -829,7 +834,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         thisLogger().warn("OpenCode page failed to load ($reason); verifying server health")
         serverManager.verifyServerNow(
             callbackActive = { !isContentDisposed() },
-            onHealthy = { browser.cefBrowser.reload() },
+            onHealthy = { reloadOpenCodePageOrLoad() },
         )
     }
 
@@ -842,7 +847,17 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             if (isContentDisposed()) return@invokeLater
             if (!markBrowserRecoveryAttempt()) return@invokeLater
             thisLogger().warn("OpenCode panel renderer process terminated; reloading page")
+            reloadOpenCodePageOrLoad()
+        }
+    }
+
+    /** Reload only when CEF is already on the live server page; otherwise a full load. */
+    private fun reloadOpenCodePageOrLoad() {
+        val serverUrl = serverManager.getServerUrl()
+        if (serverUrl != null && isBrowserOnOpenCodeServerPage(serverUrl)) {
             browser.cefBrowser.reload()
+        } else {
+            loadProjectPage()
         }
     }
 
@@ -864,7 +879,6 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         // when "open most recent" is on — the SPA route requires :id; the bare .../session URL is
         // only a temporary shell until the open-project script navigates.
         thisLogger().info("Loading OpenCode project page")
-        showCenterCard(BROWSER_CARD)
         openProjectScriptScheduled = false
         pendingMostRecentSessionId = null
         pendingOpenMostRecentConversation = false
@@ -912,8 +926,15 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         if (isContentDisposed()) return
         val url = OpenCodeServerProtocol.buildServerSessionUrl(serverUrl, sessionId)
         loadedServerRootUrl = url
-        // Open-project inject is scheduled from onLoadEnd so it is not stacked with a pre-load series.
-        browser.loadURL(url)
+        showCenterCard(BROWSER_CARD)
+        // Same host:port after Stop (fixed port) is a CEF no-op if we only loadURL again.
+        // reloadIgnoreCache retries the dead document; a new port takes the loadURL path.
+        if (OpenCodeServerProtocol.isOpenCodeRouteAlreadyOpen(serverUrl, browser.cefBrowser.url, url)) {
+            browser.cefBrowser.reloadIgnoreCache()
+        } else {
+            browser.cefBrowser.stopLoad()
+            browser.loadURL(url)
+        }
     }
 
     private fun clearStaleBrowserPage(state: OpenCodeServerLifecycleState) {
@@ -923,13 +944,12 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         ) {
             return
         }
-        val previousServerRootUrl = loadedServerRootUrl ?: return
-        if (!OpenCodeServerProtocol.isOpenCodeServerPage(previousServerRootUrl, browser.cefBrowser.url)) return
-
         loadedServerRootUrl = null
         loadIntent.invalidate()
         openProjectAlarm.cancelAllRequests()
-        browser.loadURL("about:blank")
+        if (shouldHideEmbeddedPage(state)) {
+            showCenterCard(IDLE_CARD)
+        }
     }
 
     private fun applyBrowserZoom(zoomPercent: Int = OpenCodeSettingsState.getInstance().uiZoomPercent) {
