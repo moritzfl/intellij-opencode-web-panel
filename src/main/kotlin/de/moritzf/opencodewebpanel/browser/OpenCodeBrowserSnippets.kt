@@ -759,13 +759,13 @@ internal object OpenCodeBrowserSnippets {
         val script = """
             (() => {
               if (window.__opencodeIntellijEventWatchdogInstalled) return;
-              window.__opencodeIntellijEventWatchdogInstalled = true;
               const STALL_MS = $timeout;
               // Every generation of the event route the SPA may use. Matching on pathname keeps
               // this independent of origin rewrites and query parameters (directory, workspace).
               const EVENT_PATHS = ['/global/event', '/event', '/api/event'];
               const realFetch = window.fetch;
               if (typeof realFetch !== 'function' || typeof AbortController !== 'function') return;
+              window.__opencodeIntellijEventWatchdogInstalled = true;
               // Live stream controllers, so the IDE can cut a stream the moment it knows the
               // transport is gone (resume from suspend) instead of waiting out the timeout.
               const active = new Set();
@@ -775,12 +775,17 @@ internal object OpenCodeBrowserSnippets {
                 current.forEach((controller) => { try { controller.abort(); } catch (_) {} });
                 return current.length;
               };
+              const requestUrl = (input) => {
+                if (typeof input === 'string') return input;
+                if (input && typeof input.url === 'string') return input.url;
+                if (input && typeof input.href === 'string') return input.href;
+                return '';
+              };
               const isEventStream = (input) => {
-                const raw = typeof input === 'string' ? input : (input && input.url) || '';
-                try { return EVENT_PATHS.indexOf(new URL(raw, location.href).pathname) !== -1; }
+                try { return EVENT_PATHS.indexOf(new URL(requestUrl(input), location.href).pathname) !== -1; }
                 catch (_) { return false; }
               };
-              window.fetch = function (input, init) {
+              const watchedFetch = function (input, init) {
                 if (!isEventStream(input)) return realFetch.apply(this, arguments);
                 // Chain the caller's signal into ours so the SPA can still cancel normally.
                 const controller = new AbortController();
@@ -790,8 +795,14 @@ internal object OpenCodeBrowserSnippets {
                   else outer.addEventListener('abort', () => controller.abort(), { once: true });
                 }
                 const options = Object.assign({}, init, { signal: controller.signal });
+                let fetchInput = input;
+                let fetchInit = options;
+                if (typeof Request === 'function' && input instanceof Request) {
+                  fetchInput = new Request(input, options);
+                  fetchInit = undefined;
+                }
                 active.add(controller);
-                return realFetch.call(this, input, options).then((response) => {
+                return realFetch.call(this, fetchInput, fetchInit).then((response) => {
                   if (!response.body) { active.delete(controller); return response; }
                   let timer;
                   const done = () => { clearTimeout(timer); active.delete(controller); };
@@ -824,6 +835,10 @@ internal object OpenCodeBrowserSnippets {
                   });
                 }).catch((error) => { active.delete(controller); throw error; });
               };
+              window.fetch = watchedFetch;
+              if (typeof globalThis === 'object' && globalThis.fetch === realFetch) {
+                globalThis.fetch = watchedFetch;
+              }
             })();
         """
         return script.trimIndent()

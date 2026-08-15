@@ -1066,11 +1066,31 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("'/global/event'"))
         assertTrue(script.contains("'/event'"))
         assertTrue(script.contains("'/api/event'"))
-        assertTrue(script.contains("new URL(raw, location.href).pathname"))
+        assertTrue(script.contains("new URL(requestUrl(input), location.href).pathname"))
+        assertTrue(script.contains("typeof input.url === 'string'"))
+        assertTrue(script.contains("typeof input.href === 'string'"))
         // Recovery works by aborting so OpenCode's own reconnect loop sees a stream error;
         // the plugin must never reimplement the stream or reload the page here.
         assertTrue(script.contains("controller.abort()"))
         assertFalse(script.contains("location.reload"))
+    }
+
+    @Test
+    fun buildEventStreamWatchdogScriptDoesNotClaimInstallBeforeWrap() {
+        val script = OpenCodeBrowserSnippets.buildEventStreamWatchdogScript(enabled = true)!!
+        val installedAt = script.indexOf("window.__opencodeIntellijEventWatchdogInstalled = true")
+        val fetchGuardAt = script.indexOf("typeof realFetch !== 'function'")
+        assertTrue(installedAt > 0)
+        assertTrue(fetchGuardAt > 0)
+        assertTrue(fetchGuardAt < installedAt)
+    }
+
+    @Test
+    fun buildEventStreamWatchdogScriptRewrapsRequestInputs() {
+        val script = OpenCodeBrowserSnippets.buildEventStreamWatchdogScript(enabled = true)!!
+        assertTrue(script.contains("input instanceof Request"))
+        assertTrue(script.contains("new Request(input, options)"))
+        assertTrue(script.contains("globalThis.fetch = watchedFetch"))
     }
 
     @Test
