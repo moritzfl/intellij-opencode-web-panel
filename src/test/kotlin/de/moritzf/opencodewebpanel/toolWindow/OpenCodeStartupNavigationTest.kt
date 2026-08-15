@@ -1,0 +1,30 @@
+package de.moritzf.opencodewebpanel.toolWindow
+
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class OpenCodeStartupNavigationTest {
+    @Test
+    fun keepsIntentWhileSessionLookupIsInFlight() {
+        assertTrue(OpenCodeStartupNavigation.shouldKeepNavigateIntent(true, null, true))
+    }
+
+    @Test
+    fun keepsIntentOnceASessionIdIsKnown() {
+        assertTrue(OpenCodeStartupNavigation.shouldKeepNavigateIntent(true, "ses_abc", false))
+        assertTrue(OpenCodeStartupNavigation.shouldKeepNavigateIntent(true, "ses_abc", true))
+    }
+
+    @Test
+    fun dropsIntentWhenLookupFinishedWithNothing() {
+        assertFalse(OpenCodeStartupNavigation.shouldKeepNavigateIntent(true, null, false))
+        assertFalse(OpenCodeStartupNavigation.shouldKeepNavigateIntent(true, "", false))
+    }
+
+    @Test
+    fun dropsIntentWhenMostRecentStartupIsOff() {
+        assertFalse(OpenCodeStartupNavigation.shouldKeepNavigateIntent(false, "ses_abc", true))
+        assertFalse(OpenCodeStartupNavigation.shouldKeepNavigateIntent(false, null, true))
+    }
+}

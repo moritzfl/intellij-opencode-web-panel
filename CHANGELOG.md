@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- The panel now opens the OpenCode page immediately instead of waiting for the conversation list.
+  A slow or paginated listing no longer leaves the tool window blank after the server is already running.
+- If the page never finishes loading, the panel retries on its own instead of staying empty until a manual reload.
+- The connection watchdog is installed before the OpenCode web app starts, so a dead connection can
+  reconnect instead of blocking the next message until the page is refreshed.
+
 ## [1.10.1] - 2026-08-13
 
 ### Fixed
