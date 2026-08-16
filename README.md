@@ -68,7 +68,7 @@ OpenCode Web Panel brings the official OpenCode web UI into JetBrains IDEs. It o
 
 - Install manually:
 
-  Download the [latest release](https://github.com/moritzfl/intellij-opencode-web-panel/releases/latest), then install it with <kbd>Settings/Preferences</kbd> > <kbd>Plugins</kbd> > <kbd>Settings</kbd> > <kbd>Install Plugin from Disk...</kbd>
+  Download the [latest version from JetBrains Marketplace](https://plugins.jetbrains.com/plugin/32384/versions), then install it with <kbd>Settings/Preferences</kbd> > <kbd>Plugins</kbd> > <kbd>Settings</kbd> > <kbd>Install Plugin from Disk...</kbd>
 
 ## Getting Started
 

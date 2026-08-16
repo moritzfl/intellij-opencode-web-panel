@@ -16,6 +16,7 @@
 
 - The opt-in JCEF checks now exercise protected page assets, document-start origin isolation, and
   stalled event-stream recovery; failures can no longer be reported as skipped tests.
+- Manual installation now points to the current Marketplace versions instead of an older GitHub release.
 
 ## [1.10.3] - 2026-08-16
 
