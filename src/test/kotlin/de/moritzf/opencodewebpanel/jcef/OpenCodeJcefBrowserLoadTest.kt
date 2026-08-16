@@ -53,7 +53,7 @@ class OpenCodeJcefBrowserLoadTest {
                 browser.cefBrowser,
             )
             show(browser)
-            if (!browser.isCefBrowserCreated) browser.createImmediately()
+            browser.createImmediately()
             val injector = OpenCodeDocumentStartInjector(browser)
             val registered = injector.installAndWait(
                 OpenCodeBrowserSnippets.buildEventStreamWatchdogScript(enabled = true)!!,

@@ -189,6 +189,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     private var pageLoadStartedAtMillis = 0L
     private var pageLoadWatchdogGeneration = 0L
     private var pageLoadRetryCount = 0
+    private var cefBrowserCreated = false
 
     @Volatile
     private var browserDocumentRevision = 0L
@@ -988,9 +989,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         loadedServerRootUrl = url
         showCenterCard(BROWSER_CARD)
         beginPageLoad()
-        if (!browser.isCefBrowserCreated) {
-            browser.createImmediately()
-        }
+        ensureCefBrowser()
         installDocumentStartScripts()
         // Same host:port after Stop (fixed port) is a CEF no-op if we only loadURL again.
         // reloadIgnoreCache retries the dead document; a new port takes the loadURL path.
@@ -1016,6 +1015,12 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             }
         }
         documentStartInjector.install(script)
+    }
+
+    private fun ensureCefBrowser() {
+        if (cefBrowserCreated) return
+        browser.createImmediately()
+        cefBrowserCreated = true
     }
 
     private fun beginPageLoad() {
@@ -1050,9 +1055,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                 if (liveUrl != serverUrl) return@addRequest
                 val target = OpenCodeServerProtocol.buildServerSessionUrl(liveUrl, pendingMostRecentSessionId)
                 beginPageLoad()
-                if (!browser.isCefBrowserCreated) {
-                    browser.createImmediately()
-                }
+                ensureCefBrowser()
                 installDocumentStartScripts()
                 browser.loadURL(target)
                 armPageLoadWatchdog(liveUrl)
