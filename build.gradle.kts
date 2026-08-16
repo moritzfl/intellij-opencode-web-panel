@@ -124,4 +124,14 @@ tasks {
     publishPlugin {
         dependsOn(patchChangelog)
     }
+
+    // Headful Chromium tests (JetBrains JBCefTestHelper pattern). Off by default so `check`
+    // stays headless. Run with: rtk ./gradlew test -Pjcef
+    test {
+        if (providers.gradleProperty("jcef").isPresent) {
+            systemProperty("java.awt.headless", "false")
+            systemProperty("ide.browser.jcef.testMode.enabled", "true")
+            systemProperty("openCode.jcefTests", "true")
+        }
+    }
 }
