@@ -74,8 +74,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         private const val ERROR_CARD = "error"
         private const val IDLE_CARD = "idle"
         private const val BROWSER_RECOVERY_THROTTLE_MILLIS = 10_000L
-        private const val PAGE_LOAD_WATCHDOG_MILLIS = 15_000
-        private const val PAGE_LOAD_WATCHDOG_MAX_RETRIES = 2
+        private const val PAGE_LOAD_WATCHDOG_MILLIS = OpenCodePageLoadWatchdog.DEFAULT_TIMEOUT_MILLIS
 
         // Delay after a project-page load before flushing queued chat input, so the SPA's own
         // drop handlers are installed when the synthetic drop is dispatched.
@@ -99,7 +98,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     }
 
     private val project = toolWindow.project
-    private val browser = JBCefBrowser().also { it.createImmediately() }
+    private val browser = JBCefBrowser()
     private val lifecycleStatusPanel = OpenCodeLifecycleStatusPanel(::restartOpenCodeServer)
     private val startupErrorPanel = OpenCodeStartupErrorPanel(project, ::restartOpenCodeServer)
     private val centerCardLayout = CardLayout()
@@ -146,6 +145,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         serverManager::getServerPassword,
     )
     private val openProjectAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
+    private val pageLoadWatchdogAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
     private val repaintAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
     private val componentSizeRestoreAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
     private val scriptScheduler = OpenCodeBrowserScriptScheduler(project, browser, openProjectAlarm)
@@ -186,6 +186,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     private var mostRecentSessionLookupInFlight = false
     private var mainDocumentLoadSucceeded = false
     private var pageLoadInProgress = false
+    private var pageLoadStartedAtMillis = 0L
     private var pageLoadWatchdogGeneration = 0L
     private var pageLoadRetryCount = 0
 
@@ -389,8 +390,10 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverManager.getServerUrl(), frame.url)) return
             mainDocumentLoadSucceeded = true
             pageLoadWatchdogGeneration++
+            pageLoadWatchdogAlarm.cancelAllRequests()
             pageLoadRetryCount = 0
             pageLoadInProgress = false
+            pageLoadStartedAtMillis = 0L
             updateLifecycleIndicator()
 
             // Restore the mirrored localStorage snapshot again on load end. The restore in
@@ -921,6 +924,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         pendingOpenMostRecentConversation = false
         mostRecentSessionLookupInFlight = false
         pageLoadRetryCount = 0
+        pageLoadStartedAtMillis = 0L
         // No pre-load script scheduling here: onLoadStart cancels the alarm and resets the
         // per-page flags anyway, and onLoadStart/onLoadEnd (re)schedule everything for the new
         // document. The resets above only cover the case where the load never starts.
@@ -984,13 +988,15 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         loadedServerRootUrl = url
         showCenterCard(BROWSER_CARD)
         beginPageLoad()
+        if (!browser.isCefBrowserCreated) {
+            browser.createImmediately()
+        }
         installDocumentStartScripts()
         // Same host:port after Stop (fixed port) is a CEF no-op if we only loadURL again.
         // reloadIgnoreCache retries the dead document; a new port takes the loadURL path.
         if (OpenCodeServerProtocol.isOpenCodeRouteAlreadyOpen(serverUrl, browser.cefBrowser.url, url)) {
             browser.cefBrowser.reloadIgnoreCache()
         } else {
-            browser.cefBrowser.stopLoad()
             browser.loadURL(url)
         }
         armPageLoadWatchdog(serverUrl)
@@ -1014,32 +1020,42 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
 
     private fun beginPageLoad() {
         pageLoadInProgress = true
+        if (pageLoadStartedAtMillis == 0L) {
+            pageLoadStartedAtMillis = System.currentTimeMillis()
+        }
         updateLifecycleIndicator()
     }
 
     private fun armPageLoadWatchdog(serverUrl: String) {
         val token = ++pageLoadWatchdogGeneration
-        mainDocumentLoadSucceeded = false
-        openProjectAlarm.addRequest(
+        // Own alarm: onLoadStart cancels openProjectAlarm. Do not flip
+        // mainDocumentLoadSucceeded here — a late arm must not undo onLoadEnd.
+        pageLoadWatchdogAlarm.cancelAllRequests()
+        pageLoadWatchdogAlarm.addRequest(
             {
                 if (isContentDisposed() || token != pageLoadWatchdogGeneration) return@addRequest
-                if (mainDocumentLoadSucceeded) return@addRequest
-                if (pageLoadRetryCount >= PAGE_LOAD_WATCHDOG_MAX_RETRIES) {
-                    thisLogger().warn("OpenCode page failed to load after $PAGE_LOAD_WATCHDOG_MAX_RETRIES retries")
+                val elapsed = if (pageLoadStartedAtMillis == 0L) 0L else System.currentTimeMillis() - pageLoadStartedAtMillis
+                if (!OpenCodePageLoadWatchdog.shouldRetry(mainDocumentLoadSucceeded, pageLoadRetryCount, elapsed)) {
+                    if (!mainDocumentLoadSucceeded && pageLoadRetryCount >= OpenCodePageLoadWatchdog.MAX_RETRIES) {
+                        thisLogger().warn("OpenCode page failed to load after ${OpenCodePageLoadWatchdog.MAX_RETRIES} retries")
+                        pageLoadInProgress = false
+                        pageLoadStartedAtMillis = 0L
+                        updateLifecycleIndicator()
+                    }
                     return@addRequest
                 }
-                if (!markBrowserRecoveryAttempt()) return@addRequest
                 pageLoadRetryCount++
-                thisLogger().warn("OpenCode page load timed out; retrying ($pageLoadRetryCount/$PAGE_LOAD_WATCHDOG_MAX_RETRIES)")
+                thisLogger().warn("OpenCode page load timed out; retrying ($pageLoadRetryCount/${OpenCodePageLoadWatchdog.MAX_RETRIES})")
                 val liveUrl = serverManager.getServerUrl()
                 if (liveUrl != serverUrl) return@addRequest
-                if (isBrowserOnOpenCodeServerPage(liveUrl)) {
-                    installDocumentStartScripts()
-                    browser.cefBrowser.reload()
-                    armPageLoadWatchdog(liveUrl)
-                } else {
-                    loadProjectPageAt(liveUrl, sessionId = null)
+                val target = OpenCodeServerProtocol.buildServerSessionUrl(liveUrl, pendingMostRecentSessionId)
+                beginPageLoad()
+                if (!browser.isCefBrowserCreated) {
+                    browser.createImmediately()
                 }
+                installDocumentStartScripts()
+                browser.loadURL(target)
+                armPageLoadWatchdog(liveUrl)
             },
             PAGE_LOAD_WATCHDOG_MILLIS,
         )
@@ -1055,9 +1071,11 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         loadedServerRootUrl = null
         loadIntent.invalidate()
         pageLoadWatchdogGeneration++
+        pageLoadWatchdogAlarm.cancelAllRequests()
         mostRecentSessionLookupInFlight = false
         pendingOpenMostRecentConversation = false
         pageLoadInProgress = false
+        pageLoadStartedAtMillis = 0L
         openProjectAlarm.cancelAllRequests()
         if (shouldHideEmbeddedPage(state)) {
             showCenterCard(IDLE_CARD)
@@ -1487,6 +1505,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         if (isContentDisposed()) return
         loadedServerRootUrl = null
         pageLoadInProgress = false
+        pageLoadStartedAtMillis = 0L
         updateLifecycleIndicator()
         startupErrorPanel.showFailure(
             OpenCodeSettingsState.getInstance().executablePath(),
@@ -1550,6 +1569,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             OpenCodeChatInputService.getInstance(project).setDispatcher(null)
         }
         openProjectAlarm.cancelAllRequests()
+        pageLoadWatchdogAlarm.cancelAllRequests()
         repaintAlarm.cancelAllRequests()
         componentSizeRestoreAlarm.cancelAllRequests()
         systemNotifications.dispose()

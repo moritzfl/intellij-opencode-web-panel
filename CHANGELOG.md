@@ -6,6 +6,10 @@
 
 ### Fixed
 
+- Opening a second project window no longer stays on “Opening the OpenCode page…”. A hung first
+  load is retried instead of waiting forever.
+- The panel no longer cancels a load that is still in progress. A too-short retry was leaving
+  the first window stuck on the opening status as well.
 - The panel now opens the OpenCode page immediately instead of waiting for the conversation list.
   A slow or paginated listing no longer leaves the tool window blank after the server is already running.
 - If the page never finishes loading, the panel retries on its own instead of staying empty until a manual reload.

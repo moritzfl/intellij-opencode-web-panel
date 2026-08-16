@@ -4,6 +4,8 @@ import com.google.gson.JsonParser
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.ui.jcef.JBCefBrowser
 import org.cef.browser.CefDevToolsClient
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
@@ -25,30 +27,42 @@ internal class OpenCodeDocumentStartInjector(
     private val installedIdentifier = AtomicReference<String?>(null)
 
     fun install(script: String) {
+        installAsync(script)
+    }
+
+    fun installAndWait(script: String, timeoutMillis: Long = 3_000): Boolean {
+        return runCatching { installAsync(script).get(timeoutMillis, TimeUnit.MILLISECONDS) }.getOrDefault(false)
+    }
+
+    fun installAsync(script: String): CompletableFuture<Boolean> {
         val source = script.trim()
-        if (source.isEmpty()) return
-        val devTools = client() ?: return
+        if (source.isEmpty()) return CompletableFuture.completedFuture(false)
+        val devTools = client() ?: return CompletableFuture.completedFuture(false)
         val generation = installGeneration.incrementAndGet()
         val previous = installedIdentifier.getAndSet(null)
         if (!previous.isNullOrBlank()) {
             removeScript(devTools, previous)
         }
-        try {
-            devTools.executeDevToolsMethod(ADD_METHOD, sourcePayload(source)).whenComplete { response, error ->
+        return try {
+            devTools.executeDevToolsMethod("Page.enable").thenCompose {
+                devTools.executeDevToolsMethod(ADD_METHOD, sourcePayload(source))
+            }.handle { response, error ->
                 if (error != null) {
                     thisLogger().info("Could not register OpenCode document-start script: ${error.message}")
-                    return@whenComplete
+                    return@handle false
                 }
                 val identifier = parseIdentifier(response)
-                if (identifier.isNullOrBlank()) return@whenComplete
+                if (identifier.isNullOrBlank()) return@handle false
                 if (installGeneration.get() != generation) {
                     removeScript(devTools, identifier)
-                    return@whenComplete
+                    return@handle false
                 }
                 installedIdentifier.set(identifier)
+                true
             }
         } catch (e: Exception) {
             thisLogger().info("Could not register OpenCode document-start script: ${e.message}")
+            CompletableFuture.completedFuture(false)
         }
     }
 

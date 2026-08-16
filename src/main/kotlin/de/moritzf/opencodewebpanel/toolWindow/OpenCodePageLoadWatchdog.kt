@@ -1,0 +1,25 @@
+package de.moritzf.opencodewebpanel.toolWindow
+
+/**
+ * Pure policy for retrying a hung embedded page load.
+ *
+ * Never interrupt a navigation that has already started and is still within [timeoutMillis].
+ * `stopLoad` + `loadURL` during that window is what left the first panel stuck on
+ * "Opening the OpenCode page…".
+ */
+internal object OpenCodePageLoadWatchdog {
+    const val DEFAULT_TIMEOUT_MILLIS = 20_000
+    const val MAX_RETRIES = 2
+
+    fun shouldRetry(
+        succeeded: Boolean,
+        retryCount: Int,
+        elapsedMillis: Long,
+        timeoutMillis: Int = DEFAULT_TIMEOUT_MILLIS,
+        maxRetries: Int = MAX_RETRIES,
+    ): Boolean {
+        if (succeeded) return false
+        if (retryCount >= maxRetries) return false
+        return elapsedMillis >= timeoutMillis
+    }
+}
