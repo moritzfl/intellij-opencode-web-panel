@@ -10,6 +10,7 @@ import org.cef.CefSettings
 import org.cef.browser.CefBrowser
 import org.cef.browser.CefFrame
 import org.cef.handler.CefDisplayHandlerAdapter
+import org.cef.handler.CefLifeSpanHandlerAdapter
 import org.cef.handler.CefLoadHandlerAdapter
 import org.junit.Assert
 import org.junit.Assume
@@ -31,24 +32,37 @@ internal object OpenCodeJcefTestHelper {
     const val WAIT_BROWSER_SECONDS = 60L
 
     fun assumeHarnessEnabled() {
-        Assume.assumeTrue(
-            "JCEF harness is opt-in: rtk ./gradlew test -Pjcef",
-            System.getProperty("openCode.jcefTests") == "true",
-        )
-        Assume.assumeFalse("JCEF needs a display", GraphicsEnvironment.isHeadless())
-        Assume.assumeTrue("JCEF is not supported in this runtime", JBCefApp.isSupported())
+        val enabled = System.getProperty("openCode.jcefTests") == "true"
+        Assume.assumeTrue("JCEF harness is opt-in: rtk ./gradlew test -Pjcef", enabled)
+        Assert.assertFalse("JCEF needs a display", GraphicsEnvironment.isHeadless())
+        Assert.assertTrue("JCEF is not supported in this runtime", JBCefApp.isSupported())
     }
 
-    fun showAndWaitForLoad(browser: JBCefBrowserBase, frameTitle: String, parent: Disposable) {
-        invokeAndWaitForLoad(browser) { show(browser, frameTitle, parent) }
+    fun showAndWaitForBrowser(browser: JBCefBrowserBase, frameTitle: String, parent: Disposable) {
+        val latch = CountDownLatch(1)
+        val handler = object : CefLifeSpanHandlerAdapter() {
+            override fun onAfterCreated(cefBrowser: CefBrowser?) {
+                latch.countDown()
+            }
+        }
+        browser.jbCefClient.addLifeSpanHandler(handler, browser.cefBrowser)
+        try {
+            invokeAndWaitForLatch(latch, "waiting for native browser creation") {
+                show(browser, frameTitle, parent)
+                browser.cefBrowser.createImmediately()
+            }
+        } finally {
+            browser.jbCefClient.removeLifeSpanHandler(handler, browser.cefBrowser)
+        }
     }
 
-    fun invokeAndWaitForLoad(browser: JBCefBrowserBase, runnable: Runnable) {
+    fun invokeAndWaitForLoad(browser: JBCefBrowserBase, expectedUrl: String, runnable: Runnable) {
         val latch = CountDownLatch(1)
         browser.jbCefClient.addLoadHandler(
             object : CefLoadHandlerAdapter() {
                 override fun onLoadEnd(cefBrowser: CefBrowser?, frame: CefFrame?, httpStatusCode: Int) {
                     if (frame?.isMain != true || cefBrowser == null) return
+                    if (frame.url != expectedUrl) return
                     browser.jbCefClient.removeLoadHandler(this, cefBrowser)
                     latch.countDown()
                 }
@@ -69,13 +83,21 @@ internal object OpenCodeJcefTestHelper {
         }
     }
 
-    private fun show(browser: JBCefBrowserBase, frameTitle: String, parent: Disposable) {
+    fun awaitCondition(description: String, timeoutSeconds: Long = WAIT_BROWSER_SECONDS, condition: () -> Boolean) {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSeconds)
+        while (!condition()) {
+            if (System.nanoTime() >= deadline) Assert.fail("$description timed out after ${timeoutSeconds}s")
+            Thread.sleep(100)
+        }
+    }
+
+    fun show(browser: JBCefBrowserBase, frameTitle: String, parent: Disposable) {
         val frame = JFrame(frameTitle)
         frame.setSize(640, 480)
         frame.setLocationRelativeTo(null)
         frame.add(browser.component, BorderLayout.CENTER)
         frame.isVisible = true
-        Disposer.register(parent) { frame.removeNotify() }
+        Disposer.register(parent) { UIUtil.invokeLaterIfNeeded { frame.dispose() } }
     }
 
     fun createBrowser(parent: Disposable): JBCefBrowser {

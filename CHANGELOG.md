@@ -12,6 +12,11 @@
   cleans up cancelled streams, and never modifies pages outside the local OpenCode server.
 - Stopping the server while it is starting no longer replaces the stopped panel with an error.
 
+### Changed
+
+- The opt-in JCEF checks now exercise protected page assets, document-start origin isolation, and
+  stalled event-stream recovery; failures can no longer be reported as skipped tests.
+
 ## [1.10.3] - 2026-08-16
 
 ### Fixed

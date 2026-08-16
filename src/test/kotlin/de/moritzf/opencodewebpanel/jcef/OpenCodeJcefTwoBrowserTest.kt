@@ -7,7 +7,6 @@ import org.junit.Before
 import org.junit.ClassRule
 import org.junit.Rule
 import org.junit.Test
-import javax.swing.JFrame
 
 /** Two JBCefBrowser instances on one origin — the first+second IDE window case. */
 class OpenCodeJcefTwoBrowserTest {
@@ -24,30 +23,23 @@ class OpenCodeJcefTwoBrowserTest {
         OpenCodeJcefTestServer().use { server ->
             val first = OpenCodeJcefTestHelper.createBrowser(disposableRule.disposable)
             val second = OpenCodeJcefTestHelper.createBrowser(disposableRule.disposable)
-            val auth = OpenCodeJcefAuthHandler(server.expectedAuthorization)
+            val auth = OpenCodeJcefAuthHandler(server.origin, server.expectedAuthorization)
             first.jbCefClient.addRequestHandler(auth, first.cefBrowser)
             second.jbCefClient.addRequestHandler(auth, second.cefBrowser)
 
-            OpenCodeJcefTestHelper.invokeAndWaitForLoad(first) {
-                show(first, "first")
+            OpenCodeJcefTestHelper.invokeAndWaitForLoad(first, server.origin + "/") {
+                OpenCodeJcefTestHelper.show(first, "first", disposableRule.disposable)
                 first.loadURL(server.origin + "/")
             }
             assertEquals("ready", readMarker(first))
 
-            OpenCodeJcefTestHelper.invokeAndWaitForLoad(second) {
-                show(second, "second")
+            OpenCodeJcefTestHelper.invokeAndWaitForLoad(second, server.origin + "/") {
+                OpenCodeJcefTestHelper.show(second, "second", disposableRule.disposable)
                 second.loadURL(server.origin + "/")
             }
             assertEquals("ready", readMarker(second))
             assertEquals("ready", readMarker(first))
         }
-    }
-
-    private fun show(browser: com.intellij.ui.jcef.JBCefBrowser, title: String) {
-        val frame = JFrame(title)
-        frame.setSize(640, 480)
-        frame.add(browser.component)
-        frame.isVisible = true
     }
 
     private fun readMarker(browser: com.intellij.ui.jcef.JBCefBrowser): String {
