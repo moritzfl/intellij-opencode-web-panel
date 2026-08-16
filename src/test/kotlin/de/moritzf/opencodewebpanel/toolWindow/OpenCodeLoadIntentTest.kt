@@ -11,6 +11,8 @@ class OpenCodeLoadIntentTest {
         val first = intent.begin()
         val second = intent.begin()
 
+        assertFalse(intent.isCurrent(first))
+        assertTrue(intent.isCurrent(second))
         assertFalse(intent.accepts(first, 1, 1, "http://a", "http://a", "/a", "/a", true))
         assertTrue(intent.accepts(second, 1, 1, "http://a", "http://a", "/a", "/a", true))
         assertFalse(intent.accepts(second, 1, 2, "http://a", "http://a", "/a", "/a", true))
@@ -19,6 +21,7 @@ class OpenCodeLoadIntentTest {
         assertFalse(intent.accepts(second, 1, 1, "http://a", "http://a", "/a", "/a", false))
 
         intent.invalidate()
+        assertFalse(intent.isCurrent(second))
         assertFalse(intent.accepts(second, 1, 1, "http://a", "http://a", "/a", "/a", true))
     }
 }

@@ -268,18 +268,32 @@ class SharedOpenCodeServerManager : Disposable {
 
     /** Best-effort, informational only: refreshes the reported OpenCode version off the EDT. */
     private fun refreshServerVersion() {
-        val url = getServerUrl() ?: return
-        val password = getServerPassword() ?: return
-        val auth = OpenCodeServerProtocol.buildBasicAuthHeader(password)
-        val version = OpenCodeServerProtocol.fetchServerVersion(url, auth)
-        val protocol = OpenCodeServerProtocol.detectEmbeddedProtocol(url, auth)
+        val target = synchronized(lock) {
+            ServerProbeTarget(
+                url = serverUrl ?: return,
+                password = serverPassword ?: return,
+                generation = serverGeneration,
+            )
+        }
+        val auth = OpenCodeServerProtocol.buildBasicAuthHeader(target.password)
+        val version = OpenCodeServerProtocol.fetchServerVersion(target.url, auth)
+        val protocol = OpenCodeServerProtocol.detectEmbeddedProtocol(target.url, auth)
         synchronized(lock) {
-            if (serverUrl == url) {
+            if (serverUrl == target.url &&
+                serverPassword == target.password &&
+                serverGeneration == target.generation
+            ) {
                 serverVersion = version
                 embeddedProtocol = protocol
             }
         }
     }
+
+    private data class ServerProbeTarget(
+        val url: String,
+        val password: String,
+        val generation: Long,
+    )
 
     /** Installs a hand-assembled server state so tests can exercise [stopServer]. */
     @TestOnly

@@ -790,30 +790,47 @@ internal object OpenCodeBrowserSnippets {
                 // Chain the caller's signal into ours so the SPA can still cancel normally.
                 const controller = new AbortController();
                 const outer = (init && init.signal) || (input && input.signal);
+                let detachOuter = () => {};
                 if (outer) {
                   if (outer.aborted) controller.abort();
-                  else outer.addEventListener('abort', () => controller.abort(), { once: true });
+                  else {
+                    const abortFromOuter = () => controller.abort();
+                    outer.addEventListener('abort', abortFromOuter, { once: true });
+                    detachOuter = () => outer.removeEventListener('abort', abortFromOuter);
+                  }
                 }
                 const options = Object.assign({}, init, { signal: controller.signal });
                 let fetchInput = input;
                 let fetchInit = options;
-                if (typeof Request === 'function' && input instanceof Request) {
-                  fetchInput = new Request(input, options);
-                  fetchInit = undefined;
+                let timer;
+                const done = () => {
+                  clearTimeout(timer);
+                  detachOuter();
+                  active.delete(controller);
+                };
+                const arm = () => {
+                  clearTimeout(timer);
+                  timer = setTimeout(() => {
+                    // Aborting the request makes fetch/the body reader throw, which is the error
+                    // OpenCode's reconnect loop waits for. It reopens the stream itself.
+                    try { controller.abort(); } catch (_) {}
+                  }, STALL_MS);
+                };
+                try {
+                  if (typeof Request === 'function' && input instanceof Request) {
+                    fetchInput = new Request(input, options);
+                    fetchInit = undefined;
+                  }
+                  active.add(controller);
+                  // Cover a connection that stalls before response headers as well as a body
+                  // that stops delivering heartbeat bytes after the response has started.
+                  arm();
+                } catch (error) {
+                  done();
+                  throw error;
                 }
-                active.add(controller);
                 return realFetch.call(this, fetchInput, fetchInit).then((response) => {
-                  if (!response.body) { active.delete(controller); return response; }
-                  let timer;
-                  const done = () => { clearTimeout(timer); active.delete(controller); };
-                  const arm = () => {
-                    clearTimeout(timer);
-                    timer = setTimeout(() => {
-                      // Aborting the request makes the body reader throw, which is the error
-                      // OpenCode's reconnect loop waits for. It reopens the stream itself.
-                      try { controller.abort(); } catch (_) {}
-                    }, STALL_MS);
-                  };
+                  if (!response.body) { done(); return response; }
                   const reader = response.body.getReader();
                   const watched = new ReadableStream({
                     start(target) {
@@ -833,7 +850,7 @@ internal object OpenCodeBrowserSnippets {
                     statusText: response.statusText,
                     headers: response.headers,
                   });
-                }).catch((error) => { active.delete(controller); throw error; });
+                }).catch((error) => { done(); throw error; });
               };
               window.fetch = watchedFetch;
               if (typeof globalThis === 'object' && globalThis.fetch === realFetch) {

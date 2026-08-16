@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- The embedded page now waits for its startup safeguards before opening, retries every stalled
+  full-page navigation, and no longer loses a newer startup conversation lookup.
+- The connection watchdog now also recovers when a connection stalls before response headers,
+  cleans up cancelled streams, and never modifies pages outside the local OpenCode server.
+- Stopping the server while it is starting no longer replaces the stopped panel with an error.
+
 ## [1.10.3] - 2026-08-16
 
 ### Fixed

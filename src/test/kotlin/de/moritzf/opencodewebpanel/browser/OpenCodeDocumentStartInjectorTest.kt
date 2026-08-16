@@ -1,6 +1,8 @@
 package de.moritzf.opencodewebpanel.browser
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -31,5 +33,18 @@ class OpenCodeDocumentStartInjectorTest {
             """{"identifier":"script-3"}""",
             OpenCodeDocumentStartInjector.identifierPayload("script-3"),
         )
+    }
+
+    @Test
+    fun originGuardLimitsDocumentStartScriptToTheOpenCodeServer() {
+        val guarded = OpenCodeDocumentStartInjector.guardForOrigin(
+            "window.__installed = true;",
+            "http://127.0.0.1:4096/",
+        )
+
+        assertTrue(guarded.contains("location.origin !== \"http://127.0.0.1:4096\""))
+        assertTrue(guarded.contains("window.__installed = true;"))
+        assertFalse(guarded.contains("http://127.0.0.1:4096/\""))
+        assertEquals("", OpenCodeDocumentStartInjector.guardForOrigin("  ", "http://127.0.0.1:4096"))
     }
 }

@@ -1,5 +1,7 @@
 package de.moritzf.opencodewebpanel.toolWindow
 
+import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
+
 /**
  * Pure policy for retrying a hung embedded page load.
  *
@@ -21,5 +23,12 @@ internal object OpenCodePageLoadWatchdog {
         if (succeeded) return false
         if (retryCount >= maxRetries) return false
         return elapsedMillis >= timeoutMillis
+    }
+
+    fun retryTarget(serverUrl: String, requestedUrl: String?, currentUrl: String?): String {
+        return requestedUrl
+            ?.takeIf { OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, it) }
+            ?: currentUrl?.takeIf { OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, it) }
+            ?: OpenCodeServerProtocol.buildServerSessionUrl(serverUrl)
     }
 }

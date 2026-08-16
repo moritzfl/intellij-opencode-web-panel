@@ -13,6 +13,8 @@ internal class OpenCodeLoadIntent {
         revision.incrementAndGet()
     }
 
+    fun isCurrent(token: Long): Boolean = token == revision.get()
+
     fun accepts(
         token: Long,
         initialServerGeneration: Long,
@@ -23,7 +25,7 @@ internal class OpenCodeLoadIntent {
         currentDirectory: String?,
         stillEnabled: Boolean,
     ): Boolean {
-        return token == revision.get() &&
+        return isCurrent(token) &&
             stillEnabled &&
             initialServerGeneration == currentServerGeneration &&
             initialServerUrl == currentServerUrl &&

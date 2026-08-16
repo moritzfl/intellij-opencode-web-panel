@@ -1100,7 +1100,18 @@ class OpenCodeServerProtocolTest {
         // The SPA cancels its own stream on stop()/cleanup; dropping that signal would leak
         // the previous connection on every reconnect.
         assertTrue(script.contains("outer.addEventListener('abort'"))
+        assertTrue(script.contains("outer.removeEventListener('abort'"))
         assertTrue(script.contains("if (outer.aborted) controller.abort();"))
+    }
+
+    @Test
+    fun buildEventStreamWatchdogScriptTimesOutBeforeResponseHeaders() {
+        val script = OpenCodeBrowserSnippets.buildEventStreamWatchdogScript(enabled = true)!!
+
+        val armAt = script.indexOf("arm();")
+        val fetchAt = script.indexOf("return realFetch.call")
+        assertTrue(armAt > 0)
+        assertTrue(fetchAt > armAt)
     }
 
     @Test

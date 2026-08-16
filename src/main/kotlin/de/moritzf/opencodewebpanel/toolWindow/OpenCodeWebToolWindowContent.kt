@@ -65,6 +65,8 @@ import java.awt.Component
 import java.awt.Container
 import java.awt.Cursor
 import java.awt.datatransfer.StringSelection
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.TimeUnit
 import javax.swing.JPanel
 
 class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposable {
@@ -75,6 +77,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         private const val IDLE_CARD = "idle"
         private const val BROWSER_RECOVERY_THROTTLE_MILLIS = 10_000L
         private const val PAGE_LOAD_WATCHDOG_MILLIS = OpenCodePageLoadWatchdog.DEFAULT_TIMEOUT_MILLIS
+        private const val DOCUMENT_START_INSTALL_TIMEOUT_MILLIS = 20_000L
 
         // Delay after a project-page load before flushing queued chat input, so the SPA's own
         // drop handlers are installed when the synthetic drop is dispatched.
@@ -184,13 +187,18 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     private val loadIntent = OpenCodeLoadIntent()
     private val documentStartInjector = OpenCodeDocumentStartInjector(browser)
     private var mostRecentSessionLookupInFlight = false
+    @Volatile
     private var mainDocumentLoadSucceeded = false
     private var pageLoadInProgress = false
     private var pageLoadStartedAtMillis = 0L
+    private var pageLoadTargetUrl: String? = null
     private var pageLoadWatchdogGeneration = 0L
     private var pageLoadRetryCount = 0
     private var cefBrowserCreated = false
+    private var pendingBrowserLoadGeneration = 0L
 
+    @Volatile
+    private var mainDocumentLoadRevision = 0L
     @Volatile
     private var browserDocumentRevision = 0L
 
@@ -361,13 +369,27 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     private val loadHandler = object : CefLoadHandlerAdapter() {
         override fun onLoadStart(browser: CefBrowser?, frame: CefFrame?, transitionType: CefRequest.TransitionType?) {
             if (frame?.isMain == true) {
+                val loadRevision = ++mainDocumentLoadRevision
                 browserDocumentRevision++
                 mainDocumentLoadSucceeded = false
                 repaintAlarm.cancelAllRequests()
                 OpenCodeChatInputService.getInstance(project).requeueInFlight()
                 injectedFeatures.forEach { it.scheduled = false }
                 earlyInjectedFeatures.forEach { it.scheduled = false }
-                if (OpenCodeServerProtocol.isOpenCodeServerPage(serverManager.getServerUrl(), frame.url)) {
+                val serverUrl = serverManager.getServerUrl()
+                val frameUrl = frame.url
+                if (OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, frameUrl)) {
+                    ApplicationManager.getApplication().invokeLater {
+                        if (isContentDisposed() || loadRevision != mainDocumentLoadRevision || mainDocumentLoadSucceeded) {
+                            return@invokeLater
+                        }
+                        val liveUrl = serverManager.getServerUrl() ?: return@invokeLater
+                        if (!OpenCodeServerProtocol.isOpenCodeServerPage(liveUrl, frameUrl)) return@invokeLater
+                        val sameLoad = pageLoadInProgress &&
+                            OpenCodeServerProtocol.isOpenCodeRouteAlreadyOpen(liveUrl, pageLoadTargetUrl, frameUrl)
+                        beginPageLoad(frameUrl, resetRetryBudget = !sameLoad)
+                        armPageLoadWatchdog(liveUrl)
+                    }
                     // Drop any previous open-project delay series so navigations do not stack injects.
                     // Reset the flag so onLoadEnd can schedule a fresh series for this document.
                     openProjectAlarm.cancelAllRequests()
@@ -384,31 +406,46 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
 
         override fun onLoadEnd(browser: CefBrowser?, frame: CefFrame?, httpStatusCode: Int) {
             if (frame?.isMain != true) return
-            // JBCef's own focus forwarding is transition-based and can be dropped around
-            // loads (e.g. before native browser init); re-sync so the text caret is rendered.
-            browserFocusSync.reassertIfFocused()
             if (!isSuccessfulOpenCodeDocumentLoad(httpStatusCode)) return
-            if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverManager.getServerUrl(), frame.url)) return
-            mainDocumentLoadSucceeded = true
-            pageLoadWatchdogGeneration++
-            pageLoadWatchdogAlarm.cancelAllRequests()
-            pageLoadRetryCount = 0
-            pageLoadInProgress = false
-            pageLoadStartedAtMillis = 0L
-            updateLifecycleIndicator()
+            val completedUrl = frame.url
+            if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverManager.getServerUrl(), completedUrl)) return
+            val completedRevision = mainDocumentLoadRevision
+            ApplicationManager.getApplication().invokeLater {
+                if (isContentDisposed() || completedRevision != mainDocumentLoadRevision) return@invokeLater
+                val liveUrl = serverManager.getServerUrl() ?: return@invokeLater
+                if (!OpenCodeServerProtocol.isOpenCodeServerPage(liveUrl, completedUrl)) return@invokeLater
+                val targetUrl = pageLoadTargetUrl
+                if (pageLoadInProgress && targetUrl != null &&
+                    !OpenCodeServerProtocol.isOpenCodeRouteAlreadyOpen(liveUrl, completedUrl, targetUrl)
+                ) {
+                    return@invokeLater
+                }
 
-            // Restore the mirrored localStorage snapshot again on load end. The restore in
-            // onLoadStart can run before the new origin's V8 context is ready (e.g. when
-            // navigating from about:blank), so this second attempt ensures layout.page is
-            // available for the open-project script.
-            localStorageBridge.restore(frame.url)
-            scheduleOpenProjectScript()
-            localStorageBridge.installSync(frame.url)
-            injectedFeatures.forEach(::scheduleFeatureScript)
-            scheduleIdeThemeSyncScript()
-            scheduleFlushPendingChatInput()
-            interruptedSessionRecovery.checkAndContinue()
-            prepareDisplayedSessionLineage(frame.url)
+                // JBCef's own focus forwarding is transition-based and can be dropped around
+                // loads (e.g. before native browser init); re-sync so the text caret is rendered.
+                browserFocusSync.reassertIfFocused()
+                mainDocumentLoadSucceeded = true
+                pageLoadWatchdogGeneration++
+                pageLoadWatchdogAlarm.cancelAllRequests()
+                pageLoadRetryCount = 0
+                pageLoadInProgress = false
+                pageLoadStartedAtMillis = 0L
+                pageLoadTargetUrl = null
+                updateLifecycleIndicator()
+
+                // Restore the mirrored localStorage snapshot again on load end. The restore in
+                // onLoadStart can run before the new origin's V8 context is ready (e.g. when
+                // navigating from about:blank), so this second attempt ensures layout.page is
+                // available for the open-project script.
+                localStorageBridge.restore(completedUrl)
+                scheduleOpenProjectScript()
+                localStorageBridge.installSync(completedUrl)
+                injectedFeatures.forEach(::scheduleFeatureScript)
+                scheduleIdeThemeSyncScript()
+                scheduleFlushPendingChatInput()
+                interruptedSessionRecovery.checkAndContinue()
+                prepareDisplayedSessionLineage(completedUrl)
+            }
         }
 
         override fun onLoadError(
@@ -646,7 +683,6 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                 }
             },
         )
-        installDocumentStartScripts()
     }
 
     /**
@@ -780,7 +816,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             },
             onFailed = {
                 pendingServerStartRequest = false
-                showErrorInBrowser()
+                if (shouldShowStartupError(serverManager.getLifecycleState())) showErrorInBrowser()
             },
         )
     }
@@ -799,7 +835,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             },
             onFailed = {
                 pendingServerStartRequest = false
-                showErrorInBrowser()
+                if (shouldShowStartupError(serverManager.getLifecycleState())) showErrorInBrowser()
             },
         )
     }
@@ -812,7 +848,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
      */
     fun reloadOpenCodePage() {
         if (isContentDisposed()) return
-        loadIntent.invalidate()
+        cancelStartupNavigation()
         val serverUrl = serverManager.getServerUrl()
         if (serverUrl == null ||
             loadedServerRootUrl == null ||
@@ -823,10 +859,12 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         }
         thisLogger().info("Reloading OpenCode page")
         applyBrowserZoom()
-        beginPageLoad()
-        installDocumentStartScripts()
-        browser.cefBrowser.reload()
-        armPageLoadWatchdog(serverUrl)
+        beginPageLoad(browser.cefBrowser.url)
+        ensureCefBrowser()
+        loadAfterDocumentStartScripts(serverUrl) {
+            browser.cefBrowser.reload()
+            armPageLoadWatchdog(serverUrl)
+        }
     }
 
     /**
@@ -893,10 +931,12 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     private fun reloadOpenCodePageOrLoad() {
         val serverUrl = serverManager.getServerUrl()
         if (serverUrl != null && isBrowserOnOpenCodeServerPage(serverUrl)) {
-            beginPageLoad()
-            installDocumentStartScripts()
-            browser.cefBrowser.reload()
-            armPageLoadWatchdog(serverUrl)
+            beginPageLoad(browser.cefBrowser.url)
+            ensureCefBrowser()
+            loadAfterDocumentStartScripts(serverUrl) {
+                browser.cefBrowser.reload()
+                armPageLoadWatchdog(serverUrl)
+            }
         } else {
             loadProjectPage()
         }
@@ -924,8 +964,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         pendingMostRecentSessionId = null
         pendingOpenMostRecentConversation = false
         mostRecentSessionLookupInFlight = false
-        pageLoadRetryCount = 0
-        pageLoadStartedAtMillis = 0L
+        pageLoadTargetUrl = null
         // No pre-load script scheduling here: onLoadStart cancels the alarm and resets the
         // per-page flags anyway, and onLoadStart/onLoadEnd (re)schedule everything for the new
         // document. The resets above only cover the case where the load never starts.
@@ -948,7 +987,6 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                 val sessionId = fetchMostRecentSessionId(serverUrl, projectDirectory)
                 ApplicationManager.getApplication().invokeLater {
                     if (isContentDisposed()) return@invokeLater
-                    mostRecentSessionLookupInFlight = false
                     if (!loadIntent.accepts(
                             token = loadToken,
                             initialServerGeneration = serverGeneration,
@@ -960,9 +998,13 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                             stillEnabled = OpenCodeSettingsState.getInstance().openMostRecentConversationOnStartup,
                         )
                     ) {
-                        pendingOpenMostRecentConversation = false
+                        if (loadIntent.isCurrent(loadToken)) {
+                            mostRecentSessionLookupInFlight = false
+                            pendingOpenMostRecentConversation = false
+                        }
                         return@invokeLater
                     }
+                    mostRecentSessionLookupInFlight = false
                     pendingMostRecentSessionId = sessionId
                     if (sessionId == null) {
                         pendingOpenMostRecentConversation = false
@@ -988,33 +1030,74 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         val url = OpenCodeServerProtocol.buildServerSessionUrl(serverUrl, sessionId)
         loadedServerRootUrl = url
         showCenterCard(BROWSER_CARD)
-        beginPageLoad()
+        beginPageLoad(url)
         ensureCefBrowser()
-        installDocumentStartScripts()
-        // Same host:port after Stop (fixed port) is a CEF no-op if we only loadURL again.
-        // reloadIgnoreCache retries the dead document; a new port takes the loadURL path.
-        if (OpenCodeServerProtocol.isOpenCodeRouteAlreadyOpen(serverUrl, browser.cefBrowser.url, url)) {
-            browser.cefBrowser.reloadIgnoreCache()
-        } else {
-            browser.loadURL(url)
+        loadAfterDocumentStartScripts(serverUrl) {
+            // Same host:port after Stop (fixed port) is a CEF no-op if we only loadURL again.
+            // reloadIgnoreCache retries the dead document; a new port takes the loadURL path.
+            if (OpenCodeServerProtocol.isOpenCodeRouteAlreadyOpen(serverUrl, browser.cefBrowser.url, url)) {
+                browser.cefBrowser.reloadIgnoreCache()
+            } else {
+                browser.loadURL(url)
+            }
+            armPageLoadWatchdog(serverUrl)
         }
-        armPageLoadWatchdog(serverUrl)
     }
 
-    private fun installDocumentStartScripts() {
-        val serverUrl = serverManager.getServerUrl()
+    private fun installDocumentStartScripts(serverUrl: String): CompletableFuture<Boolean> {
         val script = buildString {
             earlyInjectedFeatures.forEach { feature ->
                 if (!feature.enabledInSettings()) return@forEach
-                if (feature === openProjectSeedFeature && serverUrl == null) return@forEach
-                val built = feature.buildScript(serverUrl ?: "http://127.0.0.1")
+                val built = feature.buildScript(serverUrl)
                 if (!built.isNullOrBlank()) {
                     append(built)
                     append('\n')
                 }
             }
         }
-        documentStartInjector.install(script)
+        val guarded = OpenCodeDocumentStartInjector.guardForOrigin(
+            script,
+            OpenCodeServerProtocol.buildServerRootUrl(serverUrl),
+        )
+        return documentStartInjector.installAsync(guarded)
+    }
+
+    private fun loadAfterDocumentStartScripts(
+        serverUrl: String,
+        cancelIfDocumentRevisionChanges: Long? = null,
+        load: () -> Unit,
+    ) {
+        val generation = ++pendingBrowserLoadGeneration
+        val timeout = CompletableFuture.supplyAsync(
+            { false },
+            CompletableFuture.delayedExecutor(DOCUMENT_START_INSTALL_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS),
+        )
+        installDocumentStartScripts(serverUrl).applyToEither(timeout) { it }.whenComplete { installed, error ->
+            if (error != null) {
+                thisLogger().info("Could not prepare OpenCode document-start scripts: ${error.message}")
+            } else if (!installed) {
+                thisLogger().info("OpenCode document-start script was unavailable; using onLoadStart fallback")
+            }
+            ApplicationManager.getApplication().invokeLater {
+                if (isContentDisposed() || generation != pendingBrowserLoadGeneration) return@invokeLater
+                if (serverManager.getServerUrl() != serverUrl) return@invokeLater
+                if (cancelIfDocumentRevisionChanges != null &&
+                    (mainDocumentLoadRevision != cancelIfDocumentRevisionChanges || mainDocumentLoadSucceeded)
+                ) {
+                    return@invokeLater
+                }
+                if (!installed && documentStartInjector.hasInstalledScript()) {
+                    thisLogger().warn("Keeping the current OpenCode page because its document-start script could not be replaced")
+                    pageLoadInProgress = false
+                    pageLoadStartedAtMillis = 0L
+                    pageLoadTargetUrl = null
+                    updateLifecycleIndicator()
+                    return@invokeLater
+                }
+                mainDocumentLoadSucceeded = false
+                load()
+            }
+        }
     }
 
     private fun ensureCefBrowser() {
@@ -1023,9 +1106,14 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         cefBrowserCreated = true
     }
 
-    private fun beginPageLoad() {
+    private fun beginPageLoad(targetUrl: String? = null, resetRetryBudget: Boolean = true) {
+        mainDocumentLoadSucceeded = false
         pageLoadInProgress = true
-        if (pageLoadStartedAtMillis == 0L) {
+        if (targetUrl != null) pageLoadTargetUrl = targetUrl
+        if (resetRetryBudget) {
+            pageLoadRetryCount = 0
+            pageLoadStartedAtMillis = System.currentTimeMillis()
+        } else if (pageLoadStartedAtMillis == 0L) {
             pageLoadStartedAtMillis = System.currentTimeMillis()
         }
         updateLifecycleIndicator()
@@ -1053,12 +1141,24 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                 thisLogger().warn("OpenCode page load timed out; retrying ($pageLoadRetryCount/${OpenCodePageLoadWatchdog.MAX_RETRIES})")
                 val liveUrl = serverManager.getServerUrl()
                 if (liveUrl != serverUrl) return@addRequest
-                val target = OpenCodeServerProtocol.buildServerSessionUrl(liveUrl, pendingMostRecentSessionId)
-                beginPageLoad()
+                val target = OpenCodePageLoadWatchdog.retryTarget(
+                    liveUrl,
+                    pageLoadTargetUrl,
+                    browser.cefBrowser.url,
+                )
+                val stalledDocumentRevision = mainDocumentLoadRevision
+                beginPageLoad(target, resetRetryBudget = false)
                 ensureCefBrowser()
-                installDocumentStartScripts()
-                browser.loadURL(target)
-                armPageLoadWatchdog(liveUrl)
+                loadAfterDocumentStartScripts(
+                    liveUrl,
+                    cancelIfDocumentRevisionChanges = stalledDocumentRevision,
+                ) {
+                    // JBCefBrowser coalesces duplicate requested URLs. The timed-out request is
+                    // still recorded as loading, so retry through raw CEF after cancelling it.
+                    browser.cefBrowser.stopLoad()
+                    browser.cefBrowser.loadURL(target)
+                    armPageLoadWatchdog(liveUrl)
+                }
             },
             PAGE_LOAD_WATCHDOG_MILLIS,
         )
@@ -1072,13 +1172,13 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             return
         }
         loadedServerRootUrl = null
-        loadIntent.invalidate()
+        cancelStartupNavigation()
+        pendingBrowserLoadGeneration++
         pageLoadWatchdogGeneration++
         pageLoadWatchdogAlarm.cancelAllRequests()
-        mostRecentSessionLookupInFlight = false
-        pendingOpenMostRecentConversation = false
         pageLoadInProgress = false
         pageLoadStartedAtMillis = 0L
+        pageLoadTargetUrl = null
         openProjectAlarm.cancelAllRequests()
         if (shouldHideEmbeddedPage(state)) {
             showCenterCard(IDLE_CARD)
@@ -1278,7 +1378,8 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             OpenCodeInjectedFeaturePolicy.Action.NONE -> return
             OpenCodeInjectedFeaturePolicy.Action.RELOAD -> {
                 feature.onDisable()
-                beginPageLoad()
+                pendingBrowserLoadGeneration++
+                beginPageLoad(browser.cefBrowser.url)
                 browser.cefBrowser.reload()
             }
             OpenCodeInjectedFeaturePolicy.Action.INJECT -> {
@@ -1359,13 +1460,16 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         val serverUrl = serverManager.getServerUrl() ?: return
         if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)) return
         ideThemeSyncFeature.scheduled = false
-        installDocumentStartScripts()
         if (!enabled) {
-            beginPageLoad()
-            browser.cefBrowser.reload()
-            armPageLoadWatchdog(serverUrl)
+            beginPageLoad(browser.cefBrowser.url)
+            ensureCefBrowser()
+            loadAfterDocumentStartScripts(serverUrl) {
+                browser.cefBrowser.reload()
+                armPageLoadWatchdog(serverUrl)
+            }
             return
         }
+        installDocumentStartScripts(serverUrl)
         if (executeIdeThemeSyncScript(serverUrl)) ideThemeSyncFeature.scheduled = true
     }
 
@@ -1379,7 +1483,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     }
 
     private fun applyOpenCodeProjectDirectoryChange() {
-        loadIntent.invalidate()
+        cancelStartupNavigation()
         openProjectScriptScheduled = false
         openProjectSeedFeature.scheduled = false
         fileLinkFeature.scheduled = false
@@ -1390,12 +1494,16 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     }
 
     private fun navigateFromNotification(targetUrl: String) {
-        loadIntent.invalidate()
-        pendingOpenMostRecentConversation = false
-        pendingMostRecentSessionId = null
+        cancelStartupNavigation()
         openProjectScriptScheduled = false
         openProjectAlarm.cancelAllRequests()
-        browser.loadURL(targetUrl)
+        val serverUrl = serverManager.getServerUrl() ?: return
+        beginPageLoad(targetUrl)
+        ensureCefBrowser()
+        loadAfterDocumentStartScripts(serverUrl) {
+            browser.loadURL(targetUrl)
+            armPageLoadWatchdog(serverUrl)
+        }
     }
 
     private fun openCodeProjectDirectory(): String? {
@@ -1496,19 +1604,23 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     private fun reloadForEarlyFeatureToggle(feature: EarlyInjectedFeature) {
         feature.scheduled = false
         val serverUrl = serverManager.getServerUrl() ?: return
-        installDocumentStartScripts()
         if (OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)) {
-            beginPageLoad()
-            browser.cefBrowser.reload()
-            armPageLoadWatchdog(serverUrl)
+            beginPageLoad(browser.cefBrowser.url)
+            ensureCefBrowser()
+            loadAfterDocumentStartScripts(serverUrl) {
+                browser.cefBrowser.reload()
+                armPageLoadWatchdog(serverUrl)
+            }
         }
     }
 
     private fun showErrorInBrowser() {
         if (isContentDisposed()) return
         loadedServerRootUrl = null
+        pendingBrowserLoadGeneration++
         pageLoadInProgress = false
         pageLoadStartedAtMillis = 0L
+        pageLoadTargetUrl = null
         updateLifecycleIndicator()
         startupErrorPanel.showFailure(
             OpenCodeSettingsState.getInstance().executablePath(),
@@ -1521,6 +1633,13 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         centerCardLayout.show(centerCardPanel, card)
         centerCardPanel.revalidate()
         centerCardPanel.repaint()
+    }
+
+    private fun cancelStartupNavigation() {
+        loadIntent.invalidate()
+        mostRecentSessionLookupInFlight = false
+        pendingOpenMostRecentConversation = false
+        pendingMostRecentSessionId = null
     }
 
     internal fun displayedSessionID(): String? {
@@ -1567,6 +1686,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
 
     override fun dispose() {
         disposed = true
+        pendingBrowserLoadGeneration++
         permissionAutoResponder.dispose()
         if (!project.isDisposed) {
             OpenCodeChatInputService.getInstance(project).setDispatcher(null)
