@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [1.10.3] - 2026-08-16
+
+### Fixed
+
+- The plugin again passes JetBrains’ Marketplace checks for current IDE builds.
+
 ## [1.10.2] - 2026-08-16
 
 ### Fixed
@@ -528,7 +534,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.10.2...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.10.3...HEAD
+[1.10.3]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.10.2...1.10.3
 [1.10.2]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.10.1...1.10.2
 [1.10.1]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.10.0...1.10.1
 [1.10.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.9.9...1.10.0
