@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [1.10.4] - 2026-08-16
+
 ### Fixed
 
 - The embedded page now waits for its startup safeguards before opening, retries every stalled
@@ -548,7 +550,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.10.3...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.10.4...HEAD
+[1.10.4]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.10.3...1.10.4
 [1.10.3]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.10.2...1.10.3
 [1.10.2]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.10.1...1.10.2
 [1.10.1]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.10.0...1.10.1
