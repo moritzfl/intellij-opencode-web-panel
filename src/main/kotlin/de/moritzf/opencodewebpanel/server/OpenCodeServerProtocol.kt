@@ -21,6 +21,12 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.ln
 import org.jetbrains.annotations.TestOnly
 
+internal enum class OpenCodeEmbeddedProtocol {
+    V1,
+    V2,
+    UNKNOWN,
+}
+
 internal sealed interface OpenCodeProtocolResult<out T> {
     data class Success<T>(val value: T) : OpenCodeProtocolResult<T>
     data class Failure(
@@ -766,6 +772,61 @@ internal object OpenCodeServerProtocol {
         val body = httpGet(buildServerRootUrl(serverUrl) + GLOBAL_HEALTH_PATH, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)
             ?: return null
         return parseJsonObject(body)?.stringMember("version")
+    }
+
+    /**
+     * Mirrors the SPA's `detectServerProtocol`: `/global/health` with `{healthy:true}` is v1;
+     * `/api/health` with a numeric `pid` is v2; `{healthy:true}` on `/api/health` is still v1;
+     * otherwise a reachable server defaults to v2. Unreachable probes stay [UNKNOWN] so a
+     * transport blip does not warn that permissions will vanish.
+     */
+    fun detectEmbeddedProtocol(
+        serverUrl: String,
+        basicAuthHeader: String?,
+        connectTimeoutMillis: Int = 2000,
+        readTimeoutMillis: Int = 2000,
+    ): OpenCodeEmbeddedProtocol {
+        val root = buildServerRootUrl(serverUrl)
+        val global = httpGetResult(root + GLOBAL_HEALTH_PATH, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)
+        val api = if (isV1HealthResult(global)) {
+            null
+        } else {
+            httpGetResult(root + HEALTH_PATH, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)
+        }
+        return classifyEmbeddedProtocol(global, api)
+    }
+
+    @TestOnly
+    fun classifyEmbeddedProtocolForTest(
+        global: OpenCodeProtocolResult<String>?,
+        api: OpenCodeProtocolResult<String>?,
+    ): OpenCodeEmbeddedProtocol = classifyEmbeddedProtocol(global, api)
+
+    private fun classifyEmbeddedProtocol(
+        global: OpenCodeProtocolResult<String>?,
+        api: OpenCodeProtocolResult<String>?,
+    ): OpenCodeEmbeddedProtocol {
+        if (isV1HealthResult(global)) return OpenCodeEmbeddedProtocol.V1
+        if (isV2HealthResult(api)) return OpenCodeEmbeddedProtocol.V2
+        if (isV1HealthResult(api)) return OpenCodeEmbeddedProtocol.V1
+        if (isHttpAnswer(global) || isHttpAnswer(api)) return OpenCodeEmbeddedProtocol.V2
+        return OpenCodeEmbeddedProtocol.UNKNOWN
+    }
+
+    private fun isV1HealthResult(result: OpenCodeProtocolResult<String>?): Boolean {
+        val body = (result as? OpenCodeProtocolResult.Success)?.value ?: return false
+        return parseJsonObject(body)?.booleanMember("healthy") == true
+    }
+
+    private fun isV2HealthResult(result: OpenCodeProtocolResult<String>?): Boolean {
+        val body = (result as? OpenCodeProtocolResult.Success)?.value ?: return false
+        val pid = parseJsonObject(body)?.get("pid") ?: return false
+        return pid.isJsonPrimitive && pid.asJsonPrimitive.isNumber
+    }
+
+    private fun isHttpAnswer(result: OpenCodeProtocolResult<String>?): Boolean {
+        return result is OpenCodeProtocolResult.Success ||
+            (result is OpenCodeProtocolResult.Failure && result.kind == OpenCodeProtocolResult.Failure.Kind.HTTP)
     }
 
     /**

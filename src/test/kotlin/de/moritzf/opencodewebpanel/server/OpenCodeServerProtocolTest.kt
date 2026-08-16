@@ -2118,6 +2118,21 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun classifyEmbeddedProtocolMatchesTheSpaProbe() {
+        val v1 = OpenCodeProtocolResult.Success("""{"healthy":true,"version":"1.18.10"}""")
+        val v2 = OpenCodeProtocolResult.Success("""{"pid":12}""")
+        val notFound = OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.HTTP, 404)
+        val timeout = OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.TIMEOUT)
+
+        assertEquals(OpenCodeEmbeddedProtocol.V1, OpenCodeServerProtocol.classifyEmbeddedProtocolForTest(v1, null))
+        assertEquals(OpenCodeEmbeddedProtocol.V1, OpenCodeServerProtocol.classifyEmbeddedProtocolForTest(notFound, v1))
+        assertEquals(OpenCodeEmbeddedProtocol.V2, OpenCodeServerProtocol.classifyEmbeddedProtocolForTest(notFound, v2))
+        assertEquals(OpenCodeEmbeddedProtocol.V2, OpenCodeServerProtocol.classifyEmbeddedProtocolForTest(notFound, notFound))
+        assertEquals(OpenCodeEmbeddedProtocol.UNKNOWN, OpenCodeServerProtocol.classifyEmbeddedProtocolForTest(timeout, timeout))
+        assertEquals(OpenCodeEmbeddedProtocol.UNKNOWN, OpenCodeServerProtocol.classifyEmbeddedProtocolForTest(timeout, null))
+    }
+
+    @Test
     fun fetchServerVersionRequiresRootStringField() {
         withSingleRequestHttpServer(
             body = """{"healthy":true,"version":"1.18.2"}""",

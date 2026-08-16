@@ -65,6 +65,8 @@ class SharedOpenCodeServerManager : Disposable {
     private var serverPassword: String? = null
     private var serverVersion: String? = null
     private var unsupportedVersionWarningShownFor: String? = null
+    private var embeddedProtocol = OpenCodeEmbeddedProtocol.UNKNOWN
+    private var v2ProtocolWarningShown = false
     private var serverGeneration = 0L
     private var serverGenerationStartedAtMillis = 0L
     private var launcherExitNoticeLogged = false
@@ -241,6 +243,15 @@ class SharedOpenCodeServerManager : Disposable {
         version
     }
 
+    /** Returns true once when the running server would make the embedded page use permission v2. */
+    fun consumeV2ProtocolWarning(): Boolean = synchronized(lock) {
+        if (v2ProtocolWarningShown || embeddedProtocol != OpenCodeEmbeddedProtocol.V2) {
+            return@synchronized false
+        }
+        v2ProtocolWarningShown = true
+        true
+    }
+
     /**
      * Increments each time a new server process is launched (0 while none was ever started).
      * Lets callers distinguish "the server actually restarted" from mere revalidation of a
@@ -259,9 +270,14 @@ class SharedOpenCodeServerManager : Disposable {
     private fun refreshServerVersion() {
         val url = getServerUrl() ?: return
         val password = getServerPassword() ?: return
-        val version = OpenCodeServerProtocol.fetchServerVersion(url, OpenCodeServerProtocol.buildBasicAuthHeader(password))
+        val auth = OpenCodeServerProtocol.buildBasicAuthHeader(password)
+        val version = OpenCodeServerProtocol.fetchServerVersion(url, auth)
+        val protocol = OpenCodeServerProtocol.detectEmbeddedProtocol(url, auth)
         synchronized(lock) {
-            if (serverUrl == url) serverVersion = version
+            if (serverUrl == url) {
+                serverVersion = version
+                embeddedProtocol = protocol
+            }
         }
     }
 
@@ -353,6 +369,7 @@ class SharedOpenCodeServerManager : Disposable {
         serverUrl = null
         serverPassword = null
         serverVersion = null
+        embeddedProtocol = OpenCodeEmbeddedProtocol.UNKNOWN
         consecutiveStartFailures = 0
         nextStartAllowedAtMillis = 0L
         return resources
@@ -929,6 +946,7 @@ class SharedOpenCodeServerManager : Disposable {
             serverUrl = null
             serverPassword = null
             serverVersion = null
+            embeddedProtocol = OpenCodeEmbeddedProtocol.UNKNOWN
             serverProcessDescendants = emptyList()
         }
     }
