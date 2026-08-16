@@ -35,6 +35,24 @@ internal fun isOpenCodeServerLifecycleStatusVisible(state: OpenCodeServerLifecyc
     return state != OpenCodeServerLifecycleState.RUNNING
 }
 
+/** Keep the strip up after the server is running until the embedded page actually paints. */
+internal fun isOpenCodeLifecycleStripVisible(
+    state: OpenCodeServerLifecycleState,
+    pageOpening: Boolean = false,
+): Boolean {
+    return (pageOpening && state == OpenCodeServerLifecycleState.RUNNING) ||
+        isOpenCodeServerLifecycleStatusVisible(state)
+}
+
+internal fun formatOpenCodePageOpeningStatusText(): String {
+    return "<html><span style=\"color: ${OpenCodeServerLifecycleState.STARTING.colorHex}\">&#9679;</span>&nbsp;" +
+        "Opening the OpenCode page…</html>"
+}
+
+internal fun shouldShowStartupError(state: OpenCodeServerLifecycleState): Boolean {
+    return state == OpenCodeServerLifecycleState.FAILED
+}
+
 internal fun isOpenCodeServerRetryVisible(state: OpenCodeServerLifecycleState): Boolean {
     return state == OpenCodeServerLifecycleState.FAILED || state == OpenCodeServerLifecycleState.STOPPED
 }

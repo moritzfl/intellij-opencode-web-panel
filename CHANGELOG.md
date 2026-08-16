@@ -11,6 +11,11 @@
 - If the page never finishes loading, the panel retries on its own instead of staying empty until a manual reload.
 - The connection watchdog is installed before the OpenCode web app starts, so a dead connection can
   reconnect instead of blocking the next message until the page is refreshed.
+- The status strip now stays visible with “Opening the OpenCode page…” until the page actually
+  appears, so a running server no longer looks like a blank panel.
+- When the server fails to start, every open panel shows the error page — not only the window
+  that triggered the start.
+- A warning appears if this OpenCode version would hide permission requests from the IDE.
 
 ## [1.10.1] - 2026-08-13
 

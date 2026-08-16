@@ -6,8 +6,9 @@ import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.components.BorderLayoutPanel
 import javax.swing.JButton
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState
+import de.moritzf.opencodewebpanel.server.formatOpenCodePageOpeningStatusText
 import de.moritzf.opencodewebpanel.server.formatOpenCodeServerLifecycleStatusText
-import de.moritzf.opencodewebpanel.server.isOpenCodeServerLifecycleStatusVisible
+import de.moritzf.opencodewebpanel.server.isOpenCodeLifecycleStripVisible
 import de.moritzf.opencodewebpanel.server.isOpenCodeServerRetryVisible
 import de.moritzf.opencodewebpanel.server.openCodeServerRetryLabel
 
@@ -25,7 +26,16 @@ internal class OpenCodeLifecycleStatusPanel(onRetry: () -> Unit) {
         addToRight(retryServerButton)
     }
 
-    fun update(state: OpenCodeServerLifecycleState) {
+    fun update(state: OpenCodeServerLifecycleState, pageOpening: Boolean = false) {
+        val opening = pageOpening && state == OpenCodeServerLifecycleState.RUNNING
+        if (opening) {
+            lifecycleStatusLabel.text = formatOpenCodePageOpeningStatusText()
+            lifecycleStatusLabel.toolTipText = "Opening the OpenCode page"
+            retryServerButton.isVisible = false
+            retryServerButton.isEnabled = false
+            component.isVisible = true
+            return
+        }
         lifecycleStatusLabel.text = formatOpenCodeServerLifecycleStatusText(state)
         lifecycleStatusLabel.toolTipText = "OpenCode server is ${state.displayLabel.lowercase()}"
         val retryVisible = isOpenCodeServerRetryVisible(state)
@@ -44,7 +54,7 @@ internal class OpenCodeLifecycleStatusPanel(onRetry: () -> Unit) {
         } else {
             "Retry starting OpenCode server"
         }
-        component.isVisible = isOpenCodeServerLifecycleStatusVisible(state)
+        component.isVisible = isOpenCodeLifecycleStripVisible(state, pageOpening = false)
     }
 
     fun setRetryEnabled(enabled: Boolean) {

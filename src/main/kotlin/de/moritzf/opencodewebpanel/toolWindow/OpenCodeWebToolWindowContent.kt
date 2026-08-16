@@ -47,6 +47,7 @@ import de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager
 import de.moritzf.opencodewebpanel.server.isSuccessfulOpenCodeDocumentLoad
 import de.moritzf.opencodewebpanel.server.shouldApplyPublishedLifecycleState
 import de.moritzf.opencodewebpanel.server.shouldHideEmbeddedPage
+import de.moritzf.opencodewebpanel.server.shouldShowStartupError
 import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsListener
 import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsState
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable
@@ -184,6 +185,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     private val documentStartInjector = OpenCodeDocumentStartInjector(browser)
     private var mostRecentSessionLookupInFlight = false
     private var mainDocumentLoadSucceeded = false
+    private var pageLoadInProgress = false
     private var pageLoadWatchdogGeneration = 0L
     private var pageLoadRetryCount = 0
 
@@ -388,6 +390,8 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             mainDocumentLoadSucceeded = true
             pageLoadWatchdogGeneration++
             pageLoadRetryCount = 0
+            pageLoadInProgress = false
+            updateLifecycleIndicator()
 
             // Restore the mirrored localStorage snapshot again on load end. The restore in
             // onLoadStart can run before the new origin's V8 context is ready (e.g. when
@@ -565,6 +569,10 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                         if (!shouldApplyPublishedLifecycleState(state, serverManager.getLifecycleState())) return@invokeLater
                         clearStaleBrowserPage(state)
                         updateLifecycleIndicator(state)
+                        if (shouldShowStartupError(state)) {
+                            showErrorInBrowser()
+                            return@invokeLater
+                        }
                         reloadContentAfterRecovery(state)
                     }
                 }
@@ -721,11 +729,11 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
 
     fun getContent() = contentPanel
 
-    private fun updateLifecycleIndicator(state: OpenCodeServerLifecycleState) {
+    private fun updateLifecycleIndicator(state: OpenCodeServerLifecycleState = serverManager.getLifecycleState()) {
         if (state != OpenCodeServerLifecycleState.RUNNING) {
             resetAgentStatusBadge()
         }
-        lifecycleStatusPanel.update(state)
+        lifecycleStatusPanel.update(state, pageOpening = pageLoadInProgress)
         contentPanel.revalidate()
         contentPanel.repaint()
     }
@@ -735,11 +743,20 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         val group = NotificationGroupManager.getInstance()
             .getNotificationGroup(OpenCodeServerProtocol.NOTIFICATION_GROUP_ID)
             ?: return
-        val installedVersion = serverManager.consumeUnsupportedServerVersionWarning() ?: return
+        val installedVersion = serverManager.consumeUnsupportedServerVersionWarning()
+        if (installedVersion != null) {
+            group.createNotification(
+                "OpenCode update required",
+                "OpenCode Web Panel requires OpenCode ${OpenCodeServerProtocol.MINIMUM_SUPPORTED_OPENCODE_VERSION} or later. " +
+                    "Installed version: ${StringUtil.escapeXmlEntities(installedVersion)}.",
+                NotificationType.WARNING,
+            ).notify(project)
+        }
+        if (!serverManager.consumeV2ProtocolWarning()) return
         group.createNotification(
-            "OpenCode update required",
-            "OpenCode Web Panel requires OpenCode ${OpenCodeServerProtocol.MINIMUM_SUPPORTED_OPENCODE_VERSION} or later. " +
-                "Installed version: ${StringUtil.escapeXmlEntities(installedVersion)}.",
+            "Permission requests may not appear",
+            "This OpenCode version may not show permission requests in the IDE. " +
+                "Update the OpenCode Web Panel plugin when a matching release is available.",
             NotificationType.WARNING,
         ).notify(project)
     }
@@ -802,6 +819,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         }
         thisLogger().info("Reloading OpenCode page")
         applyBrowserZoom()
+        beginPageLoad()
         installDocumentStartScripts()
         browser.cefBrowser.reload()
         armPageLoadWatchdog(serverUrl)
@@ -871,6 +889,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     private fun reloadOpenCodePageOrLoad() {
         val serverUrl = serverManager.getServerUrl()
         if (serverUrl != null && isBrowserOnOpenCodeServerPage(serverUrl)) {
+            beginPageLoad()
             installDocumentStartScripts()
             browser.cefBrowser.reload()
             armPageLoadWatchdog(serverUrl)
@@ -964,6 +983,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         val url = OpenCodeServerProtocol.buildServerSessionUrl(serverUrl, sessionId)
         loadedServerRootUrl = url
         showCenterCard(BROWSER_CARD)
+        beginPageLoad()
         installDocumentStartScripts()
         // Same host:port after Stop (fixed port) is a CEF no-op if we only loadURL again.
         // reloadIgnoreCache retries the dead document; a new port takes the loadURL path.
@@ -990,6 +1010,11 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             }
         }
         documentStartInjector.install(script)
+    }
+
+    private fun beginPageLoad() {
+        pageLoadInProgress = true
+        updateLifecycleIndicator()
     }
 
     private fun armPageLoadWatchdog(serverUrl: String) {
@@ -1032,6 +1057,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         pageLoadWatchdogGeneration++
         mostRecentSessionLookupInFlight = false
         pendingOpenMostRecentConversation = false
+        pageLoadInProgress = false
         openProjectAlarm.cancelAllRequests()
         if (shouldHideEmbeddedPage(state)) {
             showCenterCard(IDLE_CARD)
@@ -1231,6 +1257,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             OpenCodeInjectedFeaturePolicy.Action.NONE -> return
             OpenCodeInjectedFeaturePolicy.Action.RELOAD -> {
                 feature.onDisable()
+                beginPageLoad()
                 browser.cefBrowser.reload()
             }
             OpenCodeInjectedFeaturePolicy.Action.INJECT -> {
@@ -1313,6 +1340,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         ideThemeSyncFeature.scheduled = false
         installDocumentStartScripts()
         if (!enabled) {
+            beginPageLoad()
             browser.cefBrowser.reload()
             armPageLoadWatchdog(serverUrl)
             return
@@ -1449,6 +1477,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         val serverUrl = serverManager.getServerUrl() ?: return
         installDocumentStartScripts()
         if (OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)) {
+            beginPageLoad()
             browser.cefBrowser.reload()
             armPageLoadWatchdog(serverUrl)
         }
@@ -1457,6 +1486,8 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     private fun showErrorInBrowser() {
         if (isContentDisposed()) return
         loadedServerRootUrl = null
+        pageLoadInProgress = false
+        updateLifecycleIndicator()
         startupErrorPanel.showFailure(
             OpenCodeSettingsState.getInstance().executablePath(),
             serverManager.getServerLogFile(),

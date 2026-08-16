@@ -73,6 +73,30 @@ class OpenCodeServerLifecycleTest {
     }
 
     @Test
+    fun stripStaysVisibleWhileThePageIsOpening() {
+        assertTrue(isOpenCodeLifecycleStripVisible(OpenCodeServerLifecycleState.RUNNING, pageOpening = true))
+        assertFalse(isOpenCodeLifecycleStripVisible(OpenCodeServerLifecycleState.RUNNING, pageOpening = false))
+        assertTrue(isOpenCodeLifecycleStripVisible(OpenCodeServerLifecycleState.STARTING, pageOpening = true))
+    }
+
+    @Test
+    fun pageOpeningStatusUsesTheSameDotStyle() {
+        val html = formatOpenCodePageOpeningStatusText()
+        assertTrue(html.contains("&#9679;"))
+        assertTrue(html.contains("#FFC107"))
+        assertTrue(html.contains("Opening the OpenCode page"))
+    }
+
+    @Test
+    fun startupErrorCardIsShownForFailedStarts() {
+        assertTrue(shouldShowStartupError(OpenCodeServerLifecycleState.FAILED))
+        assertFalse(shouldShowStartupError(OpenCodeServerLifecycleState.STOPPED))
+        assertFalse(shouldShowStartupError(OpenCodeServerLifecycleState.RUNNING))
+        assertFalse(shouldShowStartupError(OpenCodeServerLifecycleState.STARTING))
+        assertFalse(shouldShowStartupError(OpenCodeServerLifecycleState.RESTARTING))
+    }
+
+    @Test
     fun documentLoadTreatsCefStatusZeroAsSuccess() {
         assertTrue(isSuccessfulOpenCodeDocumentLoad(0))
         assertTrue(isSuccessfulOpenCodeDocumentLoad(200))
