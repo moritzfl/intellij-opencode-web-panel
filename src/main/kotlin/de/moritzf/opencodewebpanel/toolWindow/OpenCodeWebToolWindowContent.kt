@@ -47,6 +47,7 @@ import de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager
 import de.moritzf.opencodewebpanel.server.isSuccessfulOpenCodeDocumentLoad
 import de.moritzf.opencodewebpanel.server.shouldApplyPublishedLifecycleState
 import de.moritzf.opencodewebpanel.server.shouldHideEmbeddedPage
+import de.moritzf.opencodewebpanel.server.shouldShowPageOpeningStatus
 import de.moritzf.opencodewebpanel.server.shouldShowStartupError
 import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsListener
 import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsState
@@ -198,6 +199,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     @Volatile
     private var mainDocumentLoadSucceeded = false
     private var pageLoadInProgress = false
+    private var openCodePagePainted = false
     private var pageLoadStartedAtMillis = 0L
     private var pageLoadTargetUrl: String? = null
     private var pageLoadWatchdogGeneration = 0L
@@ -434,6 +436,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                 // loads (e.g. before native browser init); re-sync so the text caret is rendered.
                 browserFocusSync.reassertIfFocused()
                 mainDocumentLoadSucceeded = true
+                openCodePagePainted = true
                 pageLoadWatchdogGeneration++
                 pageLoadWatchdogAlarm.cancelAllRequests()
                 pageLoadRetryCount = 0
@@ -782,7 +785,10 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         if (state != OpenCodeServerLifecycleState.RUNNING) {
             resetAgentStatusBadge()
         }
-        lifecycleStatusPanel.update(state, pageOpening = pageLoadInProgress)
+        lifecycleStatusPanel.update(
+            state,
+            pageOpening = shouldShowPageOpeningStatus(pageLoadInProgress, openCodePagePainted),
+        )
         contentPanel.revalidate()
         contentPanel.repaint()
     }
@@ -1190,6 +1196,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         pageLoadWatchdogGeneration++
         pageLoadWatchdogAlarm.cancelAllRequests()
         pageLoadInProgress = false
+        openCodePagePainted = false
         pageLoadStartedAtMillis = 0L
         pageLoadTargetUrl = null
         openProjectAlarm.cancelAllRequests()
@@ -1656,6 +1663,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         loadedServerRootUrl = null
         pendingBrowserLoadGeneration++
         pageLoadInProgress = false
+        openCodePagePainted = false
         pageLoadStartedAtMillis = 0L
         pageLoadTargetUrl = null
         updateLifecycleIndicator()

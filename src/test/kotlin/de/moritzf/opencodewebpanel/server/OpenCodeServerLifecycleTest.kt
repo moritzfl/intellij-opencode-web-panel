@@ -80,6 +80,14 @@ class OpenCodeServerLifecycleTest {
     }
 
     @Test
+    fun pageOpeningStripStaysHiddenAfterThePageHasPainted() {
+        assertTrue(shouldShowPageOpeningStatus(pageLoadInProgress = true, openCodePagePainted = false))
+        assertFalse(shouldShowPageOpeningStatus(pageLoadInProgress = true, openCodePagePainted = true))
+        assertFalse(shouldShowPageOpeningStatus(pageLoadInProgress = false, openCodePagePainted = false))
+        assertFalse(shouldShowPageOpeningStatus(pageLoadInProgress = false, openCodePagePainted = true))
+    }
+
+    @Test
     fun pageOpeningStatusUsesTheSameDotStyle() {
         val html = formatOpenCodePageOpeningStatusText()
         assertTrue(html.contains("&#9679;"))

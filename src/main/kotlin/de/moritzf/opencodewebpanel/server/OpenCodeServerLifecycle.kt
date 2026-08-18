@@ -44,6 +44,12 @@ internal fun isOpenCodeLifecycleStripVisible(
         isOpenCodeServerLifecycleStatusVisible(state)
 }
 
+/** Hide "Opening…" on later in-app navigations once a page has already painted. */
+internal fun shouldShowPageOpeningStatus(
+    pageLoadInProgress: Boolean,
+    openCodePagePainted: Boolean,
+): Boolean = pageLoadInProgress && !openCodePagePainted
+
 internal fun formatOpenCodePageOpeningStatusText(): String {
     return "<html><span style=\"color: ${OpenCodeServerLifecycleState.STARTING.colorHex}\">&#9679;</span>&nbsp;" +
         "Opening the OpenCode page…</html>"
