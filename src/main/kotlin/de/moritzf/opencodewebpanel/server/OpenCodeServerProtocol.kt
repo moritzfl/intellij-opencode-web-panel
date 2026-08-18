@@ -222,6 +222,7 @@ internal object OpenCodeServerProtocol {
         // Check the route exclusion on the cleaned spelling too: a decorated SPA route must not
         // slip past it and get preventDefault-ed as a file.
         if (isOpenCodeSessionRouteHref(href) || isOpenCodeSessionRouteHref(cleanedHref)) return null
+        if (isUnixRootRelativeHref(cleanedHref) && !lastPathSegmentLooksLikeFile(cleanedHref)) return null
         val parsed = parseFileLink(cleanedHref) ?: return null
         val hit = candidateFileLinkPaths(parsed, basePaths).firstOrNull { Files.isRegularFile(it.second) }
             ?: bestGuessFileLinkPath(parsed, basePaths, caseSensitive)
@@ -454,6 +455,20 @@ internal object OpenCodeServerProtocol {
      * on every platform, and strip the separator before resolving under a base.
      */
     private fun isRootRelative(text: String): Boolean = text.startsWith('/') || text.startsWith('\\')
+
+    internal fun isUnixRootRelativeHref(href: String): Boolean {
+        val path = href.substringBefore('?').substringBefore('#')
+        return path.startsWith('/') && !path.startsWith("//")
+    }
+
+    internal fun lastPathSegmentLooksLikeFile(path: String): Boolean {
+        val last = path.substringBefore('?').substringBefore('#')
+            .trimEnd('/', '\\')
+            .substringAfterLast('/')
+            .substringAfterLast('\\')
+            .replace(Regex(":\\d+(?::\\d+)?$"), "")
+        return Regex("\\.[A-Za-z0-9]{1,8}$").containsMatchIn(last)
+    }
 
     private fun candidateFileLinkPaths(
         parsed: ParsedFileLink,

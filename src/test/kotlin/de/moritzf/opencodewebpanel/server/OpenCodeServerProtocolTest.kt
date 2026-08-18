@@ -587,8 +587,9 @@ class OpenCodeServerProtocolTest {
         // Subagent/task cards link to /server/<key>/session/<id>; that must not be treated as a file path.
         assertTrue(script.contains("/server/"))
         assertTrue(script.contains("new-session"))
-        assertTrue(script.contains("absoluteFilePath.test(href)"))
-        assertTrue(script.indexOf("absoluteFilePath.test(href)") < script.indexOf("explicitProtocol.test(href)"))
+        assertTrue(script.contains("lastSegmentLooksLikeFile(href)"))
+        assertTrue(script.contains("href.startsWith('/') && !href.startsWith('//')"))
+        assertTrue(script.indexOf("lastSegmentLooksLikeFile") < script.indexOf("explicitProtocol.test(href)"))
         assertTrue(script.contains("!href.includes('://')"))
         assertTrue(script.contains("${OpenCodeServerProtocol.OPEN_FILE_LINK_SCHEME}://${OpenCodeServerProtocol.OPEN_FILE_LINK_HOST}"))
     }
@@ -1060,6 +1061,21 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun buildMatchMediaPatchScriptIsMissingWhenBothDisabled() {
+        assertNull(OpenCodeBrowserSnippets.buildMatchMediaPatchScript(compact = false, theme = false, dark = true))
+    }
+
+    @Test
+    fun buildMatchMediaPatchScriptCombinesCompactAndThemeInOneWrapper() {
+        val script = OpenCodeBrowserSnippets.buildMatchMediaPatchScript(compact = true, theme = true, dark = true)!!
+
+        assertEquals(1, Regex("window\\.matchMedia = ").findAll(script).count())
+        assertTrue(script.contains("(min-width:768px)"))
+        assertTrue(script.contains("THEME_KEY"))
+        assertTrue(script.contains("window.__opencodeIntellijOrigMatchMedia"))
+    }
+
+    @Test
     fun buildCompactLayoutScriptIsMissingWhenDisabled() {
         assertNull(OpenCodeBrowserSnippets.buildCompactLayoutScript(enabled = false))
     }
@@ -1200,7 +1216,7 @@ class OpenCodeServerProtocolTest {
     fun buildCompactLayoutScriptIsIdempotent() {
         val script = OpenCodeBrowserSnippets.buildCompactLayoutScript(enabled = true)!!
 
-        assertTrue(script.contains("if (window.__opencodeIntellijCompactInstalled) return"))
+        assertTrue(script.contains("window.__opencodeIntellijMatchMediaInstalled"))
     }
 
     @Test
@@ -1216,10 +1232,10 @@ class OpenCodeServerProtocolTest {
         assertTrue(darkScript.contains("(prefers-color-scheme: dark)"))
         assertTrue(darkScript.contains("const dark = true"))
         assertTrue(lightScript.contains("const dark = false"))
-        assertTrue(darkScript.contains("window.__opencodeIntellijThemeInstalled"))
-        assertTrue(darkScript.contains("const QUERY_KEY = '(prefers-color-scheme:dark)'"))
+        assertTrue(darkScript.contains("window.__opencodeIntellijMatchMediaInstalled"))
+        assertTrue(darkScript.contains("const THEME_KEY = '(prefers-color-scheme:dark)'"))
         assertTrue(darkScript.contains("replace(/\\s+/g, '').toLowerCase()"))
-        assertTrue(darkScript.contains("queryKey(q) === QUERY_KEY ? mql : orig(q)"))
+        assertTrue(darkScript.contains("theme && key === THEME_KEY"))
         assertTrue(darkScript.contains("matches: dark"))
         assertFalse(darkScript.contains("window.localStorage.setItem"))
         assertFalse(darkScript.contains("StorageEvent"))
@@ -1976,6 +1992,21 @@ class OpenCodeServerProtocolTest {
 
         assertNull(OpenCodeServerProtocol.resolveFileLink("src/Missing.kt", base.toString(), null))
         assertNull(OpenCodeServerProtocol.resolveFileLink("Missing.kt", base.toString(), null))
+    }
+
+    @Test
+    fun resolveFileLinkIgnoresRootRelativeHrefWithoutAFileSuffix() {
+        val base = Files.createTempDirectory("opencode-root-rel")
+        Files.createDirectories(base.resolve("src"))
+        Files.writeString(base.resolve("src/Main.kt"), "x")
+
+        assertNull(OpenCodeServerProtocol.resolveFileLink("/future-spa-page", base.toString(), null))
+        assertEquals(
+            base.resolve("src/Main.kt").normalize(),
+            OpenCodeServerProtocol.resolveFileLink("/src/Main.kt", base.toString(), null)?.path,
+        )
+        assertTrue(OpenCodeServerProtocol.lastPathSegmentLooksLikeFile("/src/Main.kt"))
+        assertFalse(OpenCodeServerProtocol.lastPathSegmentLooksLikeFile("/server/abc/session/ses_123"))
     }
 
     @Test

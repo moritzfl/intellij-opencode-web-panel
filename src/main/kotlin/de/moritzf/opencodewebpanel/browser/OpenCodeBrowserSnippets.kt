@@ -710,27 +710,64 @@ internal object OpenCodeBrowserSnippets {
      * Must run before the SPA bundle initializes media queries (`onLoadStart`).
      */
     fun buildCompactLayoutScript(enabled: Boolean): String? {
-        if (!enabled) return null
+        return buildMatchMediaPatchScript(compact = enabled, theme = false, dark = false)
+    }
+
+    fun buildMatchMediaPatchScript(compact: Boolean, theme: Boolean, dark: Boolean): String? {
+        if (!compact && !theme) return null
+        val compactLiteral = compact.toString()
+        val themeLiteral = theme.toString()
+        val darkLiteral = dark.toString()
         @Language("JavaScript")
         val script = """
             (() => {
-              if (window.__opencodeIntellijCompactInstalled) return;
-              window.__opencodeIntellijCompactInstalled = true;
-              // OpenCode checks both the wide query and its inverse (titlebar, settings), so both
-              // must be patched for a consistent compact layout. Whitespace is normalized so a
-              // formatter/minifier change to the query string does not silently disable the stub.
-              // Compare after stripping all whitespace so minifier/formatter spacing cannot
-              // disable the stub. Breakpoint values stay exact (a real change is a contract break).
+              const compact = $compactLiteral;
+              const theme = $themeLiteral;
+              const dark = $darkLiteral;
               const WIDE_KEY = '(min-width:768px)';
               const NARROW_KEY = '(max-width:767px)';
+              const THEME_KEY = '(prefers-color-scheme:dark)';
+              const THEME_MEDIA = '(prefers-color-scheme: dark)';
               const keyOf = (q) => String(q || '').replace(/\s+/g, '').toLowerCase();
-              const orig = window.matchMedia.bind(window);
+              if (window.__opencodeIntellijMatchMediaInstalled && theme && window.__opencodeIntellijThemeMql) {
+                if (window.__opencodeIntellijThemeDark !== dark) {
+                  window.__opencodeIntellijThemeDark = dark;
+                  window.__opencodeIntellijThemeMql.matches = dark;
+                  window.__opencodeIntellijThemeMql.dispatchEvent(new MediaQueryListEvent('change', { matches: dark, media: THEME_MEDIA }));
+                }
+                return;
+              }
+              window.__opencodeIntellijMatchMediaInstalled = true;
+              window.__opencodeIntellijCompactInstalled = compact;
+              window.__opencodeIntellijThemeInstalled = theme;
+              const orig = window.__opencodeIntellijOrigMatchMedia || window.matchMedia.bind(window);
               window.__opencodeIntellijOrigMatchMedia = orig;
               const stub = (media, matches) => ({ matches, media, onchange: null, addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false });
+              let themeMql = null;
+              if (theme) {
+                window.__opencodeIntellijThemeDark = dark;
+                themeMql = {
+                  matches: dark,
+                  media: THEME_MEDIA,
+                  onchange: null,
+                  __listeners: new Set(),
+                  addEventListener(type, listener) { if (type === 'change' && typeof listener === 'function') this.__listeners.add(listener); },
+                  removeEventListener(type, listener) { if (type === 'change') this.__listeners.delete(listener); },
+                  addListener(listener) { if (typeof listener === 'function') this.__listeners.add(listener); },
+                  removeListener(listener) { this.__listeners.delete(listener); },
+                  dispatchEvent(event) {
+                    if (typeof this.onchange === 'function') this.onchange.call(this, event);
+                    for (const listener of this.__listeners) { try { listener.call(this, event); } catch (_) {} }
+                    return true;
+                  },
+                };
+                window.__opencodeIntellijThemeMql = themeMql;
+              }
               window.matchMedia = (q) => {
                 const key = keyOf(q);
-                if (key === WIDE_KEY) return stub(q, false);
-                if (key === NARROW_KEY) return stub(q, true);
+                if (compact && key === WIDE_KEY) return stub(q, false);
+                if (compact && key === NARROW_KEY) return stub(q, true);
+                if (theme && key === THEME_KEY) return themeMql;
                 return orig(q);
               };
             })();
@@ -943,47 +980,7 @@ internal object OpenCodeBrowserSnippets {
     }
 
     fun buildIdeThemeSyncScript(enabled: Boolean, dark: Boolean): String? {
-        if (!enabled) return null
-        val darkLiteral = dark.toString()
-        @Language("JavaScript")
-        val script = """
-            (() => {
-              const QUERY = '(prefers-color-scheme: dark)';
-              const QUERY_KEY = '(prefers-color-scheme:dark)';
-              const queryKey = (value) => String(value || '').replace(/\s+/g, '').toLowerCase();
-              const dark = $darkLiteral;
-              if (window.__opencodeIntellijThemeInstalled) {
-                if (window.__opencodeIntellijThemeMql && window.__opencodeIntellijThemeDark !== dark) {
-                  window.__opencodeIntellijThemeDark = dark;
-                  window.__opencodeIntellijThemeMql.matches = dark;
-                  window.__opencodeIntellijThemeMql.dispatchEvent(new MediaQueryListEvent('change', { matches: dark, media: QUERY }));
-                }
-                return;
-              }
-              window.__opencodeIntellijThemeInstalled = true;
-              window.__opencodeIntellijThemeDark = dark;
-              const orig = window.matchMedia.bind(window);
-              window.__opencodeIntellijOrigMatchMedia = orig;
-              const mql = {
-                matches: dark,
-                media: QUERY,
-                onchange: null,
-                __listeners: new Set(),
-                addEventListener(type, listener) { if (type === 'change' && typeof listener === 'function') this.__listeners.add(listener); },
-                removeEventListener(type, listener) { if (type === 'change') this.__listeners.delete(listener); },
-                addListener(listener) { if (typeof listener === 'function') this.__listeners.add(listener); },
-                removeListener(listener) { this.__listeners.delete(listener); },
-                dispatchEvent(event) {
-                  if (typeof this.onchange === 'function') this.onchange.call(this, event);
-                  for (const listener of this.__listeners) { try { listener.call(this, event); } catch (_) {} }
-                  return true;
-                },
-              };
-              window.__opencodeIntellijThemeMql = mql;
-              window.matchMedia = (q) => queryKey(q) === QUERY_KEY ? mql : orig(q);
-            })();
-        """
-        return script.trimIndent()
+        return buildMatchMediaPatchScript(compact = false, theme = enabled, dark = dark)
     }
 
     /**
@@ -1402,10 +1399,16 @@ internal object OpenCodeBrowserSnippets {
                 const directory = cleanDisplayedPath(header.querySelector ? header.querySelector('[data-slot="session-review-v2-file-path"]')?.textContent : '');
                 return directory ? directory.replace(/[\\/]?${'$'}/, '/') + fileName : fileName;
               };
+              const lastSegmentLooksLikeFile = (value) => {
+                const path = String(value || '').split('?')[0].split('#')[0].replace(/[\\/]+${'$'}/, '');
+                const last = (path.split(/[\\/]/).filter(Boolean).pop() || '').replace(/:\\d+(?::\\d+)?${'$'}/, '');
+                return /\\.[a-zA-Z0-9]{1,8}${'$'}/.test(last);
+              };
               const isLocalFileLink = (href) => {
                 if (!href || href.startsWith('#')) return false;
                 if (isOpenCodeAppRoute(href)) return false;
-                if (absoluteFilePath.test(href)) return true;
+                if (/^(\\\\|[A-Za-z]:[\\/])/.test(href)) return true;
+                if (href.startsWith('/') && !href.startsWith('//')) return lastSegmentLooksLikeFile(href);
                 if (explicitProtocol.test(href)) return supportedFileProtocol.test(href);
                 if (href.startsWith('./') || href.startsWith('../')) return true;
                 return !href.startsWith('//') && !href.includes('://');
