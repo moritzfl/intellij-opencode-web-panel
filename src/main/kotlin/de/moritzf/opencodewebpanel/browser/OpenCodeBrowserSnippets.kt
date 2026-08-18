@@ -173,11 +173,16 @@ internal object OpenCodeBrowserSnippets {
         openMostRecentConversation: Boolean = false,
         mostRecentSessionId: String? = null,
         navigate: Boolean = true,
+        mostRecentSessionDirectory: String? = null,
     ): String? {
         if (projectBasePath.isNullOrBlank()) return null
         val directory = escapeJavaScript(projectBasePath)
         val providedSessionId = mostRecentSessionId
             ?.takeIf { openMostRecentConversation && OpenCodeServerProtocol.isSessionId(it) }
+            ?.let(::escapeJavaScript)
+            .orEmpty()
+        val providedSessionDirectory = mostRecentSessionDirectory
+            ?.takeIf { providedSessionId.isNotEmpty() && it.isNotBlank() }
             ?.let(::escapeJavaScript)
             .orEmpty()
         // The early (onLoadStart) injection aligns OpenCode's pointer with the boot target;
@@ -210,6 +215,7 @@ internal object OpenCodeBrowserSnippets {
             (() => {
               const directory = '$directory';
               const sessionId = '$providedSessionId';
+              const sessionDirectory = '$providedSessionDirectory' || directory;
               const scope = 'local';
               $originGuard
               // Match worktrees case-insensitively on Windows drive roots and with either
@@ -339,9 +345,9 @@ internal object OpenCodeBrowserSnippets {
                   // Idempotent: the injection retry series re-runs this script, and a repeated
                   // write with a fresh `at` would churn the mirrored snapshot.
                   if (!previous || typeof previous !== 'object' || previous.id !== sessionId ||
-                    !sameWorktree(previous.directory, directory)) {
+                    !sameWorktree(previous.directory, sessionDirectory)) {
                     pageState.lastProjectSession[pointerKey] = {
-                      directory: directory,
+                      directory: sessionDirectory,
                       id: sessionId,
                       at: Date.now(),
                     };

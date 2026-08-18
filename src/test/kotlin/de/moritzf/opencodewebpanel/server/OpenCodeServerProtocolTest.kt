@@ -365,6 +365,7 @@ class OpenCodeServerProtocolTest {
         )!!
 
         assertTrue(script.contains("const sessionId = 'ses_abc123'"))
+        assertTrue(script.contains("const sessionDirectory = '' || directory"))
         assertTrue(script.contains("const encodeServerKey = (value)"))
         assertTrue(script.contains("btoa(binary).replace(/\\+/g, '-').replace(/\\//g, '_')"))
         assertTrue(
@@ -398,7 +399,8 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("if (sameWorktree(candidate, directory)) { pointerKey = candidate; break; }"))
         // Idempotent across the injection retry series, but a wrong `directory` is repaired.
         assertTrue(script.contains("previous.id !== sessionId"))
-        assertTrue(script.contains("!sameWorktree(previous.directory, directory)"))
+        assertTrue(script.contains("!sameWorktree(previous.directory, sessionDirectory)"))
+        assertTrue(script.contains("directory: sessionDirectory"))
         assertTrue(script.contains("if (nextPageRaw !== pageRaw)"))
         // Same fail-soft rule as the project seed: never stomp an unrecognized schema, and say so.
         assertTrue(script.contains("if (!pageParseFailed && pageParsed !== null && !pageIsPlainObject)"))
@@ -485,6 +487,21 @@ class OpenCodeServerProtocolTest {
 
         assertTrue(script.contains("const sessionId = ''"))
         assertFalse(script.contains("alert(1)"))
+    }
+
+    @Test
+    fun buildOpenProjectScriptPointsLastProjectSessionAtTheSessionsOwnDirectory() {
+        val script = OpenCodeBrowserSnippets.buildOpenProjectScript(
+            "/tmp/project",
+            "http://127.0.0.1:60482/",
+            openMostRecentConversation = true,
+            mostRecentSessionId = "ses_abc123",
+            mostRecentSessionDirectory = "/private/tmp/project",
+        )!!
+
+        assertTrue(script.contains("const sessionDirectory = '/private/tmp/project' || directory"))
+        assertTrue(script.contains("directory: sessionDirectory"))
+        assertFalse(script.contains("directory: directory,"))
     }
 
     @Test
@@ -1637,6 +1654,48 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun canonicalOpenCodeDirectoryResolvesSymlinkAliases() {
+        val root = Files.createTempDirectory("opencode-canonical-dir")
+        try {
+            val target = Files.createDirectory(root.resolve("target"))
+            val link = root.resolve("link")
+            if (runCatching { Files.createSymbolicLink(link, target) }.isSuccess) {
+                assertEquals(
+                    target.toRealPath().toString(),
+                    OpenCodeServerProtocol.canonicalOpenCodeDirectory(link.toString()),
+                )
+            }
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun adoptOpenCodeDirectoryPrefersTheServerSpellingOfTheSameFolder() {
+        val root = Files.createTempDirectory("opencode-adopt-dir")
+        try {
+            val target = Files.createDirectory(root.resolve("target"))
+            val link = root.resolve("link")
+            if (runCatching { Files.createSymbolicLink(link, target) }.isSuccess) {
+                assertEquals(
+                    target.toRealPath().toString(),
+                    OpenCodeServerProtocol.adoptOpenCodeDirectory(link.toString(), target.toRealPath().toString()),
+                )
+            }
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun adoptOpenCodeDirectoryKeepsTheProjectRootWhenTheServerPathIsADifferentFolder() {
+        assertEquals(
+            OpenCodeServerProtocol.canonicalOpenCodeDirectory("/tmp/project"),
+            OpenCodeServerProtocol.adoptOpenCodeDirectory("/tmp/project", "/tmp/project-worktree"),
+        )
+    }
+
+    @Test
     fun resolveFileLinkPrefersOpenCodeRouteDirectoryForRelativeLinks() {
         val ideProjectDir = Files.createTempDirectory("opencode-ide-project")
         val openCodeDir = Files.createTempDirectory("opencode-route-project")
@@ -2502,6 +2561,37 @@ class OpenCodeServerProtocolTest {
             {"id":"ses_child","parentID":"ses_top","time":{"created":$recent,"updated":$recent}}]}"""
         val sessions = OpenCodeServerProtocol.parseSessionList(json, maxAgeMillis = 300_000, nowMillis = now)
         assertEquals(listOf(null, "ses_top"), sessions.map { it.parentID })
+    }
+
+    @Test
+    fun parseSessionListReadsV2LocationDirectory() {
+        val now = System.currentTimeMillis()
+        val recent = now - 1000
+        val json = """{"data":[
+            {"id":"ses_loc","time":{"created":$recent,"updated":$recent},
+             "location":{"directory":"/private/tmp/project"}}]}"""
+        val sessions = OpenCodeServerProtocol.parseSessionList(json, maxAgeMillis = 300_000, nowMillis = now)
+        assertEquals(listOf("/private/tmp/project"), sessions.map { it.directory })
+    }
+
+    @Test
+    fun parseSessionListReadsLegacyDirectoryField() {
+        val now = System.currentTimeMillis()
+        val recent = now - 1000
+        val json = """{"data":[
+            {"id":"ses_dir","directory":"/Users/me/project","time":{"created":$recent,"updated":$recent}}]}"""
+        val sessions = OpenCodeServerProtocol.parseSessionList(json, maxAgeMillis = 300_000, nowMillis = now)
+        assertEquals(listOf("/Users/me/project"), sessions.map { it.directory })
+    }
+
+    @Test
+    fun parseSessionDirectoryPrefersLocationOverLegacyField() {
+        assertEquals(
+            "/private/tmp/project",
+            OpenCodeServerProtocol.parseSessionDirectory(
+                """{"id":"ses_1","directory":"/tmp/project","location":{"directory":"/private/tmp/project"}}""",
+            ),
+        )
     }
 
     @Test

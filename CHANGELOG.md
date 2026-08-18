@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- After a fresh IDE start, sending a follow-up no longer fails with
+  "Failed to send prompt / Unable to retrieve session" when the IDE project path and
+  OpenCode's stored session directory differ (symlinks, `/var` vs `/private/var`).
+
 ## [1.10.4] - 2026-08-16
 
 ### Fixed

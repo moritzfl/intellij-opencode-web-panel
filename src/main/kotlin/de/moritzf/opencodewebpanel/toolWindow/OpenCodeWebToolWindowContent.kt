@@ -178,6 +178,14 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     private var openProjectScriptScheduled = false
     /** Most-recent session resolved for the current page load (avoids a second REST fetch). */
     private var pendingMostRecentSessionId: String? = null
+    /** Server-persisted directory for [pendingMostRecentSessionId]; SPA `session.get` is exact-string. */
+    private var pendingMostRecentSessionDirectory: String? = null
+    /**
+     * OpenCode's stored spelling of this project folder, adopted from a session list/path
+     * response. Used so seeded `lastProject` matches `session.directory` (`===` in the SPA).
+     */
+    @Volatile
+    private var preferredOpenCodeDirectory: String? = null
     /**
      * One-shot boot intent: navigate to [pendingMostRecentSessionId] only for the load started by
      * [loadProjectPage]. Cleared once the target session is open so later SPA navigations only
@@ -245,6 +253,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                     openMostRecentConversation = pendingOpenMostRecentConversation,
                     mostRecentSessionId = pendingMostRecentSessionId,
                     navigate = false,
+                    mostRecentSessionDirectory = pendingMostRecentSessionDirectory,
                 )
             }
         },
@@ -962,6 +971,8 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         thisLogger().info("Loading OpenCode project page")
         openProjectScriptScheduled = false
         pendingMostRecentSessionId = null
+        pendingMostRecentSessionDirectory = null
+        preferredOpenCodeDirectory = null
         pendingOpenMostRecentConversation = false
         mostRecentSessionLookupInFlight = false
         pageLoadTargetUrl = null
@@ -984,7 +995,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         if (openMostRecent && projectDirectory != null) {
             mostRecentSessionLookupInFlight = true
             ApplicationManager.getApplication().executeOnPooledThread {
-                val sessionId = fetchMostRecentSessionId(serverUrl, projectDirectory)
+                val session = fetchMostRecentSession(serverUrl, projectDirectory)
                 ApplicationManager.getApplication().invokeLater {
                     if (isContentDisposed()) return@invokeLater
                     if (!loadIntent.accepts(
@@ -1005,8 +1016,10 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                         return@invokeLater
                     }
                     mostRecentSessionLookupInFlight = false
-                    pendingMostRecentSessionId = sessionId
-                    if (sessionId == null) {
+                    pendingMostRecentSessionId = session?.id
+                    pendingMostRecentSessionDirectory = session?.directory
+                    session?.directory?.let { adoptPreferredOpenCodeDirectory(it) }
+                    if (session?.id == null) {
                         pendingOpenMostRecentConversation = false
                         return@invokeLater
                     }
@@ -1233,6 +1246,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         // later full page load would yank the user back to the startup conversation.
         val openMostRecent = pendingOpenMostRecentConversation
         val pendingId = pendingMostRecentSessionId?.takeIf { openMostRecent }
+        val pendingDirectory = pendingMostRecentSessionDirectory?.takeIf { pendingId != null }
         if (!OpenCodeStartupNavigation.shouldKeepNavigateIntent(
                 openMostRecent,
                 pendingId,
@@ -1245,6 +1259,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                 projectDirectory,
                 openMostRecentConversation = false,
                 mostRecentSessionId = null,
+                mostRecentSessionDirectory = null,
             )
             return
         }
@@ -1255,6 +1270,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                 projectDirectory,
                 openMostRecentConversation = false,
                 mostRecentSessionId = null,
+                mostRecentSessionDirectory = null,
             )
             return
         }
@@ -1263,10 +1279,14 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             projectDirectory,
             openMostRecentConversation = true,
             mostRecentSessionId = pendingId,
+            mostRecentSessionDirectory = pendingDirectory,
         )
     }
 
-    private fun fetchMostRecentSessionId(serverUrl: String, projectDirectory: String): String? {
+    private fun fetchMostRecentSession(
+        serverUrl: String,
+        projectDirectory: String,
+    ): OpenCodeServerProtocol.SessionSummary? {
         val password = serverManager.getServerPassword() ?: return null
         return OpenCodeServerProtocol.fetchRecentSessions(
             serverUrl,
@@ -1279,7 +1299,6 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         )
             .filter { it.parentID == null } // never navigate to a subagent child session
             .maxByOrNull { it.updatedMillis }
-            ?.id
     }
 
     private fun scheduleOpenProjectScript(
@@ -1287,12 +1306,14 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         projectDirectory: String,
         openMostRecentConversation: Boolean,
         mostRecentSessionId: String?,
+        mostRecentSessionDirectory: String?,
     ) {
         val script = OpenCodeBrowserSnippets.buildOpenProjectScript(
             projectDirectory,
             serverUrl,
             openMostRecentConversation,
             mostRecentSessionId,
+            mostRecentSessionDirectory = mostRecentSessionDirectory,
         ) ?: return
         val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
 
@@ -1307,6 +1328,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                 if (onTarget) {
                     pendingOpenMostRecentConversation = false
                     pendingMostRecentSessionId = null
+                    pendingMostRecentSessionDirectory = null
                     return@schedule false
                 }
                 return@schedule true
@@ -1483,6 +1505,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     }
 
     private fun applyOpenCodeProjectDirectoryChange() {
+        preferredOpenCodeDirectory = null
         cancelStartupNavigation()
         openProjectScriptScheduled = false
         openProjectSeedFeature.scheduled = false
@@ -1507,7 +1530,21 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     }
 
     private fun openCodeProjectDirectory(): String? {
-        return OpenCodeProjectSettingsState.getInstance(project).effectiveProjectDirectory(project.basePath)
+        val raw = OpenCodeProjectSettingsState.getInstance(project).effectiveProjectDirectory(project.basePath)
+            ?: return null
+        val preferred = preferredOpenCodeDirectory
+        if (preferred != null && OpenCodeServerProtocol.isSameFilesystemPath(preferred, raw)) {
+            return preferred
+        }
+        return OpenCodeServerProtocol.canonicalOpenCodeDirectory(raw) ?: raw
+    }
+
+    private fun adoptPreferredOpenCodeDirectory(serverDirectory: String) {
+        val current = openCodeProjectDirectory() ?: return
+        val adopted = OpenCodeServerProtocol.adoptOpenCodeDirectory(current, serverDirectory) ?: return
+        if (adopted == preferredOpenCodeDirectory) return
+        if (!OpenCodeServerProtocol.isSameFilesystemPath(current, adopted)) return
+        preferredOpenCodeDirectory = adopted
     }
 
     /** Opens Chromium's built-in DevTools window for this panel's browser (JBCef built-in). */
@@ -1640,6 +1677,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         mostRecentSessionLookupInFlight = false
         pendingOpenMostRecentConversation = false
         pendingMostRecentSessionId = null
+        pendingMostRecentSessionDirectory = null
     }
 
     internal fun displayedSessionID(): String? {

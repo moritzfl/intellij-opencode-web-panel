@@ -256,6 +256,29 @@ internal object OpenCodeServerProtocol {
         return left == right
     }
 
+    /**
+     * The directory string OpenCode persists on sessions (`FSUtil.resolve` / `realpath`).
+     * The SPA's `session.get` uses exact `===` against this, so the panel must seed
+     * `lastProject` / `lastProjectSession.directory` with this spelling — not IntelliJ's
+     * raw `basePath` (`/var` vs `/private/var`, symlink aliases, Windows real casing).
+     */
+    fun canonicalOpenCodeDirectory(path: String?): String? {
+        val raw = path?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        return runCatching { Path.of(raw).toRealPath().toString() }
+            .recoverCatching { Path.of(raw).toAbsolutePath().normalize().toString() }
+            .getOrDefault(raw)
+    }
+
+    /**
+     * Prefer the server's session-directory spelling when it is the same folder as [idePath].
+     * Worktree/sandbox paths are left alone so `lastProject` stays the project root.
+     */
+    fun adoptOpenCodeDirectory(idePath: String?, serverPath: String?): String? {
+        val canonical = canonicalOpenCodeDirectory(idePath) ?: idePath?.trim()?.takeIf { it.isNotBlank() }
+        val server = serverPath?.trim()?.takeIf { it.isNotBlank() } ?: return canonical
+        return if (isSameFilesystemPath(canonical ?: idePath, server)) server else canonical
+    }
+
     private val canonicalPathCache = ConcurrentHashMap<String, String>()
 
     fun filesystemPathKey(path: String?): String? {
@@ -1362,7 +1385,12 @@ internal object OpenCodeServerProtocol {
         return ParsedPendingRequests(parsed, malformedEntry)
     }
 
-    data class SessionSummary(val id: String, val updatedMillis: Long, val parentID: String? = null)
+    data class SessionSummary(
+        val id: String,
+        val updatedMillis: Long,
+        val parentID: String? = null,
+        val directory: String? = null,
+    )
     private data class SessionPage(val sessions: List<SessionSummary>, val nextCursor: String?)
 
     /**
@@ -1440,6 +1468,18 @@ internal object OpenCodeServerProtocol {
         return parseSessionPage(json, maxAgeMillis, nowMillis)?.sessions.orEmpty()
     }
 
+    @TestOnly
+    fun parseSessionDirectory(json: String): String? {
+        val root = parseJsonObject(json) ?: return null
+        val session = root.objectMember("data") ?: root
+        return sessionDirectory(session)
+    }
+
+    private fun sessionDirectory(session: JsonObject): String? {
+        return session.objectMember("location")?.stringMember("directory")?.takeIf { it.isNotBlank() }
+            ?: session.stringMember("directory")?.takeIf { it.isNotBlank() }
+    }
+
     private fun parseSessionPage(json: String, maxAgeMillis: Long, nowMillis: Long): SessionPage? {
         // Response shape (verified against opencode 1.17.13): {"data":[SessionV2Info...],"cursor":{...}}
         // with each session carrying id ("ses_...") and time.{created,updated} epoch millis.
@@ -1453,7 +1493,14 @@ internal object OpenCodeServerProtocol {
                 ?.longMember("updated")
                 ?: continue
             if (nowMillis - updated <= maxAgeMillis) {
-                results.add(SessionSummary(id, updated, session.stringMember("parentID")?.takeIf { it.isNotBlank() }))
+                results.add(
+                    SessionSummary(
+                        id,
+                        updated,
+                        session.stringMember("parentID")?.takeIf { it.isNotBlank() },
+                        sessionDirectory(session),
+                    ),
+                )
             }
         }
         val cursor = root.objectMember("cursor")?.stringMember("next")?.takeIf { it.isNotBlank() }
