@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+### Changed
+
+- First-open session restore now uses one JVM navigation instead of a page-script
+  `location.assign` retry loop.
+- Compact layout and IDE theme share a single `matchMedia` wrapper.
+- Root-relative chat links are opened in the IDE only when the last path segment
+  looks like a file, so unknown SPA routes are not intercepted.
+
 ## [1.10.5] - 2026-08-18
 
 ### Fixed
