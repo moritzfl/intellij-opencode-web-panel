@@ -35,4 +35,13 @@ class OpenCodeStartupNavigationTest {
         assertTrue(OpenCodeStartupNavigation.shouldLookupMostRecentSession(false, true))
         assertFalse(OpenCodeStartupNavigation.shouldLookupMostRecentSession(false, false))
     }
+
+    @Test
+    fun jvmNavigateOnlyFromTheIdLessShell() {
+        assertTrue(OpenCodeStartupNavigation.shouldJvmNavigateToResolvedSession(null, "ses_abc"))
+        assertTrue(OpenCodeStartupNavigation.shouldJvmNavigateToResolvedSession("", "ses_abc"))
+        assertFalse(OpenCodeStartupNavigation.shouldJvmNavigateToResolvedSession("ses_abc", "ses_abc"))
+        assertFalse(OpenCodeStartupNavigation.shouldJvmNavigateToResolvedSession("ses_other", "ses_abc"))
+        assertFalse(OpenCodeStartupNavigation.shouldJvmNavigateToResolvedSession(null, null))
+    }
 }

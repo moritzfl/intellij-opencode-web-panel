@@ -262,18 +262,19 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             }
         },
     )
-    private val ideThemeSyncFeature = EarlyInjectedFeature(
-        enabledInSettings = { OpenCodeSettingsState.getInstance().syncThemeWithIde },
+    private val matchMediaPatchFeature = EarlyInjectedFeature(
+        enabledInSettings = {
+            val settings = OpenCodeSettingsState.getInstance()
+            settings.syncThemeWithIde || settings.forceCompactLayout
+        },
         buildScript = {
-            OpenCodeBrowserSnippets.buildIdeThemeSyncScript(
-                enabled = OpenCodeSettingsState.getInstance().syncThemeWithIde,
+            val settings = OpenCodeSettingsState.getInstance()
+            OpenCodeBrowserSnippets.buildMatchMediaPatchScript(
+                compact = settings.forceCompactLayout,
+                theme = settings.syncThemeWithIde,
                 dark = isIdeDarkTheme(),
             )
         },
-    )
-    private val compactLayoutFeature = EarlyInjectedFeature(
-        enabledInSettings = { OpenCodeSettingsState.getInstance().forceCompactLayout },
-        buildScript = { OpenCodeBrowserSnippets.buildCompactLayoutScript(enabled = true) },
     )
     private val hideWebsiteButtonFeature = EarlyInjectedFeature(
         enabledInSettings = { OpenCodeSettingsState.getInstance().hideWebsiteButton },
@@ -287,8 +288,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     /** Injection order matters: the project seed must precede everything else. */
     private val earlyInjectedFeatures = listOf(
         openProjectSeedFeature,
-        ideThemeSyncFeature,
-        compactLayoutFeature,
+        matchMediaPatchFeature,
         hideWebsiteButtonFeature,
         eventStreamWatchdogFeature,
     )
@@ -440,6 +440,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                 // available for the open-project script.
                 localStorageBridge.restore(completedUrl)
                 scheduleOpenProjectScript()
+                applyResolvedStartupSession()
                 localStorageBridge.installSync(completedUrl)
                 injectedFeatures.forEach(::scheduleFeatureScript)
                 scheduleIdeThemeSyncScript()
@@ -1035,11 +1036,17 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     }
 
     private fun applyResolvedStartupSession() {
-        if (!pendingOpenMostRecentConversation || pendingMostRecentSessionId == null) return
-        openProjectScriptScheduled = false
-        if (mainDocumentLoadSucceeded && isBrowserOnOpenCodeServerPage(serverManager.getServerUrl() ?: return)) {
-            scheduleOpenProjectScript()
+        if (!pendingOpenMostRecentConversation) return
+        val sessionId = pendingMostRecentSessionId ?: return
+        val serverUrl = serverManager.getServerUrl() ?: return
+        if (!mainDocumentLoadSucceeded || !isBrowserOnOpenCodeServerPage(serverUrl)) return
+        val currentId = OpenCodeServerProtocol.sessionIdFromUrl(browser.cefBrowser.url)
+        if (!OpenCodeStartupNavigation.shouldJvmNavigateToResolvedSession(currentId, sessionId)) {
+            pendingOpenMostRecentConversation = false
+            return
         }
+        pendingOpenMostRecentConversation = false
+        loadProjectPageAt(serverUrl, sessionId)
     }
 
     private fun loadProjectPageAt(serverUrl: String, sessionId: String?) {
@@ -1339,6 +1346,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             serverUrl,
             openMostRecentConversation,
             mostRecentSessionId,
+            navigate = false,
             mostRecentSessionDirectory = mostRecentSessionDirectory,
         ) ?: return
         val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
@@ -1439,14 +1447,10 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     }
 
     private fun scheduleIdeThemeSyncScript() {
-        if (ideThemeSyncFeature.scheduled) return
-        if (!OpenCodeSettingsState.getInstance().syncThemeWithIde) return
-
+        if (!matchMediaPatchFeature.enabledInSettings()) return
         val serverUrl = serverManager.getServerUrl() ?: return
-        ideThemeSyncFeature.scheduled = true
-
         scriptScheduler.scheduleAction(
-            shouldRun = { OpenCodeSettingsState.getInstance().syncThemeWithIde && isBrowserOnOpenCodeServerPage(serverUrl) },
+            shouldRun = { matchMediaPatchFeature.enabledInSettings() && isBrowserOnOpenCodeServerPage(serverUrl) },
             action = { executeIdeThemeSyncScript(serverUrl) },
         )
     }
@@ -1507,18 +1511,13 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     private fun applyIdeThemeSync(enabled: Boolean) {
         val serverUrl = serverManager.getServerUrl() ?: return
         if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)) return
-        ideThemeSyncFeature.scheduled = false
+        matchMediaPatchFeature.scheduled = false
         if (!enabled) {
-            beginPageLoad(browser.cefBrowser.url)
-            ensureCefBrowser()
-            loadAfterDocumentStartScripts(serverUrl) {
-                browser.cefBrowser.reload()
-                armPageLoadWatchdog(serverUrl)
-            }
+            reloadForEarlyFeatureToggle(matchMediaPatchFeature)
             return
         }
         installDocumentStartScripts(serverUrl)
-        if (executeIdeThemeSyncScript(serverUrl)) ideThemeSyncFeature.scheduled = true
+        if (executeIdeThemeSyncScript(serverUrl)) matchMediaPatchFeature.scheduled = true
     }
 
     /** Code navigation piggybacks on file-link navigation, so a toggle here re-applies both. */
@@ -1618,8 +1617,10 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     }
 
     private fun executeIdeThemeSyncScript(serverUrl: String): Boolean {
-        val script = OpenCodeBrowserSnippets.buildIdeThemeSyncScript(
-            enabled = OpenCodeSettingsState.getInstance().syncThemeWithIde,
+        val settings = OpenCodeSettingsState.getInstance()
+        val script = OpenCodeBrowserSnippets.buildMatchMediaPatchScript(
+            compact = settings.forceCompactLayout,
+            theme = settings.syncThemeWithIde,
             dark = isIdeDarkTheme(),
         ) ?: return false
         browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
@@ -1632,7 +1633,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
 
     private fun applyCompactLayout() {
         // Toggling requires a page reload — early injection on next load start
-        reloadForEarlyFeatureToggle(compactLayoutFeature)
+        reloadForEarlyFeatureToggle(matchMediaPatchFeature)
     }
 
     private fun applyHideWebsiteButton() {

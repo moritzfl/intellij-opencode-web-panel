@@ -22,4 +22,12 @@ internal object OpenCodeStartupNavigation {
         restoreExistingSession: Boolean,
         openMostRecentOnStartup: Boolean,
     ): Boolean = !restoreExistingSession && openMostRecentOnStartup
+
+    fun shouldJvmNavigateToResolvedSession(
+        currentSessionId: String?,
+        targetSessionId: String?,
+    ): Boolean {
+        if (targetSessionId.isNullOrBlank()) return false
+        return currentSessionId.isNullOrBlank()
+    }
 }
