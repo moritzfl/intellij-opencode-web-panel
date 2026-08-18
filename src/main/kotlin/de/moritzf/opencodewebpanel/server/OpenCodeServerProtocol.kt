@@ -665,6 +665,25 @@ internal object OpenCodeServerProtocol {
         return matched
     }
 
+    /** Higher is better. Exact trailing-segment match outranks a filename-only hit. */
+    internal fun scoreFilePathSuffix(candidatePath: String, referencePath: String): Int {
+        val needle = referencePath.replace('\\', '/').trimStart('/')
+        val segments = needle.split('/').filter { it.isNotBlank() }
+        if (segments.isEmpty()) return 0
+        val path = candidatePath.replace('\\', '/')
+        if (path.endsWith("/$needle") || path.endsWith(needle)) return segments.size + 1
+        val parts = path.split('/').filter { it.isNotBlank() }
+        var matched = 0
+        var pathIndex = parts.lastIndex
+        var segmentIndex = segments.lastIndex
+        while (pathIndex >= 0 && segmentIndex >= 0 && parts[pathIndex] == segments[segmentIndex]) {
+            matched++
+            pathIndex--
+            segmentIndex--
+        }
+        return matched
+    }
+
     data class FileLinkTarget(val path: Path, val line: Int?, val column: Int?)
 
     data class OpenFileLinkPayload(val href: String, val basePath: String?)

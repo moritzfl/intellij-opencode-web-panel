@@ -60,9 +60,12 @@ internal class OpenCodeIdeNavigation(
     fun openCodeReferenceInIde(ref: String?) {
         val text = ref?.trim()?.ifBlank { null } ?: return
         val parsed = OpenCodeServerProtocol.parseCodeReference(text) ?: return
-        // Path resolve hits the filesystem; keep it off the browser JS-query callback thread.
+        val routeBasePath = OpenCodeServerProtocol.routeDirectoryFromUrl(browser.cefBrowser.url)
+        val bases = listOfNotNull(routeBasePath, projectDirectory()).distinct()
+        // Path resolve hits the filesystem and may best-guess an incomplete subpath; keep it
+        // off the browser JS-query callback thread.
         ApplicationManager.getApplication().executeOnPooledThread {
-            val directVirtualFile = resolveCodeReferencePath(parsed)
+            val directVirtualFile = resolveCodeReferencePath(parsed, bases)
             if (directVirtualFile != null) {
                 ApplicationManager.getApplication().invokeLater {
                     if (project.isDisposed) return@invokeLater
@@ -80,19 +83,21 @@ internal class OpenCodeIdeNavigation(
         }
     }
 
-    private fun resolveCodeReferencePath(parsed: OpenCodeServerProtocol.ParsedCodeReference): VirtualFile? {
-        if (!parsed.hasPath) return null
-        val projectBasePath = projectDirectory()?.takeIf { it.isNotBlank() }
-        val candidates = buildList {
-            runCatching { Path.of(parsed.path) }.getOrNull()?.let { path ->
-                if (path.isAbsolute) add(path)
-            }
-            if (projectBasePath != null) {
-                runCatching { Path.of(projectBasePath).resolve(parsed.path).normalize() }.getOrNull()?.let(::add)
-            }
+    private fun resolveCodeReferencePath(
+        parsed: OpenCodeServerProtocol.ParsedCodeReference,
+        bases: List<String>,
+    ): VirtualFile? {
+        if (parsed.qualifiedName != null) return null
+        if (!parsed.hasPath && parsed.extension == null) return null
+        if (bases.isEmpty()) {
+            val absolute = runCatching { Path.of(parsed.path) }.getOrNull()?.takeIf { it.isAbsolute } ?: return null
+            if (!Files.isRegularFile(absolute)) return null
+            return LocalFileSystem.getInstance().refreshAndFindFileByNioFile(absolute)
         }
-        val path = candidates.firstOrNull { Files.isRegularFile(it) } ?: return null
-        return LocalFileSystem.getInstance().refreshAndFindFileByNioFile(path)
+        val target = OpenCodeServerProtocol.resolveFileLinkWithBases(parsed.path, bases)
+            ?: OpenCodeServerProtocol.resolveFileLinkWithBases(parsed.path.replace('\\', '/'), bases)
+            ?: return null
+        return LocalFileSystem.getInstance().refreshAndFindFileByNioFile(target.path)
     }
 
     // Class references resolve through the filename index only (Foo -> Foo.kt/.java/...).
@@ -117,8 +122,12 @@ internal class OpenCodeIdeNavigation(
         } else {
             listOf(parsed.fileName)
         }
-        return fileNames.asSequence()
+        val matches = fileNames.asSequence()
             .flatMap { fileName -> FilenameIndex.getVirtualFilesByName(fileName, scope).asSequence() }
-            .firstOrNull()
+            .toList()
+        return matches.maxWithOrNull(
+            compareBy<VirtualFile> { OpenCodeServerProtocol.scoreFilePathSuffix(it.path, parsed.path) }
+                .thenByDescending { it.path.length },
+        )
     }
 }

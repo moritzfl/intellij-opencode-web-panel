@@ -16,6 +16,8 @@
   loaded page.
 - Stopping or restarting the server opens the same conversation again instead of
   injecting a most-recent-session navigation.
+- Inline code path references now use the same best-guess file resolution as
+  markdown file links.
 
 ## [1.10.4] - 2026-08-16
 

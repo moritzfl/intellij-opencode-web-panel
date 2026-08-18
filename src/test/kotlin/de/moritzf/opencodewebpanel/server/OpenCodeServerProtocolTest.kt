@@ -1960,6 +1960,15 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun scoreFilePathSuffixPrefersTheLongerTrailingMatch() {
+        assertTrue(
+            OpenCodeServerProtocol.scoreFilePathSuffix("/repo/packages/app/src/Main.kt", "src/Main.kt") >
+                OpenCodeServerProtocol.scoreFilePathSuffix("/repo/other/Main.kt", "src/Main.kt"),
+        )
+        assertEquals(0, OpenCodeServerProtocol.scoreFilePathSuffix("/repo/other/Util.kt", "src/Main.kt"))
+    }
+
+    @Test
     fun resolveFileLinkDoesNotGuessForMissingFiles() {
         val base = Files.createTempDirectory("opencode-guess-miss")
         Files.createDirectories(base.resolve("src"))
