@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [1.10.5] - 2026-08-18
+
 ### Fixed
 
 - After a fresh IDE start, sending a follow-up no longer fails with
@@ -565,7 +567,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.10.4...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.10.5...HEAD
+[1.10.5]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.10.4...1.10.5
 [1.10.4]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.10.3...1.10.4
 [1.10.3]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.10.2...1.10.3
 [1.10.2]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.10.1...1.10.2
