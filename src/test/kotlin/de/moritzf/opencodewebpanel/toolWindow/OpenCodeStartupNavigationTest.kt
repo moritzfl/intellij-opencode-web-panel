@@ -27,4 +27,12 @@ class OpenCodeStartupNavigationTest {
         assertFalse(OpenCodeStartupNavigation.shouldKeepNavigateIntent(false, "ses_abc", true))
         assertFalse(OpenCodeStartupNavigation.shouldKeepNavigateIntent(false, null, true))
     }
+
+    @Test
+    fun skipMostRecentLookupWhenRestoringAnExistingSession() {
+        assertFalse(OpenCodeStartupNavigation.shouldLookupMostRecentSession(true, true))
+        assertFalse(OpenCodeStartupNavigation.shouldLookupMostRecentSession(true, false))
+        assertTrue(OpenCodeStartupNavigation.shouldLookupMostRecentSession(false, true))
+        assertFalse(OpenCodeStartupNavigation.shouldLookupMostRecentSession(false, false))
+    }
 }

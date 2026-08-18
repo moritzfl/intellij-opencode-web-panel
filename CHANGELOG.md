@@ -14,6 +14,8 @@
 - The “Opening the OpenCode page…” strip no longer flashes again after the page is
   already visible, and a server restart no longer leaves it stuck on top of a
   loaded page.
+- Stopping or restarting the server opens the same conversation again instead of
+  injecting a most-recent-session navigation.
 
 ## [1.10.4] - 2026-08-16
 

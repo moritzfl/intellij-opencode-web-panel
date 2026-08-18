@@ -193,6 +193,8 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
      * re-seed project state and never yank the user back to the startup conversation.
      */
     private var pendingOpenMostRecentConversation = false
+    private var restoreExistingOpenCodeSession = false
+    private var sessionIdToRestore: String? = null
     private val loadIntent = OpenCodeLoadIntent()
     private val documentStartInjector = OpenCodeDocumentStartInjector(browser)
     private var mostRecentSessionLookupInFlight = false
@@ -422,22 +424,15 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverManager.getServerUrl(), completedUrl)) return
             val completedRevision = mainDocumentLoadRevision
             ApplicationManager.getApplication().invokeLater {
-                if (isContentDisposed() || completedRevision != mainDocumentLoadRevision) return@invokeLater
+                if (isContentDisposed()) return@invokeLater
+                noteOpenCodePageVisible(completedUrl)
+                if (completedRevision != mainDocumentLoadRevision) return@invokeLater
                 val liveUrl = serverManager.getServerUrl() ?: return@invokeLater
                 if (!OpenCodeServerProtocol.isOpenCodeServerPage(liveUrl, completedUrl)) return@invokeLater
 
                 // JBCef's own focus forwarding is transition-based and can be dropped around
                 // loads (e.g. before native browser init); re-sync so the text caret is rendered.
                 browserFocusSync.reassertIfFocused()
-                mainDocumentLoadSucceeded = true
-                openCodePagePainted = true
-                pageLoadWatchdogGeneration++
-                pageLoadWatchdogAlarm.cancelAllRequests()
-                pageLoadRetryCount = 0
-                pageLoadInProgress = false
-                pageLoadStartedAtMillis = 0L
-                pageLoadTargetUrl = null
-                updateLifecycleIndicator()
 
                 // Restore the mirrored localStorage snapshot again on load end. The restore in
                 // onLoadStart can run before the new origin's V8 context is ready (e.g. when
@@ -538,6 +533,9 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                         systemNotifications.browserAddressChanged()
                         prepareDisplayedSessionLineage(url)
                         scheduleBrowserRepaintNudges()
+                        ApplicationManager.getApplication().invokeLater {
+                            if (!isContentDisposed()) noteOpenCodePageVisible(url)
+                        }
                         // CEF OSR can drop Chromium-level focus on SPA redirects/route changes
                         // (CEF #3870), which hides the text caret while typing still works.
                         browserFocusSync.reassertIfFocused()
@@ -986,7 +984,13 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         // Events that fired before this panel started caring never reached the tracker.
         agentStatusTracker.seed()
 
-        val openMostRecent = OpenCodeSettingsState.getInstance().openMostRecentConversationOnStartup
+        val restoreExisting = restoreExistingOpenCodeSession
+        restoreExistingOpenCodeSession = false
+        val restoredSessionId = sessionIdToRestore.takeIf { restoreExisting }
+        val openMostRecent = OpenCodeStartupNavigation.shouldLookupMostRecentSession(
+            restoreExisting,
+            OpenCodeSettingsState.getInstance().openMostRecentConversationOnStartup,
+        )
         val projectDirectory = openCodeProjectDirectory()?.takeIf { it.isNotBlank() }
         pendingOpenMostRecentConversation = openMostRecent
         // Paint immediately. Waiting for the session listing used to leave the panel blank for
@@ -1027,7 +1031,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                 }
             }
         }
-        loadProjectPageAt(serverUrl, sessionId = null)
+        loadProjectPageAt(serverUrl, sessionId = restoredSessionId)
     }
 
     private fun applyResolvedStartupSession() {
@@ -1119,6 +1123,21 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         cefBrowserCreated = true
     }
 
+    private fun noteOpenCodePageVisible(pageUrl: String?) {
+        val serverUrl = serverManager.getServerUrl()
+        if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, pageUrl)) return
+        if (openCodePagePainted && !pageLoadInProgress) return
+        openCodePagePainted = true
+        mainDocumentLoadSucceeded = true
+        pageLoadInProgress = false
+        pageLoadWatchdogGeneration++
+        pageLoadWatchdogAlarm.cancelAllRequests()
+        pageLoadRetryCount = 0
+        pageLoadStartedAtMillis = 0L
+        pageLoadTargetUrl = null
+        updateLifecycleIndicator()
+    }
+
     private fun beginPageLoad(targetUrl: String? = null, resetRetryBudget: Boolean = true) {
         mainDocumentLoadSucceeded = false
         pageLoadInProgress = true
@@ -1184,6 +1203,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         ) {
             return
         }
+        rememberOpenCodeSessionForRestore()
         loadedServerRootUrl = null
         cancelStartupNavigation()
         pendingBrowserLoadGeneration++
@@ -1197,6 +1217,11 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         if (shouldHideEmbeddedPage(state)) {
             showCenterCard(IDLE_CARD)
         }
+    }
+
+    private fun rememberOpenCodeSessionForRestore() {
+        sessionIdToRestore = OpenCodeServerProtocol.sessionIdFromUrl(browser.cefBrowser.url) ?: sessionIdToRestore
+        restoreExistingOpenCodeSession = true
     }
 
     private fun applyBrowserZoom(zoomPercent: Int = OpenCodeSettingsState.getInstance().uiZoomPercent) {
@@ -1507,6 +1532,8 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
 
     private fun applyOpenCodeProjectDirectoryChange() {
         preferredOpenCodeDirectory = null
+        restoreExistingOpenCodeSession = false
+        sessionIdToRestore = null
         cancelStartupNavigation()
         openProjectScriptScheduled = false
         openProjectSeedFeature.scheduled = false

@@ -17,4 +17,9 @@ internal object OpenCodeStartupNavigation {
         if (!sessionId.isNullOrBlank()) return true
         return lookupInFlight
     }
+
+    fun shouldLookupMostRecentSession(
+        restoreExistingSession: Boolean,
+        openMostRecentOnStartup: Boolean,
+    ): Boolean = !restoreExistingSession && openMostRecentOnStartup
 }
