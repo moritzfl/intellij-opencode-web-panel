@@ -12,7 +12,8 @@
 - Provider API calls from the embedded server can use the IDE HTTP Proxy (manual,
   auto-detect, or PAC), inherited environment variables, or no proxy (#11).
 - The “Opening the OpenCode page…” strip no longer flashes again after the page is
-  already visible.
+  already visible, and a server restart no longer leaves it stuck on top of a
+  loaded page.
 
 ## [1.10.4] - 2026-08-16
 

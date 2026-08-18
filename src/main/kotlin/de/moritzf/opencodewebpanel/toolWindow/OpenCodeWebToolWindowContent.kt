@@ -425,12 +425,6 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                 if (isContentDisposed() || completedRevision != mainDocumentLoadRevision) return@invokeLater
                 val liveUrl = serverManager.getServerUrl() ?: return@invokeLater
                 if (!OpenCodeServerProtocol.isOpenCodeServerPage(liveUrl, completedUrl)) return@invokeLater
-                val targetUrl = pageLoadTargetUrl
-                if (pageLoadInProgress && targetUrl != null &&
-                    !OpenCodeServerProtocol.isOpenCodeRouteAlreadyOpen(liveUrl, completedUrl, targetUrl)
-                ) {
-                    return@invokeLater
-                }
 
                 // JBCef's own focus forwarding is transition-based and can be dropped around
                 // loads (e.g. before native browser init); re-sync so the text caret is rendered.
