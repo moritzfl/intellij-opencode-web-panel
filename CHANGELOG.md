@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [1.10.6] - 2026-08-18
+
 ### Changed
 
 - First-open session restore now uses one JVM navigation instead of a page-script
@@ -575,7 +577,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.10.5...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.10.6...HEAD
+[1.10.6]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.10.5...1.10.6
 [1.10.5]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.10.4...1.10.5
 [1.10.4]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.10.3...1.10.4
 [1.10.3]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.10.2...1.10.3
