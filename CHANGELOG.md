@@ -9,6 +9,8 @@
 - After a fresh IDE start, sending a follow-up no longer fails with
   "Failed to send prompt / Unable to retrieve session" when the IDE project path and
   OpenCode's stored session directory differ (symlinks, `/var` vs `/private/var`).
+- Provider API calls from the embedded server can use the IDE HTTP Proxy (manual,
+  auto-detect, or PAC), inherited environment variables, or no proxy (#11).
 
 ## [1.10.4] - 2026-08-16
 

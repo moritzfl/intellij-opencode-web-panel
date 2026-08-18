@@ -103,6 +103,8 @@ Open <kbd>Settings/Preferences</kbd> > <kbd>Tools</kbd> > <kbd>OpenCode Web Pane
 - Choose whether the plugin should auto-detect `opencode` or use a custom executable path.
 - Let OpenCode select a port automatically, or set a fixed port.
 - Edit, generate, show, or copy the local server password stored in IntelliJ Password Safe.
+- Choose how the OpenCode server reaches the network: the IDE HTTP Proxy, environment
+  variables, or no proxy.
 - Restart the local OpenCode server.
 - View recent OpenCode server output in your system text viewer.
 
@@ -144,6 +146,17 @@ Project-specific settings are stored with the IDE project.
 - If it still fails, review the server output shown on the error view.
 - With a fixed port, the error view detects port conflicts and offers **Use Automatic Port**.
 - Verify the configured OpenCode project directory exists.
+
+**Provider API calls fail behind a proxy**
+
+- Open <kbd>Settings</kbd> > <kbd>Tools</kbd> > <kbd>OpenCode Web Panel</kbd> and set **HTTP Proxy**.
+- **Use IDE HTTP Proxy** forwards the IDE proxy
+  (<kbd>Settings</kbd> > <kbd>Appearance & Behavior</kbd> > <kbd>System Settings</kbd> > <kbd>HTTP Proxy</kbd>),
+  including auto-detect and PAC. PAC is resolved for a generic HTTPS target, because OpenCode
+  accepts only a single `HTTP_PROXY` value.
+- **Use environment variables** keeps `HTTP_PROXY` / `HTTPS_PROXY` from the environment the IDE was started with.
+- **No proxy** removes proxy variables from the OpenCode process.
+- Restart the OpenCode server after changing proxy settings.
 
 **The embedded UI behaves unexpectedly after an OpenCode update**
 

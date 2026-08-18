@@ -35,13 +35,14 @@ Project-specific guidance for future implementation work.
 
 - **Minimum supported OpenCode version: 1.18.0** (`OpenCodeServerProtocol.MINIMUM_SUPPORTED_OPENCODE_VERSION`). Below that, warn once; do not invent compatibility shims for pre-1.18 routes.
 - Launch: `opencode serve --hostname 127.0.0.1 --port <port> --print-logs`. Default host `127.0.0.1`; basic-auth username is always `opencode`.
+- Child `HTTP_PROXY`/`HTTPS_PROXY` follow the Server-tab **HTTP Proxy** setting (`OpenCodeProxyMode`): IDE proxy (manual, or auto-detect/PAC resolved via `JdkProxyProvider` for `https://example.com`), inherited env, or stripped. Destination-specific PAC rules cannot be expressed as one env var. Loopback is always added to `NO_PROXY` when a proxy is set.
 - Port: default mode `Auto select` (`--port 0`); fixed mode sanitizes to `1..65535`, default fixed port `4096`.
 - When settings that affect the process change, stop the server and let the next tool-window load restart it.
 - Compact layout: OpenCode switches compact(mobile)/wide(desktop) on a `(min-width: 768px)` `matchMedia` query. To force compact, patch `window.matchMedia` for that query and `(max-width: 767px)` **before** the SPA bundle loads (`onLoadStart`) so `createMediaQuery` initializes with compact matches and never subscribes to real resize events. No CSS class overrides — layout is query-driven only. `forceCompactLayout` defaults **on**, so the panel normally renders the mobile layout (classic `session-review-*`/`data-file` review panel); the redesigned v2 review panel (`session-review-v2-*`) appears only with it off (desktop).
 
 ## Settings UI
 
-- Path `Settings > Tools > OpenCode Web Panel`; server group label `OpenCode Server`; order: binary, port, password.
+- Path `Settings > Tools > OpenCode Web Panel`; server group label `OpenCode Server`; order: binary, port, password, HTTP proxy.
 - Two pages sit under Tools: the application one (`OpenCode Web Panel`) and the project-scoped one (`OpenCode Web Panel (Project)`, just the project directory). The suffix keeps the tree from showing the same label twice; `plugin.xml`'s `displayName` supplies the label before the class loads, so it must match `PROJECT_SETTINGS_DISPLAY_NAME`.
 - The application page is a tabbed pane sized to the **selected** tab (`OpenCodeSettingsTabbedPane`) — `JTabbedPane` otherwise reports the tallest tab and gives a short tab the long tab's scrollbar.
 - Binary: `Auto detect` or `OpenCode path` (with a `Detect` action that fills an editable path).
