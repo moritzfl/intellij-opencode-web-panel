@@ -67,6 +67,18 @@ class OpenCodeSettingsStateTest {
     }
 
     @Test
+    fun proxyModeUsesIdeByDefault() {
+        assertEquals(OpenCodeProxyMode.IDE, OpenCodeSettingsState().proxyModeValue())
+    }
+
+    @Test
+    fun unknownProxyModeFallsBackToIde() {
+        val settings = OpenCodeSettingsState().apply { proxyMode = "legacy-value" }
+
+        assertEquals(OpenCodeProxyMode.IDE, settings.proxyModeValue())
+    }
+
+    @Test
     fun unknownBinaryModeFallsBackToAuto() {
         val settings = OpenCodeSettingsState().apply {
             binaryMode = "legacy-value"

@@ -18,6 +18,7 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
     var fixedPort: Int = DEFAULT_FIXED_PORT
     var binaryMode: String = OpenCodeBinaryMode.AUTO.name
     var binaryPath: String = ""
+    var proxyMode: String = OpenCodeProxyMode.IDE.name
     var openMostRecentConversationOnStartup: Boolean = true
     var uiZoomPercent: Int = DEFAULT_UI_ZOOM_PERCENT
     var openFileLinksInIde: Boolean = true
@@ -46,6 +47,7 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
         fixedPort = sanitizePort(state.fixedPort)
         binaryMode = OpenCodeBinaryMode.fromStorageValue(state.binaryMode).name
         binaryPath = state.binaryPath.trim()
+        proxyMode = OpenCodeProxyMode.fromStorageValue(state.proxyMode).name
         openMostRecentConversationOnStartup = state.openMostRecentConversationOnStartup
         uiZoomPercent = sanitizeUiZoomPercent(state.uiZoomPercent)
         openFileLinksInIde = state.openFileLinksInIde
@@ -71,6 +73,8 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
     fun portModeValue(): OpenCodePortMode = OpenCodePortMode.fromStorageValue(portMode)
 
     fun binaryModeValue(): OpenCodeBinaryMode = OpenCodeBinaryMode.fromStorageValue(binaryMode)
+
+    fun proxyModeValue(): OpenCodeProxyMode = OpenCodeProxyMode.fromStorageValue(proxyMode)
 
     fun portArgument(): String {
         return when (portModeValue()) {
@@ -139,6 +143,19 @@ enum class OpenCodePortMode {
     companion object {
         fun fromStorageValue(value: String?): OpenCodePortMode {
             return entries.firstOrNull { it.name == value } ?: AUTO
+        }
+    }
+}
+
+enum class OpenCodeProxyMode {
+    IDE,
+    ENVIRONMENT,
+    NONE,
+    ;
+
+    companion object {
+        fun fromStorageValue(value: String?): OpenCodeProxyMode {
+            return entries.firstOrNull { it.name == value } ?: IDE
         }
     }
 }

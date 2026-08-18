@@ -76,6 +76,40 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun createProcessBuilderForwardsIdeHttpProxy() {
+        val processBuilder = OpenCodeServerProtocol.createProcessBuilder(
+            projectBasePath = null,
+            password = "secret-password",
+            path = "test-path",
+            httpProxy = IdeHttpProxy(
+                protocol = IdeHttpProxy.Protocol.HTTP,
+                host = "127.0.0.1",
+                port = 7897,
+                username = "admin",
+                password = "secret",
+            ),
+        )
+
+        assertEquals("http://admin:secret@127.0.0.1:7897", processBuilder.environment()["HTTP_PROXY"])
+        assertEquals("http://admin:secret@127.0.0.1:7897", processBuilder.environment()["HTTPS_PROXY"])
+        assertTrue(processBuilder.environment()["NO_PROXY"].orEmpty().contains("127.0.0.1"))
+    }
+
+    @Test
+    fun createProcessBuilderCanStripInheritedProxy() {
+        val processBuilder = OpenCodeServerProtocol.createProcessBuilder(
+            projectBasePath = null,
+            password = "secret-password",
+            path = "test-path",
+            httpProxy = IdeHttpProxy(IdeHttpProxy.Protocol.HTTP, "127.0.0.1", 7897),
+            stripInheritedProxy = true,
+        )
+
+        assertNull(processBuilder.environment()["HTTP_PROXY"])
+        assertNull(processBuilder.environment()["HTTPS_PROXY"])
+    }
+
+    @Test
     fun createProcessBuilderUsesDetectedExecutablePathForLaunch() {
         val projectDirectory = Files.createTempDirectory("opencode-project")
         val executableDirectory = Files.createTempDirectory("opencode-bin")

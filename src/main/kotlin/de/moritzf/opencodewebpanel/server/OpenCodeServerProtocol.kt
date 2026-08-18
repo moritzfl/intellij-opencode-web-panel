@@ -752,6 +752,8 @@ internal object OpenCodeServerProtocol {
         executable: String = DEFAULT_EXECUTABLE,
         path: String = resolvePath(),
         command: List<String> = buildOpenCodeCommand(port, resolveExecutableForLaunch(executable, path)),
+        httpProxy: IdeHttpProxy? = null,
+        stripInheritedProxy: Boolean = false,
     ): ProcessBuilder {
         val processBuilder = ProcessBuilder()
             .command(command)
@@ -763,6 +765,11 @@ internal object OpenCodeServerProtocol {
 
         processBuilder.environment()["PATH"] = path
         processBuilder.environment()["OPENCODE_SERVER_PASSWORD"] = password
+        if (stripInheritedProxy) {
+            OpenCodeProcessProxyEnvironment.strip(processBuilder.environment())
+        } else {
+            OpenCodeProcessProxyEnvironment.apply(processBuilder.environment(), httpProxy)
+        }
         return processBuilder
     }
 

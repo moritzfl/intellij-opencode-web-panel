@@ -70,6 +70,9 @@ class OpenCodeSettingsConfigurable : Configurable {
         toolTipText = "Auto-detect opencode and fill the path"
         accessibleContext.accessibleName = "Detect OpenCode path"
     }
+    private val ideProxyRadioButton = JBRadioButton("Use IDE HTTP Proxy")
+    private val environmentProxyRadioButton = JBRadioButton("Use environment variables")
+    private val noProxyRadioButton = JBRadioButton("No proxy")
     private val restartServerButton = JButton("Restart Server", AllIcons.Actions.Restart).apply {
         toolTipText = "Stop and restart the local OpenCode server"
         accessibleContext.accessibleName = "Restart OpenCode server"
@@ -193,6 +196,20 @@ class OpenCodeSettingsConfigurable : Configurable {
                 }
                 row {
                     cell(hintLabel)
+                }
+            }
+            buttonsGroup("HTTP Proxy:") {
+                row {
+                    cell(ideProxyRadioButton)
+                        .comment("Forward the IDE HTTP or SOCKS proxy, including auto-detect and PAC. PAC is resolved for a generic HTTPS target.")
+                }
+                row {
+                    cell(environmentProxyRadioButton)
+                        .comment("Use HTTP_PROXY and HTTPS_PROXY from the environment the IDE was started with.")
+                }
+                row {
+                    cell(noProxyRadioButton)
+                        .comment("Do not send OpenCode provider traffic through a proxy.")
                 }
             }
             group("Server Lifecycle") {
@@ -323,10 +340,11 @@ class OpenCodeSettingsConfigurable : Configurable {
         val fixedPortModified = fixedPortOrDefault() != OpenCodeSettingsState.sanitizePort(settings.fixedPort)
         val binaryModeModified = selectedBinaryMode() != settings.binaryModeValue()
         val binaryPathModified = binaryPath() != settings.binaryPath.trim()
+        val proxyModified = isProxySettingModified(settings)
         val checkBoxSettingsModified = checkBoxSettingBindings.any { it.checkBox.isSelected != it.read(settings) }
         val uiZoomModified = uiZoomPercent() != OpenCodeSettingsState.sanitizeUiZoomPercent(settings.uiZoomPercent)
         return passwordModified || portModeModified || fixedPortModified || binaryModeModified || binaryPathModified ||
-            checkBoxSettingsModified || uiZoomModified
+            proxyModified || checkBoxSettingsModified || uiZoomModified
     }
 
     override fun apply() {
@@ -338,6 +356,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         val oldFixedPort = OpenCodeSettingsState.sanitizePort(settings.fixedPort)
         val oldBinaryMode = settings.binaryModeValue()
         val oldBinaryPath = settings.binaryPath.trim()
+        val oldProxyMode = settings.proxyModeValue()
         val oldUiZoomPercent = OpenCodeSettingsState.sanitizeUiZoomPercent(settings.uiZoomPercent)
         val oldSystemNotificationsEnabled = settings.enableSystemNotifications
         val pendingBroadcasts = checkBoxSettingBindings.mapNotNull { binding ->
@@ -363,6 +382,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         settings.fixedPort = nextFixedPort
         settings.binaryMode = nextBinaryMode.name
         settings.binaryPath = nextBinaryPath
+        settings.proxyMode = selectedProxyMode().name
         checkBoxSettingBindings.forEach { it.write(settings, it.checkBox.isSelected) }
         settings.uiZoomPercent = nextUiZoomPercent
         fixedPortField.text = nextFixedPort.toString()
@@ -374,7 +394,8 @@ class OpenCodeSettingsConfigurable : Configurable {
         updateUiDependencyControls()
 
         if (oldPassword != nextPassword || oldPortMode != nextPortMode || oldFixedPort != nextFixedPort ||
-            oldBinaryMode != nextBinaryMode || oldBinaryPath != nextBinaryPath
+            oldBinaryMode != nextBinaryMode || oldBinaryPath != nextBinaryPath ||
+            oldProxyMode != settings.proxyModeValue()
         ) {
             SharedOpenCodeServerManager.getInstance().stopServer()
             // Restart open panels right away; a stopped server would otherwise stay stopped until a
@@ -412,6 +433,11 @@ class OpenCodeSettingsConfigurable : Configurable {
         }
         fixedPortField.text = OpenCodeSettingsState.sanitizePort(settings.fixedPort).toString()
         binaryPathField.text = settings.binaryPath.trim()
+        when (settings.proxyModeValue()) {
+            OpenCodeProxyMode.IDE -> ideProxyRadioButton.isSelected = true
+            OpenCodeProxyMode.ENVIRONMENT -> environmentProxyRadioButton.isSelected = true
+            OpenCodeProxyMode.NONE -> noProxyRadioButton.isSelected = true
+        }
         checkBoxSettingBindings.forEach { it.checkBox.isSelected = it.read(settings) }
         uiZoomSpinner.value = OpenCodeSettingsState.sanitizeUiZoomPercent(settings.uiZoomPercent)
         loadPasswordField()
@@ -469,6 +495,11 @@ class OpenCodeSettingsConfigurable : Configurable {
         ButtonGroup().apply {
             add(autoBinaryRadioButton)
             add(customBinaryRadioButton)
+        }
+        ButtonGroup().apply {
+            add(ideProxyRadioButton)
+            add(environmentProxyRadioButton)
+            add(noProxyRadioButton)
         }
         autoPortRadioButton.addItemListener { updatePortControls() }
         fixedPortRadioButton.addItemListener { updatePortControls() }
@@ -534,6 +565,18 @@ class OpenCodeSettingsConfigurable : Configurable {
     }
 
     private fun binaryPath(): String = binaryPathField.text.trim()
+
+    private fun selectedProxyMode(): OpenCodeProxyMode {
+        return when {
+            environmentProxyRadioButton.isSelected -> OpenCodeProxyMode.ENVIRONMENT
+            noProxyRadioButton.isSelected -> OpenCodeProxyMode.NONE
+            else -> OpenCodeProxyMode.IDE
+        }
+    }
+
+    private fun isProxySettingModified(settings: OpenCodeSettingsState): Boolean {
+        return selectedProxyMode() != settings.proxyModeValue()
+    }
 
     private fun uiZoomPercent(): Int {
         return OpenCodeSettingsState.sanitizeUiZoomPercent((uiZoomSpinner.value as? Number)?.toInt() ?: OpenCodeSettingsState.DEFAULT_UI_ZOOM_PERCENT)

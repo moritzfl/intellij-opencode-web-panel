@@ -8,6 +8,7 @@ import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.progress.Task.Backgroundable
 import com.intellij.openapi.project.Project
 import de.moritzf.opencodewebpanel.settings.OpenCodePasswordStore
+import de.moritzf.opencodewebpanel.settings.OpenCodeProxyMode
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
 import org.jetbrains.annotations.TestOnly
 import java.io.BufferedReader
@@ -602,7 +603,14 @@ class SharedOpenCodeServerManager : Disposable {
             val settings = OpenCodeSettingsState.getInstance()
             val port = settings.portArgument()
             val executable = settings.executablePath()
-            val processBuilder = OpenCodeServerProtocol.createProcessBuilder(projectBasePath, password, port, executable)
+            val processBuilder = OpenCodeServerProtocol.createProcessBuilder(
+                projectBasePath,
+                password,
+                port,
+                executable,
+                httpProxy = OpenCodeProcessProxyEnvironment.resolveFromSettings(settings),
+                stripInheritedProxy = settings.proxyModeValue() == OpenCodeProxyMode.NONE,
+            )
             serverLogBuffer.startNewFile()
             process = processBuilder.start()
 
