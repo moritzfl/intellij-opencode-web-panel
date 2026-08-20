@@ -299,12 +299,8 @@ internal object OpenCodeServerProtocol {
 
     fun parseCodeReference(ref: String): ParsedCodeReference? {
         val text = ref.trim().ifBlank { return null }
-        val lineMatch = Regex("^(.+):(\\d+)$").find(text)
-        val (pathPart, line) = if (lineMatch != null) {
-            lineMatch.groupValues[1] to (lineMatch.groupValues[2].toIntOrNull()?.minus(1))
-        } else {
-            text to null
-        }
+        val (pathPart, line, column) = splitPathAndLocation(text)
+        if (pathPart.isBlank()) return null
         val hasPath = pathPart.contains('/') || pathPart.contains('\\')
         val qualifiedName = if (!hasPath && Regex("^(?:[a-zA-Z_][a-zA-Z0-9_]*\\.)+[A-Z][a-zA-Z0-9_]*$").matches(pathPart)) {
             pathPart
@@ -321,6 +317,7 @@ internal object OpenCodeServerProtocol {
             fileName = fileName,
             extension = extension,
             line = line,
+            column = column,
             hasPath = hasPath,
         )
     }
@@ -331,8 +328,23 @@ internal object OpenCodeServerProtocol {
         val fileName: String,
         val extension: String?,
         val line: Int?,
+        val column: Int? = null,
         val hasPath: Boolean,
     )
+
+    /**
+     * Among [candidatePaths], keep a unique hit for [referencePath]. One path always wins;
+     * several win only when a single candidate has a strictly better trailing-segment score.
+     */
+    internal fun pickDistinctPath(candidatePaths: List<String>, referencePath: String): String? {
+        val unique = candidatePaths.distinct()
+        if (unique.isEmpty()) return null
+        if (unique.size == 1) return unique[0]
+        val ranked = unique.map { it to scoreFilePathSuffix(it, referencePath) }
+        val best = ranked.maxOf { it.second }
+        if (best <= 0) return null
+        return ranked.filter { it.second == best }.singleOrNull()?.first
+    }
 
     data class SystemNotificationPayload(
         val id: String,
@@ -470,7 +482,7 @@ internal object OpenCodeServerProtocol {
             .trimEnd('/', '\\')
             .substringAfterLast('/')
             .substringAfterLast('\\')
-            .replace(Regex(":\\d+(?::\\d+)?$"), "")
+            .replace(CODE_REF_LOCATOR, "")
         return Regex("\\.[A-Za-z0-9]{1,8}$").containsMatchIn(last)
     }
 
@@ -569,13 +581,36 @@ internal object OpenCodeServerProtocol {
             ?.minus(1)
     }
 
+    /**
+     * Trailing location on a path or code ref. Start line/column are 0-based. Anchored at the
+     * end so `C:\proj\Foo.java:L10` keeps the drive letter.
+     *
+     * `path:line` / `path:line:column` / `path:Lline[-Lend]` / `path#Lline[-Lend]` /
+     * `path(line)` / `path(line,column)`.
+     */
+    private val CODE_REF_LOCATOR = Regex(
+        """(?::(\d+):(\d+)|:L?(\d+)-L?(\d+)|:L?(\d+)|#L?(\d+)(?:-L?\d+)?|\((\d+)\s*,\s*(\d+)\)|\((\d+)\))$""",
+        RegexOption.IGNORE_CASE,
+    )
+
+    internal fun splitPathAndLocation(text: String): Triple<String, Int?, Int?> {
+        val match = CODE_REF_LOCATOR.find(text) ?: return Triple(text, null, null)
+        val path = text.substring(0, match.range.first)
+        if (path.isBlank()) return Triple(text, null, null)
+        val groups = match.groupValues
+        val line = listOf(groups[1], groups[3], groups[5], groups[6], groups[7], groups[9])
+            .firstNotNullOfOrNull { it.takeIf(String::isNotBlank)?.toIntOrNull() }
+            ?.minus(1)
+        val column = listOf(groups[2], groups[8])
+            .firstNotNullOfOrNull { it.takeIf(String::isNotBlank)?.toIntOrNull() }
+            ?.minus(1)
+        return Triple(path, line, column)
+    }
+
     private fun parseTrailingLineColumn(path: String): Triple<String, Int?, Int?>? {
-        val match = Regex("^(.+?):(\\d+)(?::(\\d+))?$").find(path) ?: return null
-        return Triple(
-            match.groupValues[1],
-            match.groupValues[2].toIntOrNull()?.minus(1),
-            match.groupValues.getOrNull(3)?.toIntOrNull()?.minus(1),
-        )
+        val split = splitPathAndLocation(path)
+        if (split.first == path) return null
+        return split
     }
 
     /**

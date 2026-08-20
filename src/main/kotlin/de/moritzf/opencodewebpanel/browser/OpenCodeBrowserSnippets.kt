@@ -649,8 +649,10 @@ internal object OpenCodeBrowserSnippets {
             (() => {
               if (window.__opencodeIntellijCodeNavInstalled) return;
               window.__opencodeIntellijCodeNavInstalled = true;
-              const hasExtension = /\.[a-zA-Z][a-zA-Z0-9]{0,8}(?::\d+)?${'$'}/;
-              const hasPathSeparator = /[\\/]/;
+              const hasExtension = /\.[a-zA-Z][a-zA-Z0-9]{0,8}(?::L?\d+(?:-L?\d+)?|:\d+:\d+|#L?\d+(?:-L?\d+)?|\(\d+(?:\s*,\s*\d+)?\))?${'$'}/i;
+              const hasPathLocator = /[\\/].*(?::L?\d+(?:-L?\d+)?|:\d+:\d+|#L?\d+(?:-L?\d+)?|\(\d+(?:\s*,\s*\d+)?\))${'$'}/i;
+              const fileLoc = /(?:[A-Za-z]:)?(?:[^\s<>"'`]+[\/\\])*[^\s\/\\]+\.[A-Za-z][A-Za-z0-9]{0,8}(?::L?\d+(?:-L?\d+)?|:\d+:\d+|#L?\d+(?:-L?\d+)?|\(\d+(?:\s*,\s*\d+)?\))/i;
+              const isUrl = /^[a-z][a-z0-9+.-]*:\/\//i;
               const isPascalCase = /^[A-Z][a-zA-Z0-9_]*${'$'}/;
               const isQualifiedClass = /^(?:[a-zA-Z_][a-zA-Z0-9_]*\.)+[A-Z][a-zA-Z0-9_]*${'$'}/;
               const isSnakeCase = /^[a-z][a-z0-9]*_[a-z0-9_]+${'$'}/;
@@ -658,8 +660,9 @@ internal object OpenCodeBrowserSnippets {
                 const t = text.trim();
                 if (t.length < 2 || t.length > 512) return false;
                 if (t.includes(' ') || t.includes('\n')) return false;
+                if (isUrl.test(t)) return false;
                 if (hasExtension.test(t)) return true;
-                if (hasPathSeparator.test(t) && /:\d+${'$'}/.test(t)) return true;
+                if (hasPathLocator.test(t)) return true;
                 if (isPascalCase.test(t)) return true;
                 if (isQualifiedClass.test(t)) return true;
                 if (isSnakeCase.test(t)) return true;
@@ -677,15 +680,35 @@ internal object OpenCodeBrowserSnippets {
                 if (!parent) return text;
                 const path = parent.getAttribute('data-path') || parent.getAttribute('data-file');
                 if (path) return path;
-                const lineMatch = text.match(/:(\d+)${'$'}/);
-                if (lineMatch) return text;
                 return text;
+              };
+              const fileLocAtEvent = (event) => {
+                const selection = window.getSelection && window.getSelection();
+                if (selection && !selection.isCollapsed) return '';
+                const caret = document.caretRangeFromPoint
+                  ? document.caretRangeFromPoint(event.clientX, event.clientY)
+                  : null;
+                const node = caret && caret.startContainer;
+                if (!node || node.nodeType !== Node.TEXT_NODE) return '';
+                const parent = node.parentElement;
+                if (!parent || parent.closest('pre, a, code, [contenteditable="true"]')) return '';
+                if (!parent.closest('[data-component="markdown"]')) return '';
+                const text = node.textContent || '';
+                const offset = Math.min(caret.startOffset, text.length);
+                const isBreak = (ch) => /[\s<>"'`]/.test(ch);
+                let start = offset;
+                let end = offset;
+                while (start > 0 && !isBreak(text[start - 1])) start -= 1;
+                while (end < text.length && !isBreak(text[end])) end += 1;
+                const token = text.slice(start, end);
+                if (isUrl.test(token)) return '';
+                const match = token.match(fileLoc);
+                return match ? match[0] : '';
               };
               document.addEventListener('click', (event) => {
                 if (event.defaultPrevented) return;
                 const code = event.target && event.target.closest ? event.target.closest('code') : null;
-                if (!code) return;
-                const ref = extractRef(code);
+                const ref = (code && extractRef(code)) || fileLocAtEvent(event);
                 if (!ref) return;
                 event.preventDefault();
                 event.stopImmediatePropagation();

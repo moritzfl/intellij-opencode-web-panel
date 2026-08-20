@@ -1383,7 +1383,9 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("document.addEventListener('mouseover'"))
         assertTrue(script.contains("document.addEventListener('mouseout'"))
         assertTrue(script.contains("hasExtension"))
-        assertTrue(script.contains("hasPathSeparator"))
+        assertTrue(script.contains("hasPathLocator"))
+        assertTrue(script.contains("fileLocAtEvent"))
+        assertTrue(script.contains("isUrl"))
         assertTrue(script.contains("isQualifiedClass"))
         assertTrue(script.contains("isPascalCase"))
         assertTrue(script.contains("if (event.defaultPrevented) return"))
@@ -1647,6 +1649,66 @@ class OpenCodeServerProtocolTest {
         assertEquals("kt", ref.extension)
         assertEquals(41, ref.line)
         assertTrue(ref.hasPath)
+    }
+
+    @Test
+    fun parseCodeReferenceUnderstandsCommonLocators() {
+        fun loc(text: String) = OpenCodeServerProtocol.parseCodeReference(text)!!
+
+        val colon = loc("src/main.ts:42")
+        assertEquals("src/main.ts", colon.path)
+        assertEquals(41, colon.line)
+        assertNull(colon.column)
+
+        val colonCol = loc("src/main.ts:42:13")
+        assertEquals("src/main.ts", colonCol.path)
+        assertEquals(41, colonCol.line)
+        assertEquals(12, colonCol.column)
+
+        val github = loc("src/main.ts#L42")
+        assertEquals("src/main.ts", github.path)
+        assertEquals(41, github.line)
+
+        val githubRange = loc("src/main.ts#L42-L57")
+        assertEquals("src/main.ts", githubRange.path)
+        assertEquals(41, githubRange.line)
+
+        val lRange = loc("Foo.java:L123-1234")
+        assertEquals("Foo.java", lRange.path)
+        assertEquals("java", lRange.extension)
+        assertEquals(122, lRange.line)
+
+        val vs = loc("src/main.ts(42)")
+        assertEquals("src/main.ts", vs.path)
+        assertEquals(41, vs.line)
+        assertNull(vs.column)
+
+        val msvc = loc("src/main.ts(42,13)")
+        assertEquals("src/main.ts", msvc.path)
+        assertEquals(41, msvc.line)
+        assertEquals(12, msvc.column)
+
+        val windows = loc("""C:\proj\Foo.java:L10""")
+        assertEquals("""C:\proj\Foo.java""", windows.path)
+        assertEquals(9, windows.line)
+    }
+
+    @Test
+    fun pickDistinctPathRequiresAUniqueWinner() {
+        assertEquals("/a/src/Main.kt", OpenCodeServerProtocol.pickDistinctPath(listOf("/a/src/Main.kt"), "Main.kt"))
+        assertNull(
+            OpenCodeServerProtocol.pickDistinctPath(
+                listOf("/a/src/Main.kt", "/b/src/Main.kt"),
+                "Main.kt",
+            ),
+        )
+        assertEquals(
+            "/repo/packages/app/src/Main.kt",
+            OpenCodeServerProtocol.pickDistinctPath(
+                listOf("/repo/packages/app/src/Main.kt", "/repo/other/Main.kt"),
+                "src/Main.kt",
+            ),
+        )
     }
 
     @Test

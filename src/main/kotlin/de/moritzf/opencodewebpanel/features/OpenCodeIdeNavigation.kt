@@ -69,7 +69,7 @@ internal class OpenCodeIdeNavigation(
             if (directVirtualFile != null) {
                 ApplicationManager.getApplication().invokeLater {
                     if (project.isDisposed) return@invokeLater
-                    OpenFileDescriptor(project, directVirtualFile, parsed.line ?: -1, -1).navigate(true)
+                    OpenFileDescriptor(project, directVirtualFile, parsed.line ?: -1, parsed.column ?: -1).navigate(true)
                 }
                 return@executeOnPooledThread
             }
@@ -77,7 +77,7 @@ internal class OpenCodeIdeNavigation(
                 resolveCodeReferenceFileName(parsed, GlobalSearchScope.projectScope(project))
             }.finishOnUiThread(ModalityState.defaultModalityState()) { virtualFile ->
                 if (project.isDisposed || virtualFile == null) return@finishOnUiThread
-                OpenFileDescriptor(project, virtualFile, parsed.line ?: -1, -1).navigate(true)
+                OpenFileDescriptor(project, virtualFile, parsed.line ?: -1, parsed.column ?: -1).navigate(true)
             }.coalesceBy(coalesceKey)
                 .submit(AppExecutorUtil.getAppExecutorService())
         }
@@ -125,9 +125,8 @@ internal class OpenCodeIdeNavigation(
         val matches = fileNames.asSequence()
             .flatMap { fileName -> FilenameIndex.getVirtualFilesByName(fileName, scope).asSequence() }
             .toList()
-        return matches.maxWithOrNull(
-            compareBy<VirtualFile> { OpenCodeServerProtocol.scoreFilePathSuffix(it.path, parsed.path) }
-                .thenByDescending { it.path.length },
-        )
+        val picked = OpenCodeServerProtocol.pickDistinctPath(matches.map { it.path }, parsed.path)
+            ?: return null
+        return matches.firstOrNull { it.path == picked }
     }
 }
