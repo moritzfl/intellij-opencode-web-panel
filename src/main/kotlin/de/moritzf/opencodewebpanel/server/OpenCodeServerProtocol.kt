@@ -62,6 +62,8 @@ internal object OpenCodeServerProtocol {
     const val RECENT_SESSION_WINDOW_MILLIS = 5 * 60 * 1000L
     /** Cap REST response bodies so a large diff/list cannot exhaust heap. */
     const val MAX_HTTP_RESPONSE_CHARS = 8 * 1024 * 1024
+    private const val MESSAGE_PAGE_LIMIT = 50
+    private const val MESSAGE_PAGE_MAX = 40
 
     private val secureRandom = SecureRandom()
     private val minimumSupportedOpenCodeVersion = requireNotNull(SemVer.parseFromText(MINIMUM_SUPPORTED_OPENCODE_VERSION))
@@ -406,6 +408,8 @@ internal object OpenCodeServerProtocol {
     fun isSessionId(value: String): Boolean = value.startsWith("ses_") && isOpenCodeRecordId(value)
 
     fun isMessageId(value: String): Boolean = value.startsWith("msg_") && isOpenCodeRecordId(value)
+
+    fun isPartId(value: String): Boolean = value.startsWith("prt_") && isOpenCodeRecordId(value)
 
     fun isPermissionId(value: String): Boolean = value.startsWith("per_") && isOpenCodeRecordId(value)
 
@@ -1262,6 +1266,151 @@ internal object OpenCodeServerProtocol {
     }
 
     /**
+     * Per-tool file changes from an edit/write/apply_patch part. [diffs] is the tool's own
+     * patch list (empty for write, which has no `filediff`/`files`). [fileHint] is the write
+     * tool's absolute path so callers can fall back to the turn snapshot.
+     */
+    data class ToolPartChange(
+        val diffs: List<SnapshotFileDiff>,
+        val fileHint: String? = null,
+    )
+
+    /**
+     * Loads the tool part [partID] (`prt_…`) from `GET /session/{sessionID}/message` and
+     * returns its file changes. There is no GET-by-part; pages of [MESSAGE_PAGE_LIMIT] are
+     * walked via `X-Next-Cursor` / `before`. Missing part → empty [ToolPartChange], not HTTP failure.
+     */
+    fun fetchToolPartChange(
+        serverUrl: String,
+        basicAuthHeader: String,
+        directory: String,
+        sessionID: String,
+        partID: String,
+        connectTimeoutMillis: Int = 5000,
+        readTimeoutMillis: Int = 5000,
+    ): OpenCodeProtocolResult<ToolPartChange> {
+        if (!isSessionId(sessionID) || !isPartId(partID) || directory.isBlank()) {
+            return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_IDENTIFIER)
+        }
+        val root = buildServerRootUrl(serverUrl)
+        val directoryParam = "directory=" + java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
+        var before: String? = null
+        repeat(MESSAGE_PAGE_MAX) {
+            val beforeParam = before
+                ?.let { "&before=" + java.net.URLEncoder.encode(it, StandardCharsets.UTF_8) }
+                .orEmpty()
+            val url = "$root/session/$sessionID/message?$directoryParam&limit=$MESSAGE_PAGE_LIMIT$beforeParam"
+            val page = httpGetResultAndHeader(
+                url,
+                basicAuthHeader,
+                connectTimeoutMillis,
+                readTimeoutMillis,
+                headerName = "X-Next-Cursor",
+            )
+            when (page) {
+                is OpenCodeProtocolResult.Failure -> return page
+                is OpenCodeProtocolResult.Success -> {
+                    val array = parseJsonArray(page.value.first)
+                        ?: return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_BODY)
+                    val part = toolPartFromMessages(array, partID)
+                    if (part != null) return OpenCodeProtocolResult.Success(parseToolPartChange(part))
+                    before = page.value.second?.takeIf { it.isNotBlank() }
+                    if (before == null) {
+                        return OpenCodeProtocolResult.Success(ToolPartChange(emptyList()))
+                    }
+                }
+            }
+        }
+        return OpenCodeProtocolResult.Success(ToolPartChange(emptyList()))
+    }
+
+    @TestOnly
+    fun parseToolPartChange(json: String): ToolPartChange {
+        val part = parseJsonObject(json) ?: return ToolPartChange(emptyList())
+        return parseToolPartChange(part)
+    }
+
+    @TestOnly
+    fun findToolPartInMessages(json: String, partID: String): String? {
+        val array = parseJsonArray(json) ?: return null
+        return toolPartFromMessages(array, partID)?.toString()
+    }
+
+    private fun parseToolPartChange(part: JsonObject): ToolPartChange {
+        if (part.stringMember("type") != "tool") return ToolPartChange(emptyList())
+        val state = part.objectMember("state")
+        val metadata = state?.objectMember("metadata")
+        val input = state?.objectMember("input")
+        val files = metadata?.get("files")?.takeIf { it.isJsonArray }?.asJsonArray
+        if (files != null && files.size() > 0) {
+            val diffs = files.mapNotNull { element ->
+                val file = element.takeIf { it.isJsonObject }?.asJsonObject ?: return@mapNotNull null
+                val filePath = file.stringMember("filePath")?.takeIf { it.isNotBlank() }
+                val relativePath = file.stringMember("relativePath")?.takeIf { it.isNotBlank() }
+                snapshotFileDiff(
+                    file = relativePath ?: filePath,
+                    patch = file.stringMember("patch") ?: file.stringMember("diff"),
+                    additions = file.longMember("additions") ?: 0L,
+                    deletions = file.longMember("deletions") ?: 0L,
+                    status = when (file.stringMember("type")) {
+                        "add" -> "added"
+                        "delete" -> "deleted"
+                        else -> "modified"
+                    },
+                )
+            }
+            if (diffs.isNotEmpty()) return ToolPartChange(diffs)
+        }
+        val filediff = metadata?.objectMember("filediff")
+        if (filediff != null) {
+            val path = filediff.stringMember("file")?.takeIf { it.isNotBlank() }
+                ?: input?.stringMember("filePath")?.takeIf { it.isNotBlank() }
+            return ToolPartChange(
+                listOf(
+                    snapshotFileDiff(
+                        file = path,
+                        patch = filediff.stringMember("patch"),
+                        additions = filediff.longMember("additions") ?: 0L,
+                        deletions = filediff.longMember("deletions") ?: 0L,
+                        status = filediff.stringMember("status") ?: "modified",
+                    ),
+                ),
+            )
+        }
+        val writePath = input?.stringMember("filePath")?.takeIf { it.isNotBlank() }
+            ?: metadata?.stringMember("filepath")?.takeIf { it.isNotBlank() }
+        return ToolPartChange(emptyList(), fileHint = writePath)
+    }
+
+    private fun snapshotFileDiff(
+        file: String?,
+        patch: String?,
+        additions: Long,
+        deletions: Long,
+        status: String?,
+    ): SnapshotFileDiff {
+        return SnapshotFileDiff(
+            file = file,
+            patch = patch,
+            additions = additions,
+            deletions = deletions,
+            status = status,
+        )
+    }
+
+    private fun toolPartFromMessages(array: JsonArray, partID: String): JsonObject? {
+        for (element in array) {
+            val message = element.takeIf { it.isJsonObject }?.asJsonObject ?: continue
+            val parts = message.get("parts")?.takeIf { it.isJsonArray }?.asJsonArray ?: continue
+            for (partElement in parts) {
+                val part = partElement.takeIf { it.isJsonObject }?.asJsonObject ?: continue
+                if (part.stringMember("id") == partID) return part
+            }
+        }
+        return null
+    }
+
+    /**
      * Path-only SPA route for opening a session from a notification.
      * Prefer the 1.18 `/server/<key>/session/<id>` form when [serverUrl] is known; fall back to the
      * legacy directory-encoded route only when the origin cannot be derived.
@@ -1791,6 +1940,28 @@ internal object OpenCodeServerProtocol {
         readTimeoutMillis: Int,
         maxResponseChars: Int = MAX_HTTP_RESPONSE_CHARS,
     ): OpenCodeProtocolResult<String> {
+        return when (
+            val result = httpGetResultAndHeader(
+                url,
+                basicAuthHeader,
+                connectTimeoutMillis,
+                readTimeoutMillis,
+                maxResponseChars,
+            )
+        ) {
+            is OpenCodeProtocolResult.Failure -> result
+            is OpenCodeProtocolResult.Success -> OpenCodeProtocolResult.Success(result.value.first)
+        }
+    }
+
+    private fun httpGetResultAndHeader(
+        url: String,
+        basicAuthHeader: String?,
+        connectTimeoutMillis: Int,
+        readTimeoutMillis: Int,
+        maxResponseChars: Int = MAX_HTTP_RESPONSE_CHARS,
+        headerName: String? = null,
+    ): OpenCodeProtocolResult<Pair<String, String?>> {
         return try {
             val connection = URI(url).toURL().openConnection() as HttpURLConnection
             try {
@@ -1806,7 +1977,7 @@ internal object OpenCodeServerProtocol {
                 }
                 val body = connection.inputStream.bufferedReader().use { reader -> readBounded(reader, maxResponseChars) }
                     ?: return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.TOO_LARGE)
-                OpenCodeProtocolResult.Success(body)
+                OpenCodeProtocolResult.Success(body to headerName?.let { connection.getHeaderField(it) })
             } finally {
                 connection.disconnect()
             }

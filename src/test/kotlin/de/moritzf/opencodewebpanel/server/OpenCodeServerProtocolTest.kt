@@ -3086,6 +3086,116 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun parseToolPartChangeReadsEditFilediff() {
+        val json = """
+            {"id":"prt_edit","type":"tool","tool":"edit","state":{"status":"completed",
+             "input":{"filePath":"/proj/src/A.kt"},
+             "metadata":{"filediff":{"file":"/proj/src/A.kt","patch":"@@ -1 +1 @@\n-a\n+b","additions":1,"deletions":1}}}}
+        """.trimIndent()
+        val change = OpenCodeServerProtocol.parseToolPartChange(json)
+        assertEquals(1, change.diffs.size)
+        assertEquals("/proj/src/A.kt", change.diffs[0].file)
+        assertEquals("@@ -1 +1 @@\n-a\n+b", change.diffs[0].patch)
+        assertNull(change.fileHint)
+    }
+
+    @Test
+    fun parseToolPartChangeReadsApplyPatchFiles() {
+        val json = """
+            {"id":"prt_patch","type":"tool","tool":"apply_patch","state":{"status":"completed","metadata":{"files":[
+              {"filePath":"/proj/src/A.kt","relativePath":"src/A.kt","type":"update","patch":"@@ -1 +1 @@\n-a\n+b","additions":1,"deletions":1},
+              {"filePath":"/proj/src/B.kt","relativePath":"src/B.kt","type":"add","patch":"@@ -0,0 +1 @@\n+n","additions":1,"deletions":0}
+            ]}}}
+        """.trimIndent()
+        val change = OpenCodeServerProtocol.parseToolPartChange(json)
+        assertEquals(listOf("src/A.kt", "src/B.kt"), change.diffs.map { it.file })
+        assertEquals("added", change.diffs[1].status)
+        assertNull(change.fileHint)
+    }
+
+    @Test
+    fun parseToolPartChangeWriteYieldsFileHint() {
+        val json = """
+            {"id":"prt_write","type":"tool","tool":"write","state":{"status":"completed",
+             "input":{"filePath":"/proj/src/New.kt","content":"hi"},
+             "metadata":{"filepath":"/proj/src/New.kt","exists":false}}}
+        """.trimIndent()
+        val change = OpenCodeServerProtocol.parseToolPartChange(json)
+        assertTrue(change.diffs.isEmpty())
+        assertEquals("/proj/src/New.kt", change.fileHint)
+    }
+
+    @Test
+    fun findToolPartInMessagesReturnsMatchingPart() {
+        val json = """
+            [{"info":{"id":"msg_user","role":"user"},"parts":[]},
+             {"info":{"id":"msg_asst","role":"assistant"},"parts":[
+               {"id":"prt_other","type":"text","text":"x"},
+               {"id":"prt_edit","type":"tool","tool":"edit","state":{"status":"completed","metadata":{"filediff":{"file":"A.kt","patch":"p","additions":1,"deletions":0}}}}
+             ]}]
+        """.trimIndent()
+        val found = OpenCodeServerProtocol.findToolPartInMessages(json, "prt_edit")
+        assertNotNull(found)
+        assertTrue(found!!.contains("\"id\":\"prt_edit\""))
+        assertNull(OpenCodeServerProtocol.findToolPartInMessages(json, "prt_missing"))
+    }
+
+    @Test
+    fun fetchToolPartChangePagesUntilPartIsFound() {
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        val seen = java.util.Collections.synchronizedList(mutableListOf<String>())
+        server.createContext("/session/ses_abc123/message") { exchange ->
+            val query = exchange.requestURI.rawQuery.orEmpty()
+            seen.add(query)
+            val (body, cursor) = if (!query.contains("before=")) {
+                """[{"info":{"id":"msg_1","role":"user"},"parts":[]}]""" to "cursor1"
+            } else {
+                """[{"info":{"id":"msg_2","role":"assistant"},"parts":[
+                  {"id":"prt_edit","type":"tool","tool":"edit","state":{"status":"completed",
+                   "metadata":{"filediff":{"file":"A.kt","patch":"@@ -1 +1 @@\n-a\n+b","additions":1,"deletions":1}}}}
+                ]}]""" to null
+            }
+            val bytes = body.toByteArray()
+            if (cursor != null) exchange.responseHeaders.add("X-Next-Cursor", cursor)
+            exchange.sendResponseHeaders(200, bytes.size.toLong())
+            exchange.responseBody.use { it.write(bytes) }
+        }
+        server.start()
+        try {
+            val result = OpenCodeServerProtocol.fetchToolPartChange(
+                "http://127.0.0.1:${server.address.port}",
+                OpenCodeServerProtocol.buildBasicAuthHeader("test"),
+                "/tmp/project",
+                "ses_abc123",
+                "prt_edit",
+            )
+            assertTrue(result is OpenCodeProtocolResult.Success)
+            val change = (result as OpenCodeProtocolResult.Success).value
+            assertEquals("A.kt", change.diffs.single().file)
+            assertTrue(seen[0].contains("limit=50"))
+            assertFalse(seen[0].contains("before="))
+            assertTrue(seen[1].contains("before=cursor1"))
+        } finally {
+            server.stop(0)
+        }
+    }
+
+    @Test
+    fun fetchToolPartChangeRejectsInvalidPartId() {
+        val result = OpenCodeServerProtocol.fetchToolPartChange(
+            "http://127.0.0.1:1",
+            OpenCodeServerProtocol.buildBasicAuthHeader("test"),
+            "/tmp",
+            "ses_abc123",
+            "msg_not_a_part",
+        )
+        assertEquals(
+            OpenCodeProtocolResult.Failure.Kind.INVALID_IDENTIFIER,
+            (result as OpenCodeProtocolResult.Failure).kind,
+        )
+    }
+
+    @Test
     fun fetchSessionDiffReturnsEmptyForInvalidSessionId() {
         val auth = OpenCodeServerProtocol.buildBasicAuthHeader("test")
         assertTrue(
@@ -3238,7 +3348,7 @@ class OpenCodeServerProtocolTest {
     fun buildDiffNavigationScriptInstallsAltClickHandlerForDiffTargets() {
         val script = OpenCodeBrowserSnippets.buildDiffNavigationScript(
             enabled = true,
-            openDiffCallback = "window.__openDiff(messageID, filePath)",
+            openDiffCallback = "window.__openDiff(messageID, filePath, partID)",
         )!!
         assertTrue(script.contains("event.altKey"))
         assertTrue(script.contains("addEventListener('click'"))
@@ -3252,11 +3362,11 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("session-turn-diff-trigger"))
         assertTrue(script.contains("session-turn-diff-filename"))
         assertTrue(script.contains("[data-message-id]"))
-        // The diff endpoint is keyed by the turn's user message id, so every target must resolve
-        // it from the nearest [data-message-id] ancestor (an empty id yields no diff).
+        assertTrue(script.contains("[data-timeline-part-id]"))
+        assertTrue(script.contains("partIdOf(patchRow)"))
+        assertTrue(script.contains("partIdOf(editBlock)"))
         assertTrue(script.contains("messageIdOf(turnRow)"))
-        assertTrue(script.contains("window.__openDiff(messageID, filePath)"))
-        // Capture phase so it pre-empts the SPA's own click handlers.
+        assertTrue(script.contains("window.__openDiff(messageID, filePath, partID)"))
         assertTrue(script.contains("}, true)"))
     }
 

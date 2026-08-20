@@ -58,4 +58,17 @@ class OpenCodeDiffNavigationTest {
             ),
         )
     }
+
+    @Test
+    fun resolvePartDiffsKeepsSingleFileAndFiltersMultiFile() {
+        val a = diff("src/A.kt")
+        val b = diff("src/B.kt")
+        assertEquals(listOf(a), OpenCodeDiffNavigation.resolvePartDiffs(listOf(a), "src/other.kt", caseSensitive = true))
+        assertEquals(listOf(a, b), OpenCodeDiffNavigation.resolvePartDiffs(listOf(a, b), null, caseSensitive = true))
+        assertEquals(listOf(b), OpenCodeDiffNavigation.resolvePartDiffs(listOf(a, b), "src/B.kt", caseSensitive = true))
+        assertEquals(
+            emptyList<OpenCodeServerProtocol.SnapshotFileDiff>(),
+            OpenCodeDiffNavigation.resolvePartDiffs(listOf(a, b), "src/C.kt", caseSensitive = true),
+        )
+    }
 }

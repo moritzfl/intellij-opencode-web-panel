@@ -51,8 +51,8 @@ MARKERS=(
   'write-tool'
   'apply-patch-tool'
   'diff-changes'
-  'message-part-directory'
-  'message-part-title-filename'
+  'tool-part-wrapper'
+  '"data-timeline-part-id"'
   # Markdown provenance / semantic inline-code classification
   'inlineCodeKind'
   'data-component=markdown'

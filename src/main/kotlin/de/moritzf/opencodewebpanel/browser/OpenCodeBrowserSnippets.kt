@@ -1487,12 +1487,12 @@ internal object OpenCodeBrowserSnippets {
 
     /**
      * Installs an Alt+Click handler that opens the IDE diff viewer for a diff target in the
-     * OpenCode page. Recognises changes/review-panel rows (`[data-file]` → cumulative session
-     * diff for that file), chat edit/write blocks (`[data-component="edit-tool"|"write-tool"]`
-     * inside a `[data-message-id]` turn → that turn's diff for the edited file) and any diff
-     * indicator (`[data-component="diff-changes"]` → that turn's diff, all files). Forwards
-     * `messageID + "\n" + filePath` (both may be empty) to the JVM via [openDiffCallback]; the JVM
-     * derives the session id and directory itself. Returns null when disabled or without a callback.
+     * OpenCode page. Chat edit/write/patch blocks send the tool `[data-timeline-part-id]`
+     * (`prt_…`) so the JVM can load that part's `filediff`/`files`; multi-file patch rows also
+     * send the reconstructed relative path to pick the row. Review/turn-summary rows and the
+     * whole-turn indicator still send the user `messageID` (+ optional file path) for
+     * `session.diff`. Forwards `messageID + "\n" + filePath + "\n" + partID` (each may be empty)
+     * to the JVM via [openDiffCallback]. Returns null when disabled or without a callback.
      */
     fun buildDiffNavigationScript(enabled: Boolean, openDiffCallback: String? = null): String? {
         if (!enabled || openDiffCallback == null) return null
@@ -1507,6 +1507,10 @@ internal object OpenCodeBrowserSnippets {
                 const el = node && node.closest ? node.closest('[data-message-id]') : null;
                 return el ? (el.getAttribute('data-message-id') || '') : '';
               };
+              const partIdOf = (node) => {
+                const el = node && node.closest ? node.closest('[data-timeline-part-id]') : null;
+                return el ? (el.getAttribute('data-timeline-part-id') || '') : '';
+              };
               const pathFrom = (root, dirSel, nameSel) => {
                 if (!root || !root.querySelector) return '';
                 const dir = clean(root.querySelector(dirSel)?.textContent);
@@ -1514,26 +1518,21 @@ internal object OpenCodeBrowserSnippets {
                 if (!name) return '';
                 return dir ? dir.replace(/[\\/]?${'$'}/, '/') + name : name;
               };
-              // The server keys /session/{id}/diff by the turn's *user* message id (an empty or
-              // assistant id yields []), and data-message-id sits on the turn container, so every
-              // target resolves its message id from the nearest [data-message-id] ancestor.
+              // Review/turn-summary/indicator: session.diff is keyed by the turn's *user*
+              // message id. Chat edit/write/patch: the tool part id (prt_…) is the stable key;
+              // there is no GET-by-part, so the JVM pages session.messages to find it.
               const resolveDiffTarget = (start) => {
                 if (!start || !start.closest) return null;
-                // Review panel row: file path from data-file.
                 const fileItem = start.closest('[data-file]');
-                if (fileItem) return { messageID: messageIdOf(fileItem), filePath: fileItem.getAttribute('data-file') || '' };
-                // "Changed files" turn-summary row: no data-file, path lives in its spans.
+                if (fileItem) return { messageID: messageIdOf(fileItem), filePath: fileItem.getAttribute('data-file') || '', partID: '' };
                 const turnRow = start.closest('[data-slot="session-turn-diff-trigger"]');
-                if (turnRow) return { messageID: messageIdOf(turnRow), filePath: pathFrom(turnRow, '[data-slot="session-turn-diff-directory"]', '[data-slot="session-turn-diff-filename"]') };
-                // Multi-file apply_patch ("Patch" tool): the specific file row.
+                if (turnRow) return { messageID: messageIdOf(turnRow), filePath: pathFrom(turnRow, '[data-slot="session-turn-diff-directory"]', '[data-slot="session-turn-diff-filename"]'), partID: '' };
                 const patchRow = start.closest('[data-slot="apply-patch-trigger-content"]');
-                if (patchRow) return { messageID: messageIdOf(patchRow), filePath: pathFrom(patchRow, '[data-slot="apply-patch-directory"]', '[data-slot="apply-patch-filename"]') };
-                // Chat edit/write/single-file-patch block: the edited file (all reuse message-part-* spans).
+                if (patchRow) return { messageID: messageIdOf(patchRow), filePath: pathFrom(patchRow, '[data-slot="apply-patch-directory"]', '[data-slot="apply-patch-filename"]'), partID: partIdOf(patchRow) };
                 const editBlock = start.closest('[data-component="edit-tool"], [data-component="write-tool"], [data-component="apply-patch-tool"]');
-                if (editBlock) return { messageID: messageIdOf(editBlock), filePath: pathFrom(editBlock, '[data-slot="message-part-directory"]', '[data-slot="message-part-title-filename"]') };
-                // Any diff indicator (e.g. the summary total): the whole turn's diff, all files.
+                if (editBlock) return { messageID: messageIdOf(editBlock), filePath: '', partID: partIdOf(editBlock) };
                 const indicator = start.closest('[data-component="diff-changes"]');
-                if (indicator) return { messageID: messageIdOf(indicator), filePath: '' };
+                if (indicator) return { messageID: messageIdOf(indicator), filePath: '', partID: '' };
                 return null;
               };
               document.addEventListener('click', (event) => {
@@ -1544,6 +1543,7 @@ internal object OpenCodeBrowserSnippets {
                 event.stopImmediatePropagation();
                 const messageID = target.messageID || '';
                 const filePath = target.filePath || '';
+                const partID = target.partID || '';
                 try {
                   $openDiffCallback;
                 } catch (error) {

@@ -306,7 +306,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         buildScript = {
             OpenCodeBrowserSnippets.buildDiffNavigationScript(
                 enabled = true,
-                openDiffCallback = openDiffQuery.inject("messageID + '\\n' + filePath"),
+                openDiffCallback = openDiffQuery.inject("messageID + '\\n' + filePath + '\\n' + partID"),
             )
         },
     )
