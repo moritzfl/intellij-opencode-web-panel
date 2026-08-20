@@ -4,10 +4,18 @@
 
 ## [Unreleased]
 
+## [1.10.7] - 2026-08-20
+
 ### Fixed
 
 - The embedded panel no longer flickers on Windows after session or permission UI
   changes. Repaint recovery now re-rasters the page instead of resizing the host.
+- Alt+Click on a chat edit or patch opens that tool's change, not the whole turn's snapshot.
+- File references in chat with a line location (`Main.kt:42`, `Foo.java:L10-20`,
+  `file.ts#L12-L18`, `file.go(12,3)`) open in the IDE when the workspace match is unique.
+- Stack-trace paths in bash and tool output open the matching file.
+- On Windows, attaching a file from the panel no longer opens the file dialog behind the IDE.
+  The IDE file chooser is used instead of Chromium's.
 
 ## [1.10.6] - 2026-08-18
 
