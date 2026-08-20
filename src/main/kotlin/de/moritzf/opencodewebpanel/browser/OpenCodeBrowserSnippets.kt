@@ -682,6 +682,7 @@ internal object OpenCodeBrowserSnippets {
                 if (path) return path;
                 return text;
               };
+              const inOutput = (el) => !!(el && el.closest && el.closest('pre, [data-slot="bash-pre"], [data-component="tool-output"]'));
               const fileLocAtEvent = (event) => {
                 const selection = window.getSelection && window.getSelection();
                 if (selection && !selection.isCollapsed) return '';
@@ -691,10 +692,20 @@ internal object OpenCodeBrowserSnippets {
                 const node = caret && caret.startContainer;
                 if (!node || node.nodeType !== Node.TEXT_NODE) return '';
                 const parent = node.parentElement;
-                if (!parent || parent.closest('pre, a, code, [contenteditable="true"]')) return '';
-                if (!parent.closest('[data-component="markdown"]')) return '';
+                if (!parent || parent.closest('a, [contenteditable="true"]')) return '';
+                const output = inOutput(parent);
+                if (!output && !parent.closest('[data-component="markdown"]')) return '';
+                if (!output && parent.closest('code')) return '';
                 const text = node.textContent || '';
                 const offset = Math.min(caret.startOffset, text.length);
+                const py = /File\s+"([^"\n]+)",\s+line\s+(\d+)/ig;
+                let python;
+                while ((python = py.exec(text))) {
+                  if (offset >= python.index && offset <= python.index + python[0].length) {
+                    const path = python[1];
+                    if (path && !isUrl.test(path)) return path + ':' + python[2];
+                  }
+                }
                 const isBreak = (ch) => /[\s<>"'`]/.test(ch);
                 let start = offset;
                 let end = offset;
@@ -708,7 +719,7 @@ internal object OpenCodeBrowserSnippets {
               document.addEventListener('click', (event) => {
                 if (event.defaultPrevented) return;
                 const code = event.target && event.target.closest ? event.target.closest('code') : null;
-                const ref = (code && extractRef(code)) || fileLocAtEvent(event);
+                const ref = (!inOutput(event.target) && code && extractRef(code)) || fileLocAtEvent(event);
                 if (!ref) return;
                 event.preventDefault();
                 event.stopImmediatePropagation();
