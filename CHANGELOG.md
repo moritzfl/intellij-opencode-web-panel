@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- The embedded panel no longer flickers on Windows after session or permission UI
+  changes. Repaint recovery now re-rasters the page instead of resizing the host.
+
 ## [1.10.6] - 2026-08-18
 
 ### Changed

@@ -1203,6 +1203,19 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun buildViewportRasterNudgeScriptTogglesZoomWithoutHostResize() {
+        val script = OpenCodeBrowserSnippets.buildViewportRasterNudgeScript()
+
+        assertTrue(script.contains("document.documentElement"))
+        assertTrue(script.contains("setProperty('zoom', '1.001')"))
+        assertTrue(script.contains("removeProperty('zoom')"))
+        assertTrue(script.contains("requestAnimationFrame"))
+        assertTrue(script.contains("dispatchEvent(new Event('resize'))"))
+        assertFalse(script.contains("data-component"))
+        assertFalse(script.contains("setBounds"))
+    }
+
+    @Test
     fun buildEventStreamWatchdogScriptExposesTheForceReconnectHook() {
         val script = OpenCodeBrowserSnippets.buildEventStreamWatchdogScript(enabled = true)!!
 

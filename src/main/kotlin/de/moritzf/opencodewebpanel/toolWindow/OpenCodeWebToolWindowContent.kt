@@ -22,6 +22,7 @@ import com.intellij.ui.jcef.JBCefBrowser
 import com.intellij.ui.jcef.JBCefBrowserBase
 import com.intellij.ui.jcef.JBCefJSQuery
 import com.intellij.util.Alarm
+import com.intellij.util.ui.UIUtil
 import com.intellij.util.ui.components.BorderLayoutPanel
 import de.moritzf.opencodewebpanel.browser.OpenCodeBrowserScriptScheduler
 import de.moritzf.opencodewebpanel.browser.OpenCodeBrowserSnippets
@@ -68,6 +69,7 @@ import java.awt.Cursor
 import java.awt.datatransfer.StringSelection
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
+import javax.swing.JComponent
 import javax.swing.JPanel
 
 class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposable {
@@ -84,10 +86,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         // drop handlers are installed when the synthetic drop is dispatched.
         private const val PENDING_CHAT_INPUT_FLUSH_DELAY_MILLIS = 1_500
         private const val CHAT_INPUT_ACK_TIMEOUT_MILLIS = 3_000
-
-        // How long the 1 px repaint-recovery resize is held before restoring the real bounds,
-        // so CEF's asynchronous view-rect query observes the transient size.
-        private const val COMPONENT_SIZE_NUDGE_RESTORE_DELAY_MILLIS = 100
+        private const val VIEWPORT_RASTER_NUDGE_RETRY_MILLIS = 500
 
         @Volatile
         private var applicationClosing = false
@@ -106,14 +105,13 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     private val lifecycleStatusPanel = OpenCodeLifecycleStatusPanel(::restartOpenCodeServer)
     private val startupErrorPanel = OpenCodeStartupErrorPanel(project, ::restartOpenCodeServer)
     private val centerCardLayout = CardLayout()
+    private val idleCard = JPanel()
     private val centerCardPanel = JPanel(centerCardLayout).apply {
-        isOpaque = false
         add(browser.component, BROWSER_CARD)
         add(startupErrorPanel.component, ERROR_CARD)
-        add(JPanel().apply { isOpaque = false }, IDLE_CARD)
+        add(idleCard, IDLE_CARD)
     }
     private val contentPanel = BorderLayoutPanel().apply {
-        isOpaque = false
         addToTop(lifecycleStatusPanel.component)
         addToCenter(centerCardPanel)
     }
@@ -151,30 +149,12 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     private val openProjectAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
     private val pageLoadWatchdogAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
     private val repaintAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
-    private val componentSizeRestoreAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
     private val scriptScheduler = OpenCodeBrowserScriptScheduler(project, browser, openProjectAlarm)
     private val repaintScheduler = OpenCodeBrowserScriptScheduler(project, browser, repaintAlarm)
     private val browserFocusSync = OpenCodeBrowserFocusSync(
         component = { browser.component },
         isActive = { !isContentDisposed() },
         setBrowserFocus = { browser.cefBrowser.setFocus(it) },
-    )
-    private val componentSizeNudger = OpenCodeComponentSizeNudger(
-        component = browser.component,
-        isActive = { !isContentDisposed() },
-        scheduleRestore = { action ->
-            componentSizeRestoreAlarm.addRequest({ action() }, COMPONENT_SIZE_NUDGE_RESTORE_DELAY_MILLIS)
-        },
-        afterGrow = {
-            browser.component.validate()
-            browser.component.repaint()
-        },
-        afterRestore = {
-            browser.component.validate()
-            browser.component.revalidate()
-            browser.component.repaint()
-            browser.cefBrowser.notifyScreenInfoChanged()
-        },
     )
     private var openProjectScriptScheduled = false
     /** Most-recent session resolved for the current page load (avoids a second REST fetch). */
@@ -470,6 +450,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     }
 
     init {
+        applyHostLook()
         openFileLinkQuery.addHandler { href ->
             if (OpenCodeSettingsState.getInstance().openFileLinksInIde) {
                 ideNavigation.openFileLinkInIde(href)
@@ -673,6 +654,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         ApplicationManager.getApplication().messageBus.connect(this).subscribe(
             LafManagerListener.TOPIC,
             LafManagerListener {
+                applyHostLook()
                 if (OpenCodeSettingsState.getInstance().syncThemeWithIde) {
                     applyIdeThemeSync(enabled = true)
                 }
@@ -691,13 +673,11 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     }
 
     /**
-     * JCEF's off-screen rendering occasionally leaves stale-frame artifacts after large DOM
-     * repaints: Chromium repaints only the dirty region while the previous content's pixels stay
-     * in the composited buffer. Triggered from `onAddressChange` for SPA route changes and from
-     * the JVM event stream for permission/question sections, which render without a route change.
-     * `notifyScreenInfoChanged` makes Chromium re-query the screen and re-composite the full
-     * surface. Retried over the next few seconds because the SPA keeps painting for a moment
-     * after the trigger. May be called from any thread; the alarm runs the nudges on the EDT.
+     * JCEF OSR can leave stale pixels after large in-page layout changes. Triggered from
+     * `onAddressChange` for SPA route changes and from the JVM event stream for
+     * permission/question sections. Uses a compositor hint plus an in-page zoom toggle —
+     * never a host bounds change, which reallocates the OSR surface and flashes on Windows.
+     * Retried once after the SPA finishes painting. May be called from any thread.
      */
     private fun scheduleBrowserRepaintNudges() {
         val nudgedAtUrl = browser.cefBrowser.url
@@ -706,26 +686,22 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         repaintAlarm.cancelAllRequests()
 
         repaintScheduler.scheduleAction(early = true, shouldRun = { !isContentDisposed() }) {
-            if (!stillOnSamePage(nudgedAtUrl)) return@scheduleAction
-            browser.cefBrowser.notifyScreenInfoChanged()
-            browser.component.repaint()
+            nudgeBrowserRaster(nudgedAtUrl, rootUrl)
         }
-        // If the composite-level nudge was not enough, force the SPA to re-layout and, on the
-        // later attempts, wiggle the Swing component size. A 1 px resize causes CEF to reallocate
-        // the off-screen backing surface, which clears the mismatched-frame state that a plain
-        // repaint sometimes cannot recover.
-        repaintScheduler.scheduleAt(500, shouldRun = { !isContentDisposed() }) {
-            if (!stillOnSamePage(nudgedAtUrl)) return@scheduleAt
-            browser.cefBrowser.executeJavaScript("window.dispatchEvent(new Event('resize'))", rootUrl, 0)
+        repaintScheduler.scheduleAt(VIEWPORT_RASTER_NUDGE_RETRY_MILLIS, shouldRun = { !isContentDisposed() }) {
+            nudgeBrowserRaster(nudgedAtUrl, rootUrl)
         }
-        repaintScheduler.scheduleAt(1500, shouldRun = { !isContentDisposed() }) {
-            if (!stillOnSamePage(nudgedAtUrl)) return@scheduleAt
-            componentSizeNudger.nudge()
-        }
-        repaintScheduler.scheduleAt(3000, shouldRun = { !isContentDisposed() }) {
-            if (!stillOnSamePage(nudgedAtUrl)) return@scheduleAt
-            componentSizeNudger.nudge()
-        }
+    }
+
+    private fun nudgeBrowserRaster(nudgedAtUrl: String?, rootUrl: String) {
+        if (!stillOnSamePage(nudgedAtUrl)) return
+        browser.cefBrowser.notifyScreenInfoChanged()
+        browser.component.repaint()
+        browser.cefBrowser.executeJavaScript(
+            OpenCodeBrowserSnippets.buildViewportRasterNudgeScript(),
+            rootUrl,
+            0,
+        )
     }
 
     private fun stillOnSamePage(expectedUrl: String?): Boolean {
@@ -778,12 +754,26 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         if (state != OpenCodeServerLifecycleState.RUNNING) {
             resetAgentStatusBadge()
         }
-        lifecycleStatusPanel.update(
+        val relayout = lifecycleStatusPanel.update(
             state,
             pageOpening = shouldShowPageOpeningStatus(pageLoadInProgress, openCodePagePainted),
         )
-        contentPanel.revalidate()
-        contentPanel.repaint()
+        if (relayout) {
+            contentPanel.revalidate()
+            contentPanel.repaint()
+        }
+    }
+
+    private fun applyHostLook() {
+        val background = UIUtil.getPanelBackground()
+        fun paint(component: JComponent) {
+            component.isOpaque = true
+            component.background = background
+        }
+        paint(contentPanel)
+        paint(centerCardPanel)
+        paint(idleCard)
+        paint(browser.component)
     }
 
     private fun warnIfOpenCodeVersionIsUnsupported() {
@@ -1762,7 +1752,6 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         openProjectAlarm.cancelAllRequests()
         pageLoadWatchdogAlarm.cancelAllRequests()
         repaintAlarm.cancelAllRequests()
-        componentSizeRestoreAlarm.cancelAllRequests()
         systemNotifications.dispose()
         if (isApplicationShutdownInProgress()) return
         Disposer.dispose(browser)

@@ -923,6 +923,33 @@ internal object OpenCodeBrowserSnippets {
     }
 
     /**
+     * Forces Chromium to re-raster the viewport after an in-page layout change without
+     * resizing the Swing host. A 1px host bounds change reallocates the OSR surface and
+     * flashes on Windows. Toggle `zoom` on `documentElement` (no OpenCode selectors) after
+     * two animation frames, then fire `resize` so the SPA relayouts.
+     */
+    fun buildViewportRasterNudgeScript(): String {
+        @Language("JavaScript")
+        val script = """
+            (() => {
+              const nudge = () => {
+                const root = document.documentElement;
+                if (!root) return;
+                const style = root.style;
+                const previous = style.getPropertyValue('zoom');
+                style.setProperty('zoom', '1.001');
+                void root.offsetHeight;
+                if (previous) style.setProperty('zoom', previous);
+                else style.removeProperty('zoom');
+                window.dispatchEvent(new Event('resize'));
+              };
+              requestAnimationFrame(() => requestAnimationFrame(nudge));
+            })();
+        """
+        return script.trimIndent()
+    }
+
+    /**
      * Hides OpenCode's floating "open the website" control (help / marketing link out to
      * opencode.ai). Inside the embedded IDE panel it only overlaps the composer.
      *

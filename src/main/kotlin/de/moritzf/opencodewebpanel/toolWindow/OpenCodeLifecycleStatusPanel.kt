@@ -21,12 +21,15 @@ internal class OpenCodeLifecycleStatusPanel(onRetry: () -> Unit) {
 
     val component = BorderLayoutPanel().apply {
         isOpaque = false
+        isVisible = false
         border = JBUI.Borders.empty(4, 8)
         addToLeft(lifecycleStatusLabel)
         addToRight(retryServerButton)
     }
 
-    fun update(state: OpenCodeServerLifecycleState, pageOpening: Boolean = false) {
+    fun update(state: OpenCodeServerLifecycleState, pageOpening: Boolean = false): Boolean {
+        val visibleBefore = component.isVisible
+        val retryBefore = retryServerButton.isVisible
         val opening = pageOpening && state == OpenCodeServerLifecycleState.RUNNING
         if (opening) {
             lifecycleStatusLabel.text = formatOpenCodePageOpeningStatusText()
@@ -34,27 +37,28 @@ internal class OpenCodeLifecycleStatusPanel(onRetry: () -> Unit) {
             retryServerButton.isVisible = false
             retryServerButton.isEnabled = false
             component.isVisible = true
-            return
-        }
-        lifecycleStatusLabel.text = formatOpenCodeServerLifecycleStatusText(state)
-        lifecycleStatusLabel.toolTipText = "OpenCode server is ${state.displayLabel.lowercase()}"
-        val retryVisible = isOpenCodeServerRetryVisible(state)
-        val startLabel = state == OpenCodeServerLifecycleState.STOPPED
-        retryServerButton.isVisible = retryVisible
-        retryServerButton.isEnabled = retryVisible
-        retryServerButton.text = openCodeServerRetryLabel(state)
-        retryServerButton.icon = if (startLabel) AllIcons.Actions.Execute else AllIcons.Actions.Restart
-        retryServerButton.toolTipText = if (startLabel) {
-            "Start the OpenCode server"
         } else {
-            "Retry starting the OpenCode server"
+            lifecycleStatusLabel.text = formatOpenCodeServerLifecycleStatusText(state)
+            lifecycleStatusLabel.toolTipText = "OpenCode server is ${state.displayLabel.lowercase()}"
+            val retryVisible = isOpenCodeServerRetryVisible(state)
+            val startLabel = state == OpenCodeServerLifecycleState.STOPPED
+            retryServerButton.isVisible = retryVisible
+            retryServerButton.isEnabled = retryVisible
+            retryServerButton.text = openCodeServerRetryLabel(state)
+            retryServerButton.icon = if (startLabel) AllIcons.Actions.Execute else AllIcons.Actions.Restart
+            retryServerButton.toolTipText = if (startLabel) {
+                "Start the OpenCode server"
+            } else {
+                "Retry starting the OpenCode server"
+            }
+            retryServerButton.accessibleContext.accessibleName = if (startLabel) {
+                "Start OpenCode server"
+            } else {
+                "Retry starting OpenCode server"
+            }
+            component.isVisible = isOpenCodeLifecycleStripVisible(state, pageOpening = false)
         }
-        retryServerButton.accessibleContext.accessibleName = if (startLabel) {
-            "Start OpenCode server"
-        } else {
-            "Retry starting OpenCode server"
-        }
-        component.isVisible = isOpenCodeLifecycleStripVisible(state, pageOpening = false)
+        return component.isVisible != visibleBefore || retryServerButton.isVisible != retryBefore
     }
 
     fun setRetryEnabled(enabled: Boolean) {
