@@ -29,6 +29,7 @@ import de.moritzf.opencodewebpanel.browser.OpenCodeBrowserSnippets
 import de.moritzf.opencodewebpanel.browser.OpenCodeDocumentStartInjector
 import de.moritzf.opencodewebpanel.features.OpenCodeAgentStatusState
 import de.moritzf.opencodewebpanel.features.OpenCodeAgentStatusTracker
+import de.moritzf.opencodewebpanel.features.OpenCodeCefFileDialogHandler
 import de.moritzf.opencodewebpanel.features.OpenCodeChatInputService
 import de.moritzf.opencodewebpanel.features.OpenCodeDiffNavigation
 import de.moritzf.opencodewebpanel.features.OpenCodeFileDropHandler
@@ -526,6 +527,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             },
             browser.cefBrowser,
         )
+        OpenCodeCefFileDialogHandler(project, browser, this)
         OpenCodeFileDropHandler(
             project,
             browser,
