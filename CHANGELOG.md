@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [1.10.8] - 2026-08-21
+
 ### Changed
 
 - Chat diffs also open on Ctrl+Click (Cmd+Click on macOS), not only Alt+Click. Alt is the
