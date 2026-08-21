@@ -1314,6 +1314,8 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("addEventListener('pointerdown'"))
         assertTrue(script.contains("addEventListener('pointerup'"))
         assertTrue(script.contains("addEventListener('scroll'"))
+        assertTrue(script.contains("addEventListener('mouseout'"))
+        assertTrue(script.contains("send('default')"))
         assertTrue(script.contains("event.buttons !== 0"))
         assertTrue(script.contains("window.intellijCursor(payload)"))
     }

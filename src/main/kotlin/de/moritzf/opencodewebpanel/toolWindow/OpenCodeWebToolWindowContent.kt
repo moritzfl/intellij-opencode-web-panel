@@ -68,8 +68,11 @@ import java.awt.Component
 import java.awt.Container
 import java.awt.Cursor
 import java.awt.datatransfer.StringSelection
+import java.awt.event.MouseAdapter
+import java.awt.event.MouseEvent
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 import javax.swing.JComponent
 import javax.swing.JPanel
 
@@ -123,6 +126,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     private val browserCursorQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
     private val openDiffQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
     private val chatInputResultQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
+    private val browserCursorEpoch = AtomicLong()
     private val serverManager = SharedOpenCodeServerManager.getInstance()
     private val ideNavigation = OpenCodeIdeNavigation(project, browser, serverManager, ::openCodeProjectDirectory, this)
     private val diffNavigation = OpenCodeDiffNavigation(project, browser, serverManager, ::openCodeProjectDirectory)
@@ -327,7 +331,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                 cursorCallback = browserCursorQuery.inject("payload"),
             )
         },
-        onDisable = { applyBrowserCursor(Cursor.getPredefinedCursor(Cursor.DEFAULT_CURSOR)) },
+        onDisable = { resetMirroredBrowserCursor() },
     )
     private val injectedFeatures = listOf(
         diffNavigationFeature,
@@ -467,14 +471,23 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         browserCursorQuery.addHandler { cssCursor ->
             if (OpenCodeSettingsState.getInstance().mirrorBrowserCursor) {
                 val cursorType = OpenCodeBrowserSnippets.awtCursorTypeForCss(cssCursor)
+                val epoch = browserCursorEpoch.get()
                 ApplicationManager.getApplication().invokeLater {
-                    if (!isContentDisposed() && OpenCodeSettingsState.getInstance().mirrorBrowserCursor) {
-                        applyBrowserCursor(Cursor.getPredefinedCursor(cursorType))
-                    }
+                    if (isContentDisposed() || epoch != browserCursorEpoch.get()) return@invokeLater
+                    if (!OpenCodeSettingsState.getInstance().mirrorBrowserCursor) return@invokeLater
+                    applyBrowserCursor(Cursor.getPredefinedCursor(cursorType))
                 }
             }
             null
         }
+        browser.component.addMouseListener(object : MouseAdapter() {
+            override fun mouseExited(e: MouseEvent) {
+                val component = e.component ?: return
+                val point = e.point
+                if (point.x >= 0 && point.y >= 0 && point.x < component.width && point.y < component.height) return
+                resetMirroredBrowserCursor()
+            }
+        })
         openCodeReferenceQuery.addHandler { ref ->
             if (OpenCodeSettingsState.getInstance().effectiveCodeNavigationEnabled()) {
                 ideNavigation.openCodeReferenceInIde(ref)
@@ -1492,6 +1505,11 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
      * rendering the deepest Swing component under the pointer decides the visible cursor,
      * and the platform may have left a stale cursor on it.
      */
+    private fun resetMirroredBrowserCursor() {
+        browserCursorEpoch.incrementAndGet()
+        applyBrowserCursor(Cursor.getPredefinedCursor(Cursor.DEFAULT_CURSOR))
+    }
+
     private fun applyBrowserCursor(cursor: Cursor) {
         fun apply(component: Component) {
             component.cursor = cursor

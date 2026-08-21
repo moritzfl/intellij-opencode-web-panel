@@ -13,6 +13,7 @@
 
 - Chat file references that put the line outside the code span (`Main.kt`:L42, `Foo.java` (L10))
   open at that line. `Class.method()` opens the type when the workspace match is unique.
+- Leaving the embedded page no longer keeps a stale mouse cursor on the rest of the IDE.
 
 ## [1.10.7] - 2026-08-20
 

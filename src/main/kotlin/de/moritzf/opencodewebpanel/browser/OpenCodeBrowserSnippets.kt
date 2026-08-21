@@ -1172,6 +1172,9 @@ internal object OpenCodeBrowserSnippets {
                 const el = document.elementFromPoint(event.clientX, event.clientY);
                 send(effectiveCursor(event.clientX, event.clientY, el || event.target));
               }, true);
+              document.addEventListener('mouseout', (event) => {
+                if (!event.relatedTarget) send('default');
+              }, true);
               // Content moving under a stationary pointer also changes the cursor in a browser.
               let scrollRecomputeQueued = false;
               window.addEventListener('scroll', () => {
