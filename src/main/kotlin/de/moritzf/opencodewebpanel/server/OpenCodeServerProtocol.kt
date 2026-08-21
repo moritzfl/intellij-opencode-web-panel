@@ -297,22 +297,28 @@ internal object OpenCodeServerProtocol {
         }
     }
 
+    private val QUALIFIED_CLASS = Regex("^(?:[a-zA-Z_][a-zA-Z0-9_]*\\.)+[A-Z][a-zA-Z0-9_]*$")
+    private val TYPE_MEMBER_CALL = Regex(
+        """^((?:[a-zA-Z_][a-zA-Z0-9_]*\.)*[A-Z][a-zA-Z0-9_]*)(?:\.[a-z_][a-zA-Z0-9_]*)?\(.*\)$""",
+    )
+
     fun parseCodeReference(ref: String): ParsedCodeReference? {
         val text = ref.trim().ifBlank { return null }
         val (pathPart, line, column) = splitPathAndLocation(text)
         if (pathPart.isBlank()) return null
-        val hasPath = pathPart.contains('/') || pathPart.contains('\\')
-        val qualifiedName = if (!hasPath && Regex("^(?:[a-zA-Z_][a-zA-Z0-9_]*\\.)+[A-Z][a-zA-Z0-9_]*$").matches(pathPart)) {
-            pathPart
+        val resolved = TYPE_MEMBER_CALL.matchEntire(pathPart)?.groupValues?.get(1) ?: pathPart
+        val hasPath = resolved.contains('/') || resolved.contains('\\')
+        val qualifiedName = if (!hasPath && QUALIFIED_CLASS.matches(resolved)) {
+            resolved
         } else {
             null
         }
         val fileName = (qualifiedName?.substringAfterLast('.')
-            ?: pathPart.substringAfterLast('/').substringAfterLast('\\'))
+            ?: resolved.substringAfterLast('/').substringAfterLast('\\'))
             .ifBlank { return null }
         val extension = if (qualifiedName == null) fileName.substringAfterLast('.', "").ifBlank { null } else null
         return ParsedCodeReference(
-            path = pathPart,
+            path = resolved,
             qualifiedName = qualifiedName,
             fileName = fileName,
             extension = extension,
@@ -586,10 +592,10 @@ internal object OpenCodeServerProtocol {
      * end so `C:\proj\Foo.java:L10` keeps the drive letter.
      *
      * `path:line` / `path:line:column` / `path:Lline[-Lend]` / `path#Lline[-Lend]` /
-     * `path(line)` / `path(line,column)`.
+     * `path(line)` / `path(Lline)` / `path(line,column)`.
      */
     private val CODE_REF_LOCATOR = Regex(
-        """(?::(\d+):(\d+)|:L?(\d+)-L?(\d+)|:L?(\d+)|#L?(\d+)(?:-L?\d+)?|\((\d+)\s*,\s*(\d+)\)|\((\d+)\))$""",
+        """(?::(\d+):(\d+)|:L?(\d+)-L?(\d+)|:L?(\d+)|#L?(\d+)(?:-L?\d+)?|\(L?(\d+)\s*,\s*L?(\d+)\)|\(L?(\d+)\))$""",
         RegexOption.IGNORE_CASE,
     )
 

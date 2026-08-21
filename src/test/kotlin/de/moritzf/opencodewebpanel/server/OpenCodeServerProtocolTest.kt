@@ -1391,6 +1391,11 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("isUrl"))
         assertTrue(script.contains("isQualifiedClass"))
         assertTrue(script.contains("isPascalCase"))
+        assertTrue(script.contains("isTypeMember"))
+        assertTrue(script.contains("adjacentLocator"))
+        assertTrue(script.contains("withAdjacentLocator"))
+        assertTrue(script.contains("codeBesideLocator"))
+        assertTrue(script.contains("(L?"))
         assertTrue(script.contains("if (event.defaultPrevented) return"))
         assertTrue(script.contains("event.stopImmediatePropagation()"))
         assertTrue(script.contains("window.intellijOpenCodeRef(ref)"))
@@ -1694,6 +1699,50 @@ class OpenCodeServerProtocolTest {
         val windows = loc("""C:\proj\Foo.java:L10""")
         assertEquals("""C:\proj\Foo.java""", windows.path)
         assertEquals(9, windows.line)
+
+        val parenL = loc("Foo.java(L98)")
+        assertEquals("Foo.java", parenL.path)
+        assertEquals(97, parenL.line)
+
+        val colonNoL = loc("production.xsd:16488")
+        assertEquals("production.xsd", colonNoL.path)
+        assertEquals(16487, colonNoL.line)
+    }
+
+    @Test
+    fun parseCodeReferenceStripsMethodCallToType() {
+        val method = OpenCodeServerProtocol.parseCodeReference("PackagingMailingBarcodeDefinition.isWithScanRule()")!!
+        assertEquals("PackagingMailingBarcodeDefinition", method.fileName)
+        assertEquals("PackagingMailingBarcodeDefinition", method.path)
+        assertNull(method.qualifiedName)
+        assertNull(method.extension)
+        assertNull(method.line)
+
+        val withLine = OpenCodeServerProtocol.parseCodeReference("PackagingMailingBarcodeDefinition.isWithScanRule()(L98)")!!
+        assertEquals("PackagingMailingBarcodeDefinition", withLine.fileName)
+        assertEquals(97, withLine.line)
+
+        val qualified = OpenCodeServerProtocol.parseCodeReference("java.util.Optional.of(Boolean.TRUE)")!!
+        assertEquals("Optional", qualified.fileName)
+        assertEquals("java.util.Optional", qualified.path)
+        assertEquals("java.util.Optional", qualified.qualifiedName)
+        assertNull(qualified.extension)
+    }
+
+    @Test
+    fun parseCodeReferenceKeepsLowercaseCallUnchanged() {
+        val ref = OpenCodeServerProtocol.parseCodeReference("handle(CurrentSheetField)")!!
+        assertEquals("handle(CurrentSheetField)", ref.fileName)
+        assertEquals("handle(CurrentSheetField)", ref.path)
+        assertNull(ref.extension)
+    }
+
+    @Test
+    fun parseCodeReferenceAllowsSpacesWhenExtensionPresent() {
+        val ref = OpenCodeServerProtocol.parseCodeReference("Manuelle Verpackung und PM-Mobile.xml:L1063")!!
+        assertEquals("Manuelle Verpackung und PM-Mobile.xml", ref.path)
+        assertEquals("xml", ref.extension)
+        assertEquals(1062, ref.line)
     }
 
     @Test

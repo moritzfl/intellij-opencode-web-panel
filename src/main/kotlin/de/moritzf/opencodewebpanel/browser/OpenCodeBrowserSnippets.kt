@@ -649,24 +649,42 @@ internal object OpenCodeBrowserSnippets {
             (() => {
               if (window.__opencodeIntellijCodeNavInstalled) return;
               window.__opencodeIntellijCodeNavInstalled = true;
-              const hasExtension = /\.[a-zA-Z][a-zA-Z0-9]{0,8}(?::L?\d+(?:-L?\d+)?|:\d+:\d+|#L?\d+(?:-L?\d+)?|\(\d+(?:\s*,\s*\d+)?\))?${'$'}/i;
-              const hasPathLocator = /[\\/].*(?::L?\d+(?:-L?\d+)?|:\d+:\d+|#L?\d+(?:-L?\d+)?|\(\d+(?:\s*,\s*\d+)?\))${'$'}/i;
-              const fileLoc = /(?:[A-Za-z]:)?(?:[^\s<>"'`]+[\/\\])*[^\s\/\\]+\.[A-Za-z][A-Za-z0-9]{0,8}(?::L?\d+(?:-L?\d+)?|:\d+:\d+|#L?\d+(?:-L?\d+)?|\(\d+(?:\s*,\s*\d+)?\))/i;
+              const hasExtension = /\.[a-zA-Z][a-zA-Z0-9]{0,8}(?::L?\d+(?:-L?\d+)?|:\d+:\d+|#L?\d+(?:-L?\d+)?|\(L?\d+(?:\s*,\s*\d+)?\))?${'$'}/i;
+              const hasPathLocator = /[\\/].*(?::L?\d+(?:-L?\d+)?|:\d+:\d+|#L?\d+(?:-L?\d+)?|\(L?\d+(?:\s*,\s*\d+)?\))${'$'}/i;
+              const fileLoc = /(?:[A-Za-z]:)?(?:[^\s<>"'`]+[\/\\])*[^\s\/\\]+\.[A-Za-z][a-zA-Z0-9]{0,8}(?::L?\d+(?:-L?\d+)?|:\d+:\d+|#L?\d+(?:-L?\d+)?|\(L?\d+(?:\s*,\s*\d+)?\))/i;
+              const locatorAtStart = /^\s*(:L?\d+(?:-L?\d+)?|:\d+:\d+|#L?\d+(?:-L?\d+)?|\(L?\d+(?:\s*,\s*\d+)?\))/i;
               const isUrl = /^[a-z][a-z0-9+.-]*:\/\//i;
               const isPascalCase = /^[A-Z][a-zA-Z0-9_]*${'$'}/;
               const isQualifiedClass = /^(?:[a-zA-Z_][a-zA-Z0-9_]*\.)+[A-Z][a-zA-Z0-9_]*${'$'}/;
+              const isTypeMember = /^(?:[a-zA-Z_][a-zA-Z0-9_]*\.)*[A-Z][a-zA-Z0-9_]*(?:\.[a-z_][a-zA-Z0-9_]*)?\(.*\)${'$'}/;
               const isSnakeCase = /^[a-z][a-z0-9]*_[a-z0-9_]+${'$'}/;
               const looksLikeCodeRef = (text) => {
                 const t = text.trim();
                 if (t.length < 2 || t.length > 512) return false;
-                if (t.includes(' ') || t.includes('\n')) return false;
+                if (t.includes('\n')) return false;
                 if (isUrl.test(t)) return false;
                 if (hasExtension.test(t)) return true;
+                if (t.includes(' ')) return false;
                 if (hasPathLocator.test(t)) return true;
                 if (isPascalCase.test(t)) return true;
                 if (isQualifiedClass.test(t)) return true;
+                if (isTypeMember.test(t)) return true;
                 if (isSnakeCase.test(t)) return true;
                 return false;
+              };
+              const adjacentLocator = (el) => {
+                let node = el.nextSibling;
+                while (node && node.nodeType === Node.TEXT_NODE && !/\S/.test(node.textContent || '')) {
+                  node = node.nextSibling;
+                }
+                if (!node || node.nodeType !== Node.TEXT_NODE) return '';
+                const match = locatorAtStart.exec(node.textContent || '');
+                return match ? match[1] : '';
+              };
+              const withAdjacentLocator = (text, el) => {
+                if (!text) return '';
+                const loc = adjacentLocator(el);
+                return loc ? text + loc : text;
               };
               const extractRef = (codeEl) => {
                 if (!codeEl.closest('[data-component="markdown"]')) return '';
@@ -674,15 +692,43 @@ internal object OpenCodeBrowserSnippets {
                 const text = (codeEl.textContent || '').trim();
                 const kind = codeEl.getAttribute('data-inline-code-kind');
                 if (kind === 'url') return '';
-                if (kind === 'path') return text.length > 0 && text.length <= 512 ? text : '';
+                if (kind === 'path') {
+                  return text.length > 0 && text.length <= 512 ? withAdjacentLocator(text, codeEl) : '';
+                }
                 if (!looksLikeCodeRef(text)) return '';
                 const parent = codeEl.parentElement;
-                if (!parent) return text;
+                if (!parent) return withAdjacentLocator(text, codeEl);
                 const path = parent.getAttribute('data-path') || parent.getAttribute('data-file');
-                if (path) return path;
-                return text;
+                if (path) return withAdjacentLocator(path, codeEl);
+                return withAdjacentLocator(text, codeEl);
               };
               const inOutput = (el) => !!(el && el.closest && el.closest('pre, [data-slot="bash-pre"], [data-component="tool-output"]'));
+              const skipEmptyText = (node) => {
+                let current = node;
+                while (current && current.nodeType === Node.TEXT_NODE && !/\S/.test(current.textContent || '')) {
+                  current = current.previousSibling;
+                }
+                return current;
+              };
+              const codeBesideLocator = (event) => {
+                try {
+                  const caret = document.caretRangeFromPoint
+                    ? document.caretRangeFromPoint(event.clientX, event.clientY)
+                    : null;
+                  const node = caret && caret.startContainer;
+                  if (!node || node.nodeType !== Node.TEXT_NODE) return null;
+                  const prev = skipEmptyText(node.previousSibling);
+                  if (!prev || prev.nodeName !== 'CODE') return null;
+                  const loc = adjacentLocator(prev);
+                  if (!loc || !extractRef(prev)) return null;
+                  const offset = Math.min(caret.startOffset, (node.textContent || '').length);
+                  const lead = (/^\s*/.exec(node.textContent || '') || [''])[0].length;
+                  if (offset < lead || offset > lead + loc.length + 1) return null;
+                  return prev;
+                } catch (_) {
+                  return null;
+                }
+              };
               const fileLocAtEvent = (event) => {
                 const selection = window.getSelection && window.getSelection();
                 if (selection && !selection.isCollapsed) return '';
@@ -713,12 +759,25 @@ internal object OpenCodeBrowserSnippets {
                 while (end < text.length && !isBreak(text[end])) end += 1;
                 const token = text.slice(start, end);
                 if (isUrl.test(token)) return '';
-                const match = token.match(fileLoc);
+                const glueAfter = () => {
+                  const rest = text.slice(end).replace(/^[\s<>"'`]+/, '');
+                  const glued = locatorAtStart.exec(rest);
+                  return glued ? token + glued[1] : token;
+                };
+                const glueBefore = () => {
+                  let prevEnd = start;
+                  while (prevEnd > 0 && isBreak(text[prevEnd - 1])) prevEnd -= 1;
+                  let prevStart = prevEnd;
+                  while (prevStart > 0 && !isBreak(text[prevStart - 1])) prevStart -= 1;
+                  return text.slice(prevStart, prevEnd) + token;
+                };
+                const candidate = fileLoc.test(token) ? token : glueAfter();
+                const match = (fileLoc.test(candidate) ? candidate : glueBefore()).match(fileLoc);
                 return match ? match[0] : '';
               };
               document.addEventListener('click', (event) => {
                 if (event.defaultPrevented) return;
-                const code = event.target && event.target.closest ? event.target.closest('code') : null;
+                const code = (event.target && event.target.closest && event.target.closest('code')) || codeBesideLocator(event);
                 const ref = (!inOutput(event.target) && code && extractRef(code)) || fileLocAtEvent(event);
                 if (!ref) return;
                 event.preventDefault();
@@ -727,7 +786,7 @@ internal object OpenCodeBrowserSnippets {
               }, true);
               $POINTER_CURSOR_KIT_JS
               document.addEventListener('mouseover', (event) => {
-                const code = event.target && event.target.closest ? event.target.closest('code') : null;
+                const code = (event.target && event.target.closest && event.target.closest('code')) || codeBesideLocator(event);
                 markHovered(code && extractRef(code) ? code : null);
               }, true);
             })();
