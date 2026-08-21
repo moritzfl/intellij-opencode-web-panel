@@ -19,7 +19,7 @@ import de.moritzf.opencodewebpanel.server.OpenCodeUnifiedDiff
 import de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager
 
 /**
- * Opens the IDE's native diff viewer for a diff target the user Alt+Clicked in the OpenCode page
+ * Opens the IDE's native diff viewer for a diff target the user Ctrl/Cmd+Clicked or Alt+Clicked in the OpenCode page
  * (see `OpenCodeBrowserSnippets.buildDiffNavigationScript`). The page sends
  * `messageID\nfilePath\npartID` (each optional). Chat edit/write/patch uses [partID] (`prt_…`)
  * and the tool part's own patch; review/turn-summary uses [messageID] + `session.diff`.

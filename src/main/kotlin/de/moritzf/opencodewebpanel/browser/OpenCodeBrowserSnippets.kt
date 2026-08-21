@@ -1555,9 +1555,9 @@ internal object OpenCodeBrowserSnippets {
               };
               const handleFileOpenEvent = (event, changedButtonOnly) => {
                 if (event.defaultPrevented) return;
-                // Alt is reserved for the IDE diff gesture (buildDiffNavigationScript); a plain
-                // click still opens the file.
-                if (event.altKey) return;
+                // Alt and Ctrl/Cmd+Click are reserved for the IDE diff gesture
+                // (buildDiffNavigationScript); a plain click still opens the file.
+                if (event.altKey || (/Mac|iPhone|iPod|iPad/.test(navigator.platform) ? event.metaKey : event.ctrlKey)) return;
                 const resolved = resolveFileOpenTarget(event.target, changedButtonOnly);
                 if (!resolved) return;
                 event.preventDefault();
@@ -1579,8 +1579,8 @@ internal object OpenCodeBrowserSnippets {
     }
 
     /**
-     * Installs an Alt+Click handler that opens the IDE diff viewer for a diff target in the
-     * OpenCode page. Chat edit/write/patch blocks send the tool `[data-timeline-part-id]`
+     * Installs a Ctrl/Cmd+Click (and Alt+Click) handler that opens the IDE diff viewer for a
+     * diff target in the OpenCode page. Chat edit/write/patch blocks send the tool `[data-timeline-part-id]`
      * (`prt_…`) so the JVM can load that part's `filediff`/`files`; multi-file patch rows also
      * send the reconstructed relative path to pick the row. Review/turn-summary rows and the
      * whole-turn indicator still send the user `messageID` (+ optional file path) for
@@ -1606,11 +1606,13 @@ internal object OpenCodeBrowserSnippets {
               };
               const pathFrom = (root, dirSel, nameSel) => {
                 if (!root || !root.querySelector) return '';
-                const dir = clean(root.querySelector(dirSel)?.textContent);
-                const name = clean(root.querySelector(nameSel)?.textContent);
+                const dir = clean(root.querySelector(dirSel)?.textContent).replace(/\\/g, '/');
+                const name = clean(root.querySelector(nameSel)?.textContent).replace(/\\/g, '/');
                 if (!name) return '';
                 return dir ? dir.replace(/[\\/]?${'$'}/, '/') + name : name;
               };
+              const isMac = /Mac|iPhone|iPod|iPad/.test(navigator.platform);
+              const isDiffGesture = (event) => event.altKey || (isMac ? event.metaKey : event.ctrlKey);
               // Review/turn-summary/indicator: session.diff is keyed by the turn's *user*
               // message id. Chat edit/write/patch: the tool part id (prt_…) is the stable key;
               // there is no GET-by-part, so the JVM pages session.messages to find it.
@@ -1629,7 +1631,7 @@ internal object OpenCodeBrowserSnippets {
                 return null;
               };
               document.addEventListener('click', (event) => {
-                if (!event.altKey || event.defaultPrevented) return;
+                if (event.defaultPrevented || !isDiffGesture(event)) return;
                 const target = resolveDiffTarget(event.target);
                 if (!target) return;
                 event.preventDefault();

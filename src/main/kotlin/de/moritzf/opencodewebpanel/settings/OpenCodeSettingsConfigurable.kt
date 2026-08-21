@@ -89,7 +89,7 @@ class OpenCodeSettingsConfigurable : Configurable {
     private val openFileLinksInIdeCheckBox = JBCheckBox("Enable IDE navigation from OpenCode")
     private val openExternalLinksInBrowserCheckBox = JBCheckBox("Open external HTTP links in the system browser")
     private val enableCodeNavigationCheckBox = JBCheckBox("Also navigate code references in chat")
-    private val openDiffsInIdeCheckBox = JBCheckBox("Open diffs in the IDE on Alt+Click")
+    private val openDiffsInIdeCheckBox = JBCheckBox("Open diffs in the IDE on Ctrl/Cmd+Click or Alt+Click")
     private val enableChatFileDropCheckBox = JBCheckBox("Enable file drop and paste into chat")
     private val forceCompactLayoutCheckBox = JBCheckBox("Lock to compact view")
     private val hideWebsiteButtonCheckBox = JBCheckBox("Hide the OpenCode website button")
@@ -279,7 +279,7 @@ class OpenCodeSettingsConfigurable : Configurable {
                 }
                 row {
                     cell(openDiffsInIdeCheckBox)
-                        .comment("Alt+Click a diff in chat or in the changes list to open it in the IDE's diff viewer.")
+                        .comment("Ctrl+Click (Cmd+Click on macOS) or Alt+Click a diff in chat or in the changes list to open it in the IDE's diff viewer.")
                 }
             }
             group("Link Handling") {

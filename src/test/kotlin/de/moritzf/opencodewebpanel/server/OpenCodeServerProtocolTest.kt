@@ -3465,6 +3465,11 @@ class OpenCodeServerProtocolTest {
             openDiffCallback = "window.__openDiff(messageID, filePath, partID)",
         )!!
         assertTrue(script.contains("event.altKey"))
+        assertTrue(script.contains("isDiffGesture"))
+        assertTrue(script.contains("event.metaKey"))
+        assertTrue(script.contains("event.ctrlKey"))
+        assertTrue(script.contains("isMac"))
+        assertTrue(script.contains(".replace(/\\\\/g, '/')"))
         assertTrue(script.contains("addEventListener('click'"))
         assertTrue(script.contains("[data-file]"))
         assertTrue(script.contains("edit-tool"))
@@ -3485,8 +3490,10 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
-    fun fileLinkHandlerReservesAltClickForDiffGesture() {
+    fun fileLinkHandlerReservesDiffGesture() {
         val script = OpenCodeBrowserSnippets.buildFileLinkHandlerScript("/tmp/project", enabled = true)!!
-        assertTrue(script.contains("if (event.altKey) return;"))
+        assertTrue(script.contains("event.altKey"))
+        assertTrue(script.contains("event.metaKey"))
+        assertTrue(script.contains("event.ctrlKey"))
     }
 }

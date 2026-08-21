@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Chat diffs also open on Ctrl+Click (Cmd+Click on macOS), not only Alt+Click. Alt is the
+  Windows menu-bar mnemonic and often never reaches the embedded page.
+
 ### Fixed
 
 - Chat file references that put the line outside the code span (`Main.kt`:L42, `Foo.java` (L10))

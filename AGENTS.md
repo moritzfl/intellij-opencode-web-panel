@@ -81,7 +81,7 @@ Match on `URL.pathname` for `/global/event`, `/event`, and `/api/event` so origi
 
 ### Diff navigation DOM contract (`openDiffsInIde`)
 
-The Alt+Click "open diff in IDE" feature (`OpenCodeBrowserSnippets.buildDiffNavigationScript` → `features.OpenCodeDiffNavigation`) maps a click to `messageID` / `filePath` / `partID`. Chat edit/write/patch targets live in the shared `session-ui` `MessagePart` (layout-independent). Re-verify the selectors against a live page whenever diffs stop opening:
+The Ctrl/Cmd+Click or Alt+Click "open diff in IDE" feature (`OpenCodeBrowserSnippets.buildDiffNavigationScript` → `features.OpenCodeDiffNavigation`) maps a click to `messageID` / `filePath` / `partID`. Chat edit/write/patch targets live in the shared `session-ui` `MessagePart` (layout-independent). Re-verify the selectors against a live page whenever diffs stop opening:
 
 - **Message id** — nearest `[data-message-id]` ancestor (one per session turn; holds the turn's **user** message id). Used by `session.diff` for review/turn-summary/whole-turn. Never send an empty or assistant id (both yield an empty snapshot diff). (Pre-1.18 `[data-message]` no longer exists in the bundle; the fallback was removed.)
 - **Part id** — nearest `[data-timeline-part-id]` on `[data-component="tool-part-wrapper"]` (`prt_…`). Chat edit/write/patch use this, not reconstructed title text. There is no GET-by-part (only DELETE); the JVM pages `GET /session/{id}/message?limit=50` via `X-Next-Cursor` / `before` until that id appears in `parts[]`.
@@ -91,7 +91,7 @@ The Alt+Click "open diff in IDE" feature (`OpenCodeBrowserSnippets.buildDiffNavi
 - **Multi-file patch row** — `[data-slot="apply-patch-trigger-content"]` → `partID` plus reconstructed `relativePath` from `[data-slot="apply-patch-directory"]` + `[data-slot="apply-patch-filename"]` to pick the `files[]` row (exact / unique-suffix match against `relativePath`, never the turn snapshot).
 - **Diff indicator** (fallback → whole turn, all files) — `[data-component="diff-changes"]` outside a tool block → `session.diff`.
 
-The file-link handler (`buildFileLinkHandlerScript`) early-returns on `event.altKey`, reserving Alt for this gesture.
+The file-link handler (`buildFileLinkHandlerScript`) early-returns on Alt and Ctrl/Cmd+Click, reserving those for this gesture. Diff-nav is injected first so it wins on overlapping targets.
 
 ### Review-panel file links (`openFileLinksInIde`)
 

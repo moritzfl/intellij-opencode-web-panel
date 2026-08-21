@@ -330,10 +330,10 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         onDisable = { applyBrowserCursor(Cursor.getPredefinedCursor(Cursor.DEFAULT_CURSOR)) },
     )
     private val injectedFeatures = listOf(
+        diffNavigationFeature,
         fileLinkFeature,
         externalLinkFeature,
         codeNavigationFeature,
-        diffNavigationFeature,
         filePasteSuppressionFeature,
         projectSwitchPromptSuppressionFeature,
         cursorMirrorFeature,
