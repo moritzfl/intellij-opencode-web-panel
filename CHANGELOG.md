@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [1.10.9] - 2026-08-23
+
 ### Fixed
 
 - Dropping files into chat no longer locks typing in the rest of the IDE.
