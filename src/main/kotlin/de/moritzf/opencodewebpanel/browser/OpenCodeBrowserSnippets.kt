@@ -1275,6 +1275,7 @@ internal object OpenCodeBrowserSnippets {
         enabled: Boolean = true,
         batchId: String? = null,
         resultCallback: String? = null,
+        focusPrompt: Boolean = false,
     ): String? {
         val textEntries = textPlain.filter { it.isNotBlank() }
         if (!enabled || (files.isEmpty() && textEntries.isEmpty())) return null
@@ -1312,6 +1313,7 @@ internal object OpenCodeBrowserSnippets {
             ""
         }
         val escapedBatchId = escapeJavaScript(batchId.orEmpty())
+        val focusPromptLiteral = if (focusPrompt) "true" else "false"
         val reportResult = resultCallback?.let { callback ->
             @Language("JavaScript")
             val report = """
@@ -1329,6 +1331,7 @@ internal object OpenCodeBrowserSnippets {
         val script = """
             (() => {
               const batchId = '$escapedBatchId';
+              const focusPrompt = $focusPromptLiteral;
               const report = (accepted) => {
                 $reportResult
               };
@@ -1362,7 +1365,9 @@ internal object OpenCodeBrowserSnippets {
                 target.dispatchEvent(new DragEvent('dragover', options));
                 const event = new DragEvent('drop', options);
                 target.dispatchEvent(event);
-                requestAnimationFrame(() => { if (document.contains(target)) target.focus(); });
+                if (focusPrompt) {
+                  requestAnimationFrame(() => { if (document.contains(target)) target.focus(); });
+                }
                 return event.defaultPrevented;
               };
               const dispatchPaste = (text) => {
@@ -1374,7 +1379,9 @@ internal object OpenCodeBrowserSnippets {
                   clipboardData: transfer,
                 });
                 target.dispatchEvent(event);
-                requestAnimationFrame(() => { if (document.contains(target)) target.focus(); });
+                if (focusPrompt) {
+                  requestAnimationFrame(() => { if (document.contains(target)) target.focus(); });
+                }
                 return event.defaultPrevented;
               };
               const results = [];

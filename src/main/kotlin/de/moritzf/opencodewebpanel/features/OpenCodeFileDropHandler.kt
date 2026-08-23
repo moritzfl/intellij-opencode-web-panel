@@ -69,6 +69,13 @@ internal class OpenCodeFileDropHandler(
         // covers even large retina screenshots while keeping the transient buffer ~100 MB.
         internal const val MAX_IMAGE_PIXELS = 25_000_000L
 
+        internal fun shouldReadNonFileDropFlavors(droppedFiles: List<File>): Boolean = droppedFiles.isEmpty()
+
+        internal fun afterDropShouldRestoreBrowserFocus(
+            focusInsideBrowser: Boolean,
+            focusOwnerMissing: Boolean,
+        ): Boolean = focusOwnerMissing || focusInsideBrowser
+
         fun isPasteShortcut(keyCode: Int, modifiers: Int, character: Char = 0.toChar(), unmodifiedCharacter: Char = 0.toChar()): Boolean {
             val hasCommand = modifiers and EventFlags.EVENTFLAG_COMMAND_DOWN != 0
             val hasControl = modifiers and EventFlags.EVENTFLAG_CONTROL_DOWN != 0
@@ -169,16 +176,32 @@ internal class OpenCodeFileDropHandler(
             }
 
             override fun importData(support: TransferSupport): Boolean {
-                if (!canImport(support)) return false
-                val droppedFiles = runCatching {
-                    @Suppress("UNCHECKED_CAST")
-                    support.transferable.getTransferData(DataFlavor.javaFileListFlavor) as? List<File>
-                }.getOrNull().orEmpty()
-                val pendingImages = droppedImages(support.transferable)
-                val text = droppedTextPayload(support.transferable)
-                val fileReferenceText = text?.takeIf { it.startsWith("file:") }
-                val textToDispatch = if (pendingImages.isNotEmpty()) fileReferenceText else text
-                return dispatchDroppedData(droppedFiles, textToDispatch, pendingImages)
+                try {
+                    if (!canImport(support)) return false
+                    val droppedFiles = runCatching {
+                        @Suppress("UNCHECKED_CAST")
+                        support.transferable.getTransferData(DataFlavor.javaFileListFlavor) as? List<File>
+                    }.getOrNull().orEmpty()
+                    // File drops already carry a usable javaFileList. Reading the extra image/text
+                    // flavors Finder and Project View attach happens inside the native drop
+                    // callback and is enough to leave macOS AWT without a key window — typing
+                    // then dies in every IDE text field until focus is fully reset.
+                    val pendingImages = if (shouldReadNonFileDropFlavors(droppedFiles)) {
+                        droppedImages(support.transferable)
+                    } else {
+                        emptyList()
+                    }
+                    val text = if (shouldReadNonFileDropFlavors(droppedFiles)) {
+                        droppedTextPayload(support.transferable)
+                    } else {
+                        null
+                    }
+                    val fileReferenceText = text?.takeIf { it.startsWith("file:") }
+                    val textToDispatch = if (pendingImages.isNotEmpty()) fileReferenceText else text
+                    return dispatchDroppedData(droppedFiles, textToDispatch, pendingImages)
+                } finally {
+                    scheduleRestoreInputAfterExternalDrop()
+                }
             }
         }
         installTransferHandler(browser.component, handler)
@@ -243,8 +266,38 @@ internal class OpenCodeFileDropHandler(
     }
 
     private fun isFocusInsideBrowser(): Boolean {
-        val focusOwner = KeyboardFocusManager.getCurrentKeyboardFocusManager().focusOwner ?: return false
+        val focusOwner = currentFocusOwner() ?: return false
+        return isBrowserFocusOwner(focusOwner)
+    }
+
+    private fun currentFocusOwner(): java.awt.Component? {
+        val manager = KeyboardFocusManager.getCurrentKeyboardFocusManager()
+        return manager.permanentFocusOwner ?: manager.focusOwner
+    }
+
+    private fun isBrowserFocusOwner(focusOwner: java.awt.Component): Boolean {
         return browser.component == focusOwner || browser.component.isAncestorOf(focusOwner)
+    }
+
+    private fun scheduleRestoreInputAfterExternalDrop() {
+        ApplicationManager.getApplication().invokeLater {
+            restoreInputAfterExternalDrop()
+        }
+    }
+
+    private fun restoreInputAfterExternalDrop() {
+        if (isDisposed()) return
+        val owner = currentFocusOwner()
+        if (afterDropShouldRestoreBrowserFocus(owner != null && isBrowserFocusOwner(owner), owner == null)) {
+            // Native DnD often clears Swing focus and leaves JCEF's input-method client
+            // bound. clear + requestFocus re-attaches the key window so typing works
+            // again both in the panel and in the rest of the IDE.
+            KeyboardFocusManager.getCurrentKeyboardFocusManager().clearGlobalFocusOwner()
+            browser.component.requestFocusInWindow()
+            browser.cefBrowser.setFocus(true)
+        } else {
+            browser.cefBrowser.setFocus(false)
+        }
     }
 
     private fun shouldSuppressBrowserPaste(): Boolean {
@@ -301,13 +354,6 @@ internal class OpenCodeFileDropHandler(
             if (warnings.isNotEmpty()) showFileDropWarning(warnings)
             val payloads = selection.acceptedFiles.mapNotNull { droppedFilePayload(it) } + preparedImages.payloads
             if (textDrops.isEmpty() && payloads.isEmpty()) return@execute
-            val script = OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(
-                payloads,
-                textPlain = textDrops,
-                enabled = OpenCodeSettingsState.getInstance().enableChatFileDrop,
-                batchId = batchID,
-                resultCallback = dropResultQuery.inject("batchId + '\\n' + (accepted ? '1' : '0')"),
-            ) ?: return@execute
             val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
             ApplicationManager.getApplication().invokeLater {
                 val contextIsCurrent = !isDisposed() &&
@@ -324,7 +370,17 @@ internal class OpenCodeFileDropHandler(
                         browserUrl = browser.cefBrowser.url,
                     )
                 if (contextIsCurrent) {
-                    browser.cefBrowser.executeJavaScript(script, rootUrl, 0)
+                    val script = OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(
+                        payloads,
+                        textPlain = textDrops,
+                        enabled = OpenCodeSettingsState.getInstance().enableChatFileDrop,
+                        batchId = batchID,
+                        resultCallback = dropResultQuery.inject("batchId + '\\n' + (accepted ? '1' : '0')"),
+                        focusPrompt = isFocusInsideBrowser(),
+                    )
+                    if (script != null) {
+                        browser.cefBrowser.executeJavaScript(script, rootUrl, 0)
+                    }
                 } else if (!isDisposed()) {
                     showFileDropWarning(listOf("The OpenCode page changed before the files were ready."))
                 }

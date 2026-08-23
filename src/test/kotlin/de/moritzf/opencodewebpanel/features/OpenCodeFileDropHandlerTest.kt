@@ -105,6 +105,24 @@ class OpenCodeFileDropHandlerTest {
     }
 
     @Test
+    fun shouldNotReadIncidentalFlavorsWhenDropAlreadyHasFiles() {
+        val file = Files.createTempFile("opencode-drop", ".txt").toFile()
+        try {
+            assertFalse(OpenCodeFileDropHandler.shouldReadNonFileDropFlavors(listOf(file)))
+            assertTrue(OpenCodeFileDropHandler.shouldReadNonFileDropFlavors(emptyList()))
+        } finally {
+            file.delete()
+        }
+    }
+
+    @Test
+    fun afterDropRestoresBrowserFocusWhenDnDClearedFocusOwner() {
+        assertTrue(OpenCodeFileDropHandler.afterDropShouldRestoreBrowserFocus(focusInsideBrowser = false, focusOwnerMissing = true))
+        assertTrue(OpenCodeFileDropHandler.afterDropShouldRestoreBrowserFocus(focusInsideBrowser = true, focusOwnerMissing = false))
+        assertFalse(OpenCodeFileDropHandler.afterDropShouldRestoreBrowserFocus(focusInsideBrowser = false, focusOwnerMissing = false))
+    }
+
+    @Test
     fun shouldUseDroppedImageFlavorWhenDropHasNoFiles() {
         assertTrue(OpenCodeFileDropHandler.shouldUseDroppedImageFlavor(emptyList(), null))
     }

@@ -927,6 +927,22 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("return event.defaultPrevented"))
         assertTrue(script.contains("hello \\'world\\'.txt"))
         assertTrue(script.contains("aGVsbG8="))
+        assertTrue(script.contains("const focusPrompt = false"))
+        assertTrue(script.contains("if (focusPrompt)"))
+    }
+
+    @Test
+    fun buildDispatchDroppedFilesScriptFocusesPromptOnlyWhenRequested() {
+        val script = OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(
+            emptyList(),
+            textPlain = listOf("file:src/main/App.kt"),
+            enabled = true,
+            focusPrompt = true,
+        )!!
+
+        assertTrue(script.contains("const focusPrompt = true"))
+        assertTrue(script.contains("if (focusPrompt)"))
+        assertTrue(script.contains("target.focus()"))
     }
 
     @Test
