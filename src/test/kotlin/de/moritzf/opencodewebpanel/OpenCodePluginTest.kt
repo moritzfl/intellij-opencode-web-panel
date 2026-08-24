@@ -104,6 +104,11 @@ class OpenCodePluginTest : BasePlatformTestCase() {
                 it.firstKeyStroke.keyCode == KeyEvent.VK_T && it.firstKeyStroke.modifiers and expectedModifier != 0
             },
         )
+        assertTrue(
+            newSessionShortcuts.any {
+                it.firstKeyStroke.keyCode == KeyEvent.VK_N && it.firstKeyStroke.modifiers and expectedModifier != 0
+            },
+        )
         val zoomInShortcuts = ActionManager.getInstance()
             .getAction(OPEN_CODE_ZOOM_IN_ACTION_ID)
             .shortcutSet

@@ -32,7 +32,9 @@
                     text="OpenCode: New Session"
                     description="Start a new OpenCode session">
                 <keyboard-shortcut keymap="$default" first-keystroke="control T"/>
+                <keyboard-shortcut keymap="$default" first-keystroke="control N"/>
                 <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta T" replace-all="true"/>
+                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta N"/>
             </action>
             <action id="OpenCodeWebPanel.ToggleHome"
                     class="com.intellij.openapi.actionSystem.EmptyAction"

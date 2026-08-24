@@ -85,6 +85,7 @@ MARKERS=(
   # IntelliJ Keymap bridge (OpenCodeBrowserShortcutHandler)
   'tab.new'
   'mod+t'
+  'mod+n'
   'session.new'
   'mod+shift+s'
   'home.toggle'
