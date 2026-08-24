@@ -7,6 +7,8 @@
 ### Changed
 
 - New Session in the panel also accepts Ctrl+N (Cmd+N on macOS), matching OpenCode's current v2 default.
+- Close Tab (Ctrl+Alt+W, Cmd+Option+W on macOS) closes the current OpenCode conversation or
+  file tab. Remap it under Keymap if you want a different chord; Cmd+W still hides the panel.
 
 ### Fixed
 

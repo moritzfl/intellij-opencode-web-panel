@@ -36,6 +36,13 @@
                 <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta T" replace-all="true"/>
                 <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta N"/>
             </action>
+            <action id="OpenCodeWebPanel.CloseTab"
+                    class="com.intellij.openapi.actionSystem.EmptyAction"
+                    text="OpenCode: Close Tab"
+                    description="Close the current OpenCode conversation or file tab">
+                <keyboard-shortcut keymap="$default" first-keystroke="control alt W"/>
+                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta alt W" replace-all="true"/>
+            </action>
             <action id="OpenCodeWebPanel.ToggleHome"
                     class="com.intellij.openapi.actionSystem.EmptyAction"
                     text="OpenCode: Home / Sidebar"

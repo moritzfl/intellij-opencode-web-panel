@@ -26,6 +26,14 @@ class OpenCodeBrowserShortcutHandlerTest {
     }
 
     @Test
+    fun closeTabUsesOpenCodeTabCloseCommand() {
+        val keybinds = OpenCodeBrowserShortcutHandler.resolveOpenCodeKeybinds(OpenCodeBrowserCommand.CLOSE_TAB, null)
+
+        assertEquals(listOf("mod+w"), keybinds.newLayout)
+        assertEquals(listOf("mod+w"), keybinds.classic)
+    }
+
+    @Test
     fun customOpenCodeKeybindsOverrideEachLayoutDefault() {
         val snapshot = """{"settings.v3":"{\"keybinds\":{\"tab.new\":\"alt+t\",\"session.new\":\"alt+s\"}}"}"""
 

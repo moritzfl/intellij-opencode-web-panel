@@ -32,6 +32,10 @@ internal enum class OpenCodeBrowserCommand(
         newLayoutBindings = listOf(OpenCodeCommandBinding("tab.new", "mod+t")),
         classicBindings = listOf(OpenCodeCommandBinding("session.new", "mod+shift+s")),
     ),
+    CLOSE_TAB(
+        "OpenCodeWebPanel.CloseTab",
+        newLayoutBindings = listOf(OpenCodeCommandBinding("tab.close", "mod+w")),
+    ),
     TOGGLE_HOME(
         "OpenCodeWebPanel.ToggleHome",
         newLayoutBindings = listOf(OpenCodeCommandBinding("home.toggle", "mod+b")),

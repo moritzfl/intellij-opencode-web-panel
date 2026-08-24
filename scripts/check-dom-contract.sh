@@ -86,6 +86,8 @@ MARKERS=(
   'tab.new'
   'mod+t'
   'mod+n'
+  'tab.close'
+  'mod+w'
   'session.new'
   'mod+shift+s'
   'home.toggle'

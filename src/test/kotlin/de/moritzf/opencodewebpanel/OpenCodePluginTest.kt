@@ -78,7 +78,7 @@ class OpenCodePluginTest : BasePlatformTestCase() {
         val pluginXml = javaClass.classLoader.getResource("META-INF/plugin.xml")!!.readText()
         assertEquals(
             "Mac shortcut declarations must replace inherited Ctrl variants",
-            9,
+            10,
             Regex("""keymap="Mac OS X"[^>]*replace-all="true"""").findAll(pluginXml).count(),
         )
         val actionIDs = OpenCodeBrowserCommand.entries.map { it.intellijActionID } + listOf(
