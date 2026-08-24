@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-08-24
+
 ### Changed
 
 - New Session in the panel also accepts Ctrl+N (Cmd+N on macOS), matching OpenCode's current v2 default.
