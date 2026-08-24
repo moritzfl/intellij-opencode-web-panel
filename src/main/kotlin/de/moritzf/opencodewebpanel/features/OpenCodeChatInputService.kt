@@ -80,6 +80,14 @@ class OpenCodeChatInputService {
 
     internal fun queuedCount(): Int = synchronized(lock) { pending.size + if (inFlight != null) 1 else 0 }
 
+    /** Drops queued and in-flight batches so a later re-enable cannot flush stale IDE-to-chat text. */
+    internal fun discardPending() {
+        synchronized(lock) {
+            pending.clear()
+            inFlight = null
+        }
+    }
+
     private fun requeueInFlightLocked() {
         inFlight?.batch?.let(pending::addFirst)
         inFlight = null

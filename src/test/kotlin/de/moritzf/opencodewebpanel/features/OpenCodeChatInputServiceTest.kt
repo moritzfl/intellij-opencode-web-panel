@@ -63,6 +63,24 @@ class OpenCodeChatInputServiceTest {
     }
 
     @Test
+    fun discardPendingDropsQueueAndIgnoresStaleAck() {
+        val service = OpenCodeChatInputService()
+        val submitted = mutableListOf<OpenCodeChatInputService.Delivery>()
+        service.setDispatcher { delivery -> submitted += delivery; true }
+        service.send(listOf("first", "second"))
+        val first = submitted.single()
+
+        service.discardPending()
+
+        assertEquals(0, service.queuedCount())
+        assertFalse(service.acknowledge(first.attemptID, accepted = true))
+        assertEquals(0, service.queuedCount())
+        assertTrue(service.dispatchPending())
+        assertEquals(0, service.queuedCount())
+        assertEquals(listOf("first"), submitted.map { it.batch.text })
+    }
+
+    @Test
     fun removingDispatcherRequeuesInFlightBatch() {
         val service = OpenCodeChatInputService()
         service.setDispatcher { true }

@@ -8,6 +8,11 @@
 
 - New Session in the panel also accepts Ctrl+N (Cmd+N on macOS), matching OpenCode's current v2 default.
 
+### Fixed
+
+- Turning off file drop and paste into chat discards any queued IDE-to-chat text instead of
+  sending it the next time the setting is turned back on.
+
 ## [1.10.9] - 2026-08-23
 
 ### Fixed

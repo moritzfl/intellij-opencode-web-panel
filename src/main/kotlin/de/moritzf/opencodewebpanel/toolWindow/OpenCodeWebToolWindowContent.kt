@@ -648,6 +648,9 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                         OpenCodeUiSetting.CODE_NAVIGATION -> applyFeature(codeNavigationFeature, enabled)
                         OpenCodeUiSetting.DIFF_NAVIGATION -> applyFeature(diffNavigationFeature, enabled)
                         OpenCodeUiSetting.CHAT_FILE_DROP -> {
+                            if (!enabled) {
+                                OpenCodeChatInputService.getInstance(project).discardPending()
+                            }
                             applyFeature(filePasteSuppressionFeature, enabled)
                             if (enabled) scheduleFlushPendingChatInput(delayMillis = 0)
                         }
