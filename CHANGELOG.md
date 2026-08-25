@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [1.11.1] - 2026-08-24
+
 ### Changed
 
 - Choose Model also accepts Ctrl+Shift+# (Cmd+Shift+# on macOS), so German layouts can type the
