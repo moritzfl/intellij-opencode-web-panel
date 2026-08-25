@@ -55,7 +55,9 @@
                     text="OpenCode: Choose Model"
                     description="Choose the model for the OpenCode session">
                 <keyboard-shortcut keymap="$default" first-keystroke="control QUOTE"/>
+                <keyboard-shortcut keymap="$default" first-keystroke="control shift NUMBER_SIGN"/>
                 <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta QUOTE" replace-all="true"/>
+                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta shift NUMBER_SIGN"/>
             </action>
             <action id="OpenCodeWebPanel.CycleAgent"
                     class="com.intellij.openapi.actionSystem.EmptyAction"

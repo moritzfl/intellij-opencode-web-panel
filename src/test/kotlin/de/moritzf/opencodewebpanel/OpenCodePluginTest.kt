@@ -109,6 +109,23 @@ class OpenCodePluginTest : BasePlatformTestCase() {
                 it.firstKeyStroke.keyCode == KeyEvent.VK_N && it.firstKeyStroke.modifiers and expectedModifier != 0
             },
         )
+        val chooseModelShortcuts = ActionManager.getInstance()
+            .getAction(OpenCodeBrowserCommand.CHOOSE_MODEL.intellijActionID)
+            .shortcutSet
+            .shortcuts
+            .filterIsInstance<KeyboardShortcut>()
+        assertTrue(
+            chooseModelShortcuts.any {
+                it.firstKeyStroke.keyCode == KeyEvent.VK_QUOTE && it.firstKeyStroke.modifiers and expectedModifier != 0
+            },
+        )
+        assertTrue(
+            chooseModelShortcuts.any {
+                it.firstKeyStroke.keyCode == KeyEvent.VK_NUMBER_SIGN &&
+                    it.firstKeyStroke.modifiers and expectedModifier != 0 &&
+                    it.firstKeyStroke.modifiers and InputEvent.SHIFT_DOWN_MASK != 0
+            },
+        )
         val zoomInShortcuts = ActionManager.getInstance()
             .getAction(OPEN_CODE_ZOOM_IN_ACTION_ID)
             .shortcutSet

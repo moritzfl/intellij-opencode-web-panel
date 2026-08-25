@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Choose Model also accepts Ctrl+Shift+# (Cmd+Shift+# on macOS), so German layouts can type the
+  same apostrophe chord OpenCode shows in the tooltip.
+
 ## [1.11.0] - 2026-08-24
 
 ### Changed
