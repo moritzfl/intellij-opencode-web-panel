@@ -119,18 +119,7 @@ internal class OpenCodeBrowserShortcutHandler(
             command.intellijActionID,
             object : DumbAwareAction() {
                 override fun actionPerformed(e: AnActionEvent) {
-                    val serverUrl = serverManager.getServerUrl() ?: return
-                    val pageUrl = browser.cefBrowser.url
-                    if (!isCommandAvailable(command, serverUrl, pageUrl)) return
-                    val keybinds = resolveOpenCodeKeybinds(
-                        command,
-                        OpenCodeSettingsState.getInstance().openCodeLocalStorageSnapshot,
-                    )
-                    val script = OpenCodeBrowserSnippets.buildShortcutDispatchScript(
-                        keybinds.newLayout,
-                        keybinds.classic,
-                    ) ?: return
-                    browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
+                    dispatch(browser, serverManager, command)
                 }
 
                 override fun update(e: AnActionEvent) {
@@ -160,6 +149,25 @@ internal class OpenCodeBrowserShortcutHandler(
     }
 
     internal companion object {
+        fun dispatch(
+            browser: JBCefBrowser,
+            serverManager: SharedOpenCodeServerManager,
+            command: OpenCodeBrowserCommand,
+        ) {
+            val serverUrl = serverManager.getServerUrl() ?: return
+            val pageUrl = browser.cefBrowser.url
+            if (!isCommandAvailable(command, serverUrl, pageUrl)) return
+            val keybinds = resolveOpenCodeKeybinds(
+                command,
+                OpenCodeSettingsState.getInstance().openCodeLocalStorageSnapshot,
+            )
+            val script = OpenCodeBrowserSnippets.buildShortcutDispatchScript(
+                keybinds.newLayout,
+                keybinds.classic,
+            ) ?: return
+            browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
+        }
+
         fun resolveOpenCodeKeybinds(command: OpenCodeBrowserCommand, snapshot: String?): OpenCodeResolvedKeybinds {
             val custom = runCatching {
                 val snapshotObject = JsonParser.parseString(snapshot.orEmpty())

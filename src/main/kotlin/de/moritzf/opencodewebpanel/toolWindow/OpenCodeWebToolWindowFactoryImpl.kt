@@ -42,19 +42,27 @@ class OpenCodeWebToolWindowFactoryImpl : ToolWindowFactory, DumbAware {
             ),
         )
         toolWindow.setAdditionalGearActions(
-            DefaultActionGroup(
-                OpenCodeZoomOutAction(),
-                OpenCodeZoomInAction(),
-                OpenCodeResetZoomAction(),
-                OpenCodeAutoAcceptPermissionsAction(),
-                OpenCodeReloadPageAction(),
-                OpenCodeRestartServerAction(),
-                OpenCodeStopServerAction(),
-                OpenCodeResetWebStateAction(),
-                OpenCodeOpenDevToolsAction(),
-                OpenCodeViewServerLogAction(),
-                OpenCodeOpenSettingsAction(),
-            ),
+            DefaultActionGroup().apply {
+                add(OpenCodeNewSessionAction())
+                addSeparator()
+                add(OpenCodeZoomOutAction())
+                add(OpenCodeZoomInAction())
+                add(OpenCodeResetZoomAction())
+                addSeparator()
+                add(OpenCodeAutoAcceptPermissionsAction())
+                addSeparator()
+                add(OpenCodeReloadPageAction())
+                add(OpenCodeRestartServerAction())
+                add(OpenCodeStopServerAction())
+                addSeparator()
+                add(OpenCodeResetWebStateAction())
+                add(OpenCodeOpenDevToolsAction())
+                add(OpenCodeViewServerLogAction())
+                addSeparator()
+                add(OpenCodeOpenProjectSettingsAction())
+                add(OpenCodeOpenSettingsAction())
+                add(OpenCodeOpenKeymapAction())
+            },
         )
     }
 }

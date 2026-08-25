@@ -4,6 +4,16 @@
 
 ## [Unreleased]
 
+### Added
+
+- Gear menu: New Session, Project Directory, and Keyboard Shortcuts.
+- A stopped-state card with a Start button instead of a blank panel.
+
+### Changed
+
+- Gear-menu items show a short hint. Hover tooltips still do not appear on the popup; the
+  hint is the gray secondary text.
+
 ## [1.11.1] - 2026-08-24
 
 ### Changed

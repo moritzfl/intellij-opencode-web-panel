@@ -13,6 +13,7 @@ import com.intellij.util.ui.components.BorderLayoutPanel
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLogBuffer
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.settings.OpenCodePortMode
+import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsConfigurable
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsListener
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
@@ -33,7 +34,7 @@ internal class OpenCodeStartupErrorPanel(
     private val project: Project,
     private val onRetry: () -> Unit,
 ) {
-    private val titleLabel = JBLabel("Failed to start the OpenCode server").apply {
+    private val titleLabel = JBLabel("Could not start OpenCode").apply {
         font = JBFont.label().asBold().biggerOn(2f)
     }
     private val messageLabel = JBLabel().apply {
@@ -43,10 +44,16 @@ internal class OpenCodeStartupErrorPanel(
         toolTipText = "Retry starting the OpenCode server"
         addActionListener { onRetry() }
     }
-    private val openSettingsButton = JButton("Open Settings", AllIcons.General.Settings).apply {
-        toolTipText = "Open the OpenCode Web Panel settings"
+    private val openSettingsButton = JButton("Settings", AllIcons.General.Settings).apply {
+        toolTipText = "Open plugin settings"
         addActionListener {
             ShowSettingsUtil.getInstance().showSettingsDialog(project, OpenCodeSettingsConfigurable::class.java)
+        }
+    }
+    private val openProjectSettingsButton = JButton("Project Directory", AllIcons.Nodes.Folder).apply {
+        toolTipText = "Choose which folder OpenCode uses for this IDE project"
+        addActionListener {
+            ShowSettingsUtil.getInstance().showSettingsDialog(project, OpenCodeProjectSettingsConfigurable::class.java)
         }
     }
     private val viewLogButton = JButton("View Full Log", AllIcons.Actions.Show).apply {
@@ -95,6 +102,8 @@ internal class OpenCodeStartupErrorPanel(
                         add(retryButton)
                         add(Box.createHorizontalStrut(JBUI.scale(8)))
                         add(useAutoPortButton)
+                        add(Box.createHorizontalStrut(JBUI.scale(8)))
+                        add(openProjectSettingsButton)
                         add(Box.createHorizontalStrut(JBUI.scale(8)))
                         add(openSettingsButton)
                         add(Box.createHorizontalStrut(JBUI.scale(8)))

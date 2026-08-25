@@ -109,11 +109,11 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     private val lifecycleStatusPanel = OpenCodeLifecycleStatusPanel(::restartOpenCodeServer)
     private val startupErrorPanel = OpenCodeStartupErrorPanel(project, ::restartOpenCodeServer)
     private val centerCardLayout = CardLayout()
-    private val idleCard = JPanel()
+    private val idleCard = OpenCodeIdleCard(::restartOpenCodeServer)
     private val centerCardPanel = JPanel(centerCardLayout).apply {
         add(browser.component, BROWSER_CARD)
         add(startupErrorPanel.component, ERROR_CARD)
-        add(idleCard, IDLE_CARD)
+        add(idleCard.component, IDLE_CARD)
     }
     private val contentPanel = BorderLayoutPanel().apply {
         addToTop(lifecycleStatusPanel.component)
@@ -772,6 +772,9 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         if (state != OpenCodeServerLifecycleState.RUNNING) {
             resetAgentStatusBadge()
         }
+        if (shouldHideEmbeddedPage(state)) {
+            idleCard.show(state)
+        }
         val relayout = lifecycleStatusPanel.update(
             state,
             pageOpening = shouldShowPageOpeningStatus(pageLoadInProgress, openCodePagePainted),
@@ -790,7 +793,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         }
         paint(contentPanel)
         paint(centerCardPanel)
-        paint(idleCard)
+        paint(idleCard.component)
         paint(browser.component)
     }
 
@@ -1230,6 +1233,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         pageLoadTargetUrl = null
         openProjectAlarm.cancelAllRequests()
         if (shouldHideEmbeddedPage(state)) {
+            idleCard.show(state)
             showCenterCard(IDLE_CARD)
         }
     }
@@ -1722,6 +1726,12 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         pendingMostRecentSessionId = null
         pendingMostRecentSessionDirectory = null
     }
+
+    internal fun dispatchOpenCodeCommand(command: OpenCodeBrowserCommand) {
+        OpenCodeBrowserShortcutHandler.dispatch(browser, serverManager, command)
+    }
+
+    internal fun currentPageUrl(): String? = browser.cefBrowser.url
 
     internal fun displayedSessionID(): String? {
         return OpenCodeServerProtocol.sessionIdFromUrl(browser.cefBrowser.url)
