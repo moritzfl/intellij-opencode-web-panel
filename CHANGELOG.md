@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [1.12.0] - 2026-08-26
+
 ### Added
 
 - Gear menu: New Session, Project Directory, and Keyboard Shortcuts.
