@@ -29,6 +29,20 @@ class OpenCodeLifecycleStatusPanelTest {
     }
 
     @Test
+    fun stoppedAndRestartingHideTheStrip() {
+        onEdt {
+            val panel = OpenCodeLifecycleStatusPanel {}
+
+            assertTrue(panel.update(OpenCodeServerLifecycleState.STARTING))
+            assertTrue(panel.component.isVisible)
+            assertTrue(panel.update(OpenCodeServerLifecycleState.STOPPED))
+            assertFalse(panel.component.isVisible)
+            panel.update(OpenCodeServerLifecycleState.RESTARTING)
+            assertFalse(panel.component.isVisible)
+        }
+    }
+
+    @Test
     fun showingTheRetryButtonRequestsParentRelayout() {
         onEdt {
             val panel = OpenCodeLifecycleStatusPanel {}

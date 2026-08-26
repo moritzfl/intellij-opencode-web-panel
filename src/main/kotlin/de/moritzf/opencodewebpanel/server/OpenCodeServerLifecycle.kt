@@ -35,13 +35,14 @@ internal fun isOpenCodeServerLifecycleStatusVisible(state: OpenCodeServerLifecyc
     return state != OpenCodeServerLifecycleState.RUNNING
 }
 
-/** Keep the strip up after the server is running until the embedded page actually paints. */
+/** Keep the strip up after the server is running until the embedded page actually paints.
+ *  Stopped/restarting use the idle card instead, so the strip would duplicate Start. */
 internal fun isOpenCodeLifecycleStripVisible(
     state: OpenCodeServerLifecycleState,
     pageOpening: Boolean = false,
 ): Boolean {
-    return (pageOpening && state == OpenCodeServerLifecycleState.RUNNING) ||
-        isOpenCodeServerLifecycleStatusVisible(state)
+    if (pageOpening && state == OpenCodeServerLifecycleState.RUNNING) return true
+    return state == OpenCodeServerLifecycleState.STARTING || state == OpenCodeServerLifecycleState.FAILED
 }
 
 /** Hide "Opening…" on later in-app navigations once a page has already painted. */

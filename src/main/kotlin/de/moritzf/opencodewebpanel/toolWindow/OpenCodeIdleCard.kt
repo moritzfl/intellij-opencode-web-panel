@@ -5,44 +5,55 @@ import com.intellij.ui.components.JBLabel
 import com.intellij.util.ui.JBFont
 import com.intellij.util.ui.JBUI
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState
-import java.awt.BorderLayout
+import java.awt.GridBagConstraints
+import java.awt.GridBagLayout
 import javax.swing.Box
 import javax.swing.BoxLayout
 import javax.swing.JButton
 import javax.swing.JPanel
+import javax.swing.SwingConstants
 
 internal class OpenCodeIdleCard(onStart: () -> Unit) {
+    private val iconLabel = JBLabel(AllIcons.Actions.Suspend).apply {
+        alignmentX = java.awt.Component.CENTER_ALIGNMENT
+        horizontalAlignment = SwingConstants.CENTER
+    }
     private val titleLabel = JBLabel("OpenCode is stopped").apply {
-        font = JBFont.label().asBold().biggerOn(2f)
-        alignmentX = 0f
+        font = JBFont.label().asBold().biggerOn(3f)
+        alignmentX = java.awt.Component.CENTER_ALIGNMENT
+        horizontalAlignment = SwingConstants.CENTER
     }
     private val messageLabel = JBLabel("Start the server to open this project.").apply {
         foreground = JBUI.CurrentTheme.ContextHelp.FOREGROUND
-        alignmentX = 0f
+        alignmentX = java.awt.Component.CENTER_ALIGNMENT
+        horizontalAlignment = SwingConstants.CENTER
     }
     private val startButton = JButton("Start", AllIcons.Actions.Execute).apply {
-        alignmentX = 0f
+        alignmentX = java.awt.Component.CENTER_ALIGNMENT
         addActionListener { onStart() }
     }
 
-    val component = JPanel(BorderLayout()).apply {
-        border = JBUI.Borders.empty(16)
+    val component = JPanel(GridBagLayout()).apply {
+        isOpaque = true
         add(
             JPanel().apply {
                 layout = BoxLayout(this, BoxLayout.Y_AXIS)
                 isOpaque = false
+                add(iconLabel)
+                add(Box.createVerticalStrut(JBUI.scale(16)))
                 add(titleLabel)
                 add(Box.createVerticalStrut(JBUI.scale(8)))
                 add(messageLabel)
-                add(Box.createVerticalStrut(JBUI.scale(12)))
+                add(Box.createVerticalStrut(JBUI.scale(16)))
                 add(startButton)
             },
-            BorderLayout.NORTH,
+            GridBagConstraints(),
         )
     }
 
     fun show(state: OpenCodeServerLifecycleState) {
         val stopped = state == OpenCodeServerLifecycleState.STOPPED
+        iconLabel.icon = if (stopped) AllIcons.Actions.Suspend else AllIcons.Actions.Refresh
         titleLabel.text = if (stopped) "OpenCode is stopped" else "Restarting OpenCode…"
         messageLabel.text = if (stopped) {
             "Start the server to open this project."

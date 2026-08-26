@@ -77,6 +77,9 @@ class OpenCodeServerLifecycleTest {
         assertTrue(isOpenCodeLifecycleStripVisible(OpenCodeServerLifecycleState.RUNNING, pageOpening = true))
         assertFalse(isOpenCodeLifecycleStripVisible(OpenCodeServerLifecycleState.RUNNING, pageOpening = false))
         assertTrue(isOpenCodeLifecycleStripVisible(OpenCodeServerLifecycleState.STARTING, pageOpening = true))
+        assertFalse(isOpenCodeLifecycleStripVisible(OpenCodeServerLifecycleState.STOPPED))
+        assertFalse(isOpenCodeLifecycleStripVisible(OpenCodeServerLifecycleState.RESTARTING))
+        assertTrue(isOpenCodeLifecycleStripVisible(OpenCodeServerLifecycleState.FAILED))
     }
 
     @Test
