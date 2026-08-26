@@ -2,7 +2,6 @@ package de.moritzf.opencodewebpanel.jcef
 
 import com.intellij.testFramework.ApplicationRule
 import com.intellij.testFramework.DisposableRule
-import de.moritzf.opencodewebpanel.browser.OpenCodeBrowserSnippets
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assume
@@ -82,14 +81,23 @@ class OpenCodeJcefSessionDirectoryTest {
         projectDirectory: String,
         sessionDirectory: String?,
     ) {
-        val script = OpenCodeBrowserSnippets.buildOpenProjectScript(
-            projectDirectory,
-            "$origin/",
-            openMostRecentConversation = true,
-            mostRecentSessionId = SESSION_ID,
-            navigate = false,
-            mostRecentSessionDirectory = sessionDirectory,
-        )!!
+        val pointerDirectory = (sessionDirectory ?: projectDirectory)
+            .replace("\\", "\\\\")
+            .replace("'", "\\'")
+        val projectKey = projectDirectory.replace("\\", "\\\\").replace("'", "\\'")
+        val script = """
+            (function() {
+              var page = {};
+              try { page = JSON.parse(localStorage.getItem('opencode.global.dat:layout.page') || '{}'); } catch (e) { page = {}; }
+              page.lastProjectSession = page.lastProjectSession || {};
+              page.lastProjectSession['$projectKey'] = {
+                directory: '$pointerDirectory',
+                id: '$SESSION_ID',
+                at: Date.now()
+              };
+              localStorage.setItem('opencode.global.dat:layout.page', JSON.stringify(page));
+            })();
+        """.trimIndent()
         browser.cefBrowser.executeJavaScript(script, browser.cefBrowser.url, 0)
         OpenCodeJcefTestHelper.awaitCondition("open-project seed wrote lastProjectSession") {
             OpenCodeJcefTestHelper.evaluateString(

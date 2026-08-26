@@ -350,7 +350,6 @@ class OpenCodeServerProtocolTest {
 
         assertTrue(script.contains("if (window.location.origin !== 'http://127.0.0.1:60482') return;"))
         assertTrue(script.contains("opencode.global.dat:server"))
-        assertTrue(script.contains("opencode.intellij.project.opened:"))
         assertTrue(script.contains("state.projects[scope]"))
         assertTrue(script.contains("state.lastProject[scope] = directory"))
         assertTrue(script.contains("!Array.isArray(state.projects)"))
@@ -370,12 +369,9 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("!sameWorktree(project.worktree, directory)"))
         assertTrue(script.contains("next.startsWith('//')) next = next.toLowerCase()"))
         assertTrue(script.contains("const directory = '/tmp/my \\'project\\''"))
-        // Without a resolved recent session the injected id is empty, so the runtime guard skips
-        // navigation and the script only seeds.
-        assertTrue(script.contains("const sessionId = ''"))
-        assertTrue(script.contains("if (!sessionId) return;"))
+        assertFalse(script.contains("window.location.assign"))
+        assertFalse(script.contains("lastProjectSession"))
         assertFalse(script.contains("window.location.reload()"))
-        // The legacy directory-route machinery is gone (only the 1.18 server route is used).
         assertFalse(script.contains("projectPath"))
         assertFalse(script.contains("findLastProjectSession"))
         assertFalse(script.contains("directorylessProject"))
@@ -387,169 +383,6 @@ class OpenCodeServerProtocolTest {
     fun buildOpenProjectScriptIsMissingWithoutProjectPath() {
         assertNull(OpenCodeBrowserSnippets.buildOpenProjectScript(null))
         assertNull(OpenCodeBrowserSnippets.buildOpenProjectScript(""))
-    }
-
-    @Test
-    fun buildOpenProjectScriptNavigatesToTheNativeServerSessionRoute() {
-        val script = OpenCodeBrowserSnippets.buildOpenProjectScript(
-            "/tmp/project",
-            "http://127.0.0.1:60482/",
-            openMostRecentConversation = true,
-            mostRecentSessionId = "ses_abc123",
-        )!!
-
-        assertTrue(script.contains("const sessionId = 'ses_abc123'"))
-        assertTrue(script.contains("const sessionDirectory = '' || directory"))
-        assertTrue(script.contains("const encodeServerKey = (value)"))
-        assertTrue(script.contains("btoa(binary).replace(/\\+/g, '-').replace(/\\//g, '_')"))
-        assertTrue(
-            script.contains(
-                "const target = '/server/' + encodeServerKey(window.location.origin) + '/session/' + encodeURIComponent(sessionId)",
-            ),
-        )
-        assertTrue(script.contains("window.location.assign(target)"))
-        // Only the *target* session counts as already open — not an arbitrary /session/<id>
-        // the SPA may have restored from the shared profile.
-        assertTrue(script.contains("currentSessionId === sessionId"))
-        assertFalse(script.contains("const onConversation ="))
-    }
-
-    @Test
-    fun buildOpenProjectScriptPointsTheSpaLastProjectSessionAtTheSameConversation() {
-        val script = OpenCodeBrowserSnippets.buildOpenProjectScript(
-            "/tmp/project",
-            "http://127.0.0.1:60482/",
-            openMostRecentConversation = true,
-            mostRecentSessionId = "ses_abc123",
-        )!!
-
-        // The SPA's project bootstrap redirects to lastProjectSession[worktree] even when the
-        // URL already carries a session id, so the navigation above only sticks when this
-        // pointer agrees with it.
-        assertTrue(script.contains("opencode.global.dat:layout.page"))
-        assertTrue(script.contains("pageState.lastProjectSession[pointerKey] = {"))
-        assertTrue(script.contains("id: sessionId"))
-        // Reuse OpenCode's own worktree spelling so a separator/case drift cannot split the map.
-        assertTrue(script.contains("if (sameWorktree(candidate, directory)) { pointerKey = candidate; break; }"))
-        // Idempotent across the injection retry series, but a wrong `directory` is repaired.
-        assertTrue(script.contains("previous.id !== sessionId"))
-        assertTrue(script.contains("!sameWorktree(previous.directory, sessionDirectory)"))
-        assertTrue(script.contains("directory: sessionDirectory"))
-        assertTrue(script.contains("if (nextPageRaw !== pageRaw)"))
-        // Same fail-soft rule as the project seed: never stomp an unrecognized schema, and say so.
-        assertTrue(script.contains("if (!pageParseFailed && pageParsed !== null && !pageIsPlainObject)"))
-        assertTrue(script.contains("Skipping OpenCode session pointer: unrecognized page-state schema"))
-        // A deliberate in-panel switch away from an already-opened target must not be persisted.
-        assertTrue(script.contains("if (alreadyOpened && !onTarget) return;"))
-        assertTrue(
-            script.indexOf("if (alreadyOpened && !onTarget) return;") <
-                script.indexOf("opencode.global.dat:layout.page"),
-        )
-    }
-
-    @Test
-    fun buildOpenProjectScriptSeedsNoSessionPointerWithoutARecentSession() {
-        val script = OpenCodeBrowserSnippets.buildOpenProjectScript(
-            "/tmp/project",
-            "http://127.0.0.1:60482/",
-        )!!
-
-        // No resolved session → the injected id is empty and the runtime guard returns before
-        // the pointer write, so a seed-only injection never touches the last-viewed conversation.
-        assertTrue(script.contains("const sessionId = ''"))
-        assertTrue(
-            script.indexOf("if (!sessionId) return;") <
-                script.indexOf("opencode.global.dat:layout.page"),
-        )
-    }
-
-    @Test
-    fun buildOpenProjectScriptRejectsMalformedSessionIdsBeforeSeedingThePointer() {
-        val script = OpenCodeBrowserSnippets.buildOpenProjectScript(
-            "/tmp/project",
-            "http://127.0.0.1:60482/",
-            openMostRecentConversation = true,
-            mostRecentSessionId = "not-a-session",
-        )!!
-
-        assertTrue(script.contains("const sessionId = ''"))
-        assertFalse(script.contains("not-a-session"))
-    }
-
-    @Test
-    fun buildOpenProjectScriptSeedOnlyFormAlignsThePointerWithoutNavigating() {
-        val script = OpenCodeBrowserSnippets.buildOpenProjectScript(
-            "/tmp/project",
-            "http://127.0.0.1:60482/",
-            openMostRecentConversation = true,
-            mostRecentSessionId = "ses_abc123",
-            navigate = false,
-        )!!
-
-        // Injected at onLoadStart: aligns OpenCode's pointer before its bundle bootstraps, so the
-        // SPA never redirects to a stale conversation first.
-        assertTrue(script.contains("pageState.lastProjectSession[pointerKey] = {"))
-        assertFalse(script.contains("window.location.assign(target)"))
-        // Must not consume the one-shot guard — the post-load series still has to navigate.
-        assertEquals(1, Regex("sessionStorage\\.setItem\\(navigationKey").findAll(script).count())
-        assertTrue(script.contains("if (pointerAligned) { try { window.sessionStorage.setItem(navigationKey, target); }"))
-        assertTrue(script.indexOf("pointerAligned = true") < script.indexOf("if (onTarget)"))
-        assertTrue(script.indexOf("pointerAligned = true") > script.indexOf("previous.id !== sessionId"))
-    }
-
-    @Test
-    fun buildOpenProjectScriptDoesNotNavigateWithoutARecentSession() {
-        val script = OpenCodeBrowserSnippets.buildOpenProjectScript(
-            "/tmp/project",
-            "http://127.0.0.1:60482/",
-            openMostRecentConversation = true,
-        )!!
-
-        // No resolved session id => the runtime guard returns before the navigation block runs.
-        assertTrue(script.contains("const sessionId = ''"))
-        assertTrue(script.contains("if (!sessionId) return;"))
-    }
-
-    @Test
-    fun buildOpenProjectScriptRejectsMalformedMostRecentSessionIds() {
-        val script = OpenCodeBrowserSnippets.buildOpenProjectScript(
-            "/tmp/project",
-            "http://127.0.0.1:60482/",
-            openMostRecentConversation = true,
-            mostRecentSessionId = "ses_'; alert(1); '",
-        )!!
-
-        assertTrue(script.contains("const sessionId = ''"))
-        assertFalse(script.contains("alert(1)"))
-    }
-
-    @Test
-    fun buildOpenProjectScriptPointsLastProjectSessionAtTheSessionsOwnDirectory() {
-        val script = OpenCodeBrowserSnippets.buildOpenProjectScript(
-            "/tmp/project",
-            "http://127.0.0.1:60482/",
-            openMostRecentConversation = true,
-            mostRecentSessionId = "ses_abc123",
-            mostRecentSessionDirectory = "/private/tmp/project",
-        )!!
-
-        assertTrue(script.contains("const sessionDirectory = '/private/tmp/project' || directory"))
-        assertTrue(script.contains("directory: sessionDirectory"))
-        assertFalse(script.contains("directory: directory,"))
-    }
-
-    @Test
-    fun buildOpenProjectScriptOnlyOpensRecentConversationWhenEnabled() {
-        // A valid id is ignored unless opening the most recent conversation is enabled.
-        val script = OpenCodeBrowserSnippets.buildOpenProjectScript(
-            "/tmp/project",
-            "http://127.0.0.1:60482/",
-            openMostRecentConversation = false,
-            mostRecentSessionId = "ses_abc123",
-        )!!
-
-        assertTrue(script.contains("const sessionId = ''"))
-        assertFalse(script.contains("ses_abc123"))
     }
 
     @Test

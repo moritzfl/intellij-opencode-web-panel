@@ -85,7 +85,6 @@ class OpenCodeSettingsConfigurable : Configurable {
     private val serverStatusLabel = JBLabel().apply {
         toolTipText = "Current OpenCode server status"
     }
-    private val openMostRecentConversationCheckBox = JBCheckBox("Open the most recent conversation for the project on startup")
     private val openFileLinksInIdeCheckBox = JBCheckBox("Enable IDE navigation from OpenCode")
     private val openExternalLinksInBrowserCheckBox = JBCheckBox("Open external HTTP links in the system browser")
     private val enableCodeNavigationCheckBox = JBCheckBox("Also navigate code references in chat")
@@ -131,7 +130,6 @@ class OpenCodeSettingsConfigurable : Configurable {
     )
 
     private val checkBoxSettingBindings = listOf(
-        CheckBoxSettingBinding(openMostRecentConversationCheckBox, { openMostRecentConversationOnStartup }, { value -> openMostRecentConversationOnStartup = value }),
         CheckBoxSettingBinding(openFileLinksInIdeCheckBox, { openFileLinksInIde }, { value -> openFileLinksInIde = value }, OpenCodeUiSetting.FILE_LINK_NAVIGATION),
         CheckBoxSettingBinding(openExternalLinksInBrowserCheckBox, { openExternalLinksInBrowser }, { value -> openExternalLinksInBrowser = value }, OpenCodeUiSetting.EXTERNAL_LINK_NAVIGATION),
         CheckBoxSettingBinding(enableCodeNavigationCheckBox, { enableCodeNavigation }, { value -> enableCodeNavigation = value }, OpenCodeUiSetting.CODE_NAVIGATION),
@@ -238,12 +236,6 @@ class OpenCodeSettingsConfigurable : Configurable {
             }
         }
         val uiSettingsPanel = panel {
-            group("Project Startup") {
-                row {
-                    cell(openMostRecentConversationCheckBox)
-                        .comment("When the panel opens, ask the OpenCode server for this project's latest conversation (by last activity) and open it. When off, only bind the project directory and leave the session choice to OpenCode.")
-                }
-            }
             group("Browser Appearance") {
                 row("Zoom:") {
                     cell(uiZoomSpinner)

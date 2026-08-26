@@ -110,7 +110,6 @@ Open <kbd>Settings/Preferences</kbd> > <kbd>Tools</kbd> > <kbd>OpenCode Web Pane
 
 ### OpenCode UI Settings
 
-- Restore the most recent OpenCode conversation for the project on startup.
 - Open local file links in the IDE.
 - Open external HTTP links in the system browser.
 - Enable click-to-navigate for code references in chat.

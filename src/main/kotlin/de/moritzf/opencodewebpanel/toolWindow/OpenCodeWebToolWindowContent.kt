@@ -162,27 +162,9 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         setBrowserFocus = { browser.cefBrowser.setFocus(it) },
     )
     private var openProjectScriptScheduled = false
-    /** Most-recent session resolved for the current page load (avoids a second REST fetch). */
-    private var pendingMostRecentSessionId: String? = null
-    /** Server-persisted directory for [pendingMostRecentSessionId]; SPA `session.get` is exact-string. */
-    private var pendingMostRecentSessionDirectory: String? = null
-    /**
-     * OpenCode's stored spelling of this project folder, adopted from a session list/path
-     * response. Used so seeded `lastProject` matches `session.directory` (`===` in the SPA).
-     */
-    @Volatile
-    private var preferredOpenCodeDirectory: String? = null
-    /**
-     * One-shot boot intent: navigate to [pendingMostRecentSessionId] only for the load started by
-     * [loadProjectPage]. Cleared once the target session is open so later SPA navigations only
-     * re-seed project state and never yank the user back to the startup conversation.
-     */
-    private var pendingOpenMostRecentConversation = false
     private var restoreExistingOpenCodeSession = false
     private var sessionIdToRestore: String? = null
-    private val loadIntent = OpenCodeLoadIntent()
     private val documentStartInjector = OpenCodeDocumentStartInjector(browser)
-    private var mostRecentSessionLookupInFlight = false
     @Volatile
     private var mainDocumentLoadSucceeded = false
     private var pageLoadInProgress = false
@@ -239,10 +221,6 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                 OpenCodeBrowserSnippets.buildOpenProjectScript(
                     projectDirectory,
                     serverUrl,
-                    openMostRecentConversation = pendingOpenMostRecentConversation,
-                    mostRecentSessionId = pendingMostRecentSessionId,
-                    navigate = false,
-                    mostRecentSessionDirectory = pendingMostRecentSessionDirectory,
                 )
             }
         },
@@ -425,7 +403,6 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                 // available for the open-project script.
                 localStorageBridge.restore(completedUrl)
                 scheduleOpenProjectScript()
-                applyResolvedStartupSession()
                 localStorageBridge.installSync(completedUrl)
                 injectedFeatures.forEach(::scheduleFeatureScript)
                 scheduleIdeThemeSyncScript()
@@ -867,7 +844,6 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
      */
     fun reloadOpenCodePage() {
         if (isContentDisposed()) return
-        cancelStartupNavigation()
         val serverUrl = serverManager.getServerUrl()
         if (serverUrl == null ||
             loadedServerRootUrl == null ||
@@ -971,20 +947,12 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     private fun loadProjectPage() {
         if (isContentDisposed()) return
         val serverUrl = serverManager.getServerUrl() ?: return
-        val serverGeneration = serverManager.getServerGeneration()
-        val loadToken = loadIntent.begin()
         // Boot on the native 1.18 server session route (/server/<serverKey>/session[/<id>]), not the
         // legacy project directory route (/<encodedDir>/session). Cold-loading the bare directory
-        // route crashes opencode 1.18.x's application error boundary. Prefer a concrete session id
-        // when "open most recent" is on — the SPA route requires :id; the bare .../session URL is
-        // only a temporary shell until the open-project script navigates.
+        // route crashes opencode 1.18.x's application error boundary. The id-less shell is fine:
+        // OpenCode restores this project's last tab / lastProjectSession.
         thisLogger().info("Loading OpenCode project page")
         openProjectScriptScheduled = false
-        pendingMostRecentSessionId = null
-        pendingMostRecentSessionDirectory = null
-        preferredOpenCodeDirectory = null
-        pendingOpenMostRecentConversation = false
-        mostRecentSessionLookupInFlight = false
         pageLoadTargetUrl = null
         // No pre-load script scheduling here: onLoadStart cancels the alarm and resets the
         // per-page flags anyway, and onLoadStart/onLoadEnd (re)schedule everything for the new
@@ -999,65 +967,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         val restoreExisting = restoreExistingOpenCodeSession
         restoreExistingOpenCodeSession = false
         val restoredSessionId = sessionIdToRestore.takeIf { restoreExisting }
-        val openMostRecent = OpenCodeStartupNavigation.shouldLookupMostRecentSession(
-            restoreExisting,
-            OpenCodeSettingsState.getInstance().openMostRecentConversationOnStartup,
-        )
-        val projectDirectory = openCodeProjectDirectory()?.takeIf { it.isNotBlank() }
-        pendingOpenMostRecentConversation = openMostRecent
-        // Paint immediately. Waiting for the session listing used to leave the panel blank for
-        // the whole REST round-trip (and every paginated follow-up). The listing still runs in
-        // parallel and navigates once, if it finishes with a parent session id.
-        if (openMostRecent && projectDirectory != null) {
-            mostRecentSessionLookupInFlight = true
-            ApplicationManager.getApplication().executeOnPooledThread {
-                val session = fetchMostRecentSession(serverUrl, projectDirectory)
-                ApplicationManager.getApplication().invokeLater {
-                    if (isContentDisposed()) return@invokeLater
-                    if (!loadIntent.accepts(
-                            token = loadToken,
-                            initialServerGeneration = serverGeneration,
-                            currentServerGeneration = serverManager.getServerGeneration(),
-                            initialServerUrl = serverUrl,
-                            currentServerUrl = serverManager.getServerUrl(),
-                            initialDirectory = projectDirectory,
-                            currentDirectory = openCodeProjectDirectory(),
-                            stillEnabled = OpenCodeSettingsState.getInstance().openMostRecentConversationOnStartup,
-                        )
-                    ) {
-                        if (loadIntent.isCurrent(loadToken)) {
-                            mostRecentSessionLookupInFlight = false
-                            pendingOpenMostRecentConversation = false
-                        }
-                        return@invokeLater
-                    }
-                    mostRecentSessionLookupInFlight = false
-                    pendingMostRecentSessionId = session?.id
-                    pendingMostRecentSessionDirectory = session?.directory
-                    session?.directory?.let { adoptPreferredOpenCodeDirectory(it) }
-                    if (session?.id == null) {
-                        pendingOpenMostRecentConversation = false
-                        return@invokeLater
-                    }
-                    applyResolvedStartupSession()
-                }
-            }
-        }
         loadProjectPageAt(serverUrl, sessionId = restoredSessionId)
-    }
-
-    private fun applyResolvedStartupSession() {
-        if (!pendingOpenMostRecentConversation) return
-        val sessionId = pendingMostRecentSessionId ?: return
-        val serverUrl = serverManager.getServerUrl() ?: return
-        if (!mainDocumentLoadSucceeded || !isBrowserOnOpenCodeServerPage(serverUrl)) return
-        val currentId = OpenCodeServerProtocol.sessionIdFromUrl(browser.cefBrowser.url)
-        if (!OpenCodeStartupNavigation.shouldJvmNavigateToResolvedSession(currentId, sessionId)) {
-            pendingOpenMostRecentConversation = false
-            return
-        }
-        pendingOpenMostRecentConversation = false
-        loadProjectPageAt(serverUrl, sessionId)
     }
 
     private fun loadProjectPageAt(serverUrl: String, sessionId: String?) {
@@ -1223,7 +1133,6 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         }
         rememberOpenCodeSessionForRestore()
         loadedServerRootUrl = null
-        cancelStartupNavigation()
         pendingBrowserLoadGeneration++
         pageLoadWatchdogGeneration++
         pageLoadWatchdogAlarm.cancelAllRequests()
@@ -1286,99 +1195,11 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         val serverUrl = serverManager.getServerUrl() ?: return
         val projectDirectory = openCodeProjectDirectory()?.takeIf { it.isNotBlank() } ?: return
         openProjectScriptScheduled = true
-
-        // One-shot boot intent only — do not re-read the setting on every SPA navigation, or a
-        // later full page load would yank the user back to the startup conversation.
-        val openMostRecent = pendingOpenMostRecentConversation
-        val pendingId = pendingMostRecentSessionId?.takeIf { openMostRecent }
-        val pendingDirectory = pendingMostRecentSessionDirectory?.takeIf { pendingId != null }
-        if (!OpenCodeStartupNavigation.shouldKeepNavigateIntent(
-                openMostRecent,
-                pendingId,
-                mostRecentSessionLookupInFlight,
-            )
-        ) {
-            pendingOpenMostRecentConversation = false
-            scheduleOpenProjectScript(
-                serverUrl,
-                projectDirectory,
-                openMostRecentConversation = false,
-                mostRecentSessionId = null,
-                mostRecentSessionDirectory = null,
-            )
-            return
-        }
-        if (pendingId == null) {
-            // Listing still in flight: seed now, navigate when the id arrives.
-            scheduleOpenProjectScript(
-                serverUrl,
-                projectDirectory,
-                openMostRecentConversation = false,
-                mostRecentSessionId = null,
-                mostRecentSessionDirectory = null,
-            )
-            return
-        }
-        scheduleOpenProjectScript(
-            serverUrl,
-            projectDirectory,
-            openMostRecentConversation = true,
-            mostRecentSessionId = pendingId,
-            mostRecentSessionDirectory = pendingDirectory,
-        )
-    }
-
-    private fun fetchMostRecentSession(
-        serverUrl: String,
-        projectDirectory: String,
-    ): OpenCodeServerProtocol.SessionSummary? {
-        val password = serverManager.getServerPassword() ?: return null
-        return OpenCodeServerProtocol.fetchRecentSessions(
-            serverUrl,
-            OpenCodeServerProtocol.buildBasicAuthHeader(password),
-            projectDirectory,
-            maxAgeMillis = Long.MAX_VALUE,
-            // The listing is creation-ordered (see fetchRecentSessions); a large window keeps a
-            // long-running conversation findable even after many later-created subagent sessions.
-            limit = 100,
-        )
-            .filter { it.parentID == null } // never navigate to a subagent child session
-            .maxByOrNull { it.updatedMillis }
-    }
-
-    private fun scheduleOpenProjectScript(
-        serverUrl: String,
-        projectDirectory: String,
-        openMostRecentConversation: Boolean,
-        mostRecentSessionId: String?,
-        mostRecentSessionDirectory: String?,
-    ) {
-        val script = OpenCodeBrowserSnippets.buildOpenProjectScript(
-            projectDirectory,
-            serverUrl,
-            openMostRecentConversation,
-            mostRecentSessionId,
-            navigate = false,
-            mostRecentSessionDirectory = mostRecentSessionDirectory,
-        ) ?: return
+        val script = OpenCodeBrowserSnippets.buildOpenProjectScript(projectDirectory, serverUrl) ?: return
         val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
-
         scriptScheduler.schedule(script, rootUrl) {
             if (!isBrowserOnOpenCodeServerPage(serverUrl)) return@schedule false
             val frameUrl = browser.cefBrowser.url
-            // Navigate series: stop (and clear boot intent) once the target session is open so
-            // later SPA navigations only re-seed. Seed-only series keep running on directoryless
-            // routes / project roots that still need lastProject binding.
-            if (openMostRecentConversation && mostRecentSessionId != null) {
-                val onTarget = OpenCodeServerProtocol.sessionIdFromUrl(frameUrl) == mostRecentSessionId
-                if (onTarget) {
-                    pendingOpenMostRecentConversation = false
-                    pendingMostRecentSessionId = null
-                    pendingMostRecentSessionDirectory = null
-                    return@schedule false
-                }
-                return@schedule true
-            }
             val onProjectRootRoute = isOpenCodeProjectRootRoute(frameUrl)
             val onProjectDestination = isOpenCodeProjectDestination(frameUrl)
             !onProjectDestination || onProjectRootRoute
@@ -1547,10 +1368,8 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     }
 
     private fun applyOpenCodeProjectDirectoryChange() {
-        preferredOpenCodeDirectory = null
         restoreExistingOpenCodeSession = false
         sessionIdToRestore = null
-        cancelStartupNavigation()
         openProjectScriptScheduled = false
         openProjectSeedFeature.scheduled = false
         fileLinkFeature.scheduled = false
@@ -1561,7 +1380,6 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     }
 
     private fun navigateFromNotification(targetUrl: String) {
-        cancelStartupNavigation()
         openProjectScriptScheduled = false
         openProjectAlarm.cancelAllRequests()
         val serverUrl = serverManager.getServerUrl() ?: return
@@ -1576,19 +1394,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     private fun openCodeProjectDirectory(): String? {
         val raw = OpenCodeProjectSettingsState.getInstance(project).effectiveProjectDirectory(project.basePath)
             ?: return null
-        val preferred = preferredOpenCodeDirectory
-        if (preferred != null && OpenCodeServerProtocol.isSameFilesystemPath(preferred, raw)) {
-            return preferred
-        }
         return OpenCodeServerProtocol.canonicalOpenCodeDirectory(raw) ?: raw
-    }
-
-    private fun adoptPreferredOpenCodeDirectory(serverDirectory: String) {
-        val current = openCodeProjectDirectory() ?: return
-        val adopted = OpenCodeServerProtocol.adoptOpenCodeDirectory(current, serverDirectory) ?: return
-        if (adopted == preferredOpenCodeDirectory) return
-        if (!OpenCodeServerProtocol.isSameFilesystemPath(current, adopted)) return
-        preferredOpenCodeDirectory = adopted
     }
 
     /** Opens Chromium's built-in DevTools window for this panel's browser (JBCef built-in). */
@@ -1717,14 +1523,6 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         centerCardLayout.show(centerCardPanel, card)
         centerCardPanel.revalidate()
         centerCardPanel.repaint()
-    }
-
-    private fun cancelStartupNavigation() {
-        loadIntent.invalidate()
-        mostRecentSessionLookupInFlight = false
-        pendingOpenMostRecentConversation = false
-        pendingMostRecentSessionId = null
-        pendingMostRecentSessionDirectory = null
     }
 
     internal fun dispatchOpenCodeCommand(command: OpenCodeBrowserCommand) {

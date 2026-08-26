@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+### Removed
+
+- "Open the most recent conversation on startup". The panel binds the project directory
+  and leaves the conversation to OpenCode.
+
 ## [1.12.1] - 2026-08-26
 
 ### Fixed

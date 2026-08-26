@@ -90,11 +90,6 @@ class OpenCodeSettingsStateTest {
     }
 
     @Test
-    fun openMostRecentConversationOnStartupIsEnabledByDefault() {
-        assertEquals(true, OpenCodeSettingsState().openMostRecentConversationOnStartup)
-    }
-
-    @Test
     fun uiZoomPercentUsesDefaultValue() {
         assertEquals(OpenCodeSettingsState.DEFAULT_UI_ZOOM_PERCENT, OpenCodeSettingsState().uiZoomPercent)
     }

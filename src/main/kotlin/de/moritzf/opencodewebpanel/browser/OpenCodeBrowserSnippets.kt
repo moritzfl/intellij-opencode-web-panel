@@ -154,54 +154,17 @@ internal object OpenCodeBrowserSnippets {
     }
 
     /**
-     * Seeds the opencode SPA's project state for [projectBasePath] and, when the IDE resolved the
-     * most recent conversation, navigates the panel to it once.
+     * Seeds the opencode SPA's project state for [projectBasePath].
      *
-     * This targets only the opencode 1.18 UI. Sessions live under `/server/<serverKey>/session/<id>`
-     * (the SPA derives `serverKey` from its own origin exactly like this script does), so the panel
-     * navigates straight there. The legacy `/<encodedDir>/session` project route is deliberately not
-     * used: without a session id it crashes the SPA's error boundary, which then leaves every "send"
-     * failing with "Unable to retrieve session".
-     *
-     * Callers should inject the seed-only form ([openMostRecentConversation] false) from
-     * `onLoadStart` so `lastProject` is set before the SPA bundle reads localStorage. Navigation
-     * is a post-load safety net only.
+     * Inject from `onLoadStart` so `lastProject` is set before the SPA bundle reads
+     * localStorage. Session choice is left to OpenCode (tabs / lastProjectSession).
      */
     fun buildOpenProjectScript(
         projectBasePath: String?,
         serverUrl: String? = null,
-        openMostRecentConversation: Boolean = false,
-        mostRecentSessionId: String? = null,
-        navigate: Boolean = true,
-        mostRecentSessionDirectory: String? = null,
     ): String? {
         if (projectBasePath.isNullOrBlank()) return null
         val directory = escapeJavaScript(projectBasePath)
-        val providedSessionId = mostRecentSessionId
-            ?.takeIf { openMostRecentConversation && OpenCodeServerProtocol.isSessionId(it) }
-            ?.let(::escapeJavaScript)
-            .orEmpty()
-        val providedSessionDirectory = mostRecentSessionDirectory
-            ?.takeIf { providedSessionId.isNotEmpty() && it.isNotBlank() }
-            ?.let(::escapeJavaScript)
-            .orEmpty()
-        // The early (onLoadStart) injection aligns OpenCode's pointer with the boot target;
-        // navigating needs a live document, so that stays with the post-load series. Seed-only
-        // may mark an already-open target only after the pointer was aligned successfully.
-        @Language("JavaScript")
-        val navigateStatement = if (navigate) {
-            """
-              try { window.sessionStorage.setItem(navigationKey, target); } catch (_) {}
-              window.location.assign(target);
-            """.trimIndent()
-        } else {
-            "return;"
-        }
-        val markTargetOpenedStatement = if (navigate) {
-            "try { window.sessionStorage.setItem(navigationKey, target); } catch (_) {}"
-        } else {
-            "if (pointerAligned) { try { window.sessionStorage.setItem(navigationKey, target); } catch (_) {} }"
-        }
         val originGuard = serverUrl?.let(OpenCodeServerProtocol::buildOrigin)
             ?.let(::escapeJavaScript)
             ?.let {
@@ -214,14 +177,8 @@ internal object OpenCodeBrowserSnippets {
         val script = """
             (() => {
               const directory = '$directory';
-              const sessionId = '$providedSessionId';
-              const sessionDirectory = '$providedSessionDirectory' || directory;
               const scope = 'local';
               $originGuard
-              // Match worktrees case-insensitively on Windows drive roots and with either
-              // separator so a stale entry from another client does not leave two copies.
-              // Shared by the project seed and the last-viewed session pointer: both are keyed
-              // by worktree, and a spelling drift would silently split them into two entries.
               const sameWorktree = (left, right) => {
                 if (typeof left !== 'string' || typeof right !== 'string') return false;
                 const norm = (value) => {
@@ -231,9 +188,6 @@ internal object OpenCodeBrowserSnippets {
                 };
                 return norm(left) === norm(right);
               };
-              // The panel's browser profile is shared by every IDE project, so seed this project as
-              // the last-opened one. That scopes the SPA's directoryless (/server/<key>/session)
-              // routes to this project and lists it, without disturbing the other projects.
               try {
                 const storageKey = 'opencode.global.dat:server';
                 const raw = window.localStorage.getItem(storageKey);
@@ -242,12 +196,6 @@ internal object OpenCodeBrowserSnippets {
                 try { parsed = raw ? JSON.parse(raw) : {}; } catch (_) { parseFailed = true; }
                 const isPlainObject = !!parsed && typeof parsed === 'object' && !Array.isArray(parsed);
                 if (!parseFailed && parsed !== null && !isPlainObject) {
-                  // A root that parses but is not a plain object is most likely a NEWER OpenCode
-                  // schema, not corruption. Re-"repairing" it would stomp the new format on every
-                  // load, persistently, for every project sharing the browser profile. Skip the
-                  // seed instead (fail soft): the SPA owns this key and rewrites it in its own
-                  // format, after which seeding resumes. Unparseable or null roots cannot be a
-                  // meaningful schema and are still re-initialized below.
                   if (window.console && window.console.warn) {
                     window.console.warn('Skipping OpenCode project seed: unrecognized project-state schema');
                   }
@@ -258,9 +206,6 @@ internal object OpenCodeBrowserSnippets {
                   state.lastProject = state.lastProject && typeof state.lastProject === 'object' && !Array.isArray(state.lastProject)
                     ? state.lastProject : {};
                   const projects = Array.isArray(state.projects[scope]) ? state.projects[scope] : [];
-                  // Preserve the existing entry's position, collapse state, and unknown fields.
-                  // The early/post-load retry series can run many times, so later attempts must be
-                  // true no-ops and must not fight a user's sidebar changes.
                   let found = false;
                   const nextProjects = [];
                   for (const project of projects) {
@@ -286,86 +231,6 @@ internal object OpenCodeBrowserSnippets {
                   window.console.warn('Failed to seed OpenCode project state', error);
                 }
               }
-              // Open the IDE-resolved most recent conversation, once. The serverKey is base64url of
-              // the origin (no padding) - the exact encoding the SPA uses for these routes.
-              if (!sessionId) return;
-              const encodeServerKey = (value) => {
-                const bytes = new TextEncoder().encode(value);
-                let binary = '';
-                bytes.forEach((byte) => binary += String.fromCharCode(byte));
-                return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+${'$'}/g, '');
-              };
-              const target = '/server/' + encodeServerKey(window.location.origin) + '/session/' + encodeURIComponent(sessionId);
-              // One-shot per tab session *and* target id: a later boot with a newer most-recent
-              // conversation must still be allowed to navigate.
-              const navigationKey = 'opencode.intellij.project.opened:' + directory;
-              let alreadyOpened = false;
-              try { alreadyOpened = window.sessionStorage.getItem(navigationKey) === target; } catch (_) {}
-              // Skip only when already on the *target* session — not any /session/<id> (SPA may
-              // have restored a different conversation from the shared profile before this ran).
-              const currentMatch = window.location.pathname.match(/\/session\/([^/?#]+)/);
-              const currentSessionId = currentMatch ? decodeURIComponent(currentMatch[1]) : '';
-              const onTarget = window.location.pathname === target || currentSessionId === sessionId;
-              // This target was already opened once in this tab and the user has since moved to
-              // another conversation: leave both the route and OpenCode's pointer alone.
-              if (alreadyOpened && !onTarget) return;
-              // Point OpenCode's own per-project pointer at the same conversation. Its project
-              // bootstrap redirects to `lastProjectSession[worktree]` even when the URL already
-              // carries a session id, so without this it silently overrides the navigation below
-              // with whatever it showed last (verified against opencode 1.18.5). Written only
-              // when this script is about to navigate or is already on the target, so a
-              // deliberate in-panel session switch is never persisted away.
-              let pointerAligned = false;
-              try {
-                const pageKey = 'opencode.global.dat:layout.page';
-                const pageRaw = window.localStorage.getItem(pageKey);
-                let pageParsed = {};
-                let pageParseFailed = false;
-                try { pageParsed = pageRaw ? JSON.parse(pageRaw) : {}; } catch (_) { pageParseFailed = true; }
-                const pageIsPlainObject = !!pageParsed && typeof pageParsed === 'object' && !Array.isArray(pageParsed);
-                // Same fail-soft rule as the project seed above: never rewrite a root that
-                // parses but is not a plain object (most likely a newer OpenCode schema).
-                if (!pageParseFailed && pageParsed !== null && !pageIsPlainObject) {
-                  if (window.console && window.console.warn) {
-                    window.console.warn('Skipping OpenCode session pointer: unrecognized page-state schema');
-                  }
-                } else {
-                  const pageState = pageIsPlainObject ? pageParsed : {};
-                  pageState.lastProjectSession =
-                    pageState.lastProjectSession && typeof pageState.lastProjectSession === 'object' &&
-                      !Array.isArray(pageState.lastProjectSession)
-                      ? pageState.lastProjectSession : {};
-                  // OpenCode keys this map by worktree; reuse its own spelling when present so a
-                  // separator/case drift cannot leave the plugin writing a second, ignored entry.
-                  let pointerKey = directory;
-                  for (const candidate of Object.keys(pageState.lastProjectSession)) {
-                    if (sameWorktree(candidate, directory)) { pointerKey = candidate; break; }
-                  }
-                  const previous = pageState.lastProjectSession[pointerKey];
-                  // Idempotent: the injection retry series re-runs this script, and a repeated
-                  // write with a fresh `at` would churn the mirrored snapshot.
-                  if (!previous || typeof previous !== 'object' || previous.id !== sessionId ||
-                    !sameWorktree(previous.directory, sessionDirectory)) {
-                    pageState.lastProjectSession[pointerKey] = {
-                      directory: sessionDirectory,
-                      id: sessionId,
-                      at: Date.now(),
-                    };
-                    const nextPageRaw = JSON.stringify(pageState);
-                    if (nextPageRaw !== pageRaw) window.localStorage.setItem(pageKey, nextPageRaw);
-                  }
-                  pointerAligned = true;
-                }
-              } catch (error) {
-                if (window.console && window.console.warn) {
-                  window.console.warn('Failed to seed OpenCode last project session', error);
-                }
-              }
-              if (onTarget) {
-                $markTargetOpenedStatement
-                return;
-              }
-              $navigateStatement
             })();
         """
         return script.trimIndent()
