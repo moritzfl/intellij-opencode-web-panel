@@ -4,7 +4,9 @@
 
 ## [Unreleased]
 
-### Changed
+## [1.12.1] - 2026-08-26
+
+### Fixed
 
 - The stopped state is a centered empty card with one Start button. The status strip no longer
   repeats Start.
