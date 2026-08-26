@@ -5,7 +5,6 @@ import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.PlatformDataKeys
 import com.intellij.openapi.actionSystem.ToggleAction
-import com.intellij.openapi.actionSystem.ex.ActionUtil
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
@@ -30,10 +29,6 @@ import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
  * Tool-window title-bar and gear-menu actions. Title actions must stay few and icon-only:
  * IntelliJ clips them when the panel is narrow, which is why the gear menu duplicates them.
  */
-private fun AnActionEvent.setOpenCodeHint(hint: String) {
-    presentation.description = hint
-    presentation.putClientProperty(ActionUtil.SECONDARY_TEXT, hint)
-}
 internal object OpenCodeZoom {
     const val STEP_PERCENT = 10
 
@@ -70,7 +65,7 @@ internal class OpenCodeNewSessionAction : DumbAwareAction(
                 serverUrl,
                 content.currentPageUrl(),
             )
-        e.setOpenCodeHint("Start a new conversation")
+        e.presentation.description = "Start a new conversation"
     }
 
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
@@ -88,7 +83,7 @@ internal class OpenCodeOpenProjectSettingsAction : DumbAwareAction(
 
     override fun update(e: AnActionEvent) {
         e.presentation.isEnabled = e.project != null
-        e.setOpenCodeHint("Choose which folder OpenCode uses")
+        e.presentation.description = "Choose which folder OpenCode uses"
     }
 
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
@@ -104,7 +99,7 @@ internal class OpenCodeOpenKeymapAction : DumbAwareAction(
     }
 
     override fun update(e: AnActionEvent) {
-        e.setOpenCodeHint("New Session, Close Tab, Choose Model…")
+        e.presentation.description = "New Session, Close Tab, Choose Model…"
     }
 
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
@@ -120,7 +115,7 @@ internal class OpenCodeZoomInAction : DumbAwareAction(
     override fun update(e: AnActionEvent) {
         val current = OpenCodeSettingsState.sanitizeUiZoomPercent(OpenCodeSettingsState.getInstance().uiZoomPercent)
         e.presentation.isEnabled = current < OpenCodeSettingsState.MAX_UI_ZOOM_PERCENT
-        e.setOpenCodeHint("Enlarge the panel. Now $current%.")
+        e.presentation.description = "Enlarge the panel. Now $current%."
     }
 
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
@@ -136,7 +131,7 @@ internal class OpenCodeZoomOutAction : DumbAwareAction(
     override fun update(e: AnActionEvent) {
         val current = OpenCodeSettingsState.sanitizeUiZoomPercent(OpenCodeSettingsState.getInstance().uiZoomPercent)
         e.presentation.isEnabled = current > OpenCodeSettingsState.MIN_UI_ZOOM_PERCENT
-        e.setOpenCodeHint("Shrink the panel. Now $current%.")
+        e.presentation.description = "Shrink the panel. Now $current%."
     }
 
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
@@ -153,7 +148,7 @@ internal class OpenCodeResetZoomAction : DumbAwareAction(
         val current = OpenCodeSettingsState.sanitizeUiZoomPercent(OpenCodeSettingsState.getInstance().uiZoomPercent)
         val defaultZoom = OpenCodeSettingsState.DEFAULT_UI_ZOOM_PERCENT
         e.presentation.isEnabled = current != defaultZoom
-        e.setOpenCodeHint("Reset panel zoom to $defaultZoom%. Now $current%.")
+        e.presentation.description = "Reset panel zoom to $defaultZoom%. Now $current%."
     }
 
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
@@ -175,7 +170,7 @@ internal class OpenCodeRestartServerAction : DumbAwareAction(
         val state = SharedOpenCodeServerManager.getInstance().getLifecycleState()
         e.presentation.isEnabled = state != OpenCodeServerLifecycleState.STARTING &&
             state != OpenCodeServerLifecycleState.RESTARTING
-        e.setOpenCodeHint("Restart the shared server. Interrupts all panels.")
+        e.presentation.description = "Restart the shared server. Interrupts all panels."
     }
 
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
@@ -194,7 +189,7 @@ internal class OpenCodeStopServerAction : DumbAwareAction(
     override fun update(e: AnActionEvent) {
         val state = SharedOpenCodeServerManager.getInstance().getLifecycleState()
         e.presentation.isEnabled = isOpenCodeServerStopEnabled(state)
-        e.setOpenCodeHint("Stop the shared server. It will not auto-restart.")
+        e.presentation.description = "Stop the shared server. It will not auto-restart."
     }
 
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
@@ -212,7 +207,7 @@ internal class OpenCodeReloadPageAction : DumbAwareAction(
     override fun update(e: AnActionEvent) {
         e.presentation.isEnabled = e.project != null &&
             isOpenCodePageReloadEnabled(SharedOpenCodeServerManager.getInstance().getLifecycleState())
-        e.setOpenCodeHint("Reload the page. The server stays running.")
+        e.presentation.description = "Reload the page. The server stays running."
     }
 
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
@@ -239,13 +234,11 @@ internal class OpenCodeAutoAcceptPermissionsAction : ToggleAction(
         super.update(e)
         val content = openCodePanelContent(e)
         e.presentation.isEnabled = content?.canTogglePermissionAutoAccept() == true
-        e.setOpenCodeHint(
-            if (content?.isPermissionAutoAcceptEnabled() == true) {
-                "Auto-allow is on. Click to ask again."
-            } else {
-                "Auto-allow tool prompts in this conversation."
-            },
-        )
+        e.presentation.description = if (content?.isPermissionAutoAcceptEnabled() == true) {
+            "Auto-allow is on. Click to ask again."
+        } else {
+            "Auto-allow tool prompts in this conversation."
+        }
     }
 
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
@@ -321,7 +314,7 @@ internal class OpenCodeResetWebStateAction : DumbAwareAction(
 
     override fun update(e: AnActionEvent) {
         e.presentation.isEnabled = e.project != null
-        e.setOpenCodeHint("Clear local web UI state and reload.")
+        e.presentation.description = "Clear local web UI state and reload."
     }
 
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
@@ -356,7 +349,7 @@ internal class OpenCodeOpenDevToolsAction : DumbAwareAction(
 
     override fun update(e: AnActionEvent) {
         e.presentation.isEnabled = e.project != null
-        e.setOpenCodeHint("Open Chromium DevTools for this panel.")
+        e.presentation.description = "Open Chromium DevTools for this panel."
     }
 
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
@@ -375,7 +368,7 @@ internal class OpenCodeViewServerLogAction : DumbAwareAction(
     override fun update(e: AnActionEvent) {
         e.presentation.isEnabled = e.project != null &&
             SharedOpenCodeServerManager.getInstance().getServerLogFile() != null
-        e.setOpenCodeHint("Open the server log in the editor.")
+        e.presentation.description = "Open the server log in the editor."
     }
 
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
@@ -391,7 +384,7 @@ internal class OpenCodeOpenSettingsAction : DumbAwareAction(
     }
 
     override fun update(e: AnActionEvent) {
-        e.setOpenCodeHint("Open plugin settings.")
+        e.presentation.description = "Open plugin settings."
     }
 
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
