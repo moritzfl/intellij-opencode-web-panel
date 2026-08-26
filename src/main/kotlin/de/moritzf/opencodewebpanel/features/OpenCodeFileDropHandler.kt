@@ -250,6 +250,7 @@ internal class OpenCodeFileDropHandler(
             if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverManager.getServerUrl(), browser.cefBrowser.url)) return@KeyEventDispatcher false
             if (!isFocusInsideBrowser()) return@KeyEventDispatcher false
             if (!pasteClipboardData()) return@KeyEventDispatcher false
+            scheduleRestoreInputAfterExternalDrop()
 
             suppressNextBrowserPasteAtMillis = System.currentTimeMillis()
             event.consume()
@@ -287,16 +288,15 @@ internal class OpenCodeFileDropHandler(
 
     private fun restoreInputAfterExternalDrop() {
         if (isDisposed()) return
+        // Always detach JCEF IME first. Reading image/text flavors from a screenshot
+        // drop or paste can leave macOS without a key window; a still-bound IME then
+        // swallows typing in every IDE editor.
+        browser.cefBrowser.setFocus(false)
         val owner = currentFocusOwner()
         if (afterDropShouldRestoreBrowserFocus(owner != null && isBrowserFocusOwner(owner), owner == null)) {
-            // Native DnD often clears Swing focus and leaves JCEF's input-method client
-            // bound. clear + requestFocus re-attaches the key window so typing works
-            // again both in the panel and in the rest of the IDE.
             KeyboardFocusManager.getCurrentKeyboardFocusManager().clearGlobalFocusOwner()
             browser.component.requestFocusInWindow()
             browser.cefBrowser.setFocus(true)
-        } else {
-            browser.cefBrowser.setFocus(false)
         }
     }
 
@@ -440,10 +440,9 @@ internal class OpenCodeFileDropHandler(
     }
 
     private fun clipboardTransferables(): List<Transferable> {
-        return listOfNotNull(
-            runCatching { CopyPasteManager.getInstance().contents }.getOrNull(),
-            runCatching { Toolkit.getDefaultToolkit().systemClipboard.getContents(null) }.getOrNull(),
-        ).distinctBy { System.identityHashCode(it) }
+        val ideClipboard = runCatching { CopyPasteManager.getInstance().contents }.getOrNull()
+        if (ideClipboard != null) return listOf(ideClipboard)
+        return listOfNotNull(runCatching { Toolkit.getDefaultToolkit().systemClipboard.getContents(null) }.getOrNull())
     }
 
     private fun selectDroppedFiles(files: List<File>): DroppedFileSelection {

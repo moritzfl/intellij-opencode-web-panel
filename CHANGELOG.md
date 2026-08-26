@@ -9,10 +9,9 @@
 - Gear menu: New Session, Project Directory, and Keyboard Shortcuts.
 - A stopped-state card with a Start button instead of a blank panel.
 
-### Changed
+### Fixed
 
-- Gear-menu items show a short hint. Hover tooltips still do not appear on the popup; the
-  hint is the gray secondary text.
+- Pasting or dropping a screenshot into chat no longer locks typing in the rest of the IDE.
 
 ## [1.11.1] - 2026-08-24
 
