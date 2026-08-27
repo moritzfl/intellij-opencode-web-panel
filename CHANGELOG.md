@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [1.13.0] - 2026-08-27
+
 ### Removed
 
 - "Open the most recent conversation on startup". The panel binds the project directory
