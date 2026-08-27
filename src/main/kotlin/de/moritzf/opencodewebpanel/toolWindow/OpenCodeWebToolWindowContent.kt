@@ -344,6 +344,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     private var disposed = false
     private val loadHandler = object : CefLoadHandlerAdapter() {
         override fun onLoadStart(browser: CefBrowser?, frame: CefFrame?, transitionType: CefRequest.TransitionType?) {
+            if (isContentDisposed()) return
             if (frame?.isMain == true) {
                 val loadRevision = ++mainDocumentLoadRevision
                 browserDocumentRevision++
@@ -381,6 +382,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         }
 
         override fun onLoadEnd(browser: CefBrowser?, frame: CefFrame?, httpStatusCode: Int) {
+            if (isContentDisposed()) return
             if (frame?.isMain != true) return
             if (!isSuccessfulOpenCodeDocumentLoad(httpStatusCode)) return
             val completedUrl = frame.url
@@ -419,6 +421,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             errorText: String?,
             failedUrl: String?,
         ) {
+            if (isContentDisposed()) return
             if (frame?.isMain != true) return
             // ERR_ABORTED fires for ordinary cancelled navigations and must never trigger recovery.
             if (errorCode == CefLoadHandler.ErrorCode.ERR_ABORTED) return
@@ -501,6 +504,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         browser.jbCefClient.addDisplayHandler(
             object : CefDisplayHandlerAdapter() {
                 override fun onAddressChange(cefBrowser: CefBrowser?, frame: CefFrame?, url: String?) {
+                    if (isContentDisposed()) return
                     if (frame?.isMain == true) {
                         browserDocumentRevision++
                         systemNotifications.browserAddressChanged()
@@ -675,6 +679,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
      * Retried once after the SPA finishes painting. May be called from any thread.
      */
     private fun scheduleBrowserRepaintNudges() {
+        if (isContentDisposed() || repaintAlarm.isDisposed) return
         val nudgedAtUrl = browser.cefBrowser.url
         val serverUrl = serverManager.getServerUrl() ?: return
         val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
@@ -721,26 +726,18 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             resultCallback = chatInputResultQuery.inject("batchId + '\\n' + (accepted ? '1' : '0')"),
         ) ?: return false
         browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
-        openProjectAlarm.addRequest(
-            {
-                if (isContentDisposed()) return@addRequest
-                val service = OpenCodeChatInputService.getInstance(project)
-                if (service.retryInFlight(delivery.attemptID)) scheduleFlushPendingChatInput()
-            },
-            CHAT_INPUT_ACK_TIMEOUT_MILLIS,
-        )
+        addAlarmRequest(openProjectAlarm, CHAT_INPUT_ACK_TIMEOUT_MILLIS) {
+            val service = OpenCodeChatInputService.getInstance(project)
+            if (service.retryInFlight(delivery.attemptID)) scheduleFlushPendingChatInput()
+        }
         return true
     }
 
     private fun scheduleFlushPendingChatInput(delayMillis: Int = PENDING_CHAT_INPUT_FLUSH_DELAY_MILLIS) {
         val service = OpenCodeChatInputService.getInstance(project)
-        openProjectAlarm.addRequest(
-            {
-                if (isContentDisposed()) return@addRequest
-                service.dispatchPending()
-            },
-            delayMillis,
-        )
+        addAlarmRequest(openProjectAlarm, delayMillis) {
+            service.dispatchPending()
+        }
     }
 
     fun getContent() = contentPanel
@@ -1084,44 +1081,41 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         // Own alarm: onLoadStart cancels openProjectAlarm. Do not flip
         // mainDocumentLoadSucceeded here — a late arm must not undo onLoadEnd.
         pageLoadWatchdogAlarm.cancelAllRequests()
-        pageLoadWatchdogAlarm.addRequest(
-            {
-                if (isContentDisposed() || token != pageLoadWatchdogGeneration) return@addRequest
-                val elapsed = if (pageLoadStartedAtMillis == 0L) 0L else System.currentTimeMillis() - pageLoadStartedAtMillis
-                if (!OpenCodePageLoadWatchdog.shouldRetry(mainDocumentLoadSucceeded, pageLoadRetryCount, elapsed)) {
-                    if (!mainDocumentLoadSucceeded && pageLoadRetryCount >= OpenCodePageLoadWatchdog.MAX_RETRIES) {
-                        thisLogger().warn("OpenCode page failed to load after ${OpenCodePageLoadWatchdog.MAX_RETRIES} retries")
-                        pageLoadInProgress = false
-                        pageLoadStartedAtMillis = 0L
-                        updateLifecycleIndicator()
-                    }
-                    return@addRequest
+        addAlarmRequest(pageLoadWatchdogAlarm, PAGE_LOAD_WATCHDOG_MILLIS) {
+            if (token != pageLoadWatchdogGeneration) return@addAlarmRequest
+            val elapsed = if (pageLoadStartedAtMillis == 0L) 0L else System.currentTimeMillis() - pageLoadStartedAtMillis
+            if (!OpenCodePageLoadWatchdog.shouldRetry(mainDocumentLoadSucceeded, pageLoadRetryCount, elapsed)) {
+                if (!mainDocumentLoadSucceeded && pageLoadRetryCount >= OpenCodePageLoadWatchdog.MAX_RETRIES) {
+                    thisLogger().warn("OpenCode page failed to load after ${OpenCodePageLoadWatchdog.MAX_RETRIES} retries")
+                    pageLoadInProgress = false
+                    pageLoadStartedAtMillis = 0L
+                    updateLifecycleIndicator()
                 }
-                pageLoadRetryCount++
-                thisLogger().warn("OpenCode page load timed out; retrying ($pageLoadRetryCount/${OpenCodePageLoadWatchdog.MAX_RETRIES})")
-                val liveUrl = serverManager.getServerUrl()
-                if (liveUrl != serverUrl) return@addRequest
-                val target = OpenCodePageLoadWatchdog.retryTarget(
-                    liveUrl,
-                    pageLoadTargetUrl,
-                    browser.cefBrowser.url,
-                )
-                val stalledDocumentRevision = mainDocumentLoadRevision
-                beginPageLoad(target, resetRetryBudget = false)
-                ensureCefBrowser()
-                loadAfterDocumentStartScripts(
-                    liveUrl,
-                    cancelIfDocumentRevisionChanges = stalledDocumentRevision,
-                ) {
-                    // JBCefBrowser coalesces duplicate requested URLs. The timed-out request is
-                    // still recorded as loading, so retry through raw CEF after cancelling it.
-                    browser.cefBrowser.stopLoad()
-                    browser.cefBrowser.loadURL(target)
-                    armPageLoadWatchdog(liveUrl)
-                }
-            },
-            PAGE_LOAD_WATCHDOG_MILLIS,
-        )
+                return@addAlarmRequest
+            }
+            pageLoadRetryCount++
+            thisLogger().warn("OpenCode page load timed out; retrying ($pageLoadRetryCount/${OpenCodePageLoadWatchdog.MAX_RETRIES})")
+            val liveUrl = serverManager.getServerUrl()
+            if (liveUrl != serverUrl) return@addAlarmRequest
+            val target = OpenCodePageLoadWatchdog.retryTarget(
+                liveUrl,
+                pageLoadTargetUrl,
+                browser.cefBrowser.url,
+            )
+            val stalledDocumentRevision = mainDocumentLoadRevision
+            beginPageLoad(target, resetRetryBudget = false)
+            ensureCefBrowser()
+            loadAfterDocumentStartScripts(
+                liveUrl,
+                cancelIfDocumentRevisionChanges = stalledDocumentRevision,
+            ) {
+                // JBCefBrowser coalesces duplicate requested URLs. The timed-out request is
+                // still recorded as loading, so retry through raw CEF after cancelling it.
+                browser.cefBrowser.stopLoad()
+                browser.cefBrowser.loadURL(target)
+                armPageLoadWatchdog(liveUrl)
+            }
+        }
     }
 
     private fun clearStaleBrowserPage(state: OpenCodeServerLifecycleState) {
@@ -1571,6 +1565,16 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
 
     private fun isContentDisposed(): Boolean {
         return disposed || project.isDisposed
+    }
+
+    private fun addAlarmRequest(alarm: Alarm, delayMillis: Int, request: () -> Unit) {
+        if (isContentDisposed() || alarm.isDisposed) return
+        alarm.addRequest(
+            {
+                if (!isContentDisposed()) request()
+            },
+            delayMillis,
+        )
     }
 
     override fun dispose() {

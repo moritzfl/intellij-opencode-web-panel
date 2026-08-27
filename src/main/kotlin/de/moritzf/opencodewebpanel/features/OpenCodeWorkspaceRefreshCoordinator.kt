@@ -54,6 +54,7 @@ internal class OpenCodeWorkspaceRefreshCoordinator(
     private fun requestRefresh() {
         val now = clockMillis()
         val delay = synchronized(lock) { debouncer.onRequest(now) } ?: return
+        if (alarm.isDisposed) return
         // A non-null delay always supersedes any previously scheduled fire (the debounce fire time
         // only moves later within a burst), so replace the pending Alarm request.
         alarm.cancelAllRequests()

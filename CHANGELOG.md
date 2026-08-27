@@ -9,6 +9,10 @@
 - "Open the most recent conversation on startup". The panel binds the project directory
   and leaves the conversation to OpenCode.
 
+### Fixed
+
+- The panel no longer logs an error on Windows when it opens after being closed.
+
 ## [1.12.1] - 2026-08-26
 
 ### Fixed
