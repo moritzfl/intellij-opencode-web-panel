@@ -1052,16 +1052,28 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
-    fun buildViewportRasterNudgeScriptTogglesZoomWithoutHostResize() {
+    fun buildViewportRasterNudgeScriptTogglesTranslateWithoutHostResize() {
         val script = OpenCodeBrowserSnippets.buildViewportRasterNudgeScript()
 
         assertTrue(script.contains("document.documentElement"))
-        assertTrue(script.contains("setProperty('zoom', '1.001')"))
-        assertTrue(script.contains("removeProperty('zoom')"))
+        assertTrue(script.contains("setProperty('transform', 'translate(1px, 0)')"))
+        assertTrue(script.contains("removeProperty('transform')"))
         assertTrue(script.contains("requestAnimationFrame"))
         assertTrue(script.contains("dispatchEvent(new Event('resize'))"))
         assertFalse(script.contains("data-component"))
         assertFalse(script.contains("setBounds"))
+        assertFalse(script.contains("1.001"))
+    }
+
+    @Test
+    fun isInPlaceDialogRepaintEventCoversAskAndDismiss() {
+        assertTrue(OpenCodeBrowserSnippets.isInPlaceDialogRepaintEvent("permission.asked"))
+        assertTrue(OpenCodeBrowserSnippets.isInPlaceDialogRepaintEvent("permission.replied"))
+        assertTrue(OpenCodeBrowserSnippets.isInPlaceDialogRepaintEvent("question.asked"))
+        assertTrue(OpenCodeBrowserSnippets.isInPlaceDialogRepaintEvent("question.replied"))
+        assertTrue(OpenCodeBrowserSnippets.isInPlaceDialogRepaintEvent("question.rejected"))
+        assertFalse(OpenCodeBrowserSnippets.isInPlaceDialogRepaintEvent("session.status"))
+        assertFalse(OpenCodeBrowserSnippets.isInPlaceDialogRepaintEvent("session.created"))
     }
 
     @Test

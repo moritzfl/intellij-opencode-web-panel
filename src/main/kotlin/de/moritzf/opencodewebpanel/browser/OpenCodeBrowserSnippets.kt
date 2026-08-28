@@ -880,11 +880,16 @@ internal object OpenCodeBrowserSnippets {
         return script.trimIndent()
     }
 
+    fun isInPlaceDialogRepaintEvent(type: String): Boolean {
+        return type == "permission.asked" || type == "permission.replied" ||
+            type == "question.asked" || type == "question.replied" || type == "question.rejected"
+    }
+
     /**
      * Forces Chromium to re-raster the viewport after an in-page layout change without
      * resizing the Swing host. A 1px host bounds change reallocates the OSR surface and
-     * flashes on Windows. Toggle `zoom` on `documentElement` (no OpenCode selectors) after
-     * two animation frames, then fire `resize` so the SPA relayouts.
+     * flashes on Windows. Toggle a 1px CSS translate on `documentElement` (no OpenCode
+     * selectors) after two animation frames, then fire `resize` so the SPA relayouts.
      */
     fun buildViewportRasterNudgeScript(): String {
         @Language("JavaScript")
@@ -894,11 +899,11 @@ internal object OpenCodeBrowserSnippets {
                 const root = document.documentElement;
                 if (!root) return;
                 const style = root.style;
-                const previous = style.getPropertyValue('zoom');
-                style.setProperty('zoom', '1.001');
+                const previous = style.getPropertyValue('transform');
+                style.setProperty('transform', 'translate(1px, 0)');
                 void root.offsetHeight;
-                if (previous) style.setProperty('zoom', previous);
-                else style.removeProperty('zoom');
+                if (previous) style.setProperty('transform', previous);
+                else style.removeProperty('transform');
                 window.dispatchEvent(new Event('resize'));
               };
               requestAnimationFrame(() => requestAnimationFrame(nudge));

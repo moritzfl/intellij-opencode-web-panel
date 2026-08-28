@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- On Windows, permission and question prompts no longer leave leftover pixels after they
+  appear or dismiss.
+
 ## [1.13.1] - 2026-08-28
 
 ### Fixed

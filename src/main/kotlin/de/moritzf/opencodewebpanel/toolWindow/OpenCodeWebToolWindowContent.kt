@@ -573,7 +573,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             OpenCodeGlobalEventListener.TOPIC,
             object : OpenCodeGlobalEventListener {
                 override fun eventReceived(event: OpenCodeGlobalEvent) {
-                    if (event.type != "permission.asked" && event.type != "question.asked") return
+                    if (!OpenCodeBrowserSnippets.isInPlaceDialogRepaintEvent(event.type)) return
                     if (isContentDisposed()) return
                     val directory = openCodeProjectDirectory() ?: return
                     if (!OpenCodeServerProtocol.isSameFilesystemPath(event.directory, directory)) return
@@ -674,9 +674,10 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     /**
      * JCEF OSR can leave stale pixels after large in-page layout changes. Triggered from
      * `onAddressChange` for SPA route changes and from the JVM event stream for
-     * permission/question sections. Uses a compositor hint plus an in-page zoom toggle —
-     * never a host bounds change, which reallocates the OSR surface and flashes on Windows.
-     * Retried once after the SPA finishes painting. May be called from any thread.
+     * permission/question sections (show and dismiss). Uses a compositor hint plus an
+     * in-page 1px translate — never a host bounds change, which reallocates the OSR
+     * surface and flashes on Windows. Retried after the SPA finishes painting.
+     * May be called from any thread.
      */
     private fun scheduleBrowserRepaintNudges() {
         if (isContentDisposed() || repaintAlarm.isDisposed) return
