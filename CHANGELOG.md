@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [1.13.1] - 2026-08-28
+
 ### Fixed
 
 - Auto-Accept Permissions now covers nested subagent sessions, including prompts that arrive
@@ -663,7 +665,13 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.10.6...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.13.1...HEAD
+[1.13.1]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.13.0...1.13.1
+[1.13.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.12.1...1.13.0
+[1.12.1]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.12.0...1.12.1
+[1.12.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.11.1...1.12.0
+[1.11.1]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.11.0...1.11.1
+[1.11.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.10.6...1.11.0
 [1.10.6]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.10.5...1.10.6
 [1.10.5]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.10.4...1.10.5
 [1.10.4]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.10.3...1.10.4
