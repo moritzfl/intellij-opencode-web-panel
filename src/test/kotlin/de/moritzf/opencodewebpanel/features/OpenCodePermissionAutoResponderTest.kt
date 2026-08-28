@@ -132,6 +132,134 @@ class OpenCodePermissionAutoResponderTest {
     }
 
     @Test
+    fun parentEnableCoversNestedGrandchildSessionPermissions() {
+        val fixture = fixture(
+            parents = mapOf(
+                "ses_child" to "ses_parent",
+                "ses_grand" to "ses_child",
+            ),
+        )
+        fixture.responder.setSessionEnabled("ses_parent", true)
+        fixture.drain()
+
+        fixture.responder.eventReceived(permissionEvent("/tmp/project", "ses_grand", "per_grand"))
+        fixture.drain()
+
+        assertEquals(listOf("per_grand"), fixture.replies.map(Reply::requestID))
+        assertTrue(fixture.responder.isEffectivelyEnabled("ses_grand"))
+        assertFalse(fixture.responder.isSessionEnabled("ses_grand"))
+    }
+
+    @Test
+    fun sessionCreatedLinksChildWithoutSessionFetch() {
+        val fixture = fixture(failedSessions = setOf("ses_child", "ses_parent"))
+        fixture.responder.setSessionEnabled("ses_parent", true)
+        fixture.drain()
+
+        fixture.responder.eventReceived(sessionCreatedEvent("/tmp/project", "ses_child", "ses_parent"))
+        fixture.responder.eventReceived(permissionEvent("/tmp/project", "ses_child", "per_child"))
+        fixture.drain()
+
+        assertEquals(listOf("per_child"), fixture.replies.map(Reply::requestID))
+        assertTrue(fixture.responder.isEffectivelyEnabled("ses_child"))
+    }
+
+    @Test
+    fun sessionCreatedLinksNestedGrandchildWithoutSessionFetch() {
+        val fixture = fixture(failedSessions = setOf("ses_parent", "ses_child", "ses_grand"))
+        fixture.responder.setSessionEnabled("ses_parent", true)
+        fixture.drain()
+
+        fixture.responder.eventReceived(sessionCreatedEvent("/tmp/project", "ses_child", "ses_parent"))
+        fixture.responder.eventReceived(sessionCreatedEvent("/tmp/project", "ses_grand", "ses_child"))
+        fixture.responder.eventReceived(permissionEvent("/tmp/project", "ses_grand", "per_grand"))
+        fixture.drain()
+
+        assertEquals(listOf("per_grand"), fixture.replies.map(Reply::requestID))
+    }
+
+    @Test
+    fun sessionCreatedAfterAskSeedsPendingChild() {
+        val fixture = fixture(
+            pending = listOf(OpenCodeServerProtocol.PendingRequestSummary("per_child", "ses_child")),
+            failedSessions = setOf("ses_child"),
+        )
+        fixture.responder.setSessionEnabled("ses_parent", true)
+        fixture.drain()
+        assertTrue(fixture.replies.isEmpty())
+
+        fixture.responder.eventReceived(sessionCreatedEvent("/tmp/project", "ses_child", "ses_parent"))
+        fixture.drain()
+
+        assertEquals(listOf("per_child"), fixture.replies.map(Reply::requestID))
+    }
+
+    @Test
+    fun enablingParentPrefetchesChildrenWhenSessionGetFails() {
+        val fixture = fixture(
+            pending = listOf(OpenCodeServerProtocol.PendingRequestSummary("per_child", "ses_child")),
+            failedSessions = setOf("ses_child"),
+            children = mapOf("ses_parent" to listOf("ses_child")),
+        )
+        fixture.responder.setSessionEnabled("ses_parent", true)
+        fixture.drain()
+
+        assertEquals(listOf("per_child"), fixture.replies.map(Reply::requestID))
+    }
+
+    @Test
+    fun enablingParentPrefetchesNestedGrandchildren() {
+        val fixture = fixture(
+            pending = listOf(OpenCodeServerProtocol.PendingRequestSummary("per_grand", "ses_grand")),
+            failedSessions = setOf("ses_child", "ses_grand"),
+            children = mapOf(
+                "ses_parent" to listOf("ses_child"),
+                "ses_child" to listOf("ses_grand"),
+            ),
+        )
+        fixture.responder.setSessionEnabled("ses_parent", true)
+        fixture.drain()
+
+        assertEquals(listOf("per_grand"), fixture.replies.map(Reply::requestID))
+    }
+
+    @Test
+    fun partialLineageOnAskRepliesWithoutWaitingForAncestorFetch() {
+        val tasks = ArrayDeque<Runnable>()
+        val replies = mutableListOf<Reply>()
+        val responder = OpenCodePermissionAutoResponder(
+            projectDirectory = { "/tmp/project" },
+            serverUrl = { "http://127.0.0.1:4096" },
+            serverPassword = { "password" },
+            executeAsync = tasks::addLast,
+            scheduleAsync = { _, _ -> },
+            loadPending = { _, _, _ -> OpenCodeProtocolResult.Success(emptyList()) },
+            loadSession = { _, _, _, sessionID ->
+                when (sessionID) {
+                    "ses_child" -> OpenCodeServerProtocol.SessionInfo(
+                        title = sessionID,
+                        parentID = "ses_parent",
+                        id = sessionID,
+                    )
+                    else -> null
+                }
+            },
+            loadChildren = { _, _, _, _ -> emptyList() },
+            reply = { _, _, directory, sessionID, requestID, response ->
+                replies += Reply(directory, sessionID, requestID, response)
+                true
+            },
+        )
+        responder.setSessionEnabled("ses_parent", true)
+        while (tasks.isNotEmpty()) tasks.removeFirst().run()
+
+        responder.eventReceived(permissionEvent("/tmp/project", "ses_child", "per_child"))
+        while (tasks.isNotEmpty()) tasks.removeFirst().run()
+
+        assertEquals(listOf("per_child"), replies.map(Reply::requestID))
+    }
+
+    @Test
     fun preparingChildReflectsEnabledParentBeforePermissionArrives() {
         val fixture = fixture(
             parents = mapOf("ses_child" to "ses_parent"),
@@ -331,6 +459,7 @@ class OpenCodePermissionAutoResponderTest {
     private fun fixture(
         pending: List<OpenCodeServerProtocol.PendingRequestSummary> = emptyList(),
         parents: Map<String, String?> = emptyMap(),
+        children: Map<String, List<String>> = emptyMap(),
         pendingFailures: Int = 0,
         sessionFailures: Int = 0,
         replyFailures: Int = 0,
@@ -368,6 +497,15 @@ class OpenCodePermissionAutoResponderTest {
                     )
                 }
             },
+            loadChildren = { _, _, _, sessionID ->
+                children[sessionID].orEmpty().map { childID ->
+                    OpenCodeServerProtocol.SessionInfo(
+                        title = childID,
+                        parentID = sessionID,
+                        id = childID,
+                    )
+                }
+            },
             reply = { _, _, directory, sessionID, requestID, response ->
                 replies += Reply(directory, sessionID, requestID, response)
                 remainingReplyFailures-- <= 0
@@ -382,6 +520,17 @@ class OpenCodePermissionAutoResponderTest {
             "permission.asked",
             "evt_1",
             JsonParser.parseString("""{"id":"$requestID","sessionID":"$sessionID"}""").asJsonObject,
+        )
+    }
+
+    private fun sessionCreatedEvent(directory: String, sessionID: String, parentID: String): OpenCodeGlobalEvent {
+        return OpenCodeGlobalEvent(
+            directory,
+            "session.created",
+            "evt_created",
+            JsonParser.parseString(
+                """{"sessionID":"$sessionID","info":{"id":"$sessionID","title":"$sessionID","parentID":"$parentID"}}""",
+            ).asJsonObject,
         )
     }
 }

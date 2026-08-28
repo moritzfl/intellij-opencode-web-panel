@@ -36,6 +36,7 @@ operations = {
     ("/global/event", "get"): "global.event",
     ("/session/status", "get"): "session.status",
     ("/session/{sessionID}", "get"): "session.get",
+    ("/session/{sessionID}/children", "get"): "session.children",
     ("/session/{sessionID}/diff", "get"): "session.diff",
     ("/session/{sessionID}/message", "get"): "session.messages",
     ("/permission", "get"): "permission.list",
@@ -92,7 +93,7 @@ if not isinstance(sessions, dict) or not isinstance(sessions.get("data"), list) 
 
 doc_text = (root / "doc.json").read_text()
 for event in (
-    "session.status", "session.idle", "session.error",
+    "session.status", "session.idle", "session.error", "session.created",
     "permission.asked", "permission.replied",
     "question.asked", "question.replied", "question.rejected",
 ):
@@ -104,5 +105,5 @@ if failures:
         print(f"FAIL: {failure}", file=sys.stderr)
     raise SystemExit(1)
 
-print(f"OK: {len(operations)} operations, 5 live response roots, 8 event types; OpenCode {health['version']}")
+print(f"OK: {len(operations)} operations, 5 live response roots, 9 event types; OpenCode {health['version']}")
 PY

@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Auto-Accept Permissions now covers nested subagent sessions, including prompts that arrive
+  as soon as a child session is created.
+
 ## [1.13.0] - 2026-08-27
 
 ### Removed

@@ -1291,6 +1291,32 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun parseSessionChildrenReadsBareAndEnvelopedArrays() {
+        val bare = OpenCodeServerProtocol.parseSessionChildren(
+            """[{"id":"ses_child","title":"Subtask","parentID":"ses_1"}]""",
+        )
+        assertEquals(listOf("ses_child"), bare.map { it.id })
+        assertEquals(listOf("ses_1"), bare.map { it.parentID })
+
+        val enveloped = OpenCodeServerProtocol.parseSessionChildren(
+            """{"data":[{"id":"ses_2","parentID":"ses_1"},{"id":"ses_3","parentID":"ses_1"}]}""",
+        )
+        assertEquals(listOf("ses_2", "ses_3"), enveloped.map { it.id })
+    }
+
+    @Test
+    fun parseSessionChildrenRejectsMalformedResponses() {
+        assertEquals(emptyList<OpenCodeServerProtocol.SessionInfo>(), OpenCodeServerProtocol.parseSessionChildren(""))
+        assertEquals(emptyList<OpenCodeServerProtocol.SessionInfo>(), OpenCodeServerProtocol.parseSessionChildren("not json"))
+        assertEquals(emptyList<OpenCodeServerProtocol.SessionInfo>(), OpenCodeServerProtocol.parseSessionChildren("{}"))
+        assertEquals(emptyList<OpenCodeServerProtocol.SessionInfo>(), OpenCodeServerProtocol.parseSessionChildren("""{"data":{}}"""))
+        assertEquals(
+            emptyList<OpenCodeServerProtocol.SessionInfo>(),
+            OpenCodeServerProtocol.parseSessionChildren("""[{"title":"Missing id"}]"""),
+        )
+    }
+
+    @Test
     fun buildSessionRouteEncodesDirectoryAndSession() {
         val root = OpenCodeServerProtocol.buildSessionRoute("/tmp/project", null)
         assertEquals("/" + OpenCodeServerProtocol.encodeDirectory("/tmp/project"), root)

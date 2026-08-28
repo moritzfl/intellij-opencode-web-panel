@@ -6,6 +6,7 @@ import de.moritzf.opencodewebpanel.server.OpenCodeGlobalEvent
 import de.moritzf.opencodewebpanel.server.OpenCodeGlobalEventListener
 import de.moritzf.opencodewebpanel.server.OpenCodeProtocolResult
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
+import de.moritzf.opencodewebpanel.server.objectMember
 import de.moritzf.opencodewebpanel.server.stringMember
 import com.intellij.util.concurrency.AppExecutorUtil
 import java.util.concurrent.ConcurrentHashMap
@@ -21,7 +22,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * the new UI no longer exposes. This class answers `permission.asked` from the JVM event stream
  * instead, scoped to the panel's project directory.
  *
- * Opt-in covers one displayed session and, via lineage, its subagent children.
+ * Opt-in covers one displayed session and, via parentID lineage, nested subagent children.
  *
  * Nothing is persisted. State dies with the tool-window content. Explicit deny rules never emit an
  * ask event, so they remain effective.
@@ -56,6 +57,14 @@ internal class OpenCodePermissionAutoResponder(
     ) -> OpenCodeServerProtocol.SessionInfo? = { url, auth, directory, sessionID ->
         OpenCodeServerProtocol.fetchSessionInfo(url, auth, directory, sessionID)
     },
+    private val loadChildren: (
+        serverUrl: String,
+        authHeader: String,
+        directory: String,
+        sessionID: String,
+    ) -> List<OpenCodeServerProtocol.SessionInfo> = { url, auth, directory, sessionID ->
+        OpenCodeServerProtocol.fetchSessionChildren(url, auth, directory, sessionID)
+    },
     private val reply: (
         serverUrl: String,
         authHeader: String,
@@ -78,6 +87,7 @@ internal class OpenCodePermissionAutoResponder(
     private companion object {
         private const val MAX_RETRIES = 2
         private const val RETRY_DELAY_MILLIS = 500L
+        private const val MAX_CHILD_DEPTH = 8
     }
 
     private val log = Logger.getInstance(OpenCodePermissionAutoResponder::class.java)
@@ -154,7 +164,12 @@ internal class OpenCodePermissionAutoResponder(
     }
 
     override fun eventReceived(event: OpenCodeGlobalEvent) {
-        if (disposed.get() || event.type != "permission.asked") return
+        if (disposed.get()) return
+        if (event.type == "session.created") {
+            rememberCreated(event)
+            return
+        }
+        if (event.type != "permission.asked") return
         val directory = projectDirectory() ?: return
         if (!OpenCodeServerProtocol.isSameFilesystemPath(event.directory, directory)) return
         val request = OpenCodeServerProtocol.PendingRequestSummary(
@@ -177,15 +192,17 @@ internal class OpenCodePermissionAutoResponder(
         // Parent may not be cached yet (subagent). Resolve lineage, then retry.
         executeAsync(Runnable {
             if (!isCurrentDirectory(directory)) return@Runnable
-            if (resolveLineage(directory, request.sessionID)) {
+            val resolved = resolveLineage(directory, request.sessionID)
+            if (resolved) {
                 preparedLineages.add(request.sessionID)
-            } else if (attempt < MAX_RETRIES && isCurrentDirectory(directory)) {
-                scheduleRetry(attempt) { considerRequest(directory, request, attempt + 1) }
-                return@Runnable
             }
             if (!isCurrentDirectory(directory)) return@Runnable
             if (effectiveOverride(request.sessionID) == true) {
                 enqueueReply(directory, request, attempt = 0)
+                return@Runnable
+            }
+            if (!resolved && attempt < MAX_RETRIES && isCurrentDirectory(directory)) {
+                scheduleRetry(attempt) { considerRequest(directory, request, attempt + 1) }
             }
         })
     }
@@ -193,6 +210,8 @@ internal class OpenCodePermissionAutoResponder(
     private fun seedPendingRequests(onlySessionID: String? = null, attempt: Int = 0) {
         val directory = projectDirectory()?.takeIf(String::isNotBlank) ?: return
         executeAsync(Runnable {
+            if (!hasEnabledTarget(onlySessionID) || !isCurrentDirectory(directory)) return@Runnable
+            prefetchChildLineage(directory, onlySessionID)
             if (!hasEnabledTarget(onlySessionID) || !isCurrentDirectory(directory)) return@Runnable
             val url = serverUrl() ?: return@Runnable
             val password = serverPassword() ?: return@Runnable
@@ -322,6 +341,47 @@ internal class OpenCodePermissionAutoResponder(
         }
         // Publish resolved last: readers that observe it must also observe the parent link.
         resolvedSessions.add(sessionID)
+    }
+
+    private fun rememberCreated(event: OpenCodeGlobalEvent) {
+        val info = event.properties.objectMember("info") ?: return
+        val id = info.stringMember("id")?.takeIf(OpenCodeServerProtocol::isSessionId)
+            ?: event.properties.stringMember("sessionID")?.takeIf(OpenCodeServerProtocol::isSessionId)
+            ?: return
+        val parentID = info.stringMember("parentID")?.takeIf(OpenCodeServerProtocol::isSessionId)
+        rememberSession(id, parentID)
+        if (effectiveOverride(id) == true) {
+            seedPendingRequests()
+        }
+    }
+
+    private fun prefetchChildLineage(directory: String, onlySessionID: String?) {
+        val roots = if (onlySessionID != null) {
+            listOf(onlySessionID)
+        } else {
+            sessionAutoAccept.mapNotNull { (id, enabled) -> id.takeIf { enabled } }
+        }
+        val seen = mutableSetOf<String>()
+        for (root in roots) {
+            walkChildren(directory, root, seen, depth = 0)
+        }
+    }
+
+    private fun walkChildren(directory: String, sessionID: String, seen: MutableSet<String>, depth: Int) {
+        if (disposed.get() || depth > MAX_CHILD_DEPTH || !seen.add(sessionID)) return
+        val url = serverUrl() ?: return
+        val password = serverPassword() ?: return
+        val children = loadChildren(
+            url,
+            OpenCodeServerProtocol.buildBasicAuthHeader(password),
+            directory,
+            sessionID,
+        )
+        for (child in children) {
+            if (!OpenCodeServerProtocol.isSessionId(child.id)) continue
+            rememberSession(child.id, child.parentID ?: sessionID)
+            walkChildren(directory, child.id, seen, depth + 1)
+        }
     }
 
     private fun effectiveOverride(sessionID: String): Boolean? {

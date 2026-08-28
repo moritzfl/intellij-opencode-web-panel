@@ -1202,9 +1202,44 @@ internal object OpenCodeServerProtocol {
         return parseSessionInfo(body)?.takeIf { it.id == sessionID }
     }
 
+    /**
+     * Direct children of [sessionID] (`GET /session/{sessionID}/children?directory=...`).
+     * Bare array or `{"data":[...]}`. Empty on any error.
+     */
+    fun fetchSessionChildren(
+        serverUrl: String,
+        basicAuthHeader: String,
+        directory: String,
+        sessionID: String,
+        connectTimeoutMillis: Int = 3000,
+        readTimeoutMillis: Int = 3000,
+    ): List<SessionInfo> {
+        if (!isSessionId(sessionID)) return emptyList()
+        val url = buildServerRootUrl(serverUrl) + "/session/" + sessionID + "/children?directory=" +
+            java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
+        val body = httpGet(url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis) ?: return emptyList()
+        return parseSessionChildren(body)
+    }
+
     fun parseSessionInfo(json: String): SessionInfo? {
         val root = parseJsonObject(json) ?: return null
         val session = root.objectMember("data") ?: root
+        return parseSessionInfoObject(session)
+    }
+
+    fun parseSessionChildren(json: String): List<SessionInfo> {
+        val parsed = runCatching { JsonParser.parseString(json) }.getOrNull() ?: return emptyList()
+        val array = when {
+            parsed.isJsonArray -> parsed.asJsonArray
+            parsed.isJsonObject -> parsed.asJsonObject.get("data")?.takeIf { it.isJsonArray }?.asJsonArray
+            else -> null
+        } ?: return emptyList()
+        return array.mapNotNull { element ->
+            element.takeIf { it.isJsonObject }?.asJsonObject?.let(::parseSessionInfoObject)
+        }
+    }
+
+    private fun parseSessionInfoObject(session: JsonObject): SessionInfo? {
         val id = session.stringMember("id")?.takeIf(::isSessionId) ?: return null
         return SessionInfo(
             title = session.stringMember("title").orEmpty(),
