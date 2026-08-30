@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [1.13.3] - 2026-08-30
+
 ### Added
 
 - Cycle Agent Reverse (Ctrl+Shift+., Cmd+Shift+. on macOS) selects the previous OpenCode agent.
@@ -676,7 +678,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.13.2...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.13.3...HEAD
+[1.13.3]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.13.2...1.13.3
 [1.13.2]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.13.1...1.13.2
 [1.13.1]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.13.0...1.13.1
 [1.13.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.12.1...1.13.0
