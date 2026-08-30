@@ -51,6 +51,11 @@ internal enum class OpenCodeBrowserCommand(
         newLayoutBindings = listOf(OpenCodeCommandBinding("agent.cycle", "mod+.")),
         composerOnly = true,
     ),
+    CYCLE_AGENT_REVERSE(
+        "OpenCodeWebPanel.CycleAgentReverse",
+        newLayoutBindings = listOf(OpenCodeCommandBinding("agent.cycle.reverse", "shift+mod+.")),
+        composerOnly = true,
+    ),
     CYCLE_THINKING_EFFORT(
         "OpenCodeWebPanel.CycleThinkingEffort",
         newLayoutBindings = listOf(OpenCodeCommandBinding("model.variant.cycle", "shift+mod+d")),

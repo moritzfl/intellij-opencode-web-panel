@@ -98,6 +98,8 @@ MARKERS=(
   "mod+'"
   'agent.cycle'
   'mod+.'
+  'agent.cycle.reverse'
+  'shift+mod+.'
   'model.variant.cycle'
   'shift+mod+d'
   'file.attach'

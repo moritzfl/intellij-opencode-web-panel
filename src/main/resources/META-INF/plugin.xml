@@ -66,6 +66,13 @@
                 <keyboard-shortcut keymap="$default" first-keystroke="control PERIOD"/>
                 <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta PERIOD" replace-all="true"/>
             </action>
+            <action id="OpenCodeWebPanel.CycleAgentReverse"
+                    class="com.intellij.openapi.actionSystem.EmptyAction"
+                    text="OpenCode: Cycle Agent Reverse"
+                    description="Select the previous OpenCode agent">
+                <keyboard-shortcut keymap="$default" first-keystroke="control shift PERIOD"/>
+                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta shift PERIOD" replace-all="true"/>
+            </action>
             <action id="OpenCodeWebPanel.CycleThinkingEffort"
                     class="com.intellij.openapi.actionSystem.EmptyAction"
                     text="OpenCode: Cycle Thinking Effort"

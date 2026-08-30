@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Cycle Agent Reverse (Ctrl+Shift+., Cmd+Shift+. on macOS) selects the previous OpenCode agent.
+
 ## [1.13.2] - 2026-08-28
 
 ### Fixed

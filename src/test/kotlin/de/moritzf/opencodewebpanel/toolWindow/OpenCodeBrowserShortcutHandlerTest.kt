@@ -54,6 +54,29 @@ class OpenCodeBrowserShortcutHandlerTest {
     }
 
     @Test
+    fun cycleAgentReverseUsesOpenCodeDefaultChord() {
+        val keybinds = OpenCodeBrowserShortcutHandler.resolveOpenCodeKeybinds(
+            OpenCodeBrowserCommand.CYCLE_AGENT_REVERSE,
+            null,
+        )
+
+        assertEquals(listOf("shift+mod+."), keybinds.newLayout)
+        assertEquals(listOf("shift+mod+."), keybinds.classic)
+    }
+
+    @Test
+    fun customOpenCodeKeybindOverridesCycleAgentReverse() {
+        val snapshot = """{"settings.v3":"{\"keybinds\":{\"agent.cycle.reverse\":\"alt+k\"}}"}"""
+
+        assertTrue(
+            OpenCodeBrowserShortcutHandler.resolveOpenCodeKeybinds(
+                OpenCodeBrowserCommand.CYCLE_AGENT_REVERSE,
+                snapshot,
+            ) == OpenCodeResolvedKeybinds(newLayout = listOf("alt+k"), classic = listOf("alt+k")),
+        )
+    }
+
+    @Test
     fun disabledOpenCodeKeybindDisablesBridgeCommand() {
         val snapshot = """{"settings.v3":"{\"keybinds\":{\"agent.cycle\":\"none\"}}"}"""
 

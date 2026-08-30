@@ -78,7 +78,7 @@ class OpenCodePluginTest : BasePlatformTestCase() {
         val pluginXml = javaClass.classLoader.getResource("META-INF/plugin.xml")!!.readText()
         assertEquals(
             "Mac shortcut declarations must replace inherited Ctrl variants",
-            10,
+            11,
             Regex("""keymap="Mac OS X"[^>]*replace-all="true"""").findAll(pluginXml).count(),
         )
         val actionIDs = OpenCodeBrowserCommand.entries.map { it.intellijActionID } + listOf(
@@ -122,6 +122,18 @@ class OpenCodePluginTest : BasePlatformTestCase() {
         assertTrue(
             chooseModelShortcuts.any {
                 it.firstKeyStroke.keyCode == KeyEvent.VK_NUMBER_SIGN &&
+                    it.firstKeyStroke.modifiers and expectedModifier != 0 &&
+                    it.firstKeyStroke.modifiers and InputEvent.SHIFT_DOWN_MASK != 0
+            },
+        )
+        val cycleAgentReverseShortcuts = ActionManager.getInstance()
+            .getAction(OpenCodeBrowserCommand.CYCLE_AGENT_REVERSE.intellijActionID)
+            .shortcutSet
+            .shortcuts
+            .filterIsInstance<KeyboardShortcut>()
+        assertTrue(
+            cycleAgentReverseShortcuts.any {
+                it.firstKeyStroke.keyCode == KeyEvent.VK_PERIOD &&
                     it.firstKeyStroke.modifiers and expectedModifier != 0 &&
                     it.firstKeyStroke.modifiers and InputEvent.SHIFT_DOWN_MASK != 0
             },
