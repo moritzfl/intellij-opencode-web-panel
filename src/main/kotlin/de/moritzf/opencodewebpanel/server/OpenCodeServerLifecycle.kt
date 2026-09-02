@@ -87,11 +87,22 @@ internal fun shouldApplyPublishedLifecycleState(
 /**
  * Hide the embedded page with a native card. Do not navigate CEF to about:blank — sitting on
  * that document (the Stop-then-Start path) leaves JCEF blank on Windows after the renderer
- * is discarded. Restart stays healthy because its blank interval is only the process kill.
+ * is discarded. Restart replaces the tool-window content (new JCEF) instead of parking this
+ * document.
  */
 internal fun shouldHideEmbeddedPage(state: OpenCodeServerLifecycleState): Boolean {
     return state == OpenCodeServerLifecycleState.STOPPED ||
         state == OpenCodeServerLifecycleState.RESTARTING
+}
+
+/**
+ * Center card for a newly created panel (including Restart's fresh JCEF) before a page load.
+ * `error` / `idle` match the tool-window card names; null keeps the browser card.
+ */
+internal fun parkedEmbeddedCenterCard(state: OpenCodeServerLifecycleState): String? {
+    if (shouldShowStartupError(state)) return "error"
+    if (shouldHideEmbeddedPage(state)) return "idle"
+    return null
 }
 
 /** CEF reports 0 for some successful document loads, especially after basic-auth on Windows. */

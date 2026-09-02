@@ -48,6 +48,7 @@ import de.moritzf.opencodewebpanel.server.OpenCodeSuspendResumeListener
 import de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager
 import de.moritzf.opencodewebpanel.server.isSuccessfulOpenCodeDocumentLoad
 import de.moritzf.opencodewebpanel.server.shouldApplyPublishedLifecycleState
+import de.moritzf.opencodewebpanel.server.parkedEmbeddedCenterCard
 import de.moritzf.opencodewebpanel.server.shouldHideEmbeddedPage
 import de.moritzf.opencodewebpanel.server.shouldShowPageOpeningStatus
 import de.moritzf.opencodewebpanel.server.shouldShowStartupError
@@ -76,7 +77,10 @@ import java.util.concurrent.atomic.AtomicLong
 import javax.swing.JComponent
 import javax.swing.JPanel
 
-class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposable {
+class OpenCodeWebToolWindowContent(
+    private val toolWindow: ToolWindow,
+    sessionIdToRestoreOnLoad: String? = null,
+) : Disposable {
 
     private companion object {
         private const val BROWSER_CARD = "browser"
@@ -162,8 +166,9 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
         setBrowserFocus = { browser.cefBrowser.setFocus(it) },
     )
     private var openProjectScriptScheduled = false
-    private var restoreExistingOpenCodeSession = false
-    private var sessionIdToRestore: String? = null
+    private var restoreExistingOpenCodeSession = sessionIdToRestoreOnLoad != null
+    private var sessionIdToRestore: String? = sessionIdToRestoreOnLoad
+    private var panelReplacementScheduled = false
     private val documentStartInjector = OpenCodeDocumentStartInjector(browser)
     @Volatile
     private var mainDocumentLoadSucceeded = false
@@ -601,7 +606,15 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
                 }
             },
         )
-        updateLifecycleIndicator(serverManager.getLifecycleState())
+        val initialState = serverManager.getLifecycleState()
+        updateLifecycleIndicator(initialState)
+        when (parkedEmbeddedCenterCard(initialState)) {
+            ERROR_CARD -> showErrorInBrowser()
+            IDLE_CARD -> {
+                idleCard.show(initialState)
+                showCenterCard(IDLE_CARD)
+            }
+        }
         ApplicationManager.getApplication().messageBus.connect(this).subscribe(
             OpenCodeSuspendResumeListener.TOPIC,
             object : OpenCodeSuspendResumeListener {
@@ -647,6 +660,7 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
 
                 override fun serverRestartRequested() {
                     restartOpenCodeServer()
+                    schedulePanelReplacement()
                 }
             },
         )
@@ -908,15 +922,30 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
     }
 
     /**
-     * Reloads the page after the JCEF renderer process crashed, which otherwise leaves a
-     * permanently blank panel. Throttled to avoid reload loops on repeated crashes.
+     * Recreates the panel after the JCEF renderer process crashed, which otherwise leaves a
+     * permanently blank panel. Throttled to avoid recreate loops on repeated crashes.
+     * Does not restart the shared server — Restart OpenCode Server is the heavier hammer.
      */
     private fun recoverFromRendererCrash() {
         ApplicationManager.getApplication().invokeLater {
             if (isContentDisposed()) return@invokeLater
             if (!markBrowserRecoveryAttempt()) return@invokeLater
-            thisLogger().warn("OpenCode panel renderer process terminated; reloading page")
-            reloadOpenCodePageOrLoad()
+            thisLogger().warn("OpenCode panel renderer process terminated; recreating panel")
+            replaceOpenCodeToolWindowContent(toolWindow)
+        }
+    }
+
+    /**
+     * Dispose this panel and install a fresh JCEF browser. Deferred so a message-bus
+     * handler is not disposing itself mid-delivery. Stop→Start must not call this.
+     */
+    private fun schedulePanelReplacement() {
+        if (isContentDisposed() || panelReplacementScheduled) return
+        panelReplacementScheduled = true
+        val window = toolWindow
+        ApplicationManager.getApplication().invokeLater {
+            if (window.isDisposed || window.project.isDisposed) return@invokeLater
+            replaceOpenCodeToolWindowContent(window)
         }
     }
 
@@ -1015,7 +1044,11 @@ class OpenCodeWebToolWindowContent(private val toolWindow: ToolWindow) : Disposa
             { false },
             CompletableFuture.delayedExecutor(DOCUMENT_START_INSTALL_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS),
         )
-        installDocumentStartScripts(serverUrl).applyToEither(timeout) { it }.whenComplete { installed, error ->
+        val install = runCatching { installDocumentStartScripts(serverUrl) }.getOrElse { error ->
+            thisLogger().info("Could not prepare OpenCode document-start scripts: ${error.message}")
+            CompletableFuture.completedFuture(false)
+        }
+        install.applyToEither(timeout) { it }.whenComplete { installed, error ->
             if (error != null) {
                 thisLogger().info("Could not prepare OpenCode document-start scripts: ${error.message}")
             } else if (!installed) {

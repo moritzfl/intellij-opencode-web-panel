@@ -37,14 +37,14 @@ internal class OpenCodeDocumentStartInjector(
         browser.jbCefClient.addLoadHandler(
             object : CefLoadHandlerAdapter() {
                 override fun onLoadEnd(cefBrowser: CefBrowser?, frame: CefFrame?, httpStatusCode: Int) {
-                    if (frame?.isMain == true && cefBrowser?.hasDocument() == true) {
+                    if (frame?.isMain == true) {
                         documentReady.complete(Unit)
                     }
                 }
             },
             browser.cefBrowser,
         )
-        if (browser.cefBrowser.hasDocument()) documentReady.complete(Unit)
+        if (hasDocument(browser.cefBrowser)) documentReady.complete(Unit)
     }
 
     fun installAndWait(script: String, timeoutMillis: Long = 3_000): Boolean {
@@ -52,22 +52,31 @@ internal class OpenCodeDocumentStartInjector(
     }
 
     fun installAsync(script: String): CompletableFuture<Boolean> {
-        val source = script.trim()
-        val generation = synchronized(lock) { ++requestedGeneration }
-        ensureBootstrapDocument()
-        return documentReady.thenCompose {
-            val devTools = client() ?: return@thenCompose CompletableFuture.completedFuture(false)
-            synchronized(lock) {
-                val predecessor = operationTail.handle { _, _ -> }
-                val operation = predecessor.thenCompose { replaceScript(devTools, source, generation) }
-                operationTail = operation.handle { _, _ -> }
-                operation
+        return try {
+            val source = script.trim()
+            val generation = synchronized(lock) { ++requestedGeneration }
+            ensureBootstrapDocument()
+            documentReady.thenCompose {
+                val devTools = client() ?: return@thenCompose CompletableFuture.completedFuture(false)
+                synchronized(lock) {
+                    val predecessor = operationTail.handle { _, _ -> }
+                    val operation = predecessor.thenCompose { replaceScript(devTools, source, generation) }
+                    operationTail = operation.handle { _, _ -> }
+                    operation
+                }
             }
+        } catch (e: Exception) {
+            thisLogger().info("Could not prepare OpenCode document-start scripts: ${e.message}")
+            CompletableFuture.completedFuture(false)
         }
     }
 
     fun hasInstalledScript(): Boolean = synchronized(lock) {
         installedIdentifier != null
+    }
+
+    private fun hasDocument(cefBrowser: CefBrowser?): Boolean {
+        return safeCefBoolean { cefBrowser?.hasDocument() == true }
     }
 
     /** A newly-created empty JCEF browser has no renderer/DevTools target yet. */
@@ -76,7 +85,7 @@ internal class OpenCodeDocumentStartInjector(
         val shouldLoad = synchronized(lock) {
             if (documentReady.isDone || bootstrapStarted) {
                 false
-            } else if (browser.cefBrowser.hasDocument()) {
+            } else if (hasDocument(browser.cefBrowser)) {
                 documentReady.complete(Unit)
                 false
             } else {
@@ -84,7 +93,12 @@ internal class OpenCodeDocumentStartInjector(
                 true
             }
         }
-        if (shouldLoad) browser.loadURL("about:blank")
+        if (!shouldLoad) return
+        val loaded = runCatching { browser.loadURL("about:blank") }.isSuccess
+        if (!loaded) {
+            thisLogger().info("Could not bootstrap OpenCode document-start page")
+            documentReady.complete(Unit)
+        }
     }
 
     private fun replaceScript(
@@ -199,6 +213,14 @@ internal class OpenCodeDocumentStartInjector(
                   $source
                 })();
             """.trimIndent()
+        }
+
+        /**
+         * `RemoteBrowser.hasDocument()` can unbox a null RPC result into NPE.
+         * Treat that as "not yet".
+         */
+        fun safeCefBoolean(query: () -> Boolean): Boolean {
+            return runCatching { query() }.getOrDefault(false)
         }
 
         fun parseIdentifier(response: String?): String? {

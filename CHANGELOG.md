@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Restart OpenCode Server also recreates the embedded browser, so a stuck or crashed panel can recover.
+- Opening the panel no longer fails when JCEF reports no document yet (`RemoteBrowser.hasDocument` NPE).
+
 ## [1.13.3] - 2026-08-30
 
 ### Added

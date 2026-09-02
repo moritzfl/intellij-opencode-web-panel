@@ -84,7 +84,8 @@ The plugin starts a local OpenCode server when needed, authenticates the embedde
 The tool window title bar offers quick controls (also available in the tool window's gear menu on narrow panels):
 
 - **Zoom out / Zoom in** - Scale the embedded OpenCode UI in 10% steps without reloading. Cmd/Ctrl with <kbd>+</kbd>, <kbd>-</kbd>, and <kbd>0</kbd> work inside the panel too.
-- **Restart Server** - Stop and restart the shared OpenCode server. Asks for confirmation while the server is running, since a restart interrupts OpenCode work in all open projects.
+- **Reload Page** - Reload the embedded OpenCode UI. The server stays running.
+- **Restart Server** - Stop and restart the shared OpenCode server, and recreate the embedded browser. Recovers a stuck or crashed panel. Asks for confirmation while the server is running, since a restart interrupts OpenCode work in all open projects.
 - The gear menu additionally offers **Reset Zoom**, **View Server Log**, and **OpenCode Web Panel Settings**.
 
 ### Context Menu Actions
@@ -156,6 +157,11 @@ Project-specific settings are stored with the IDE project.
 - **Use environment variables** keeps `HTTP_PROXY` / `HTTPS_PROXY` from the environment the IDE was started with.
 - **No proxy** removes proxy variables from the OpenCode process.
 - Restart the OpenCode server after changing proxy settings.
+
+**The panel is stuck, blank, or frozen on “Opening the OpenCode page…”**
+
+- Use **Restart Server** in the tool window title bar or gear menu. This restarts the shared server and recreates the embedded browser.
+- **Reload Page** reloads the UI without restarting the server; use Restart if that is not enough.
 
 **The embedded UI behaves unexpectedly after an OpenCode update**
 

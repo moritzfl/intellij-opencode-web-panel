@@ -36,6 +36,20 @@ class OpenCodeDocumentStartInjectorTest {
     }
 
     @Test
+    fun safeCefBooleanTreatsHasDocumentUnboxFailuresAsFalse() {
+        assertTrue(OpenCodeDocumentStartInjector.safeCefBoolean { true })
+        assertFalse(OpenCodeDocumentStartInjector.safeCefBoolean { false })
+        assertFalse(
+            OpenCodeDocumentStartInjector.safeCefBoolean {
+                throw NullPointerException(
+                    "Cannot invoke \"java.lang.Boolean.booleanValue()\" because the return value of " +
+                        "\"com.jetbrains.cef.remote.RpcContext.execObj\" is null",
+                )
+            },
+        )
+    }
+
+    @Test
     fun originGuardLimitsDocumentStartScriptToTheOpenCodeServer() {
         val guarded = OpenCodeDocumentStartInjector.guardForOrigin(
             "window.__installed = true;",

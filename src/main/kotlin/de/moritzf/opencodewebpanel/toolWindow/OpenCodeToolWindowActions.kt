@@ -156,7 +156,7 @@ internal class OpenCodeResetZoomAction : DumbAwareAction(
 
 internal class OpenCodeRestartServerAction : DumbAwareAction(
     "Restart OpenCode Server",
-    "Restart the shared server. Interrupts all OpenCode panels.",
+    "Restart the shared server and recover a stuck panel. Interrupts all OpenCode panels.",
     AllIcons.Actions.StopAndRestart,
 ) {
     override fun actionPerformed(e: AnActionEvent) {
@@ -170,7 +170,7 @@ internal class OpenCodeRestartServerAction : DumbAwareAction(
         val state = SharedOpenCodeServerManager.getInstance().getLifecycleState()
         e.presentation.isEnabled = state != OpenCodeServerLifecycleState.STARTING &&
             state != OpenCodeServerLifecycleState.RESTARTING
-        e.presentation.description = "Restart the shared server. Interrupts all panels."
+        e.presentation.description = "Restart the shared server and recover a stuck panel."
     }
 
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT

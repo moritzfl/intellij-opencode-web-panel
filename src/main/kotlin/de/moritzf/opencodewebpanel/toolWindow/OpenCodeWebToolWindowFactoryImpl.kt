@@ -17,10 +17,7 @@ class OpenCodeWebToolWindowFactoryImpl : ToolWindowFactory, DumbAware {
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
         // Build content + disposer on this call (typically EDT) so a fast project close cannot
         // orphan JCEF before an invokeLater runs. Only the initial server/page load is deferred.
-        val toolWindowContent = OpenCodeWebToolWindowContent(toolWindow)
-        val content = ContentFactory.getInstance().createContent(toolWindowContent.getContent(), null, false)
-        content.setDisposer(toolWindowContent)
-        toolWindow.contentManager.addContent(content)
+        val toolWindowContent = installOpenCodeToolWindowContent(toolWindow)
         installTitleActions(toolWindow)
         ApplicationManager.getApplication().invokeLater {
             if (project.isDisposed || toolWindow.isDisposed || project != toolWindow.project) {
@@ -65,4 +62,32 @@ class OpenCodeWebToolWindowFactoryImpl : ToolWindowFactory, DumbAware {
             },
         )
     }
+}
+
+internal fun installOpenCodeToolWindowContent(
+    toolWindow: ToolWindow,
+    sessionIdToRestore: String? = null,
+): OpenCodeWebToolWindowContent {
+    val toolWindowContent = OpenCodeWebToolWindowContent(toolWindow, sessionIdToRestore)
+    val content = ContentFactory.getInstance().createContent(toolWindowContent.getContent(), null, false)
+    content.setDisposer(toolWindowContent)
+    toolWindow.contentManager.addContent(content)
+    return toolWindowContent
+}
+
+/**
+ * Recovery hammer for a stuck or crashed JCEF panel: dispose the current browser and
+ * install a fresh one. Keeps the session id from the previous URL when it is still readable.
+ * Stop→Start must not use this — that path keeps the existing document (Windows).
+ */
+internal fun replaceOpenCodeToolWindowContent(toolWindow: ToolWindow) {
+    if (toolWindow.isDisposed || toolWindow.project.isDisposed) return
+    val application = ApplicationManager.getApplication()
+    if (application == null || application.isDisposed) return
+    val manager = toolWindow.contentManager
+    val previous = manager.contents.firstNotNullOfOrNull { it.disposer as? OpenCodeWebToolWindowContent }
+    val sessionId = runCatching { previous?.displayedSessionID() }.getOrNull()
+    manager.removeAllContents(true)
+    val toolWindowContent = installOpenCodeToolWindowContent(toolWindow, sessionId)
+    toolWindowContent.checkAndLoadContent()
 }

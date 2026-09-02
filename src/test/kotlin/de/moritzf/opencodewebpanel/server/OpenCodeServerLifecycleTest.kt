@@ -2,6 +2,7 @@ package de.moritzf.opencodewebpanel.server
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -70,6 +71,15 @@ class OpenCodeServerLifecycleTest {
         assertFalse(shouldHideEmbeddedPage(OpenCodeServerLifecycleState.FAILED))
         assertFalse(shouldHideEmbeddedPage(OpenCodeServerLifecycleState.RUNNING))
         assertFalse(shouldHideEmbeddedPage(OpenCodeServerLifecycleState.STARTING))
+    }
+
+    @Test
+    fun newPanelCreatedDuringRestartParksOnTheIdleCard() {
+        assertEquals("idle", parkedEmbeddedCenterCard(OpenCodeServerLifecycleState.RESTARTING))
+        assertEquals("idle", parkedEmbeddedCenterCard(OpenCodeServerLifecycleState.STOPPED))
+        assertEquals("error", parkedEmbeddedCenterCard(OpenCodeServerLifecycleState.FAILED))
+        assertNull(parkedEmbeddedCenterCard(OpenCodeServerLifecycleState.RUNNING))
+        assertNull(parkedEmbeddedCenterCard(OpenCodeServerLifecycleState.STARTING))
     }
 
     @Test
