@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [1.13.4] - 2026-09-02
+
 ### Fixed
 
 - Restart OpenCode Server also recreates the embedded browser, so a stuck or crashed panel can recover.
@@ -683,7 +685,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.13.3...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.13.4...HEAD
+[1.13.4]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.13.3...1.13.4
 [1.13.3]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.13.2...1.13.3
 [1.13.2]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.13.1...1.13.2
 [1.13.1]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.13.0...1.13.1
