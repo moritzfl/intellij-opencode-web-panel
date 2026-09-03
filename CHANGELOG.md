@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [1.13.7] - 2026-09-03
+
 ### Fixed
 
 - Renderer-silence recovery no longer fights Restart. The watchdog still reloads a dead page
@@ -720,7 +722,9 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.13.5...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.13.7...HEAD
+[1.13.7]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.13.6...1.13.7
+[1.13.6]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.13.5...1.13.6
 [1.13.5]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.13.4...1.13.5
 [1.13.4]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.13.3...1.13.4
 [1.13.3]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.13.2...1.13.3
