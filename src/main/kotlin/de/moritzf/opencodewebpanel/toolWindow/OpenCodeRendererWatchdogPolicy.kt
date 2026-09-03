@@ -36,11 +36,14 @@ internal object OpenCodeRendererWatchdogPolicy {
 
     /**
      * How long a not-yet-ready first load (the “Opening the OpenCode page…” strip) may freeze
-     * the stall clock. Matches the page-load watchdog's full retry budget so the two do not
-     * fight; after this a hung opening is a stall and the renderer watchdog may recover it.
+     * the stall clock. Each page-load attempt can spend a document-start install wait plus the
+     * load timeout, times the full retry budget, so the two watchdogs do not fight. After this
+     * a hung opening is a stall and the renderer watchdog may recover it.
      */
     const val NOT_READY_GRACE_MILLIS =
-        OpenCodePageLoadWatchdog.DEFAULT_TIMEOUT_MILLIS * (OpenCodePageLoadWatchdog.MAX_RETRIES + 1L)
+        (OpenCodePageLoadWatchdog.DEFAULT_TIMEOUT_MILLIS +
+            OpenCodePageLoadWatchdog.DOCUMENT_START_INSTALL_TIMEOUT_MILLIS) *
+            (OpenCodePageLoadWatchdog.MAX_RETRIES + 1L)
 
     enum class Action { NONE, RELOAD, RECREATE, GIVE_UP }
 

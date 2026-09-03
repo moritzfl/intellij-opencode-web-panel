@@ -20,6 +20,20 @@ class OpenCodeRendererWatchdogTest {
     }
 
     @Test
+    fun reShowingAfterAHiddenHeartbeatRecoversADeadRenderer() {
+        val watchdog = watchdog()
+        watchdog.start()
+        watchdog.handleHeartbeat("hidden")
+        showing = false
+        clock += OpenCodeRendererWatchdogPolicy.STALL_TIMEOUT_MILLIS + 5_000
+        watchdog.checkHealth()
+        showing = true
+        clock += OpenCodeRendererWatchdogPolicy.STALL_TIMEOUT_MILLIS + 1
+        watchdog.checkHealth()
+        assertEquals(listOf("reload"), reloads)
+    }
+
+    @Test
     fun hidingThenShowingDoesNotTreatTheGapAsAStall() {
         val watchdog = watchdog()
         watchdog.start()
@@ -56,6 +70,26 @@ class OpenCodeRendererWatchdogTest {
         clock += OpenCodeRendererWatchdogPolicy.STALL_TIMEOUT_MILLIS + 1
         watchdog.checkHealth()
         assertEquals(listOf("recreate"), recreates)
+    }
+
+    @Test
+    fun aSiblingHeartbeatDoesNotClearTheRecreateBudget() {
+        val sibling = watchdog()
+        sibling.start()
+        val stalled = watchdog()
+        stalled.start()
+        stallUntilRecreate(stalled)
+        stallUntilRecreate(stalled)
+        sibling.handleHeartbeat("visible")
+        reloads.clear()
+        recreates.clear()
+        giveUps.clear()
+        clock += OpenCodeRendererWatchdogPolicy.RECOVERY_COOLDOWN_MILLIS
+        clock += OpenCodeRendererWatchdogPolicy.STALL_TIMEOUT_MILLIS + 1
+        stalled.checkHealth()
+        assertEquals(listOf("give-up"), giveUps)
+        assertTrue(reloads.isEmpty())
+        assertTrue(recreates.isEmpty())
     }
 
     @Test

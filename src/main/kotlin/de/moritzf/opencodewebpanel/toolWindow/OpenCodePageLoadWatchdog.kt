@@ -12,6 +12,7 @@ import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 internal object OpenCodePageLoadWatchdog {
     const val DEFAULT_TIMEOUT_MILLIS = 20_000
     const val MAX_RETRIES = 2
+    const val DOCUMENT_START_INSTALL_TIMEOUT_MILLIS = 20_000L
 
     fun shouldRetry(
         succeeded: Boolean,

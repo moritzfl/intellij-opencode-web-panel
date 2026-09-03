@@ -129,7 +129,9 @@ class OpenCodeRendererWatchdogPolicyTest {
     @Test
     fun theNotReadyGraceMatchesThePageLoadRetryBudget() {
         assertEquals(
-            OpenCodePageLoadWatchdog.DEFAULT_TIMEOUT_MILLIS * (OpenCodePageLoadWatchdog.MAX_RETRIES + 1L),
+            (OpenCodePageLoadWatchdog.DEFAULT_TIMEOUT_MILLIS +
+                OpenCodePageLoadWatchdog.DOCUMENT_START_INSTALL_TIMEOUT_MILLIS) *
+                (OpenCodePageLoadWatchdog.MAX_RETRIES + 1L),
             OpenCodeRendererWatchdogPolicy.NOT_READY_GRACE_MILLIS,
         )
     }

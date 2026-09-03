@@ -21,14 +21,16 @@ import java.util.concurrent.atomic.AtomicInteger
  * stale while the panel is showing, the page is visible, and a document has finished loading
  * (or the first load has given up), the watchdog first reloads the page in place and, after a
  * persistent stall, recreates the whole JCEF panel. Recreates are counted process-wide (JCEF
- * is shared): a watchdog-built new panel does not reset the budget. A heartbeat resets it;
- * user Restart / Retry zero it; without those it decays (halved per
+ * is shared): a watchdog-built new panel does not reset the budget. A heartbeat on a panel
+ * born at the current recreate generation resets it (a sibling that was already alive does
+ * not); user Restart / Retry zero it; without those it decays (halved per
  * [OpenCodeRendererWatchdogPolicy.RECREATE_BUDGET_HALVING_MILLIS] of silence), so a broken JCEF
  * stack ends on the failure card but a later Retry still gets a real recovery attempt.
  *
  * Hidden pages freeze the stall clock instead of skipping the check, so showing the panel
- * later does not look like a stall. A not-yet-loaded page freezes only for
- * [OpenCodeRendererWatchdogPolicy.NOT_READY_GRACE_MILLIS]; after that a hung “Opening…”
+ * later does not look like a stall. Re-showing the host forgets a stale page-hidden flag:
+ * a renderer that died while hidden cannot post `visible`. A not-yet-loaded page freezes only
+ * for [OpenCodeRendererWatchdogPolicy.NOT_READY_GRACE_MILLIS]; after that a hung “Opening…”
  * strip is a stall (Restart's new JCEF often needs this). Heartbeat budget mutations hop
  * to the Swing thread; the stall timestamps are volatile so any-thread beats still move
  * the clock. User Restart / Retry zero the process-wide recreate budget.
@@ -61,6 +63,8 @@ internal class OpenCodeRendererWatchdog(
     private var consecutiveStalls = 0
     private var lastRecoveryAtMillis = 0L
     private var notReadySinceMillis = 0L
+    private var hostWasInactive = false
+    private val birthGeneration = recreateGeneration.get()
 
     fun start() {
         if (!running.compareAndSet(false, true)) return
@@ -68,6 +72,7 @@ internal class OpenCodeRendererWatchdog(
         lastPageVisible = true
         consecutiveStalls = 0
         notReadySinceMillis = 0L
+        hostWasInactive = false
         scheduleNext()
     }
 
@@ -90,7 +95,9 @@ internal class OpenCodeRendererWatchdog(
         if (visibility != null) lastPageVisible = visibility != "hidden"
         runOnEdt {
             consecutiveStalls = 0
-            processRecreatesAfterStall.set(0)
+            if (birthGeneration == recreateGeneration.get()) {
+                processRecreatesAfterStall.set(0)
+            }
         }
     }
 
@@ -119,7 +126,18 @@ internal class OpenCodeRendererWatchdog(
     internal fun checkHealth() {
         if (!running.get() || !isEnabledInSettings()) return
         val now = nowMillis()
-        if (!OpenCodeRendererWatchdogPolicy.shouldMonitor(isActiveContent(), lastPageVisible)) {
+        val hostActive = isActiveContent()
+        if (!hostActive) {
+            hostWasInactive = true
+            lastHeartbeatAtMillis = now
+            notReadySinceMillis = 0L
+            return
+        }
+        if (hostWasInactive) {
+            hostWasInactive = false
+            lastPageVisible = true
+        }
+        if (!OpenCodeRendererWatchdogPolicy.shouldMonitor(true, lastPageVisible)) {
             lastHeartbeatAtMillis = now
             notReadySinceMillis = 0L
             return
@@ -159,6 +177,7 @@ internal class OpenCodeRendererWatchdog(
             }
             OpenCodeRendererWatchdogPolicy.Action.RECREATE -> {
                 processRecreatesAfterStall.incrementAndGet()
+                recreateGeneration.incrementAndGet()
                 consecutiveStalls = 0
                 lastHeartbeatAtMillis = now
                 LOG.warn("OpenCode page heartbeat stayed stalled after reload; recreating the panel")
@@ -183,11 +202,13 @@ internal class OpenCodeRendererWatchdog(
 
         /**
          * Application-wide: JCEF is shared, so a recreate that does not restore heartbeats is a
-         * property of the CEF server, not of a single project's tool window. Reset only when a
-         * heartbeat arrives; without one the budget decays (see [effectiveRecreateBudget]) so the
-         * failure card's Retry is not stuck behind a give-up budget forever.
+         * property of the CEF server, not of a single project's tool window. Reset when a
+         * heartbeat arrives from a panel born at [recreateGeneration]; without one the budget
+         * decays (see [effectiveRecreateBudget]) so the failure card's Retry is not stuck behind
+         * a give-up budget forever.
          */
         private val processRecreatesAfterStall = AtomicInteger(0)
+        private val recreateGeneration = AtomicInteger(0)
 
         private val budgetDecayLock = Any()
         private var lastBudgetDecayAtMillis = 0L
@@ -217,6 +238,7 @@ internal class OpenCodeRendererWatchdog(
          */
         internal fun resetProcessRecreatesAfterStall() {
             processRecreatesAfterStall.set(0)
+            recreateGeneration.set(0)
             synchronized(budgetDecayLock) { lastBudgetDecayAtMillis = 0L }
         }
 
