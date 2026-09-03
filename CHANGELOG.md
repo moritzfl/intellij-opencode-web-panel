@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [1.13.8] - 2026-09-03
+
 ### Fixed
 
 - Restart OpenCode Server no longer freezes the IDE. Stopping the JVM event stream used to
@@ -729,7 +731,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.13.7...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.13.8...HEAD
+[1.13.8]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.13.7...1.13.8
 [1.13.7]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.13.6...1.13.7
 [1.13.6]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.13.5...1.13.6
 [1.13.5]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.13.4...1.13.5
