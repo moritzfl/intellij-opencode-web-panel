@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Restart OpenCode Server no longer freezes the IDE. Stopping the JVM event stream used to
+  call `HttpURLConnection.disconnect()` on the UI thread, which blocked on the live SSE read.
+  Disconnect now runs in the background. A new panel also no longer waits 20s on a stuck
+  document-start bootstrap before loading the page.
+
 ## [1.13.7] - 2026-09-03
 
 ### Fixed

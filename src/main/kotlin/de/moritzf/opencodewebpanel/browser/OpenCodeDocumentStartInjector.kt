@@ -223,6 +223,17 @@ internal class OpenCodeDocumentStartInjector(
             return runCatching { query() }.getOrDefault(false)
         }
 
+        /**
+         * True when a failed document-start replace must not navigate: the live OpenCode
+         * document already has a script, and a new one could not be installed. Never keep
+         * about:blank / an empty Restart browser — that is how Restart left the Opening strip.
+         */
+        fun shouldKeepCurrentPage(
+            installed: Boolean,
+            hasInstalledScript: Boolean,
+            currentPageIsOpenCode: Boolean,
+        ): Boolean = !installed && hasInstalledScript && currentPageIsOpenCode
+
         fun parseIdentifier(response: String?): String? {
             val text = response?.trim()?.takeIf { it.isNotEmpty() } ?: return null
             val root = runCatching { JsonParser.parseString(text) }.getOrNull()

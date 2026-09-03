@@ -1221,9 +1221,14 @@ class OpenCodeWebToolWindowContent(
         load: () -> Unit,
     ) {
         val generation = ++pendingBrowserLoadGeneration
+        val waitMillis = if (documentStartInjector.hasInstalledScript()) {
+            DOCUMENT_START_INSTALL_TIMEOUT_MILLIS
+        } else {
+            OpenCodePageLoadWatchdog.DOCUMENT_START_WAIT_BEFORE_LOAD_MILLIS
+        }
         val timeout = CompletableFuture.supplyAsync(
             { false },
-            CompletableFuture.delayedExecutor(DOCUMENT_START_INSTALL_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS),
+            CompletableFuture.delayedExecutor(waitMillis, TimeUnit.MILLISECONDS),
         )
         val install = runCatching { installDocumentStartScripts(serverUrl) }.getOrElse { error ->
             thisLogger().info("Could not prepare OpenCode document-start scripts: ${error.message}")
@@ -1243,7 +1248,15 @@ class OpenCodeWebToolWindowContent(
                 ) {
                     return@invokeLater
                 }
-                if (!installed && documentStartInjector.hasInstalledScript()) {
+                val keepCurrent = OpenCodeDocumentStartInjector.shouldKeepCurrentPage(
+                    installed = installed == true,
+                    hasInstalledScript = documentStartInjector.hasInstalledScript(),
+                    currentPageIsOpenCode = OpenCodeServerProtocol.isOpenCodeServerPage(
+                        serverUrl,
+                        browser.cefBrowser.url,
+                    ),
+                )
+                if (keepCurrent) {
                     thisLogger().warn("Keeping the current OpenCode page because its document-start script could not be replaced")
                     pageLoadInProgress = false
                     pageLoadStartedAtMillis = 0L

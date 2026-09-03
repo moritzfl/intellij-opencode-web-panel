@@ -50,6 +50,38 @@ class OpenCodeDocumentStartInjectorTest {
     }
 
     @Test
+    fun aFailedDocumentStartReplaceKeepsOnlyALiveOpenCodePage() {
+        assertTrue(
+            OpenCodeDocumentStartInjector.shouldKeepCurrentPage(
+                installed = false,
+                hasInstalledScript = true,
+                currentPageIsOpenCode = true,
+            ),
+        )
+        assertFalse(
+            OpenCodeDocumentStartInjector.shouldKeepCurrentPage(
+                installed = false,
+                hasInstalledScript = true,
+                currentPageIsOpenCode = false,
+            ),
+        )
+        assertFalse(
+            OpenCodeDocumentStartInjector.shouldKeepCurrentPage(
+                installed = false,
+                hasInstalledScript = false,
+                currentPageIsOpenCode = false,
+            ),
+        )
+        assertFalse(
+            OpenCodeDocumentStartInjector.shouldKeepCurrentPage(
+                installed = true,
+                hasInstalledScript = true,
+                currentPageIsOpenCode = true,
+            ),
+        )
+    }
+
+    @Test
     fun originGuardLimitsDocumentStartScriptToTheOpenCodeServer() {
         val guarded = OpenCodeDocumentStartInjector.guardForOrigin(
             "window.__installed = true;",

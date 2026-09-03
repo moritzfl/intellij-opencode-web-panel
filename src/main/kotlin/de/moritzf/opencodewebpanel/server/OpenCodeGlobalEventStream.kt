@@ -71,11 +71,12 @@ internal class OpenCodeGlobalEventStream(
     private var connection: HttpURLConnection? = null
 
     fun start(serverUrl: String, basicAuthHeader: String) {
-        val myGeneration = synchronized(lock) {
-            connection?.disconnect()
+        val (previous, myGeneration) = synchronized(lock) {
+            val previous = connection
             connection = null
-            ++generation
+            previous to ++generation
         }
+        disconnectInBackground(previous)
         Thread({ runReadLoop(myGeneration, serverUrl, basicAuthHeader) }, "OpenCode-Event-Stream").apply {
             isDaemon = true
             start()
@@ -83,11 +84,11 @@ internal class OpenCodeGlobalEventStream(
     }
 
     fun stop() {
-        synchronized(lock) {
+        val previous = synchronized(lock) {
             ++generation
-            connection?.disconnect()
-            connection = null
+            connection.also { connection = null }
         }
+        disconnectInBackground(previous)
     }
 
     /**
@@ -96,9 +97,31 @@ internal class OpenCodeGlobalEventStream(
      * on a connection the sleep severed without an error.
      */
     fun reconnectNow() {
-        synchronized(lock) {
-            connection?.disconnect()
-            connection = null
+        val previous = synchronized(lock) {
+            connection.also { connection = null }
+        }
+        disconnectInBackground(previous)
+    }
+
+    /**
+     * `HttpURLConnection.disconnect()` can block on `ChunkedInputStream.close()`, whose lock
+     * the reader thread holds while `read()` is waiting for the next SSE byte. Restart used
+     * to call [stop] on the EDT via `setLifecycleState(RESTARTING)` and freeze the UI.
+     * Never disconnect while holding [lock], and never on the caller thread.
+     */
+    private fun disconnectInBackground(connection: HttpURLConnection?) {
+        if (connection == null) return
+        Thread(
+            {
+                try {
+                    connection.disconnect()
+                } catch (_: Exception) {
+                }
+            },
+            "OpenCode-Event-Stream-Disconnect",
+        ).apply {
+            isDaemon = true
+            start()
         }
     }
 

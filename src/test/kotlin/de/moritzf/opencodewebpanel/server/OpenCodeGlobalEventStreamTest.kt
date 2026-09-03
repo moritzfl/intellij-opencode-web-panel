@@ -297,6 +297,49 @@ class OpenCodeGlobalEventStreamTest {
     }
 
     @Test
+    fun stopDoesNotBlockWhileALiveReadIsInProgress() {
+        val connected = CountDownLatch(1)
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/global/event") { exchange ->
+            exchange.responseHeaders.add("Content-Type", "text/event-stream")
+            exchange.sendResponseHeaders(200, 0)
+            exchange.responseBody.use { body ->
+                body.flush()
+                try {
+                    Thread.sleep(30_000)
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                }
+            }
+        }
+        server.start()
+        val stream = OpenCodeGlobalEventStream(
+            listener = {
+                object : OpenCodeGlobalEventListener {
+                    override fun connected() {
+                        connected.countDown()
+                    }
+
+                    override fun eventReceived(event: OpenCodeGlobalEvent) = Unit
+                }
+            },
+            reconnectDelayMillis = 50L,
+            readTimeoutMillis = 45_000,
+        )
+        try {
+            stream.start("http://127.0.0.1:${server.address.port}", "Basic dGVzdA==")
+            assertTrue("stream did not connect", connected.await(5, TimeUnit.SECONDS))
+            val startedAtNanos = System.nanoTime()
+            stream.stop()
+            val elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAtNanos)
+            assertTrue("stop() blocked for ${elapsedMillis}ms", elapsedMillis < 1_000)
+        } finally {
+            stream.stop()
+            server.stop(0)
+        }
+    }
+
+    @Test
     fun stopPreventsFurtherReconnects() {
         val connections = AtomicInteger()
         val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)

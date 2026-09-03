@@ -14,6 +14,14 @@ internal object OpenCodePageLoadWatchdog {
     const val MAX_RETRIES = 2
     const val DOCUMENT_START_INSTALL_TIMEOUT_MILLIS = 20_000L
 
+    /**
+     * How long a *first* navigation may wait for CDP document-start before loading anyway.
+     * Restart's new JCEF often never completes the about:blank bootstrap; sitting on
+     * “Opening the OpenCode page…” for [DOCUMENT_START_INSTALL_TIMEOUT_MILLIS] is worse
+     * than using the onLoadStart fallback.
+     */
+    const val DOCUMENT_START_WAIT_BEFORE_LOAD_MILLIS = 2_000L
+
     fun shouldRetry(
         succeeded: Boolean,
         retryCount: Int,
