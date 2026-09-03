@@ -129,6 +129,7 @@ class OpenCodeWebToolWindowContent(
     private val openExternalLinkQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
     private val browserCursorQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
     private val openDiffQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
+    private val chunkLoadErrorQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
     private val chatInputResultQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
     private val browserCursorEpoch = AtomicLong()
     private val serverManager = SharedOpenCodeServerManager.getInstance()
@@ -185,6 +186,9 @@ class OpenCodeWebToolWindowContent(
     private var mainDocumentLoadRevision = 0L
     @Volatile
     private var browserDocumentRevision = 0L
+    // Bumps on every chunk-failure report from the injected listener; a full-load (onLoadStart)
+    // snapshots it so a pre-load error cannot satisfy the fresh document's debounce.
+    private val pageLoadChunkFailureGeneration = AtomicLong()
 
     /**
      * A UI-behavior enhancement injected into the OpenCode page as JavaScript. Instances bundle
@@ -252,6 +256,17 @@ class OpenCodeWebToolWindowContent(
         enabledInSettings = { OpenCodeSettingsState.getInstance().recoverStalledEventStream },
         buildScript = { OpenCodeBrowserSnippets.buildEventStreamWatchdogScript(enabled = true) },
     )
+    private val chunkLoadRecoveryFeature = EarlyInjectedFeature(
+        enabledInSettings = { OpenCodeSettingsState.getInstance().recoverFailedChunkLoads },
+        buildScript = {
+            // Signal-only callback: the message it carries is diagnostic, the JVM side just
+            // marks that this document raised a chunk failure and decides on reload.
+            OpenCodeBrowserSnippets.buildChunkLoadRecoveryScript(
+                enabled = true,
+                fatalCallback = chunkLoadErrorQuery.inject("message"),
+            )
+        },
+    )
 
     /** Injection order matters: the project seed must precede everything else. */
     private val earlyInjectedFeatures = listOf(
@@ -259,6 +274,7 @@ class OpenCodeWebToolWindowContent(
         matchMediaPatchFeature,
         hideWebsiteButtonFeature,
         eventStreamWatchdogFeature,
+        chunkLoadRecoveryFeature,
     )
 
     private val fileLinkFeature = InjectedFeature(
@@ -354,6 +370,9 @@ class OpenCodeWebToolWindowContent(
                 val loadRevision = ++mainDocumentLoadRevision
                 browserDocumentRevision++
                 mainDocumentLoadSucceeded = false
+                // New document, new chunk-failure budget: the in-page listener re-arms and may
+                // report once more even if the previous page already did.
+                pageLoadChunkFailureGeneration.set(0L)
                 repaintAlarm.cancelAllRequests()
                 OpenCodeChatInputService.getInstance(project).requeueInFlight()
                 injectedFeatures.forEach { it.scheduled = false }
@@ -482,6 +501,21 @@ class OpenCodeWebToolWindowContent(
         openDiffQuery.addHandler { payload ->
             if (OpenCodeSettingsState.getInstance().openDiffsInIde) {
                 diffNavigation.openDiff(payload)
+            }
+            null
+        }
+        chunkLoadErrorQuery.addHandler { payload ->
+            ApplicationManager.getApplication().invokeLater {
+                if (isContentDisposed()) return@invokeLater
+                if (!OpenCodeSettingsState.getInstance().recoverFailedChunkLoads) return@invokeLater
+                val serverUrl = serverManager.getServerUrl() ?: return@invokeLater
+                if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)) return@invokeLater
+                if (pageLoadChunkFailureGeneration.incrementAndGet() != 1L) return@invokeLater
+                thisLogger().warn("OpenCode page raised a failed chunk import ($payload); verifying server health")
+                serverManager.verifyServerNow(
+                    callbackActive = { !isContentDisposed() },
+                    onHealthy = { reloadOpenCodePageOrLoad() },
+                )
             }
             null
         }
@@ -654,6 +688,7 @@ class OpenCodeWebToolWindowContent(
                         OpenCodeUiSetting.PROJECT_SWITCH_PROMPT_SUPPRESSION -> applyFeature(projectSwitchPromptSuppressionFeature, enabled)
                         OpenCodeUiSetting.BROWSER_CURSOR_MIRROR -> applyFeature(cursorMirrorFeature, enabled)
                         OpenCodeUiSetting.EVENT_STREAM_WATCHDOG -> applyEventStreamWatchdog()
+                        OpenCodeUiSetting.CHUNK_LOAD_RECOVERY -> applyChunkLoadRecovery()
                         OpenCodeUiSetting.AGENT_STATUS_BADGE -> applyAgentStatusBadge(enabled)
                     }
                 }
@@ -1511,6 +1546,12 @@ class OpenCodeWebToolWindowContent(
         // Off → reload so the patched window.fetch is replaced by the untouched original.
         // On → reload so the patch is in place before the SPA bundle captures window.fetch.
         reloadForEarlyFeatureToggle(eventStreamWatchdogFeature)
+    }
+
+    private fun applyChunkLoadRecovery() {
+        // Both directions reload: off removes the error listeners entirely (safeguard contract),
+        // on puts the listener in place before the SPA bundle can raise the first chunk failure.
+        reloadForEarlyFeatureToggle(chunkLoadRecoveryFeature)
     }
 
     /**

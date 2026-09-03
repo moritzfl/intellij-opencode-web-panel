@@ -152,6 +152,20 @@ class OpenCodeSettingsStateTest {
     }
 
     @Test
+    fun recoverFailedChunkLoadsIsEnabledByDefault() {
+        assertEquals(true, OpenCodeSettingsState().recoverFailedChunkLoads)
+    }
+
+    @Test
+    fun recoverFailedChunkLoadsLoadsPersistedValue() {
+        val settings = OpenCodeSettingsState()
+
+        settings.loadState(OpenCodeSettingsState().apply { recoverFailedChunkLoads = false })
+
+        assertEquals(false, settings.recoverFailedChunkLoads)
+    }
+
+    @Test
     fun enableCodeNavigationIsEnabledByDefault() {
         assertEquals(true, OpenCodeSettingsState().enableCodeNavigation)
     }

@@ -974,6 +974,91 @@ internal object OpenCodeBrowserSnippets {
     }
 
     /**
+     * Signals the IDE that the page raised a failed lazy-chunk import — the error OpenCode's
+     * own error boundary presents as "Failed to fetch dynamically imported module". CEF only
+     * reports main-frame failures to the JVM, so a chunk that times out (e.g. the panel was on a
+     * dead origin after a server restart, or a hung first-run Windows server stalls delivery)
+     * leaves the SPA stuck behind its error boundary until a manual reload. Chromium also caches
+     * the failed import per renderer, so retrying the import keeps failing; only a full reload
+     * recovers it.
+     *
+     * The listener only signals; the JVM side decides whether and when to reload. It must run
+     * before the SPA bundle (`onLoadStart`/document-start), because a boot chunk can already be
+     * the failing one. Errors are delivered through capture-phase `error` (module-script src)
+     * and `unhandledrejection` (uncaught `import()`). Solid's error boundary often *catches*
+     * the rejected lazy() promise, so those events never fire — the same TypeError is then
+     * copied into the error-page details field (engine text, not a localized label). A cheap
+     * rAF-debounced scan of textarea/input values covers that path. Every page gets at most
+     * one signal.
+     */
+    fun buildChunkLoadRecoveryScript(enabled: Boolean, fatalCallback: String): String? {
+        if (!enabled) return null
+        @Language("JavaScript")
+        val script = """
+            (() => {
+              if (window.__opencodeIntellijChunkRecoveryInstalled) return;
+              window.__opencodeIntellijChunkRecoveryInstalled = true;
+              let notified = false;
+              const textOf = (reason) => {
+                if (typeof reason === 'string') return reason;
+                if (reason && typeof reason.message === 'string') return reason.message;
+                try { return String(reason ?? ''); } catch (_) { return ''; }
+              };
+              const isAssetUrl = (value) => /\/assets\/[\w.-]+\.js(?:$|[?#])/i.test(value) ||
+                /\/assets\/[\w.-]+\.js:\d+/i.test(value);
+              const isChunkFailure = (text) =>
+                /failed to fetch dynamically imported module/i.test(text) ||
+                (/failed to fetch/i.test(text) && isAssetUrl(text));
+              let observer = null;
+              const notify = (message) => {
+                if (notified) return;
+                notified = true;
+                try { if (observer) observer.disconnect(); } catch (_) {}
+                try { $fatalCallback; } catch (_) {}
+              };
+              window.addEventListener('error', (event) => {
+                if (notified) return;
+                const target = event.target;
+                if (target && target !== window && target.tagName === 'SCRIPT' &&
+                    typeof target.src === 'string' && isAssetUrl(target.src)) {
+                  notify('chunk load failed: ' + target.src);
+                  return;
+                }
+                if (isChunkFailure(textOf(event.message))) notify(textOf(event.message));
+              }, true);
+              window.addEventListener('unhandledrejection', (event) => {
+                if (notified) return;
+                const text = textOf(event.reason);
+                if (isChunkFailure(text)) notify(text);
+              }, true);
+              let scanQueued = false;
+              const scanErrorPage = () => {
+                scanQueued = false;
+                if (notified) return;
+                const fields = document.querySelectorAll('textarea, input');
+                for (let i = 0; i < fields.length; i += 1) {
+                  const value = fields[i] && fields[i].value;
+                  if (typeof value === 'string' && isChunkFailure(value)) {
+                    notify(value);
+                    return;
+                  }
+                }
+              };
+              const queueScan = () => {
+                if (notified || scanQueued) return;
+                scanQueued = true;
+                window.requestAnimationFrame(scanErrorPage);
+              };
+              observer = new MutationObserver(queueScan);
+              const root = document.documentElement || document;
+              observer.observe(root, { childList: true, subtree: true });
+              queueScan();
+            })();
+        """
+        return script.trimIndent()
+    }
+
+    /**
      * Mirrors the web page's mouse cursor to the IDE. JCEF's off-screen rendering does not
      * reliably propagate Chromium's cursor changes to the Swing component, so the embedded
      * panel never shows text or link cursors and can get stuck with a stale resize cursor.

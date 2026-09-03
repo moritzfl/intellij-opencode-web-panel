@@ -96,6 +96,7 @@ class OpenCodeSettingsConfigurable : Configurable {
     private val suppressProjectSwitchPromptsCheckBox = JBCheckBox("Suppress project-switch prompts")
     private val mirrorBrowserCursorCheckBox = JBCheckBox("Mirror the web page mouse cursor")
     private val recoverStalledEventStreamCheckBox = JBCheckBox("Reconnect the panel after a stalled connection")
+    private val recoverFailedChunkLoadsCheckBox = JBCheckBox("Reload the panel after a failed page chunk")
     private val enableSystemNotificationsCheckBox = JBCheckBox("Forward OpenCode system notifications to the IDE")
     private val enablePermissionNotificationActionsCheckBox = JBCheckBox("Offer Allow/Deny actions on permission notifications")
     private val showAgentStatusBadgeCheckBox = JBCheckBox("Show agent status on the tool window icon")
@@ -141,6 +142,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         CheckBoxSettingBinding(suppressProjectSwitchPromptsCheckBox, { suppressProjectSwitchPrompts }, { value -> suppressProjectSwitchPrompts = value }, OpenCodeUiSetting.PROJECT_SWITCH_PROMPT_SUPPRESSION),
         CheckBoxSettingBinding(mirrorBrowserCursorCheckBox, { mirrorBrowserCursor }, { value -> mirrorBrowserCursor = value }, OpenCodeUiSetting.BROWSER_CURSOR_MIRROR),
         CheckBoxSettingBinding(recoverStalledEventStreamCheckBox, { recoverStalledEventStream }, { value -> recoverStalledEventStream = value }, OpenCodeUiSetting.EVENT_STREAM_WATCHDOG),
+        CheckBoxSettingBinding(recoverFailedChunkLoadsCheckBox, { recoverFailedChunkLoads }, { value -> recoverFailedChunkLoads = value }, OpenCodeUiSetting.CHUNK_LOAD_RECOVERY),
         // System notifications need no page interaction: the Kotlin-side event consumer
         // re-checks the setting on every event.
         CheckBoxSettingBinding(enableSystemNotificationsCheckBox, { enableSystemNotifications }, { value -> enableSystemNotifications = value }),
@@ -312,6 +314,10 @@ class OpenCodeSettingsConfigurable : Configurable {
                 row {
                     cell(recoverStalledEventStreamCheckBox)
                         .comment("Reopen the panel's connection to OpenCode when it goes silent, which happens when sleep or a network change severs it without closing it. Without this the panel keeps showing answered permission prompts and refuses new messages until you reload it.")
+                }
+                row {
+                    cell(recoverFailedChunkLoadsCheckBox)
+                        .comment("Reload the page once when a lazy-loaded OpenCode chunk fails (\"Failed to fetch dynamically imported module\"), which leaves the page stuck behind OpenCode's error boundary until reloaded. CEF only reports main-frame failures to the IDE; without this the boundary sits there until you restart the panel manually.")
                 }
             }
         }

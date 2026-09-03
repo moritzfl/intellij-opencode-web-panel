@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Reload the panel once when a lazy-loaded OpenCode chunk fails to fetch, instead of leaving
+  OpenCode's error boundary on screen until a manual restart.
+
 ## [1.13.4] - 2026-09-02
 
 ### Fixed

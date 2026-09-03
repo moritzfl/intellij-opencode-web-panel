@@ -1052,6 +1052,46 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun buildChunkLoadRecoveryScriptIsMissingWhenDisabled() {
+        assertNull(OpenCodeBrowserSnippets.buildChunkLoadRecoveryScript(enabled = false, fatalCallback = "report();"))
+    }
+
+    @Test
+    fun buildChunkLoadRecoveryScriptIsIdempotent() {
+        val script = OpenCodeBrowserSnippets.buildChunkLoadRecoveryScript(enabled = true, fatalCallback = "report();")!!
+
+        assertTrue(script.contains("window.__opencodeIntellijChunkRecoveryInstalled"))
+    }
+
+    @Test
+    fun buildChunkLoadRecoveryScriptCoversScriptSrcAndImportFailures() {
+        val script = OpenCodeBrowserSnippets.buildChunkLoadRecoveryScript(enabled = true, fatalCallback = "report();")!!
+
+        // Module-script src failures surface as resource error events (event.target.src);
+        // import() failures surface as the "dynamically imported module" message the boundary shows.
+        // Solid's error boundary often catches the rejected lazy() promise, so the same engine
+        // text is scanned from the error-page details field (textarea/input value).
+        assertTrue(script.contains("addEventListener('error'"))
+        assertTrue(script.contains("addEventListener('unhandledrejection'"))
+        assertTrue(script.contains("target.tagName === 'SCRIPT'"))
+        assertTrue(script.contains("failed to fetch dynamically imported module"))
+        assertTrue(script.contains("querySelectorAll('textarea, input')"))
+        assertTrue(script.contains("assets"))
+        assertFalse(script.contains("location.reload"))
+    }
+
+    @Test
+    fun buildChunkLoadRecoveryScriptSignalsAtMostOncePerPage() {
+        val script = OpenCodeBrowserSnippets.buildChunkLoadRecoveryScript(enabled = true, fatalCallback = "report();")!!
+
+        // The boundary is terminal: after the first report the reload fixes the renderer, so a
+        // second signal would only race another reload into the load the first one started.
+        assertTrue(script.contains("let notified = false;"))
+        assertTrue(script.contains("notified = true;"))
+        assertTrue(script.contains("observer.disconnect()"))
+    }
+
+    @Test
     fun buildViewportRasterNudgeScriptTogglesTranslateWithoutHostResize() {
         val script = OpenCodeBrowserSnippets.buildViewportRasterNudgeScript()
 
