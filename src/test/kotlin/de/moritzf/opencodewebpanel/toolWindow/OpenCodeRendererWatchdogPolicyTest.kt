@@ -76,4 +76,61 @@ class OpenCodeRendererWatchdogPolicyTest {
             ),
         )
     }
+
+    @Test
+    fun aSpentRecreateBudgetGivesUpEvenOnTheFirstStallOfANewPanel() {
+        assertEquals(
+            OpenCodeRendererWatchdogPolicy.Action.GIVE_UP,
+            OpenCodeRendererWatchdogPolicy.stalledAction(
+                consecutiveStalls = 1,
+                recreatesAfterStall = OpenCodeRendererWatchdogPolicy.MAX_STALLED_RECREATES,
+                nowMillis = 1_000_000L,
+                lastRecoveryAtMillis = 0L,
+            ),
+        )
+    }
+
+    @Test
+    fun anInFlightFirstLoadIsNotReadyUntilItPaintsOrThePageLoadWatchdogGivesUp() {
+        assertFalse(
+            OpenCodeRendererWatchdogPolicy.isPageReadyForRendererWatchdog(
+                pageLoadInProgress = true,
+                pagePainted = false,
+                loadSucceeded = false,
+                loadGaveUp = false,
+            ),
+        )
+        assertFalse(
+            OpenCodeRendererWatchdogPolicy.isPageReadyForRendererWatchdog(
+                pageLoadInProgress = false,
+                pagePainted = false,
+                loadSucceeded = false,
+                loadGaveUp = false,
+            ),
+        )
+        assertTrue(
+            OpenCodeRendererWatchdogPolicy.isPageReadyForRendererWatchdog(
+                pageLoadInProgress = false,
+                pagePainted = true,
+                loadSucceeded = true,
+                loadGaveUp = false,
+            ),
+        )
+        assertTrue(
+            OpenCodeRendererWatchdogPolicy.isPageReadyForRendererWatchdog(
+                pageLoadInProgress = false,
+                pagePainted = false,
+                loadSucceeded = false,
+                loadGaveUp = true,
+            ),
+        )
+    }
+
+    @Test
+    fun theNotReadyGraceMatchesThePageLoadRetryBudget() {
+        assertEquals(
+            OpenCodePageLoadWatchdog.DEFAULT_TIMEOUT_MILLIS * (OpenCodePageLoadWatchdog.MAX_RETRIES + 1L),
+            OpenCodeRendererWatchdogPolicy.NOT_READY_GRACE_MILLIS,
+        )
+    }
 }

@@ -1353,14 +1353,16 @@ internal object OpenCodeBrowserSnippets {
     }
 
     /**
-     * Renderer liveness heartbeat for the JVM-side [de.moritzf.opencodewebpanel.features.OpenCodeRendererWatchdog].
+     * Renderer liveness heartbeat for the JVM-side [de.moritzf.opencodewebpanel.toolWindow.OpenCodeRendererWatchdog].
      * A dead renderer never schedules the timer and never delivers the callback, so staleness is
      * the reliable signal — no pinging back into the page. Reports the page's
-     * `visibilityState` so hidden (rAF-throttled) pages are paused on the JVM side instead of
-     * being recovered spuriously.
+     * `visibilityState` on a 5s timer and on every `visibilitychange` (including hide) so the
+     * JVM can pause the stall clock. Do not beat from `requestAnimationFrame` — that floods the
+     * JCEF IPC channel at display refresh.
      */
     fun buildRendererHeartbeatScript(enabled: Boolean, heartbeatCallback: String?): String? {
         if (!enabled || heartbeatCallback == null) return null
+        val intervalMillis = RENDERER_HEARTBEAT_INTERVAL_MILLIS
         @Language("JavaScript")
         val script = """
             (() => {
@@ -1372,16 +1374,11 @@ internal object OpenCodeBrowserSnippets {
                   $heartbeatCallback;
                 } catch (_) {}
               };
-              const rafTick = () => { try { beat(); } catch (_) {} };
-              window.setInterval(beat, HEARTBEAT_INTERVAL_MILLIS_JS);
-              window.requestAnimationFrame(function tick() {
-                rafTick();
-                window.requestAnimationFrame(tick);
-              });
-              document.addEventListener('visibilitychange', () => { if (!document.hidden) beat(); });
+              window.setInterval(beat, $intervalMillis);
+              document.addEventListener('visibilitychange', beat);
               beat();
             })();
-        """.replace("HEARTBEAT_INTERVAL_MILLIS_JS", RENDERER_HEARTBEAT_INTERVAL_MILLIS.toString())
+        """
         return script.trimIndent()
     }
 

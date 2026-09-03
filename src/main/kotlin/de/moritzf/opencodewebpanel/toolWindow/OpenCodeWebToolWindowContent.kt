@@ -190,6 +190,7 @@ class OpenCodeWebToolWindowContent(
     private var pageLoadTargetUrl: String? = null
     private var pageLoadWatchdogGeneration = 0L
     private var pageLoadRetryCount = 0
+    private var pageLoadGaveUp = false
     private var cefBrowserCreated = false
     private var pendingBrowserLoadGeneration = 0L
 
@@ -381,9 +382,12 @@ class OpenCodeWebToolWindowContent(
         ::openCodeProjectDirectory,
         parentDisposable = this,
     )
+    // The tracked state also feeds the renderer watchdog's busy stall timeout, so tracking runs
+    // even when the badge itself is off; [onAgentStatusChanged] applies the badge only when its
+    // own setting is enabled.
     private val agentStatusTracker = OpenCodeAgentStatusTracker(
         projectDirectory = ::openCodeProjectDirectory,
-        enabled = { !isContentDisposed() && OpenCodeSettingsState.getInstance().showAgentStatusBadge },
+        enabled = { !isContentDisposed() },
         onStateChanged = ::onAgentStatusChanged,
         serverUrl = serverManager::getServerUrl,
         serverPassword = serverManager::getServerPassword,
@@ -397,9 +401,30 @@ class OpenCodeWebToolWindowContent(
         isActiveContent = { !isContentDisposed() && !toolWindow.isDisposed && browser.component.isShowing },
         isAgentBusy = { agentStatusTracker.isBusy() },
         isEnabledInSettings = { OpenCodeSettingsState.getInstance().recoverStalledRenderer },
+        isPageReady = {
+            OpenCodeRendererWatchdogPolicy.isPageReadyForRendererWatchdog(
+                pageLoadInProgress = pageLoadInProgress,
+                pagePainted = openCodePagePainted,
+                loadSucceeded = mainDocumentLoadSucceeded,
+                loadGaveUp = pageLoadGaveUp,
+            )
+        },
         onReloadPage = { reloadStalledOpenCodePage() },
-        onRecreatePanel = { replaceOpenCodeToolWindowContent(toolWindow) },
-        onGiveUp = { showRendererGiveUpCard() },
+        onRecreatePanel = {
+            ApplicationManager.getApplication().invokeLater {
+                if (isContentDisposed() || toolWindow.isDisposed || toolWindow.project.isDisposed) return@invokeLater
+                // Share the browser-recovery throttle with renderer-crash recovery so the two
+                // paths cannot interleave into a recreate storm.
+                if (!markBrowserRecoveryAttempt()) return@invokeLater
+                replaceOpenCodeToolWindowContent(toolWindow)
+            }
+        },
+        onGiveUp = {
+            ApplicationManager.getApplication().invokeLater {
+                if (isContentDisposed() || toolWindow.isDisposed || toolWindow.project.isDisposed) return@invokeLater
+                showRendererGiveUpCard()
+            }
+        },
     )
     private val toolWindowIconSupplier by lazy {
         BadgeIconSupplier(IconLoader.getIcon("/icons/opencode.svg", OpenCodeWebToolWindowContent::class.java))
@@ -418,8 +443,9 @@ class OpenCodeWebToolWindowContent(
                 // report once more even if the previous page already did.
                 pageLoadChunkFailureGeneration.set(0L)
                 repaintAlarm.cancelAllRequests()
-                // A fresh document posts fresh heartbeats; never recover a navigation in flight.
-                rendererWatchdog.resetForFreshDocument()
+                // Move the stall clock so an in-flight navigation is not recovered; keep the
+                // recreate budget (process-wide) and this panel's stall count.
+                rendererWatchdog.noteDocumentLoadStarted()
                 OpenCodeChatInputService.getInstance(project).requeueInFlight()
                 injectedFeatures.forEach { it.scheduled = false }
                 earlyInjectedFeatures.forEach { it.scheduled = false }
@@ -773,7 +799,9 @@ class OpenCodeWebToolWindowContent(
             rendererWatchdog.handleHeartbeat(visibility)
             null
         }
-        if (rendererHeartbeatQuery.isAvailable) rendererWatchdog.start()
+        if (rendererHeartbeatQuery.isAvailable && OpenCodeSettingsState.getInstance().recoverStalledRenderer) {
+            rendererWatchdog.start()
+        }
     }
 
     /**
@@ -845,8 +873,9 @@ class OpenCodeWebToolWindowContent(
         if (!OpenCodeSettingsState.getInstance().enableChatFileDrop) return false
         val serverUrl = serverManager.getServerUrl() ?: return false
         if (!isBrowserOnOpenCodeServerPage(serverUrl)) return false
+        // Null when the page-to-JVM channel could not be created (see OpenCodeJsQuery): the text
+        // batch is still dispatched, the page just cannot acknowledge it.
         val resultCallback = chatInputResultQuery.inject("batchId + '\\n' + (accepted ? '1' : '0')")
-            ?: return false
         val script = OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(
             emptyList(),
             textPlain = listOf(delivery.batch.text),
@@ -855,9 +884,11 @@ class OpenCodeWebToolWindowContent(
             resultCallback = resultCallback,
         ) ?: return false
         browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
-        addAlarmRequest(openProjectAlarm, CHAT_INPUT_ACK_TIMEOUT_MILLIS) {
-            val service = OpenCodeChatInputService.getInstance(project)
-            if (service.retryInFlight(delivery.attemptID)) scheduleFlushPendingChatInput()
+        if (resultCallback != null) {
+            addAlarmRequest(openProjectAlarm, CHAT_INPUT_ACK_TIMEOUT_MILLIS) {
+                val service = OpenCodeChatInputService.getInstance(project)
+                if (service.retryInFlight(delivery.attemptID)) scheduleFlushPendingChatInput()
+            }
         }
         return true
     }
@@ -873,7 +904,7 @@ class OpenCodeWebToolWindowContent(
 
     private fun updateLifecycleIndicator(state: OpenCodeServerLifecycleState = serverManager.getLifecycleState()) {
         if (state != OpenCodeServerLifecycleState.RUNNING) {
-            resetAgentStatusBadge()
+            resetAgentStatusTracking()
         }
         if (shouldHideEmbeddedPage(state)) {
             idleCard.show(state)
@@ -1057,6 +1088,9 @@ class OpenCodeWebToolWindowContent(
         if (isContentDisposed() || panelReplacementScheduled) return
         panelReplacementScheduled = true
         val window = toolWindow
+        // Restart is the hammer: a spent auto-recreate budget must not make the new panel
+        // give up on its first stall.
+        OpenCodeRendererWatchdog.resetProcessRecreatesAfterStall()
         ApplicationManager.getApplication().invokeLater {
             if (window.isDisposed || window.project.isDisposed) return@invokeLater
             replaceOpenCodeToolWindowContent(window)
@@ -1228,6 +1262,7 @@ class OpenCodeWebToolWindowContent(
         if (openCodePagePainted && !pageLoadInProgress) return
         openCodePagePainted = true
         mainDocumentLoadSucceeded = true
+        pageLoadGaveUp = false
         pageLoadInProgress = false
         pageLoadWatchdogGeneration++
         pageLoadWatchdogAlarm.cancelAllRequests()
@@ -1240,6 +1275,7 @@ class OpenCodeWebToolWindowContent(
     private fun beginPageLoad(targetUrl: String? = null, resetRetryBudget: Boolean = true) {
         mainDocumentLoadSucceeded = false
         pageLoadInProgress = true
+        pageLoadGaveUp = false
         if (targetUrl != null) pageLoadTargetUrl = targetUrl
         if (resetRetryBudget) {
             pageLoadRetryCount = 0
@@ -1262,6 +1298,7 @@ class OpenCodeWebToolWindowContent(
                 if (!mainDocumentLoadSucceeded && pageLoadRetryCount >= OpenCodePageLoadWatchdog.MAX_RETRIES) {
                     thisLogger().warn("OpenCode page failed to load after ${OpenCodePageLoadWatchdog.MAX_RETRIES} retries")
                     pageLoadInProgress = false
+                    pageLoadGaveUp = true
                     pageLoadStartedAtMillis = 0L
                     updateLifecycleIndicator()
                 }
@@ -1305,6 +1342,8 @@ class OpenCodeWebToolWindowContent(
         pageLoadWatchdogGeneration++
         pageLoadWatchdogAlarm.cancelAllRequests()
         pageLoadInProgress = false
+        pageLoadGaveUp = false
+        pageLoadRetryCount = 0
         openCodePagePainted = false
         pageLoadStartedAtMillis = 0L
         pageLoadTargetUrl = null
@@ -1477,15 +1516,22 @@ class OpenCodeWebToolWindowContent(
         }
     }
 
+    /** Resets the visible badge without touching tracked state; the watchdog still reads it. */
     private fun resetAgentStatusBadge() {
         if (isContentDisposed()) return
-        agentStatusTracker.reset()
         toolWindow.setIcon(toolWindowIconSupplier.originalIcon)
     }
 
+    /** Server stopped or the directory changed — tracked state no longer applies to this panel. */
+    private fun resetAgentStatusTracking() {
+        if (isContentDisposed()) return
+        agentStatusTracker.reset()
+        resetAgentStatusBadge()
+    }
+
     /**
-     * The badge is fed from the Kotlin-side event stream, so toggling it needs no page
-     * reload: disabling clears the badge, enabling re-seeds the tracker from the REST API.
+     * Enables or disables the visible badge. The tracker's state must survive a disable: the
+     * renderer watchdog reads its busy flag to stretch stall timeouts during an agent turn.
      */
     private fun applyAgentStatusBadge(enabled: Boolean) {
         resetAgentStatusBadge()
@@ -1543,7 +1589,7 @@ class OpenCodeWebToolWindowContent(
         fileLinkFeature.scheduled = false
         openProjectAlarm.cancelAllRequests()
         // The badge state belongs to the previous directory; loadProjectPage re-seeds.
-        resetAgentStatusBadge()
+        resetAgentStatusTracking()
         checkAndLoadContent()
     }
 
@@ -1684,7 +1730,6 @@ class OpenCodeWebToolWindowContent(
      */
     private fun applyRendererWatchdog() {
         if (OpenCodeSettingsState.getInstance().recoverStalledRenderer && rendererHeartbeatQuery.isAvailable) {
-            rendererWatchdog.resetForFreshDocument()
             rendererWatchdog.start()
         } else {
             rendererWatchdog.stop()
@@ -1697,6 +1742,8 @@ class OpenCodeWebToolWindowContent(
         loadedServerRootUrl = null
         pendingBrowserLoadGeneration++
         pageLoadInProgress = false
+        pageLoadGaveUp = false
+        pageLoadRetryCount = 0
         openCodePagePainted = false
         pageLoadStartedAtMillis = 0L
         pageLoadTargetUrl = null

@@ -4,6 +4,15 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Renderer-silence recovery no longer fights Restart. The watchdog still reloads a dead page
+  and recreates a stuck panel, but it will not loop a broken JCEF stack, flood the embedded
+  browser with per-frame heartbeats, or treat a hidden or still-loading page as stalled.
+  Restart OpenCode Server and Retry remain the way out of a hung “Opening the OpenCode page…”
+  overlay. Busy-turn stall timeouts apply even when the agent-status badge is off, and chat
+  text/file drops still reach the page when the acknowledgement channel is missing.
+
 ## [1.13.6] - 2026-09-03
 
 ### Fixed

@@ -142,7 +142,10 @@ internal fun installOpenCodePanelFailureCard(toolWindow: ToolWindow) {
     if (toolWindow.isDisposed || toolWindow.project.isDisposed) return
     val manager = toolWindow.contentManager
     manager.removeAllContents(true)
-    val card = OpenCodePanelFailureCard { replaceOpenCodeToolWindowContent(toolWindow) }
+    val card = OpenCodePanelFailureCard {
+        OpenCodeRendererWatchdog.resetProcessRecreatesAfterStall()
+        replaceOpenCodeToolWindowContent(toolWindow)
+    }
     val content = addOpenCodeToolWindowContent(toolWindow, card.component, disposer = null)
     content.putUserData(OPEN_CODE_PANEL_FAILURE_CARD_KEY, true)
 }

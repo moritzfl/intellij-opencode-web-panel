@@ -1082,8 +1082,10 @@ class OpenCodeServerProtocolTest {
 
         assertTrue(script.contains("window.__opencodeIntellijRendererHeartbeatInstalled"))
         assertTrue(script.contains("document.visibilityState"))
-        assertTrue(script.contains("requestAnimationFrame"))
         assertTrue(script.contains("setInterval"))
+        assertTrue(script.contains("addEventListener('visibilitychange', beat)"))
+        assertFalse(script.contains("requestAnimationFrame"))
+        assertFalse(script.contains("if (!document.hidden)"))
     }
 
     @Test

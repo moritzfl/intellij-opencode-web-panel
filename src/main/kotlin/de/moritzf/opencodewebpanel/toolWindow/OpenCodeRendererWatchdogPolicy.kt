@@ -27,10 +27,35 @@ internal object OpenCodeRendererWatchdogPolicy {
     /** Number of stalled recreates before the watchdog gives up and leaves the failure card. */
     const val MAX_STALLED_RECREATES = 2
 
+    /**
+     * A spent recreate budget decays: after this silence without any heartbeat it is halved, so
+     * a later Retry from the failure card gets a real recovery attempt again instead of giving up
+     * instantly on the first stall. User Restart / Retry also zero it immediately.
+     */
+    const val RECREATE_BUDGET_HALVING_MILLIS = 60L * 60L * 1000L
+
+    /**
+     * How long a not-yet-ready first load (the “Opening the OpenCode page…” strip) may freeze
+     * the stall clock. Matches the page-load watchdog's full retry budget so the two do not
+     * fight; after this a hung opening is a stall and the renderer watchdog may recover it.
+     */
+    const val NOT_READY_GRACE_MILLIS =
+        OpenCodePageLoadWatchdog.DEFAULT_TIMEOUT_MILLIS * (OpenCodePageLoadWatchdog.MAX_RETRIES + 1L)
+
     enum class Action { NONE, RELOAD, RECREATE, GIVE_UP }
 
     fun effectiveStallTimeout(agentBusy: Boolean): Long {
         return if (agentBusy) BUSY_STALL_TIMEOUT_MILLIS else STALL_TIMEOUT_MILLIS
+    }
+
+    /**
+     * The effective process-wide recreate budget: halved once per [RECREATE_BUDGET_HALVING_MILLIS]
+     * of heartbeat-free silence. [elapsedSinceLastDecay] is clamped at zero by the caller.
+     */
+    fun decayedRecreateBudget(current: Int, elapsedSinceLastDecayMillis: Long): Int {
+        if (current <= 0) return 0
+        if (elapsedSinceLastDecayMillis < RECREATE_BUDGET_HALVING_MILLIS) return current
+        return current / 2
     }
 
     /** Hidden pages throttle rAF to a standstill; treating them as stalled recovers them spuriously. */
@@ -39,13 +64,27 @@ internal object OpenCodeRendererWatchdogPolicy {
     }
 
     /**
+     * Heartbeats are only expected after a document has painted, succeeded, or the page-load
+     * watchdog has given up. An in-flight first load is not ready — but a failed load is, so
+     * the renderer watchdog can still recreate a panel stuck on “Opening…”.
+     */
+    fun isPageReadyForRendererWatchdog(
+        pageLoadInProgress: Boolean,
+        pagePainted: Boolean,
+        loadSucceeded: Boolean,
+        loadGaveUp: Boolean,
+    ): Boolean {
+        if (pageLoadInProgress) return false
+        return pagePainted || loadSucceeded || loadGaveUp
+    }
+
+    /**
      * Chooses the recovery action for a stalled page.
      *
-     * [consecutiveStalls] counts soft-reload attempts that did not restore the heartbeat;
-     * [recreatesAfterStall] counts panel recreations that also failed. The first stall reloads
-     * in place (keeps the page state); a persistent stall escalates to a recreate, and once the
-     * recreate budget is spent the watchdog gives up — the failure card's Retry is then the only
-     * way back, so a broken JCEF stack cannot loop reload/recreate forever.
+     * [consecutiveStalls] counts soft-reload attempts on this panel that did not restore the
+     * heartbeat; [recreatesAfterStall] is the process-wide count of panel recreations that also
+     * failed (a successful recreate still builds a new watchdog). Give-up is checked before
+     * reload so a new panel cannot spend another reload cycle after the budget is already spent.
      */
     fun stalledAction(
         consecutiveStalls: Int,
@@ -55,8 +94,8 @@ internal object OpenCodeRendererWatchdogPolicy {
         cooldownMillis: Long = RECOVERY_COOLDOWN_MILLIS,
     ): Action {
         if (nowMillis - lastRecoveryAtMillis < cooldownMillis) return Action.NONE
-        if (consecutiveStalls <= 1) return Action.RELOAD
         if (recreatesAfterStall >= MAX_STALLED_RECREATES) return Action.GIVE_UP
+        if (consecutiveStalls <= 1) return Action.RELOAD
         return Action.RECREATE
     }
 }
