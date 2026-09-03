@@ -196,6 +196,9 @@ internal class OpenCodeAgentStatusTracker(
         }
     }
 
+    /** True while any session of this project is running a turn. */
+    fun isBusy(): Boolean = synchronized(lock) { state.current() == OpenCodeAgentStatusState.BUSY }
+
     internal fun isCurrentPresentation(state: String, revision: Long): Boolean = synchronized(lock) {
         presentationRevision == revision && lastReportedState == state && this.state.current() == state
     }

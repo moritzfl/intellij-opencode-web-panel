@@ -10,9 +10,9 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.ui.jcef.JBCefBrowser
 import com.intellij.ui.jcef.JBCefBrowserBase
-import com.intellij.ui.jcef.JBCefJSQuery
 import com.intellij.util.concurrency.AppExecutorUtil
 import de.moritzf.opencodewebpanel.browser.OpenCodeBrowserSnippets
+import de.moritzf.opencodewebpanel.browser.OpenCodeJsQuery
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
@@ -52,7 +52,7 @@ internal class OpenCodeFileDropHandler(
     private val isDisposed: () -> Boolean,
     private val parentDisposable: Disposable,
 ) {
-    private val dropResultQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
+    private val dropResultQuery = OpenCodeJsQuery.create(browser as JBCefBrowserBase)
     private val preparationExecutor = createOpenCodeDropPreparationExecutor()
     private val nextDropID = AtomicLong()
 
@@ -159,6 +159,12 @@ internal class OpenCodeFileDropHandler(
             null
         }
     }
+
+    /**
+     * False when the drop-acknowledgement channel could not be created (see [OpenCodeJsQuery]).
+     * Drops still work, but the page cannot report a rejected batch back to the IDE.
+     */
+    fun isResultChannelAvailable(): Boolean = dropResultQuery.isAvailable
 
     fun install() {
         val handler = object : TransferHandler() {

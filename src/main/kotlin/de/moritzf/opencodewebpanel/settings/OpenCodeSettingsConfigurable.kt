@@ -97,6 +97,7 @@ class OpenCodeSettingsConfigurable : Configurable {
     private val mirrorBrowserCursorCheckBox = JBCheckBox("Mirror the web page mouse cursor")
     private val recoverStalledEventStreamCheckBox = JBCheckBox("Reconnect the panel after a stalled connection")
     private val recoverFailedChunkLoadsCheckBox = JBCheckBox("Reload the panel after a failed page chunk")
+    private val recoverStalledRendererCheckBox = JBCheckBox("Reload the panel when its renderer goes silent")
     private val enableSystemNotificationsCheckBox = JBCheckBox("Forward OpenCode system notifications to the IDE")
     private val enablePermissionNotificationActionsCheckBox = JBCheckBox("Offer Allow/Deny actions on permission notifications")
     private val showAgentStatusBadgeCheckBox = JBCheckBox("Show agent status on the tool window icon")
@@ -143,6 +144,7 @@ class OpenCodeSettingsConfigurable : Configurable {
         CheckBoxSettingBinding(mirrorBrowserCursorCheckBox, { mirrorBrowserCursor }, { value -> mirrorBrowserCursor = value }, OpenCodeUiSetting.BROWSER_CURSOR_MIRROR),
         CheckBoxSettingBinding(recoverStalledEventStreamCheckBox, { recoverStalledEventStream }, { value -> recoverStalledEventStream = value }, OpenCodeUiSetting.EVENT_STREAM_WATCHDOG),
         CheckBoxSettingBinding(recoverFailedChunkLoadsCheckBox, { recoverFailedChunkLoads }, { value -> recoverFailedChunkLoads = value }, OpenCodeUiSetting.CHUNK_LOAD_RECOVERY),
+        CheckBoxSettingBinding(recoverStalledRendererCheckBox, { recoverStalledRenderer }, { value -> recoverStalledRenderer = value }, OpenCodeUiSetting.RENDERER_WATCHDOG),
         // System notifications need no page interaction: the Kotlin-side event consumer
         // re-checks the setting on every event.
         CheckBoxSettingBinding(enableSystemNotificationsCheckBox, { enableSystemNotifications }, { value -> enableSystemNotifications = value }),
@@ -318,6 +320,10 @@ class OpenCodeSettingsConfigurable : Configurable {
                 row {
                     cell(recoverFailedChunkLoadsCheckBox)
                         .comment("Reload the page once when a lazy-loaded OpenCode chunk fails (\"Failed to fetch dynamically imported module\"), which leaves the page stuck behind OpenCode's error boundary until reloaded. CEF only reports main-frame failures to the IDE; without this the boundary sits there until you restart the panel manually.")
+                }
+                row {
+                    cell(recoverStalledRendererCheckBox)
+                        .comment("Watch the page's heartbeat and reload it when the embedded browser goes silent without an error (a stuck or dead JCEF renderer, as happens with out-of-process browser mode). Persistent stalls recreate the panel; a failure card with Retry is the fallback.")
                 }
             }
         }

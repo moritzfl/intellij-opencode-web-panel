@@ -9,7 +9,8 @@ import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
 internal class OpenCodeLocalStorageBridge(
     private val browser: JBCefBrowser,
     private val serverManager: SharedOpenCodeServerManager,
-    private val syncCallback: () -> String,
+    /** Null when the page-to-JVM callback channel could not be created; no sync is installed then. */
+    private val syncCallback: () -> String?,
 ) {
     fun restore(frameUrl: String?) {
         val serverUrl = serverManager.getServerUrl() ?: return

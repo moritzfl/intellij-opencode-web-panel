@@ -4,6 +4,18 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- A stuck or silently dead embedded page no longer needs an IDE restart. The panel watches a
+  page-side heartbeat and reloads the page when the renderer goes silent without an error;
+  a persistent stall recreates the panel, and the Retry card is the final fallback.
+  Hidden panels are paused so a background project window does not get recovered spuriously.
+  (Settings → Tools → OpenCode Web Panel: "Reload the panel when its renderer goes silent".)
+- Recreating the panel (Restart OpenCode Server, renderer crash) no longer empties the tool
+  window on Windows when out-of-process JCEF refuses the new browser or its page callbacks.
+  The new panel is built before the old one is dropped, a failed attempt keeps the current
+  panel or offers a Retry card, and a panel whose IDE callbacks are missing is recreated once.
+
 ## [1.13.5] - 2026-09-03
 
 ### Fixed

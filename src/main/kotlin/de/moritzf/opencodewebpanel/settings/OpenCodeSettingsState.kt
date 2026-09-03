@@ -32,6 +32,7 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
     var mirrorBrowserCursor: Boolean = true
     var recoverStalledEventStream: Boolean = true
     var recoverFailedChunkLoads: Boolean = true
+    var recoverStalledRenderer: Boolean = true
     var enableSystemNotifications: Boolean = true
     var enablePermissionNotificationActions: Boolean = true
     var showAgentStatusBadge: Boolean = true
@@ -61,6 +62,7 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
         mirrorBrowserCursor = state.mirrorBrowserCursor
         recoverStalledEventStream = state.recoverStalledEventStream
         recoverFailedChunkLoads = state.recoverFailedChunkLoads
+        recoverStalledRenderer = state.recoverStalledRenderer
         enableSystemNotifications = state.enableSystemNotifications
         enablePermissionNotificationActions = state.enablePermissionNotificationActions
         showAgentStatusBadge = state.showAgentStatusBadge

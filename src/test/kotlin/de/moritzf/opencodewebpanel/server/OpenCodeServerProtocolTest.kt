@@ -1057,6 +1057,36 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun buildChunkLoadRecoveryScriptIsMissingWithoutACallbackChannel() {
+        // The JCEF callback channel can fail to be created (out-of-process CEF on Windows);
+        // the feature then injects nothing instead of shipping a broken reporter into the page.
+        assertNull(OpenCodeBrowserSnippets.buildChunkLoadRecoveryScript(enabled = true, fatalCallback = null))
+    }
+
+    @Test
+    fun buildRendererHeartbeatScriptIsMissingWhenDisabled() {
+        assertNull(OpenCodeBrowserSnippets.buildRendererHeartbeatScript(enabled = false, heartbeatCallback = "beat();"))
+    }
+
+    @Test
+    fun buildRendererHeartbeatScriptIsMissingWithoutACallbackChannel() {
+        // Without a JCEF callback channel (macOS/Windows out-of-process JCEF can refuse its
+        // creation) the heartbeat is pointless — a silence-only watchdog would recover
+        // spuriously. Inject nothing then.
+        assertNull(OpenCodeBrowserSnippets.buildRendererHeartbeatScript(enabled = true, heartbeatCallback = null))
+    }
+
+    @Test
+    fun buildRendererHeartbeatScriptIsIdempotentAndReportsVisibility() {
+        val script = OpenCodeBrowserSnippets.buildRendererHeartbeatScript(enabled = true, heartbeatCallback = "beat(visibility);")!!
+
+        assertTrue(script.contains("window.__opencodeIntellijRendererHeartbeatInstalled"))
+        assertTrue(script.contains("document.visibilityState"))
+        assertTrue(script.contains("requestAnimationFrame"))
+        assertTrue(script.contains("setInterval"))
+    }
+
+    @Test
     fun buildChunkLoadRecoveryScriptIsIdempotent() {
         val script = OpenCodeBrowserSnippets.buildChunkLoadRecoveryScript(enabled = true, fatalCallback = "report();")!!
 

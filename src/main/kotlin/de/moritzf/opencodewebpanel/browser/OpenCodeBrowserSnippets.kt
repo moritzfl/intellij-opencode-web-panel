@@ -12,6 +12,9 @@ internal object OpenCodeBrowserSnippets {
      */
     const val EVENT_STREAM_STALL_TIMEOUT_MILLIS = 45_000
 
+    /** Page-side heartbeat cadence; the JVM watchdog treats several missed beats as a stall. */
+    const val RENDERER_HEARTBEAT_INTERVAL_MILLIS = 5_000
+
     /** Floor that keeps a misconfigured timeout from reconnect-looping through normal heartbeats. */
     const val MIN_EVENT_STREAM_STALL_TIMEOUT_MILLIS = 15_000
 
@@ -991,8 +994,8 @@ internal object OpenCodeBrowserSnippets {
      * rAF-debounced scan of textarea/input values covers that path. Every page gets at most
      * one signal.
      */
-    fun buildChunkLoadRecoveryScript(enabled: Boolean, fatalCallback: String): String? {
-        if (!enabled) return null
+    fun buildChunkLoadRecoveryScript(enabled: Boolean, fatalCallback: String?): String? {
+        if (!enabled || fatalCallback == null) return null
         @Language("JavaScript")
         val script = """
             (() => {
@@ -1346,6 +1349,39 @@ internal object OpenCodeBrowserSnippets {
               report(accepted);
             })();
         """
+        return script.trimIndent()
+    }
+
+    /**
+     * Renderer liveness heartbeat for the JVM-side [de.moritzf.opencodewebpanel.features.OpenCodeRendererWatchdog].
+     * A dead renderer never schedules the timer and never delivers the callback, so staleness is
+     * the reliable signal — no pinging back into the page. Reports the page's
+     * `visibilityState` so hidden (rAF-throttled) pages are paused on the JVM side instead of
+     * being recovered spuriously.
+     */
+    fun buildRendererHeartbeatScript(enabled: Boolean, heartbeatCallback: String?): String? {
+        if (!enabled || heartbeatCallback == null) return null
+        @Language("JavaScript")
+        val script = """
+            (() => {
+              if (window.__opencodeIntellijRendererHeartbeatInstalled) return;
+              window.__opencodeIntellijRendererHeartbeatInstalled = true;
+              const beat = () => {
+                try {
+                  const visibility = document.visibilityState || '';
+                  $heartbeatCallback;
+                } catch (_) {}
+              };
+              const rafTick = () => { try { beat(); } catch (_) {} };
+              window.setInterval(beat, HEARTBEAT_INTERVAL_MILLIS_JS);
+              window.requestAnimationFrame(function tick() {
+                rafTick();
+                window.requestAnimationFrame(tick);
+              });
+              document.addEventListener('visibilitychange', () => { if (!document.hidden) beat(); });
+              beat();
+            })();
+        """.replace("HEARTBEAT_INTERVAL_MILLIS_JS", RENDERER_HEARTBEAT_INTERVAL_MILLIS.toString())
         return script.trimIndent()
     }
 
