@@ -12,6 +12,11 @@
   Restart OpenCode Server and Retry remain the way out of a hung “Opening the OpenCode page…”
   overlay. Busy-turn stall timeouts apply even when the agent-status badge is off, and chat
   text/file drops still reach the page when the acknowledgement channel is missing.
+- Renderer recovery no longer lets a healthy sibling panel reset a dead panel's recreate
+  budget, or leave a renderer that died while hidden frozen after the tool window is shown.
+  Restart still replaces JCEF after a failed attempt. Chat text no longer wedges when the
+  acknowledgement channel is missing. A pending permission no longer shortens the busy-turn
+  stall timeout, and re-enabling the agent badge restores the current icon.
 
 ## [1.13.6] - 2026-09-03
 
