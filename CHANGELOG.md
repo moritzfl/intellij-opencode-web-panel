@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [1.13.6] - 2026-09-03
+
 ### Fixed
 
 - A stuck or silently dead embedded page no longer needs an IDE restart. The panel watches a
