@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [1.13.5] - 2026-09-03
+
 ### Fixed
 
 - Reload the panel once when a lazy-loaded OpenCode chunk fails to fetch, instead of leaving
@@ -690,7 +692,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.13.4...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.13.5...HEAD
+[1.13.5]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.13.4...1.13.5
 [1.13.4]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.13.3...1.13.4
 [1.13.3]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.13.2...1.13.3
 [1.13.2]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.13.1...1.13.2
