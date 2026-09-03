@@ -88,7 +88,8 @@ class OpenCodeWebToolWindowContent(
         private const val IDLE_CARD = "idle"
         private const val BROWSER_RECOVERY_THROTTLE_MILLIS = 10_000L
         private const val PAGE_LOAD_WATCHDOG_MILLIS = OpenCodePageLoadWatchdog.DEFAULT_TIMEOUT_MILLIS
-        private const val DOCUMENT_START_INSTALL_TIMEOUT_MILLIS = 20_000L
+        private const val DOCUMENT_START_INSTALL_TIMEOUT_MILLIS =
+            OpenCodePageLoadWatchdog.DOCUMENT_START_INSTALL_TIMEOUT_MILLIS
 
         // Delay after a project-page load before flushing queued chat input, so the SPA's own
         // drop handlers are installed when the synthetic drop is dispatched.
@@ -622,7 +623,7 @@ class OpenCodeWebToolWindowContent(
                         prepareDisplayedSessionLineage(url)
                         scheduleBrowserRepaintNudges()
                         ApplicationManager.getApplication().invokeLater {
-                            if (!isContentDisposed()) noteOpenCodePageVisible(url)
+                            if (!isContentDisposed()) dismissPageOpeningStatus(url)
                         }
                         // CEF OSR can drop Chromium-level focus on SPA redirects/route changes
                         // (CEF #3870), which hides the text caret while typing still works.
@@ -884,11 +885,13 @@ class OpenCodeWebToolWindowContent(
             resultCallback = resultCallback,
         ) ?: return false
         browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
+        val service = OpenCodeChatInputService.getInstance(project)
         if (resultCallback != null) {
             addAlarmRequest(openProjectAlarm, CHAT_INPUT_ACK_TIMEOUT_MILLIS) {
-                val service = OpenCodeChatInputService.getInstance(project)
                 if (service.retryInFlight(delivery.attemptID)) scheduleFlushPendingChatInput()
             }
+        } else {
+            service.acknowledge(delivery.attemptID, accepted = true)
         }
         return true
     }
@@ -1092,8 +1095,12 @@ class OpenCodeWebToolWindowContent(
         // give up on its first stall.
         OpenCodeRendererWatchdog.resetProcessRecreatesAfterStall()
         ApplicationManager.getApplication().invokeLater {
-            if (window.isDisposed || window.project.isDisposed) return@invokeLater
-            replaceOpenCodeToolWindowContent(window)
+            try {
+                if (window.isDisposed || window.project.isDisposed) return@invokeLater
+                replaceOpenCodeToolWindowContent(window)
+            } finally {
+                panelReplacementScheduled = false
+            }
         }
     }
 
@@ -1263,13 +1270,26 @@ class OpenCodeWebToolWindowContent(
         openCodePagePainted = true
         mainDocumentLoadSucceeded = true
         pageLoadGaveUp = false
+        clearPageLoadWatchdog()
+        updateLifecycleIndicator()
+    }
+
+    /** Hides the Opening strip without treating the document as loaded for the renderer watchdog. */
+    private fun dismissPageOpeningStatus(pageUrl: String?) {
+        val serverUrl = serverManager.getServerUrl()
+        if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, pageUrl)) return
+        if (!pageLoadInProgress) return
+        clearPageLoadWatchdog()
+        updateLifecycleIndicator()
+    }
+
+    private fun clearPageLoadWatchdog() {
         pageLoadInProgress = false
         pageLoadWatchdogGeneration++
         pageLoadWatchdogAlarm.cancelAllRequests()
         pageLoadRetryCount = 0
         pageLoadStartedAtMillis = 0L
         pageLoadTargetUrl = null
-        updateLifecycleIndicator()
     }
 
     private fun beginPageLoad(targetUrl: String? = null, resetRetryBudget: Boolean = true) {
@@ -1506,20 +1526,24 @@ class OpenCodeWebToolWindowContent(
             if (isContentDisposed()) return@invokeLater
             if (!OpenCodeSettingsState.getInstance().showAgentStatusBadge) return@invokeLater
             if (!agentStatusTracker.isCurrentPresentation(state, presentationRevision)) return@invokeLater
-            toolWindow.setIcon(
-                when (state) {
-                    OpenCodeAgentStatusState.ATTENTION -> toolWindowIconSupplier.warningIcon
-                    OpenCodeAgentStatusState.BUSY -> toolWindowIconSupplier.liveIndicatorIcon
-                    else -> toolWindowIconSupplier.originalIcon
-                },
-            )
+            applyAgentStatusBadgeIcon(state)
         }
     }
 
     /** Resets the visible badge without touching tracked state; the watchdog still reads it. */
     private fun resetAgentStatusBadge() {
         if (isContentDisposed()) return
-        toolWindow.setIcon(toolWindowIconSupplier.originalIcon)
+        applyAgentStatusBadgeIcon(OpenCodeAgentStatusState.IDLE)
+    }
+
+    private fun applyAgentStatusBadgeIcon(state: String) {
+        toolWindow.setIcon(
+            when (state) {
+                OpenCodeAgentStatusState.ATTENTION -> toolWindowIconSupplier.warningIcon
+                OpenCodeAgentStatusState.BUSY -> toolWindowIconSupplier.liveIndicatorIcon
+                else -> toolWindowIconSupplier.originalIcon
+            },
+        )
     }
 
     /** Server stopped or the directory changed — tracked state no longer applies to this panel. */
@@ -1534,8 +1558,12 @@ class OpenCodeWebToolWindowContent(
      * renderer watchdog reads its busy flag to stretch stall timeouts during an agent turn.
      */
     private fun applyAgentStatusBadge(enabled: Boolean) {
-        resetAgentStatusBadge()
-        if (enabled) agentStatusTracker.seed()
+        if (!enabled) {
+            resetAgentStatusBadge()
+            return
+        }
+        applyAgentStatusBadgeIcon(agentStatusTracker.currentState())
+        agentStatusTracker.seed()
     }
 
     private fun isBrowserOnOpenCodeServerPage(serverUrl: String): Boolean {

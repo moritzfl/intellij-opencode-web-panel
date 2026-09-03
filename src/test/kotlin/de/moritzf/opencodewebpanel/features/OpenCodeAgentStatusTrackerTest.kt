@@ -42,6 +42,27 @@ class OpenCodeAgentStatusTrackerTest {
         assertEquals(OpenCodeAgentStatusState.ATTENTION, state.current())
         state.applyEvent("question.rejected", properties("""{"requestID":"que_1"}"""))
         assertEquals(OpenCodeAgentStatusState.BUSY, state.current())
+        assertTrue(state.hasBusySessions())
+    }
+
+    @Test
+    fun isBusyStaysTrueWhileAPermissionIsPending() {
+        val tracker = OpenCodeAgentStatusTracker(
+            projectDirectory = { "/project" },
+            enabled = { true },
+            onStateChanged = { _, _ -> },
+            serverUrl = { "http://127.0.0.1:4096" },
+            serverPassword = { "pw" },
+            serverGeneration = { 1L },
+        )
+        tracker.eventReceived(
+            OpenCodeGlobalEvent("/project", "session.status", "evt_1", properties("""{"sessionID":"ses_1","status":{"type":"busy"}}""")),
+        )
+        tracker.eventReceived(
+            OpenCodeGlobalEvent("/project", "permission.asked", "evt_2", properties("""{"id":"per_1"}""")),
+        )
+        assertEquals(OpenCodeAgentStatusState.ATTENTION, tracker.currentState())
+        assertTrue(tracker.isBusy())
     }
 
     @Test

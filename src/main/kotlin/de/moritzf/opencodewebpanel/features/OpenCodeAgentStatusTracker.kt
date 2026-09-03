@@ -29,6 +29,8 @@ internal class OpenCodeAgentStatusState {
         else -> IDLE
     }
 
+    fun hasBusySessions(): Boolean = busySessions.isNotEmpty()
+
     /** Replaces the tracked state with a REST snapshot; null collections keep the current state. */
     fun seed(busySessionIds: Collection<String>?, pendingRequestIds: Collection<String>?) {
         if (busySessionIds != null) {
@@ -196,8 +198,10 @@ internal class OpenCodeAgentStatusTracker(
         }
     }
 
-    /** True while any session of this project is running a turn. */
-    fun isBusy(): Boolean = synchronized(lock) { state.current() == OpenCodeAgentStatusState.BUSY }
+    /** True while any session of this project is running a turn, even if a permission is pending. */
+    fun isBusy(): Boolean = synchronized(lock) { state.hasBusySessions() }
+
+    fun currentState(): String = synchronized(lock) { state.current() }
 
     internal fun isCurrentPresentation(state: String, revision: Long): Boolean = synchronized(lock) {
         presentationRevision == revision && lastReportedState == state && this.state.current() == state
