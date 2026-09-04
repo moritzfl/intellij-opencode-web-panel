@@ -7,7 +7,7 @@ import com.intellij.util.concurrency.AppExecutorUtil
 import de.moritzf.opencodewebpanel.server.OpenCodeGlobalEvent
 import de.moritzf.opencodewebpanel.server.OpenCodeGlobalEventListener
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
-import de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager
+import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
 import de.moritzf.opencodewebpanel.server.objectMember
 import de.moritzf.opencodewebpanel.server.stringMember
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
@@ -33,18 +33,19 @@ internal object OpenCodeSoundService {
 
     /**
      * Subscribes to the application event bus. Safe to call repeatedly: re-subscribes after the
-     * parent [SharedOpenCodeServerManager] is disposed (dynamic plugin reload / IDE restart).
+     * parent [OpenCodeServerBackendRegistry] is disposed (dynamic plugin reload / IDE restart).
      */
     fun ensureInstalled() {
         synchronized(lock) {
             if (busConnection != null) return
-            val parent = SharedOpenCodeServerManager.getInstance()
+            val parent = OpenCodeServerBackendRegistry.getInstance()
             val connection = ApplicationManager.getApplication().messageBus.connect(parent)
             connection.subscribe(
                 OpenCodeGlobalEventListener.TOPIC,
                 object : OpenCodeGlobalEventListener {
-                    override fun connected() {
-                        val generation = parent.getServerGeneration()
+                    override fun connected(backendId: String) {
+                        val backend = parent.backend(backendId) ?: return
+                        val generation = backend.getServerGeneration()
                         eventExecutor.execute { handleConnected(generation) }
                     }
 
@@ -138,7 +139,7 @@ internal object OpenCodeSoundService {
     }
 
     private fun fetchSessionInfo(directory: String, sessionID: String): OpenCodeServerProtocol.SessionInfo? {
-        val serverManager = SharedOpenCodeServerManager.getInstance()
+        val serverManager = OpenCodeServerBackendRegistry.getInstance().backendForCanonicalDirectory(directory)
         val serverUrl = serverManager.getServerUrl() ?: return null
         val password = serverManager.getServerPassword() ?: return null
         return OpenCodeServerProtocol.fetchSessionInfo(

@@ -16,7 +16,7 @@ import com.intellij.ui.jcef.JBCefBrowser
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.server.OpenCodeProtocolResult
 import de.moritzf.opencodewebpanel.server.OpenCodeUnifiedDiff
-import de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager
+import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 
 /**
  * Opens the IDE's native diff viewer for a diff target the user Ctrl/Cmd+Clicked or Alt+Clicked in the OpenCode page
@@ -28,7 +28,7 @@ import de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager
 internal class OpenCodeDiffNavigation(
     private val project: Project,
     private val browser: JBCefBrowser,
-    private val serverManager: SharedOpenCodeServerManager,
+    private val serverManager: OpenCodeServerBackend,
     private val projectDirectory: () -> String?,
 ) {
     fun openDiff(payload: String?) {

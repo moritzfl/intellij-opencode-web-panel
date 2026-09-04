@@ -4,6 +4,7 @@ import com.google.gson.JsonObject
 import com.intellij.openapi.application.ApplicationManager
 import de.moritzf.opencodewebpanel.server.OpenCodeGlobalEvent
 import de.moritzf.opencodewebpanel.server.OpenCodeGlobalEventListener
+import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.server.objectMember
 import de.moritzf.opencodewebpanel.server.stringMember
@@ -100,6 +101,7 @@ internal class OpenCodeAgentStatusTracker(
     private val executeAsync: ((() -> Unit) -> Unit) = { task ->
         ApplicationManager.getApplication().executeOnPooledThread(task)
     },
+    private val backendId: () -> String = { OpenCodeServerBackend.NATIVE_ID },
 ) : OpenCodeGlobalEventListener {
 
     private val lock = Any()
@@ -119,7 +121,8 @@ internal class OpenCodeAgentStatusTracker(
         private const val MAX_SEED_ATTEMPTS = 3
     }
 
-    override fun connected() {
+    override fun connected(backendId: String) {
+        if (backendId != this.backendId()) return
         seed()
     }
 

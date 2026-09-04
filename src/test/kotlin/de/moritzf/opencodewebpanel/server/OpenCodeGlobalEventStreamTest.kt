@@ -147,10 +147,12 @@ class OpenCodeGlobalEventStreamTest {
         server.start()
 
         val connectedLatch = CountDownLatch(2)
+        val connectedBackendIds = ConcurrentLinkedQueue<String>()
         val events = ConcurrentLinkedQueue<OpenCodeGlobalEvent>()
         val eventsLatch = CountDownLatch(2)
         val listener = object : OpenCodeGlobalEventListener {
-            override fun connected() {
+            override fun connected(backendId: String) {
+                connectedBackendIds.add(backendId)
                 connectedLatch.countDown()
             }
 
@@ -171,9 +173,12 @@ class OpenCodeGlobalEventStreamTest {
             assertEquals("session.idle", received[0].type)
             assertEquals("/tmp/project", received[0].directory)
             assertEquals("evt_1", received[0].recordId)
+            assertEquals(OpenCodeServerBackend.NATIVE_ID, received[0].backendId)
             assertEquals("ses_1", received[0].properties.get("sessionID").asString)
             assertEquals("permission.asked", received[1].type)
             assertEquals("per_1", received[1].properties.get("id").asString)
+            assertEquals(OpenCodeServerBackend.NATIVE_ID, received[1].backendId)
+            assertTrue(connectedBackendIds.all { it == OpenCodeServerBackend.NATIVE_ID })
             assertEquals("Basic dGVzdA==", authHeaders.peek())
             assertTrue(connections.get() >= 2)
         } finally {
@@ -248,7 +253,7 @@ class OpenCodeGlobalEventStreamTest {
         val stream = OpenCodeGlobalEventStream(
             listener = {
                 object : OpenCodeGlobalEventListener {
-                    override fun connected() { connected.incrementAndGet() }
+                    override fun connected(backendId: String) { connected.incrementAndGet() }
                     override fun eventReceived(event: OpenCodeGlobalEvent) = Unit
                 }
             },
@@ -316,7 +321,7 @@ class OpenCodeGlobalEventStreamTest {
         val stream = OpenCodeGlobalEventStream(
             listener = {
                 object : OpenCodeGlobalEventListener {
-                    override fun connected() {
+                    override fun connected(backendId: String) {
                         connected.countDown()
                     }
 

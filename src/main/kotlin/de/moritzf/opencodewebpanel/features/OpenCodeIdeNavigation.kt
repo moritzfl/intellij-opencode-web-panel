@@ -16,12 +16,12 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicLong
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
-import de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager
+import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 
 internal class OpenCodeIdeNavigation(
     private val project: Project,
     private val browser: JBCefBrowser,
-    private val serverManager: SharedOpenCodeServerManager,
+    private val serverManager: OpenCodeServerBackend,
     private val projectDirectory: () -> String?,
     private val coalesceKey: Any,
 ) {

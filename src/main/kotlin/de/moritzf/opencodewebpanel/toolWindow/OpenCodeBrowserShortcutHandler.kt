@@ -12,7 +12,7 @@ import com.intellij.openapi.util.SystemInfo
 import com.intellij.ui.jcef.JBCefBrowser
 import de.moritzf.opencodewebpanel.browser.OpenCodeBrowserSnippets
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
-import de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager
+import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
 import java.net.URI
 import org.cef.browser.CefFrame
@@ -85,7 +85,7 @@ internal data class OpenCodeResolvedKeybinds(
  */
 internal class OpenCodeBrowserShortcutHandler(
     private val browser: JBCefBrowser,
-    private val serverManager: SharedOpenCodeServerManager,
+    private val serverManager: OpenCodeServerBackend,
     private val parentDisposable: Disposable,
 ) {
     fun install() {
@@ -156,7 +156,7 @@ internal class OpenCodeBrowserShortcutHandler(
     internal companion object {
         fun dispatch(
             browser: JBCefBrowser,
-            serverManager: SharedOpenCodeServerManager,
+            serverManager: OpenCodeServerBackend,
             command: OpenCodeBrowserCommand,
         ) {
             val serverUrl = serverManager.getServerUrl() ?: return
@@ -164,7 +164,7 @@ internal class OpenCodeBrowserShortcutHandler(
             if (!isCommandAvailable(command, serverUrl, pageUrl)) return
             val keybinds = resolveOpenCodeKeybinds(
                 command,
-                OpenCodeSettingsState.getInstance().openCodeLocalStorageSnapshot,
+                OpenCodeSettingsState.getInstance().localStorageSnapshot(serverManager.backendId),
             )
             val script = OpenCodeBrowserSnippets.buildShortcutDispatchScript(
                 keybinds.newLayout,

@@ -14,7 +14,7 @@ import com.intellij.util.concurrency.AppExecutorUtil
 import de.moritzf.opencodewebpanel.browser.OpenCodeBrowserSnippets
 import de.moritzf.opencodewebpanel.browser.OpenCodeJsQuery
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
-import de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager
+import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
 import java.awt.Image
 import java.awt.KeyboardFocusManager
@@ -48,7 +48,7 @@ internal fun createOpenCodeDropPreparationExecutor() = AppExecutorUtil.createBou
 internal class OpenCodeFileDropHandler(
     private val project: Project,
     private val browser: JBCefBrowser,
-    private val serverManager: SharedOpenCodeServerManager,
+    private val serverManager: OpenCodeServerBackend,
     private val openCodeProjectDirectory: () -> String?,
     private val browserDocumentRevision: () -> Long,
     private val isDisposed: () -> Boolean,

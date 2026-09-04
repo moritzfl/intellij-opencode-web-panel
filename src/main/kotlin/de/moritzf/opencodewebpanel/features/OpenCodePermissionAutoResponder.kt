@@ -5,6 +5,7 @@ import com.intellij.openapi.diagnostic.Logger
 import de.moritzf.opencodewebpanel.server.OpenCodeGlobalEvent
 import de.moritzf.opencodewebpanel.server.OpenCodeGlobalEventListener
 import de.moritzf.opencodewebpanel.server.OpenCodeProtocolResult
+import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.server.objectMember
 import de.moritzf.opencodewebpanel.server.stringMember
@@ -82,6 +83,7 @@ internal class OpenCodePermissionAutoResponder(
             response,
         )
     },
+    private val backendId: () -> String = { OpenCodeServerBackend.NATIVE_ID },
 ) : OpenCodeGlobalEventListener {
 
     private companion object {
@@ -159,7 +161,8 @@ internal class OpenCodePermissionAutoResponder(
         seedPendingRequests(onlySessionID = sessionID)
     }
 
-    override fun connected() {
+    override fun connected(backendId: String) {
+        if (backendId != this.backendId()) return
         if (!disposed.get() && hasEnabledSession()) seedPendingRequests()
     }
 

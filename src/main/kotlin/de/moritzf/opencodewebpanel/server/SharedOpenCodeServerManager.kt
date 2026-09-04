@@ -19,7 +19,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 
-class SharedOpenCodeServerManager : Disposable {
+class SharedOpenCodeServerManager : OpenCodeServerBackend, Disposable {
 
     companion object {
         private const val SERVER_START_TIMEOUT_MILLIS = 60_000L
@@ -49,6 +49,8 @@ class SharedOpenCodeServerManager : Disposable {
         val startId: Long,
         val resources: ServerResourcesToStop,
     )
+
+    override val backendId: String = OpenCodeServerBackend.NATIVE_ID
 
     private val lock = Any()
     private val pendingStarts = mutableListOf<StartCallback>()
@@ -96,14 +98,14 @@ class SharedOpenCodeServerManager : Disposable {
     }
     private val serverLogBuffer = OpenCodeServerLogBuffer()
 
-    fun getServerLogFile(): Path? {
+    override fun getServerLogFile(): Path? {
         return serverLogBuffer.currentOrLatestFile()
     }
 
-    fun ensureStarted(
+    override fun ensureStarted(
         project: Project,
         projectBasePath: String?,
-        callbackActive: () -> Boolean = { true },
+        callbackActive: () -> Boolean,
         onStarted: () -> Unit,
         onFailed: () -> Unit,
     ) {
@@ -190,7 +192,7 @@ class SharedOpenCodeServerManager : Disposable {
      * True when URL and password are known — independent of launcher process liveness, because
      * on Windows the launcher exits after spawning the real server while the endpoint stays up.
      */
-    fun isServerReadyForAuth(): Boolean = synchronized(lock) {
+    override fun isServerReadyForAuth(): Boolean = synchronized(lock) {
         !serverUrl.isNullOrBlank() && !serverPassword.isNullOrBlank()
     }
 
@@ -199,7 +201,7 @@ class SharedOpenCodeServerManager : Disposable {
      * caller can reload its page; otherwise the regular health-check recovery (restart with
      * backoff) is triggered immediately instead of waiting for the next periodic check.
      */
-    fun verifyServerNow(callbackActive: () -> Boolean = { true }, onHealthy: () -> Unit) {
+    override fun verifyServerNow(callbackActive: () -> Boolean, onHealthy: () -> Unit) {
         ApplicationManager.getApplication().executeOnPooledThread {
             val url = getServerUrl()
             if (url != null && checkServerResponding(url)) {
@@ -216,7 +218,7 @@ class SharedOpenCodeServerManager : Disposable {
         }
     }
 
-    fun getLifecycleState(): OpenCodeServerLifecycleState = synchronized(lock) { lifecycleState }
+    override fun getLifecycleState(): OpenCodeServerLifecycleState = synchronized(lock) { lifecycleState }
 
     @TestOnly
     fun setServerRunning(running: Boolean) {
@@ -228,14 +230,14 @@ class SharedOpenCodeServerManager : Disposable {
 
     fun getServerProcess(): Process? = synchronized(lock) { serverProcess }
 
-    fun getServerUrl(): String? = synchronized(lock) { serverUrl }
+    override fun getServerUrl(): String? = synchronized(lock) { serverUrl }
 
-    fun getServerPassword(): String? = synchronized(lock) { serverPassword }
+    override fun getServerPassword(): String? = synchronized(lock) { serverPassword }
 
-    fun getServerVersion(): String? = synchronized(lock) { serverVersion }
+    override fun getServerVersion(): String? = synchronized(lock) { serverVersion }
 
     /** Returns an unsupported version once, so several open panels do not show duplicate warnings. */
-    fun consumeUnsupportedServerVersionWarning(): String? = synchronized(lock) {
+    override fun consumeUnsupportedServerVersionWarning(): String? = synchronized(lock) {
         val version = serverVersion?.trim()?.takeIf { it.isNotEmpty() } ?: return@synchronized null
         if (!OpenCodeServerProtocol.isOpenCodeVersionUnsupported(version) || unsupportedVersionWarningShownFor == version) {
             return@synchronized null
@@ -245,7 +247,7 @@ class SharedOpenCodeServerManager : Disposable {
     }
 
     /** Returns true once when the running server would make the embedded page use permission v2. */
-    fun consumeV2ProtocolWarning(): Boolean = synchronized(lock) {
+    override fun consumeV2ProtocolWarning(): Boolean = synchronized(lock) {
         if (v2ProtocolWarningShown || embeddedProtocol != OpenCodeEmbeddedProtocol.V2) {
             return@synchronized false
         }
@@ -258,14 +260,14 @@ class SharedOpenCodeServerManager : Disposable {
      * Lets callers distinguish "the server actually restarted" from mere revalidation of a
      * healthy server, e.g. to run one-shot recovery work per server process.
      */
-    fun getServerGeneration(): Long = synchronized(lock) { serverGeneration }
+    override fun getServerGeneration(): Long = synchronized(lock) { serverGeneration }
 
     /**
      * Wall-clock time the current server generation's process was launched (0 while none was
      * ever started). Anything created after this instant happened on the live server and can
      * therefore not have been interrupted by the previous server's death.
      */
-    fun getServerGenerationStartedAtMillis(): Long = synchronized(lock) { serverGenerationStartedAtMillis }
+    override fun getServerGenerationStartedAtMillis(): Long = synchronized(lock) { serverGenerationStartedAtMillis }
 
     /** Best-effort, informational only: refreshes the reported OpenCode version off the EDT. */
     private fun refreshServerVersion() {
@@ -313,7 +315,7 @@ class SharedOpenCodeServerManager : Disposable {
         }
     }
 
-    fun stopServer() {
+    override fun stopServer() {
         try {
             val callbacks: List<StartCallback>
             val resources = synchronized(lock) {
@@ -335,10 +337,10 @@ class SharedOpenCodeServerManager : Disposable {
         }
     }
 
-    fun restartServer(
+    override fun restartServer(
         project: Project,
         projectBasePath: String?,
-        callbackActive: () -> Boolean = { true },
+        callbackActive: () -> Boolean,
         onStarted: () -> Unit,
         onFailed: () -> Unit,
     ) {
@@ -987,7 +989,7 @@ class SharedOpenCodeServerManager : Disposable {
             try {
                 ApplicationManager.getApplication().messageBus
                     .syncPublisher(OpenCodeServerLifecycleListener.TOPIC)
-                    .stateChanged(state)
+                    .stateChanged(state, backendId)
             } catch (e: Exception) {
                 thisLogger().warn("Could not publish OpenCode server lifecycle state ${state.name}: ${e.message}")
             }
@@ -1007,7 +1009,7 @@ class SharedOpenCodeServerManager : Disposable {
         val url = getServerUrl()
         val password = getServerPassword()
         if (url != null && !password.isNullOrBlank()) {
-            globalEventStream.start(url, OpenCodeServerProtocol.buildBasicAuthHeader(password))
+            globalEventStream.start(url, OpenCodeServerProtocol.buildBasicAuthHeader(password), backendId)
         }
     }
 }

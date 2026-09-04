@@ -6,6 +6,7 @@ import com.intellij.openapi.components.RoamingType
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
+import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 
 // Roaming is disabled deliberately: the state mixes machine-specific values (binary path,
@@ -40,6 +41,7 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
     var waitForIntellijMcpServer: Boolean = true
     var enableServerLogs: Boolean = true
     var openCodeLocalStorageSnapshot: String = "{}"
+    var openCodeLocalStorageSnapshotsByBackend: MutableMap<String, String> = HashMap()
 
     override fun getState(): OpenCodeSettingsState = this
 
@@ -70,6 +72,27 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
         waitForIntellijMcpServer = state.waitForIntellijMcpServer
         enableServerLogs = state.enableServerLogs
         openCodeLocalStorageSnapshot = sanitizeOpenCodeLocalStorageSnapshot(state.openCodeLocalStorageSnapshot)
+        openCodeLocalStorageSnapshotsByBackend = sanitizeLocalStorageSnapshotsByBackend(
+            state.openCodeLocalStorageSnapshotsByBackend,
+        )
+    }
+
+    fun localStorageSnapshot(backendId: String = OpenCodeServerBackend.NATIVE_ID): String {
+        if (backendId == OpenCodeServerBackend.NATIVE_ID) return openCodeLocalStorageSnapshot
+        return sanitizeOpenCodeLocalStorageSnapshot(openCodeLocalStorageSnapshotsByBackend[backendId])
+    }
+
+    fun setLocalStorageSnapshot(backendId: String, snapshot: String) {
+        val sanitized = sanitizeOpenCodeLocalStorageSnapshot(snapshot)
+        if (backendId == OpenCodeServerBackend.NATIVE_ID) {
+            openCodeLocalStorageSnapshot = sanitized
+            return
+        }
+        if (sanitized == "{}") {
+            openCodeLocalStorageSnapshotsByBackend.remove(backendId)
+        } else {
+            openCodeLocalStorageSnapshotsByBackend[backendId] = sanitized
+        }
     }
 
     fun portModeValue(): OpenCodePortMode = OpenCodePortMode.fromStorageValue(portMode)
@@ -120,6 +143,17 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
             if (text.isBlank() || text.length > MAX_OPEN_CODE_LOCAL_STORAGE_SNAPSHOT_CHARS) return "{}"
             if (!text.startsWith('{') || !text.endsWith('}')) return "{}"
             return text
+        }
+
+        fun sanitizeLocalStorageSnapshotsByBackend(source: Map<String, String>?): MutableMap<String, String> {
+            val result = HashMap<String, String>()
+            source.orEmpty().forEach { (key, value) ->
+                val id = key.trim()
+                if (id.isEmpty() || id == OpenCodeServerBackend.NATIVE_ID) return@forEach
+                val sanitized = sanitizeOpenCodeLocalStorageSnapshot(value)
+                if (sanitized != "{}") result[id] = sanitized
+            }
+            return result
         }
 
     }

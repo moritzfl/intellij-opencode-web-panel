@@ -2,7 +2,7 @@ package de.moritzf.opencodewebpanel.toolWindow
 
 import de.moritzf.opencodewebpanel.features.OpenCodeIdeNavigation
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
-import de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager
+import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
 import org.cef.browser.CefBrowser
 import org.cef.browser.CefFrame
@@ -15,7 +15,7 @@ import org.cef.misc.BoolRef
 import org.cef.network.CefRequest
 
 internal class OpenCodeBrowserRequestHandler(
-    private val serverManager: SharedOpenCodeServerManager,
+    private val serverManager: OpenCodeServerBackend,
     private val ideNavigation: OpenCodeIdeNavigation,
     private val onRenderProcessCrash: () -> Unit = {},
 ) : CefRequestHandlerAdapter() {

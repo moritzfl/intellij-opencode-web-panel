@@ -22,7 +22,7 @@ import com.intellij.util.ui.UIUtil
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleListener
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
-import de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager
+import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
 import de.moritzf.opencodewebpanel.server.formatOpenCodeServerLifecycleStatusText
 import de.moritzf.opencodewebpanel.toolWindow.confirmOpenCodeServerRestart
 import java.awt.Toolkit
@@ -401,7 +401,7 @@ class OpenCodeSettingsConfigurable : Configurable {
             oldBinaryMode != nextBinaryMode || oldBinaryPath != nextBinaryPath ||
             oldProxyMode != settings.proxyModeValue()
         ) {
-            SharedOpenCodeServerManager.getInstance().stopServer()
+            OpenCodeServerBackendRegistry.getInstance().nativeBackend().stopServer()
             // Restart open panels right away; a stopped server would otherwise stay stopped until a
             // new tool-window content is created, leaving existing panels blank.
             ApplicationManager.getApplication().messageBus
@@ -529,7 +529,8 @@ class OpenCodeSettingsConfigurable : Configurable {
             connection.subscribe(
                 OpenCodeServerLifecycleListener.TOPIC,
                 object : OpenCodeServerLifecycleListener {
-                    override fun stateChanged(state: OpenCodeServerLifecycleState) {
+                    override fun stateChanged(state: OpenCodeServerLifecycleState, backendId: String) {
+                        if (backendId != OpenCodeServerBackendRegistry.getInstance().nativeBackend().backendId) return
                         ApplicationManager.getApplication().invokeLater {
                             if (panel != null) updateServerStatus()
                         }
@@ -540,7 +541,7 @@ class OpenCodeSettingsConfigurable : Configurable {
     }
 
     private fun updateServerStatus() {
-        val serverManager = SharedOpenCodeServerManager.getInstance()
+        val serverManager = OpenCodeServerBackendRegistry.getInstance().nativeBackend()
         val state = serverManager.getLifecycleState()
         val serverUrl = serverManager.getServerUrl()
         val detail = if (state == OpenCodeServerLifecycleState.RUNNING && !serverUrl.isNullOrBlank()) {
@@ -665,7 +666,7 @@ class OpenCodeSettingsConfigurable : Configurable {
     }
 
     private fun showServerLog() {
-        val serverManager = SharedOpenCodeServerManager.getInstance()
+        val serverManager = OpenCodeServerBackendRegistry.getInstance().nativeBackend()
         val logFile = serverManager.getServerLogFile()
         if (logFile == null) {
             Messages.showErrorDialog(panel ?: viewServerLogButton, "No server log available yet.", "Open Server Log")

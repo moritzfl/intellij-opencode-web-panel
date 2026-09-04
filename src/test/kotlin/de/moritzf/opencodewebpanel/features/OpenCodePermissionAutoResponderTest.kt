@@ -3,6 +3,7 @@ package de.moritzf.opencodewebpanel.features
 import com.google.gson.JsonParser
 import de.moritzf.opencodewebpanel.server.OpenCodeGlobalEvent
 import de.moritzf.opencodewebpanel.server.OpenCodeProtocolResult
+import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -109,10 +110,25 @@ class OpenCodePermissionAutoResponderTest {
         fixture.drain()
         fixture.replies.clear()
 
-        fixture.responder.connected()
+        fixture.responder.connected(OpenCodeServerBackend.NATIVE_ID)
         fixture.drain()
 
         assertEquals(listOf("per_a", "per_b"), fixture.replies.map(Reply::requestID))
+    }
+
+    @Test
+    fun reconnectIgnoresForeignBackend() {
+        val fixture = fixture(
+            pending = listOf(OpenCodeServerProtocol.PendingRequestSummary("per_a", "ses_a")),
+        )
+        fixture.responder.setSessionEnabled("ses_a", true)
+        fixture.drain()
+        fixture.replies.clear()
+
+        fixture.responder.connected("sbx:other")
+        fixture.drain()
+
+        assertTrue(fixture.replies.isEmpty())
     }
 
     @Test

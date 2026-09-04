@@ -70,14 +70,18 @@ internal class OpenCodeGlobalEventStream(
     private var generation = 0L
     private var connection: HttpURLConnection? = null
 
-    fun start(serverUrl: String, basicAuthHeader: String) {
+    fun start(
+        serverUrl: String,
+        basicAuthHeader: String,
+        backendId: String = OpenCodeServerBackend.NATIVE_ID,
+    ) {
         val (previous, myGeneration) = synchronized(lock) {
             val previous = connection
             connection = null
             previous to ++generation
         }
         disconnectInBackground(previous)
-        Thread({ runReadLoop(myGeneration, serverUrl, basicAuthHeader) }, "OpenCode-Event-Stream").apply {
+        Thread({ runReadLoop(myGeneration, serverUrl, basicAuthHeader, backendId) }, "OpenCode-Event-Stream").apply {
             isDaemon = true
             start()
         }
@@ -127,10 +131,15 @@ internal class OpenCodeGlobalEventStream(
 
     private fun isCurrent(myGeneration: Long): Boolean = synchronized(lock) { myGeneration == generation }
 
-    private fun runReadLoop(myGeneration: Long, serverUrl: String, basicAuthHeader: String) {
+    private fun runReadLoop(
+        myGeneration: Long,
+        serverUrl: String,
+        basicAuthHeader: String,
+        backendId: String,
+    ) {
         while (isCurrent(myGeneration)) {
             try {
-                readStreamOnce(myGeneration, serverUrl, basicAuthHeader)
+                readStreamOnce(myGeneration, serverUrl, basicAuthHeader, backendId)
                 if (isCurrent(myGeneration)) {
                     thisLogger().info("OpenCode event stream ended; reconnecting")
                 }
@@ -149,7 +158,12 @@ internal class OpenCodeGlobalEventStream(
         }
     }
 
-    private fun readStreamOnce(myGeneration: Long, serverUrl: String, basicAuthHeader: String) {
+    private fun readStreamOnce(
+        myGeneration: Long,
+        serverUrl: String,
+        basicAuthHeader: String,
+        backendId: String,
+    ) {
         val url = OpenCodeServerProtocol.buildServerRootUrl(serverUrl) + EVENT_PATH
         val newConnection = URI(url).toURL().openConnection() as HttpURLConnection
         newConnection.connectTimeout = CONNECT_TIMEOUT_MILLIS
@@ -174,14 +188,14 @@ internal class OpenCodeGlobalEventStream(
             if (!contentType.startsWith("text/event-stream")) {
                 throw IOException("OpenCode event stream returned unexpected content type")
             }
-            dispatchConnected(myGeneration)
+            dispatchConnected(myGeneration, backendId)
             newConnection.inputStream.bufferedReader(StandardCharsets.UTF_8).use { reader ->
                 val lineReader = BoundedLineReader(reader, MAX_SSE_BLOCK_CHARS)
                 val block = StringBuilder()
                 while (isCurrent(myGeneration)) {
                     val line = lineReader.readLine() ?: break
                     if (line.isEmpty()) {
-                        dispatchBlock(myGeneration, block.toString())
+                        dispatchBlock(myGeneration, block.toString(), backendId)
                         block.setLength(0)
                     } else {
                         if (block.isNotEmpty()) block.append('\n')
@@ -202,18 +216,18 @@ internal class OpenCodeGlobalEventStream(
         }
     }
 
-    private fun dispatchConnected(myGeneration: Long) {
+    private fun dispatchConnected(myGeneration: Long, backendId: String) {
         if (!isCurrent(myGeneration)) return
         try {
-            listener().connected()
+            listener().connected(backendId)
         } catch (e: Exception) {
             thisLogger().warn("OpenCode event listener failed on connect: ${e.message}")
         }
     }
 
-    private fun dispatchBlock(myGeneration: Long, block: String) {
+    private fun dispatchBlock(myGeneration: Long, block: String, backendId: String) {
         val data = sseBlockData(block) ?: return
-        val event = parseGlobalEvent(data) ?: return
+        val event = parseGlobalEvent(data)?.copy(backendId = backendId) ?: return
         if (event.type == "sync") return
         if (!isCurrent(myGeneration)) return
         try {

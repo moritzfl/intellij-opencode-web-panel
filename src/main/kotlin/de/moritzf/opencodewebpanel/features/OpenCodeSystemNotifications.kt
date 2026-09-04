@@ -23,7 +23,8 @@ import de.moritzf.opencodewebpanel.server.OpenCodeProtocolResult
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleListener
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState
-import de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager
+import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
+import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsListener
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
 import com.intellij.openapi.util.text.StringUtil
@@ -50,7 +51,7 @@ internal class OpenCodeSystemNotifications(
     private val project: Project,
     private val toolWindow: ToolWindow,
     private val browser: JBCefBrowser,
-    private val serverManager: SharedOpenCodeServerManager,
+    private val serverManager: OpenCodeServerBackend,
     private val projectDirectory: () -> String?,
     private val navigate: (String) -> Unit,
     parentDisposable: Disposable,
@@ -268,18 +269,18 @@ internal class OpenCodeSystemNotifications(
 
         /**
          * Installs the single application-wide consumer of the Kotlin event stream. Bound to
-         * the [SharedOpenCodeServerManager] service so the connection is released on plugin
+         * the [OpenCodeServerBackendRegistry] service so the connection is released on plugin
          * unload; routing and the notifications setting are re-checked per event, so an
          * orphaned subscription cannot show stale notifications.
          */
         private fun ensureGlobalEventSubscription() {
             if (!globalEventSubscriptionInstalled.compareAndSet(false, true)) return
             val connection = ApplicationManager.getApplication().messageBus
-                .connect(SharedOpenCodeServerManager.getInstance())
+                .connect(OpenCodeServerBackendRegistry.getInstance())
             connection.subscribe(
                 OpenCodeGlobalEventListener.TOPIC,
                 object : OpenCodeGlobalEventListener {
-                    override fun connected() {
+                    override fun connected(backendId: String) {
                         reconcilePendingRequests()
                     }
 
@@ -291,7 +292,7 @@ internal class OpenCodeSystemNotifications(
             connection.subscribe(
                 OpenCodeServerLifecycleListener.TOPIC,
                 object : OpenCodeServerLifecycleListener {
-                    override fun stateChanged(state: OpenCodeServerLifecycleState) {
+                    override fun stateChanged(state: OpenCodeServerLifecycleState, backendId: String) {
                         if (state != OpenCodeServerLifecycleState.RUNNING) notificationInvalidator.invalidate()
                     }
                 },
@@ -319,7 +320,7 @@ internal class OpenCodeSystemNotifications(
         }
 
         private fun currentServerIdentity(): OpenCodeNotificationServerIdentity? {
-            val serverManager = SharedOpenCodeServerManager.getInstance()
+            val serverManager = OpenCodeServerBackendRegistry.getInstance().nativeBackend()
             if (serverManager.getLifecycleState() != OpenCodeServerLifecycleState.RUNNING) return null
             val serverUrl = serverManager.getServerUrl() ?: return null
             val generation = serverManager.getServerGeneration().takeIf { it > 0L } ?: return null
@@ -330,7 +331,7 @@ internal class OpenCodeSystemNotifications(
             directory: String,
             sessionID: String
         ): OpenCodeServerProtocol.SessionInfo? {
-            val serverManager = SharedOpenCodeServerManager.getInstance()
+            val serverManager = OpenCodeServerBackendRegistry.getInstance().backendForCanonicalDirectory(directory)
             val serverUrl = serverManager.getServerUrl() ?: return null
             val password = serverManager.getServerPassword() ?: return null
             return OpenCodeServerProtocol.fetchSessionInfo(
@@ -346,7 +347,7 @@ internal class OpenCodeSystemNotifications(
             directory: String,
         ): OpenCodePendingNotificationLoad {
             if (currentServerIdentity() != identity) return OpenCodePendingNotificationLoad(emptyList(), false)
-            val serverManager = SharedOpenCodeServerManager.getInstance()
+            val serverManager = OpenCodeServerBackendRegistry.getInstance().backendForCanonicalDirectory(directory)
             val password = serverManager.getServerPassword()
                 ?: return OpenCodePendingNotificationLoad(emptyList(), false)
             val authHeader = OpenCodeServerProtocol.buildBasicAuthHeader(password)

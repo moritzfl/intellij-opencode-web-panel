@@ -15,7 +15,7 @@ enum class OpenCodeServerLifecycleState(
 }
 
 interface OpenCodeServerLifecycleListener {
-    fun stateChanged(state: OpenCodeServerLifecycleState)
+    fun stateChanged(state: OpenCodeServerLifecycleState, backendId: String)
 
     companion object {
         val TOPIC: Topic<OpenCodeServerLifecycleListener> = Topic.create(

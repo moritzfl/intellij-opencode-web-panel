@@ -126,7 +126,11 @@ internal class OpenCodeStartupErrorPanel(
      * EDT; the resulting text distinguishes a missing executable from a server that started but
      * never became available.
      */
-    fun showFailure(executable: String, serverLogFile: Path?) {
+    fun showFailure(
+        executable: String,
+        serverLogFile: Path?,
+        offerAutomaticPort: Boolean = true,
+    ) {
         logFile = serverLogFile
         messageLabel.text = "OpenCode was started as \u201C$executable\u201D but the server did not become available."
         ApplicationManager.getApplication().executeOnPooledThread {
@@ -150,7 +154,7 @@ internal class OpenCodeStartupErrorPanel(
                             "The port appears to be in use by another application."
                     else -> "OpenCode was started as \u201C$executable\u201D but the server did not become available."
                 }
-                useAutoPortButton.isVisible = portConflict
+                useAutoPortButton.isVisible = portConflict && offerAutomaticPort
                 viewLogButton.isEnabled = serverLogFile != null
                 val hasLog = logTail.isNotEmpty()
                 logTitleLabel.isVisible = hasLog

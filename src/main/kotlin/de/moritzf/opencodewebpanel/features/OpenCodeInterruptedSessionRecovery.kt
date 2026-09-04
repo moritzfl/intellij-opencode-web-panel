@@ -5,7 +5,7 @@ import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import de.moritzf.opencodewebpanel.server.OpenCodeProtocolResult
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
-import de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager
+import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
 import java.util.concurrent.ConcurrentHashMap
 
@@ -110,7 +110,7 @@ internal class OpenCodeInterruptedSessionRecovery internal constructor(
 ) {
     constructor(
         project: Project,
-        serverManager: SharedOpenCodeServerManager,
+        serverManager: OpenCodeServerBackend,
         projectDirectory: () -> String?,
     ) : this(
         projectDirectory = projectDirectory,

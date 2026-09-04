@@ -45,7 +45,7 @@ import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleListener
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.server.OpenCodeSuspendResumeListener
-import de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager
+import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
 import de.moritzf.opencodewebpanel.server.isSuccessfulOpenCodeDocumentLoad
 import de.moritzf.opencodewebpanel.server.shouldApplyPublishedLifecycleState
 import de.moritzf.opencodewebpanel.server.parkedEmbeddedCenterCard
@@ -141,7 +141,7 @@ class OpenCodeWebToolWindowContent(
     private val chatInputResultQuery = OpenCodeJsQuery.create(browser as JBCefBrowserBase)
     private val rendererHeartbeatQuery = OpenCodeJsQuery.create(browser as JBCefBrowserBase)
     private val browserCursorEpoch = AtomicLong()
-    private val serverManager = SharedOpenCodeServerManager.getInstance()
+    private val serverManager = OpenCodeServerBackendRegistry.getInstance().backendFor(project)
     private val ideNavigation = OpenCodeIdeNavigation(project, browser, serverManager, ::openCodeProjectDirectory, this)
     private val diffNavigation = OpenCodeDiffNavigation(project, browser, serverManager, ::openCodeProjectDirectory)
     private val localStorageBridge = OpenCodeLocalStorageBridge(
@@ -164,6 +164,7 @@ class OpenCodeWebToolWindowContent(
         ::openCodeProjectDirectory,
         serverManager::getServerUrl,
         serverManager::getServerPassword,
+        backendId = { serverManager.backendId },
     )
     private val openProjectAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
     private val pageLoadWatchdogAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
@@ -382,6 +383,7 @@ class OpenCodeWebToolWindowContent(
         project,
         ::openCodeProjectDirectory,
         parentDisposable = this,
+        backendId = { serverManager.backendId },
     )
     // The tracked state also feeds the renderer watchdog's busy stall timeout, so tracking runs
     // even when the badge itself is off; [onAgentStatusChanged] applies the badge only when its
@@ -393,6 +395,7 @@ class OpenCodeWebToolWindowContent(
         serverUrl = serverManager::getServerUrl,
         serverPassword = serverManager::getServerPassword,
         serverGeneration = serverManager::getServerGeneration,
+        backendId = { serverManager.backendId },
     )
     private var loadedServerRootUrl: String? = null
     private var pendingServerStartRequest = false
@@ -699,7 +702,8 @@ class OpenCodeWebToolWindowContent(
         ApplicationManager.getApplication().messageBus.connect(this).subscribe(
             OpenCodeServerLifecycleListener.TOPIC,
             object : OpenCodeServerLifecycleListener {
-                override fun stateChanged(state: OpenCodeServerLifecycleState) {
+                override fun stateChanged(state: OpenCodeServerLifecycleState, backendId: String) {
+                    if (backendId != serverManager.backendId) return
                     ApplicationManager.getApplication().invokeLater {
                         if (isContentDisposed()) return@invokeLater
                         if (!shouldApplyPublishedLifecycleState(state, serverManager.getLifecycleState())) return@invokeLater
@@ -1031,7 +1035,7 @@ class OpenCodeWebToolWindowContent(
      */
     fun resetOpenCodeWebState() {
         if (isContentDisposed()) return
-        OpenCodeSettingsState.getInstance().openCodeLocalStorageSnapshot = "{}"
+        OpenCodeSettingsState.getInstance().setLocalStorageSnapshot(serverManager.backendId, "{}")
         val serverUrl = serverManager.getServerUrl()
         if (serverUrl != null && isBrowserOnOpenCodeServerPage(serverUrl)) {
             browser.cefBrowser.executeJavaScript(
@@ -1792,6 +1796,7 @@ class OpenCodeWebToolWindowContent(
         startupErrorPanel.showFailure(
             OpenCodeSettingsState.getInstance().executablePath(),
             serverManager.getServerLogFile(),
+            offerAutomaticPort = serverManager.offersHostPortControls,
         )
         showCenterCard(ERROR_CARD)
     }

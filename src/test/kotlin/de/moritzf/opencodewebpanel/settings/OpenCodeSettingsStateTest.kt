@@ -1,6 +1,8 @@
 package de.moritzf.opencodewebpanel.settings
 
+import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class OpenCodeSettingsStateTest {
@@ -222,6 +224,42 @@ class OpenCodeSettingsStateTest {
         settings.loadState(OpenCodeSettingsState().apply { openCodeLocalStorageSnapshot = "not-json" })
 
         assertEquals("{}", settings.openCodeLocalStorageSnapshot)
+    }
+
+    @Test
+    fun nativeLocalStorageApiWritesExistingField() {
+        val settings = OpenCodeSettingsState()
+        settings.setLocalStorageSnapshot(OpenCodeServerBackend.NATIVE_ID, """{"a":1}""")
+        assertEquals("""{"a":1}""", settings.openCodeLocalStorageSnapshot)
+        assertEquals("""{"a":1}""", settings.localStorageSnapshot())
+        assertEquals("""{"a":1}""", settings.localStorageSnapshot(OpenCodeServerBackend.NATIVE_ID))
+    }
+
+    @Test
+    fun backendLocalStorageSnapshotIsKeyedSeparately() {
+        val settings = OpenCodeSettingsState()
+        settings.setLocalStorageSnapshot("sbx:abc", """{"x":1}""")
+        assertEquals("{}", settings.localStorageSnapshot())
+        assertEquals("""{"x":1}""", settings.localStorageSnapshot("sbx:abc"))
+        settings.setLocalStorageSnapshot("sbx:abc", "{}")
+        assertFalse(settings.openCodeLocalStorageSnapshotsByBackend.containsKey("sbx:abc"))
+    }
+
+    @Test
+    fun backendLocalStorageMapDropsNativeKeyAndInvalidJson() {
+        val settings = OpenCodeSettingsState()
+        settings.loadState(
+            OpenCodeSettingsState().apply {
+                openCodeLocalStorageSnapshotsByBackend = hashMapOf(
+                    OpenCodeServerBackend.NATIVE_ID to """{"leak":true}""",
+                    "sbx:bad" to "not-json",
+                    "sbx:ok" to """{"ok":true}""",
+                )
+            },
+        )
+        assertFalse(settings.openCodeLocalStorageSnapshotsByBackend.containsKey(OpenCodeServerBackend.NATIVE_ID))
+        assertEquals("{}", settings.localStorageSnapshot("sbx:bad"))
+        assertEquals("""{"ok":true}""", settings.localStorageSnapshot("sbx:ok"))
     }
 
     @Test

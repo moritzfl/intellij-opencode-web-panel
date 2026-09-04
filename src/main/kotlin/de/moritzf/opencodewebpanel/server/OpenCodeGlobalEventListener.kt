@@ -13,6 +13,7 @@ data class OpenCodeGlobalEvent(
     val type: String,
     val recordId: String,
     val properties: JsonObject,
+    val backendId: String = OpenCodeServerBackend.NATIVE_ID,
 )
 
 /**
@@ -27,7 +28,7 @@ interface OpenCodeGlobalEventListener {
      * while disconnected are lost, so consumers holding reduced state must re-seed it from
      * the REST API when this fires.
      */
-    fun connected() {}
+    fun connected(backendId: String) {}
 
     fun eventReceived(event: OpenCodeGlobalEvent)
 

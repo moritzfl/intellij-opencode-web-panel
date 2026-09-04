@@ -1,5 +1,7 @@
 package de.moritzf.opencodewebpanel
 
+import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
+import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleListener
 import de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager
@@ -37,6 +39,21 @@ class OpenCodePluginTest : BasePlatformTestCase() {
         assertSame(SharedOpenCodeServerManager.getInstance(), SharedOpenCodeServerManager.getInstance())
     }
 
+    fun testOpenCodeServerBackendRegistryIsApplicationScoped() {
+        assertSame(OpenCodeServerBackendRegistry.getInstance(), OpenCodeServerBackendRegistry.getInstance())
+    }
+
+    fun testHostRuntimeReturnsSameNativeBackendForDifferentDirectories() {
+        val registry = OpenCodeServerBackendRegistry.getInstance()
+        val first = registry.backendForCanonicalDirectory("/tmp/project-a")
+        val second = registry.backendForCanonicalDirectory("/tmp/project-b")
+        assertSame(first, second)
+        assertSame(SharedOpenCodeServerManager.getInstance(), first)
+        assertEquals(OpenCodeServerBackend.NATIVE_ID, first.backendId)
+        assertSame(registry.nativeBackend(), registry.backend(OpenCodeServerBackend.NATIVE_ID))
+        assertSame(registry.backendFor(project), registry.nativeBackend())
+    }
+
     fun testPluginDescriptorRegistersRightSidebarToolWindowAndSharedServerManager() {
         val pluginXml = javaClass.classLoader.getResource("META-INF/plugin.xml")!!.readText()
 
@@ -50,6 +67,7 @@ class OpenCodePluginTest : BasePlatformTestCase() {
         assertTrue(pluginXml.contains("factoryClass=\"de.moritzf.opencodewebpanel.toolWindow.OpenCodeWebToolWindowFactoryImpl\""))
         assertTrue(pluginXml.contains("applicationService"))
         assertTrue(pluginXml.contains("serviceImplementation=\"de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager\""))
+        assertTrue(pluginXml.contains("serviceImplementation=\"de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry\""))
         assertTrue(pluginXml.contains("applicationConfigurable"))
         assertTrue(pluginXml.contains("instance=\"de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable\""))
         assertTrue(pluginXml.contains("projectConfigurable"))
@@ -184,7 +202,7 @@ class OpenCodePluginTest : BasePlatformTestCase() {
         connection.subscribe(
             OpenCodeServerLifecycleListener.TOPIC,
             object : OpenCodeServerLifecycleListener {
-                override fun stateChanged(state: OpenCodeServerLifecycleState) {
+                override fun stateChanged(state: OpenCodeServerLifecycleState, backendId: String) {
                     if (state != OpenCodeServerLifecycleState.RESTARTING) return
                     restartingPublished.countDown()
                     assertTrue(releasePublication.await(5, TimeUnit.SECONDS))

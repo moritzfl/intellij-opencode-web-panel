@@ -16,8 +16,9 @@ import com.intellij.openapi.ui.MessageDialogBuilder
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.wm.ToolWindowManager
+import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
+import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState
-import de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager
 import de.moritzf.opencodewebpanel.server.isOpenCodePageReloadEnabled
 import de.moritzf.opencodewebpanel.server.isOpenCodeServerStopEnabled
 import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsConfigurable
@@ -58,7 +59,7 @@ internal class OpenCodeNewSessionAction : DumbAwareAction(
 
     override fun update(e: AnActionEvent) {
         val content = openCodePanelContent(e)
-        val serverUrl = SharedOpenCodeServerManager.getInstance().getServerUrl()
+        val serverUrl = openCodeBackend(e.project).getServerUrl()
         e.presentation.isEnabled = content != null &&
             OpenCodeBrowserShortcutHandler.isCommandAvailable(
                 OpenCodeBrowserCommand.NEW_SESSION,
@@ -167,7 +168,7 @@ internal class OpenCodeRestartServerAction : DumbAwareAction(
     }
 
     override fun update(e: AnActionEvent) {
-        val state = SharedOpenCodeServerManager.getInstance().getLifecycleState()
+        val state = openCodeBackend(e.project).getLifecycleState()
         e.presentation.isEnabled = state != OpenCodeServerLifecycleState.STARTING &&
             state != OpenCodeServerLifecycleState.RESTARTING
         e.presentation.description = "Restart the shared server and recover a stuck panel."
@@ -183,11 +184,11 @@ internal class OpenCodeStopServerAction : DumbAwareAction(
 ) {
     override fun actionPerformed(e: AnActionEvent) {
         if (!confirmOpenCodeServerStop(e.project)) return
-        SharedOpenCodeServerManager.getInstance().stopServer()
+        openCodeBackend(e.project).stopServer()
     }
 
     override fun update(e: AnActionEvent) {
-        val state = SharedOpenCodeServerManager.getInstance().getLifecycleState()
+        val state = openCodeBackend(e.project).getLifecycleState()
         e.presentation.isEnabled = isOpenCodeServerStopEnabled(state)
         e.presentation.description = "Stop the shared server. It will not auto-restart."
     }
@@ -206,7 +207,7 @@ internal class OpenCodeReloadPageAction : DumbAwareAction(
 
     override fun update(e: AnActionEvent) {
         e.presentation.isEnabled = e.project != null &&
-            isOpenCodePageReloadEnabled(SharedOpenCodeServerManager.getInstance().getLifecycleState())
+            isOpenCodePageReloadEnabled(openCodeBackend(e.project).getLifecycleState())
         e.presentation.description = "Reload the page. The server stays running."
     }
 
@@ -263,7 +264,7 @@ private fun openCodePanelContent(e: AnActionEvent): OpenCodeWebToolWindowContent
  * proceeds without a prompt.
  */
 internal fun confirmOpenCodeServerRestart(project: Project?): Boolean {
-    if (SharedOpenCodeServerManager.getInstance().getLifecycleState() != OpenCodeServerLifecycleState.RUNNING) return true
+    if (openCodeBackend(project).getLifecycleState() != OpenCodeServerLifecycleState.RUNNING) return true
     return MessageDialogBuilder.yesNo(
         "Restart OpenCode Server",
         "The OpenCode server is shared by all open projects. " +
@@ -276,7 +277,7 @@ internal fun confirmOpenCodeServerRestart(project: Project?): Boolean {
 }
 
 internal fun confirmOpenCodeServerStop(project: Project?): Boolean {
-    val state = SharedOpenCodeServerManager.getInstance().getLifecycleState()
+    val state = openCodeBackend(project).getLifecycleState()
     if (!isOpenCodeServerStopEnabled(state)) return true
     val consequence = when (state) {
         OpenCodeServerLifecycleState.RUNNING ->
@@ -367,7 +368,7 @@ internal class OpenCodeViewServerLogAction : DumbAwareAction(
 
     override fun update(e: AnActionEvent) {
         e.presentation.isEnabled = e.project != null &&
-            SharedOpenCodeServerManager.getInstance().getServerLogFile() != null
+            openCodeBackend(e.project).getServerLogFile() != null
         e.presentation.description = "Open the server log in the editor."
     }
 
@@ -390,13 +391,17 @@ internal class OpenCodeOpenSettingsAction : DumbAwareAction(
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 }
 
+internal fun openCodeBackend(project: Project?): OpenCodeServerBackend {
+    return OpenCodeServerBackendRegistry.getInstance().backendFor(project)
+}
+
 internal fun openOpenCodeServerLogInEditor(project: Project) {
-    val file = SharedOpenCodeServerManager.getInstance().getServerLogFile() ?: return
+    val file = openCodeBackend(project).getServerLogFile() ?: return
     runCatching {
         val virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(file) ?: return
         OpenFileDescriptor(project, virtualFile).navigate(true)
     }.onFailure { error ->
-        Logger.getInstance(SharedOpenCodeServerManager::class.java)
+        Logger.getInstance(OpenCodeServerBackendRegistry::class.java)
             .warn("Could not open OpenCode server log: ${error.message}")
     }
 }

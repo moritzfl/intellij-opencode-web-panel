@@ -5,6 +5,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.util.Alarm
 import de.moritzf.opencodewebpanel.server.OpenCodeGlobalEvent
 import de.moritzf.opencodewebpanel.server.OpenCodeGlobalEventListener
+import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.server.objectMember
 import de.moritzf.opencodewebpanel.server.stringMember
@@ -32,13 +33,15 @@ internal class OpenCodeWorkspaceRefreshCoordinator(
     private val clockMillis: () -> Long = { System.currentTimeMillis() },
     debounceMillis: Long = DEFAULT_DEBOUNCE_MILLIS,
     maxWaitMillis: Long = DEFAULT_MAX_WAIT_MILLIS,
+    private val backendId: () -> String = { OpenCodeServerBackend.NATIVE_ID },
 ) : OpenCodeGlobalEventListener {
 
     private val lock = Any()
     private val debouncer = RefreshDebouncer(debounceMillis, maxWaitMillis)
     private val alarm = Alarm(Alarm.ThreadToUse.POOLED_THREAD, parentDisposable)
 
-    override fun connected() {
+    override fun connected(backendId: String) {
+        if (backendId != this.backendId()) return
         // Events that occurred while the stream was disconnected are lost, so a commit or edit may
         // have landed unseen; schedule one (debounced) refresh to catch up.
         requestRefresh()
