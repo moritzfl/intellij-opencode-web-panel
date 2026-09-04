@@ -32,6 +32,8 @@ import java.util.concurrent.atomic.AtomicLong
 import javax.imageio.ImageIO
 import javax.swing.JComponent
 import javax.swing.TransferHandler
+import org.cef.callback.CefDragData
+import org.cef.handler.CefDragHandler
 import org.cef.handler.CefKeyboardHandler.CefKeyEvent
 import org.cef.handler.CefKeyboardHandler.CefKeyEvent.EventType
 import org.cef.handler.CefKeyboardHandlerAdapter
@@ -167,6 +169,7 @@ internal class OpenCodeFileDropHandler(
     fun isResultChannelAvailable(): Boolean = dropResultQuery.isAvailable
 
     fun install() {
+        installDragHandler()
         val handler = object : TransferHandler() {
             override fun canImport(support: TransferSupport): Boolean {
                 if (!OpenCodeSettingsState.getInstance().enableChatFileDrop) return false
@@ -221,6 +224,28 @@ internal class OpenCodeFileDropHandler(
         component.components
             .filterIsInstance<JComponent>()
             .forEach { installTransferHandler(it, handler) }
+    }
+
+    private fun installDragHandler() {
+        val handler = object : CefDragHandler {
+            override fun onDragEnter(
+                cefBrowser: org.cef.browser.CefBrowser?,
+                dragData: CefDragData?,
+                mask: Int,
+            ): Boolean {
+                // macOS screenshot drags sometimes arrive as a CEF-native drag (file
+                // promise) instead of going through the Swing TransferHandler. A native
+                // OSR drop leaves Chromium holding focus while macOS has no key window ->
+                // IDE typing dies. Returning `true` forwards the drag to the embedded
+                // component's Swing TransferHandler so the existing restore path always
+                // runs.
+                return true
+            }
+        }
+        browser.jbCefClient.addDragHandler(handler, browser.cefBrowser)
+        Disposer.register(parentDisposable) {
+            browser.jbCefClient.removeDragHandler(handler, browser.cefBrowser)
+        }
     }
 
     private fun installPasteKeyboardHandler() {
@@ -301,9 +326,38 @@ internal class OpenCodeFileDropHandler(
         val owner = currentFocusOwner()
         if (afterDropShouldRestoreBrowserFocus(owner != null && isBrowserFocusOwner(owner), owner == null)) {
             KeyboardFocusManager.getCurrentKeyboardFocusManager().clearGlobalFocusOwner()
-            browser.component.requestFocusInWindow()
-            browser.cefBrowser.setFocus(true)
+            // Briefly route focus to a non-browser Swing ancestor before returning to the
+            // browser. A pure `requestFocusInWindow()` on the browser component is a no-op
+            // when JCEF's OSR component still owns Swing focus (the transition never fires),
+            // which leaves Chromium's IME bound while macOS lost the key window. Moving
+            // focus away once and back produces a real transition and lets JBCef re-attach
+            // its IME peer.
+            val awayTarget = findFocusRoundTripTarget()
+            if (awayTarget != null) {
+                awayTarget.requestFocusInWindow()
+                ApplicationManager.getApplication().invokeLater {
+                    if (isDisposed()) return@invokeLater
+                    browser.component.requestFocusInWindow()
+                    browser.cefBrowser.setFocus(true)
+                }
+            } else {
+                browser.component.requestFocusInWindow()
+                browser.cefBrowser.setFocus(true)
+            }
         }
+    }
+
+    /**
+     * Returns a nearby non-browser Swing component that can receive focus so the browser
+     * component experiences a real focus transition. Skipping the round trip leaves a
+     * stale IME peer attached after a macOS screenshot drop (IDE-wide typing freeze). The
+     * tool-window root panel is used when available; otherwise the top-level ancestor's
+     * focus traversal root.
+     */
+    private fun findFocusRoundTripTarget(): java.awt.Component? {
+        val parent = browser.component.parent
+        if (parent != null && parent.isShowing) return parent
+        return browser.component.topLevelAncestor?.takeIf { it.isShowing }
     }
 
     private fun shouldSuppressBrowserPaste(): Boolean {
