@@ -4,6 +4,17 @@
 
 ## [Unreleased]
 
+## [1.13.9] - 2026-09-04
+
+### Fixed
+
+- Dropping a fresh screenshot from the macOS screenshot overlay into chat no longer freezes
+  typing across the IDE. The drop already went through the Swing transfer path; the focus
+  restore afterwards used to be a no-op on the still-focused browser component, leaving the
+  JCEF IME peer half-detached. Focus now takes a real round trip through the tool-window
+  panel before returning to the browser, and CEF-native drags are forwarded to the Swing
+  handler so the same restore always runs.
+
 ## [1.13.8] - 2026-09-03
 
 ### Fixed
@@ -731,7 +742,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.13.8...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.13.9...HEAD
+[1.13.9]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.13.8...1.13.9
 [1.13.8]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.13.7...1.13.8
 [1.13.7]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.13.6...1.13.7
 [1.13.6]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.13.5...1.13.6
