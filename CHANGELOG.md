@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Opening a chat file or code reference no longer surfaces a JetBrains Next Edit
+  classloader `ClassCastException` as an OpenCode Web Panel error. Navigation still
+  uses `OpenFileDescriptor`; editor-listener failures from other plugins are logged
+  and ignored.
+
+
 ## [1.13.9] - 2026-09-04
 
 ### Fixed

@@ -4,7 +4,9 @@ import com.intellij.ide.BrowserUtil
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.ReadAction
+import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
+import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
@@ -43,8 +45,8 @@ internal class OpenCodeIdeNavigation(
             val virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(target.path)
                 ?: return@executeOnPooledThread
             ApplicationManager.getApplication().invokeLater {
-                if (project.isDisposed || requestGeneration != fileLinkRequestGeneration.get()) return@invokeLater
-                OpenFileDescriptor(project, virtualFile, target.line ?: -1, target.column ?: -1).navigate(true)
+                if (requestGeneration != fileLinkRequestGeneration.get()) return@invokeLater
+                navigateToEditor(virtualFile, target.line, target.column)
             }
         }
     }
@@ -68,18 +70,28 @@ internal class OpenCodeIdeNavigation(
             val directVirtualFile = resolveCodeReferencePath(parsed, bases)
             if (directVirtualFile != null) {
                 ApplicationManager.getApplication().invokeLater {
-                    if (project.isDisposed) return@invokeLater
-                    OpenFileDescriptor(project, directVirtualFile, parsed.line ?: -1, parsed.column ?: -1).navigate(true)
+                    navigateToEditor(directVirtualFile, parsed.line, parsed.column)
                 }
                 return@executeOnPooledThread
             }
             ReadAction.nonBlocking<VirtualFile?> {
                 resolveCodeReferenceFileName(parsed, GlobalSearchScope.projectScope(project))
             }.finishOnUiThread(ModalityState.defaultModalityState()) { virtualFile ->
-                if (project.isDisposed || virtualFile == null) return@finishOnUiThread
-                OpenFileDescriptor(project, virtualFile, parsed.line ?: -1, parsed.column ?: -1).navigate(true)
+                if (virtualFile == null) return@finishOnUiThread
+                navigateToEditor(virtualFile, parsed.line, parsed.column)
             }.coalesceBy(coalesceKey)
                 .submit(AppExecutorUtil.getAppExecutorService())
+        }
+    }
+
+    private fun navigateToEditor(virtualFile: VirtualFile, line: Int?, column: Int?) {
+        if (project.isDisposed) return
+        try {
+            OpenFileDescriptor(project, virtualFile, line ?: -1, column ?: -1).navigate(true)
+        } catch (e: ProcessCanceledException) {
+            throw e
+        } catch (e: Exception) {
+            thisLogger().warn("Could not open ${virtualFile.path} in the IDE", e)
         }
     }
 
