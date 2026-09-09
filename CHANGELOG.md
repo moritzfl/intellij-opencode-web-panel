@@ -17,6 +17,11 @@
   classloader `ClassCastException` as an OpenCode Web Panel error. Navigation still
   uses `OpenFileDescriptor`; editor-listener failures from other plugins are logged
   and ignored.
+- A failed lazy chunk import (`Failed to fetch dynamically imported module`, e.g.
+  `new-session-*.js` after a server restart) no longer leaves the error page stuck
+  until a manual reload. Recovery still signals once from the page, but it no longer
+  waits on `requestAnimationFrame` (hidden JCEF never runs it), still recovers when
+  the host port changed, and reloads bypassing Chromium's cached HTML.
 
 
 ## [1.13.9] - 2026-09-04

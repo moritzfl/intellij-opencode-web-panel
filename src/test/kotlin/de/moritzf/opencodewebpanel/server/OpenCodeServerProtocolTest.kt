@@ -1123,11 +1123,15 @@ class OpenCodeServerProtocolTest {
         // import() failures surface as the "dynamically imported module" message the boundary shows.
         // Solid's error boundary often catches the rejected lazy() promise, so the same engine
         // text is scanned from the error-page details field (textarea/input value).
+        // Hidden JCEF does not run requestAnimationFrame; scans use setTimeout instead.
         assertTrue(script.contains("addEventListener('error'"))
         assertTrue(script.contains("addEventListener('unhandledrejection'"))
         assertTrue(script.contains("target.tagName === 'SCRIPT'"))
         assertTrue(script.contains("failed to fetch dynamically imported module"))
-        assertTrue(script.contains("querySelectorAll('textarea, input')"))
+        assertTrue(script.contains("querySelectorAll('textarea, input, [data-slot=\"input-input\"]')"))
+        assertTrue(script.contains("setTimeout"))
+        assertTrue(script.contains("visibilitychange"))
+        assertFalse(script.contains("requestAnimationFrame"))
         assertTrue(script.contains("assets"))
         assertFalse(script.contains("location.reload"))
     }

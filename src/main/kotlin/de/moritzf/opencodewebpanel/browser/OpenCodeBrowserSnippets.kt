@@ -1176,10 +1176,11 @@ internal object OpenCodeBrowserSnippets {
      * before the SPA bundle (`onLoadStart`/document-start), because a boot chunk can already be
      * the failing one. Errors are delivered through capture-phase `error` (module-script src)
      * and `unhandledrejection` (uncaught `import()`). Solid's error boundary often *catches*
-     * the rejected lazy() promise, so those events never fire — the same TypeError is then
-     * copied into the error-page details field (engine text, not a localized label). A cheap
-     * rAF-debounced scan of textarea/input values covers that path. Every page gets at most
-     * one signal.
+     * the rejected lazy() promise (route chunks such as `new-session-*.js`), so those events
+     * never fire — the same TypeError is then copied into the error-page details field (engine
+     * text, not a localized label). Scan that field with `setTimeout` retries: `requestAnimationFrame`
+     * does not run in a hidden JCEF tool window, and Kobalte may assign `textarea.value` after
+     * the first frame. Every page gets at most one signal.
      */
     fun buildChunkLoadRecoveryScript(enabled: Boolean, fatalCallback: String?): String? {
         if (!enabled || fatalCallback == null) return null
@@ -1221,27 +1222,41 @@ internal object OpenCodeBrowserSnippets {
                 const text = textOf(event.reason);
                 if (isChunkFailure(text)) notify(text);
               }, true);
-              let scanQueued = false;
+              const fieldText = (el) => {
+                if (!el) return '';
+                if (typeof el.value === 'string' && el.value) return el.value;
+                if (typeof el.textContent === 'string') return el.textContent;
+                return '';
+              };
               const scanErrorPage = () => {
-                scanQueued = false;
                 if (notified) return;
-                const fields = document.querySelectorAll('textarea, input');
+                const fields = document.querySelectorAll('textarea, input, [data-slot="input-input"]');
                 for (let i = 0; i < fields.length; i += 1) {
-                  const value = fields[i] && fields[i].value;
-                  if (typeof value === 'string' && isChunkFailure(value)) {
+                  const value = fieldText(fields[i]);
+                  if (isChunkFailure(value)) {
                     notify(value);
                     return;
                   }
                 }
               };
+              let scanQueued = false;
               const queueScan = () => {
                 if (notified || scanQueued) return;
                 scanQueued = true;
-                window.requestAnimationFrame(scanErrorPage);
+                setTimeout(scanErrorPage, 0);
+                setTimeout(scanErrorPage, 50);
+                setTimeout(() => {
+                  scanQueued = false;
+                  scanErrorPage();
+                }, 250);
+                setTimeout(scanErrorPage, 1000);
               };
               observer = new MutationObserver(queueScan);
               const root = document.documentElement || document;
               observer.observe(root, { childList: true, subtree: true });
+              document.addEventListener('visibilitychange', () => {
+                if (!document.hidden) scanErrorPage();
+              });
               queueScan();
             })();
         """

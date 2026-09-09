@@ -590,7 +590,12 @@ class OpenCodeWebToolWindowContent(
                 if (isContentDisposed()) return@invokeLater
                 if (!OpenCodeSettingsState.getInstance().recoverFailedChunkLoads) return@invokeLater
                 val serverUrl = serverManager.getServerUrl() ?: return@invokeLater
-                if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)) return@invokeLater
+                val pageUrl = browser.cefBrowser.url
+                val onLiveOrigin = OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, pageUrl)
+                val loadedOrigin = loadedServerRootUrl
+                val onLoadedOrigin = loadedOrigin != null &&
+                    OpenCodeServerProtocol.isOpenCodeServerPage(loadedOrigin, pageUrl)
+                if (!onLiveOrigin && !onLoadedOrigin) return@invokeLater
                 if (pageLoadChunkFailureGeneration.incrementAndGet() != 1L) return@invokeLater
                 thisLogger().warn("OpenCode page raised a failed chunk import ($payload); verifying server health")
                 serverManager.verifyServerNow(
@@ -1121,7 +1126,7 @@ class OpenCodeWebToolWindowContent(
             beginPageLoad(browser.cefBrowser.url)
             ensureCefBrowser()
             loadAfterDocumentStartScripts(serverUrl) {
-                browser.cefBrowser.reload()
+                browser.cefBrowser.reloadIgnoreCache()
                 armPageLoadWatchdog(serverUrl)
             }
         } else {
