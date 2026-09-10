@@ -219,7 +219,7 @@ class SbxOpenCodeServerBackendTest {
     }
 
     @Test
-    fun failedVmStopDoesNotSignalSuccessfulHandoff() {
+    fun failedVmStopStillSignalsHandoff() {
         behavior = { command ->
             when (command[1]) {
                 "ls" -> listed()
@@ -229,7 +229,7 @@ class SbxOpenCodeServerBackendTest {
         }
         backend.stopServer { calls += "stopped callback" }
         drain()
-        assertEquals(listOf("ls", "stop"), calls.toList())
+        assertEquals(listOf("ls", "stop", "stopped callback"), calls.toList())
         assertEquals(OpenCodeServerLifecycleState.FAILED, backend.getLifecycleState())
         assertTrue(backend.startFailureMessage()!!.contains("vm still running"))
     }
@@ -339,10 +339,24 @@ class SbxOpenCodeServerBackendTest {
     @Test
     fun stopOfAnAlreadyStoppedVmNeverExecs() {
         behavior = { listed("stopped") }
-        backend.stopServer()
+        val stopped = CountDownLatch(1)
+        backend.stopServer { stopped.countDown() }
+        assertTrue(stopped.await(5, TimeUnit.SECONDS))
         drain()
         assertEquals(listOf("ls"), calls.toList())
     }
+
+    @Test
+    fun failedStopStillInvokesOnStopped() {
+        behavior = { SbxCommandResult(9, "ls failed") }
+        val stopped = CountDownLatch(1)
+        backend.stopServer { stopped.countDown() }
+        assertTrue(stopped.await(5, TimeUnit.SECONDS))
+        drain()
+        assertEquals(listOf("ls"), calls.toList())
+    }
+
+
 
     @Test
     fun healthyPublishedUrlSkipsDeadMappingsAndUsesALaterPort() {

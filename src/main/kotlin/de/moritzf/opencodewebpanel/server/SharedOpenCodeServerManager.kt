@@ -336,6 +336,7 @@ class SharedOpenCodeServerManager(
             stopResourcesAsync(resources, onStopped)
         } catch (e: Exception) {
             thisLogger().error("Error stopping OpenCode server: ${e.message}")
+            onStopped()
         }
     }
 

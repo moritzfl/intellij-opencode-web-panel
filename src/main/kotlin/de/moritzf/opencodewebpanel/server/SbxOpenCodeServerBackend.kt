@@ -302,10 +302,12 @@ internal class SbxOpenCodeServerBackend(
             allowHealthRestart = false
             // Enqueue while holding the same lock as Start. A later Start cannot overtake this stop.
             lifecycleExecutor.execute {
-                if (stopOwnedServe(stopVm = true)) {
+                try {
+                    if (!stopOwnedServe(stopVm = true)) {
+                        setLifecycleState(OpenCodeServerLifecycleState.FAILED)
+                    }
+                } finally {
                     onStopped()
-                } else {
-                    setLifecycleState(OpenCodeServerLifecycleState.FAILED)
                 }
             }
             // Publish only after enqueue: a synchronous lifecycle subscriber may request Start.
