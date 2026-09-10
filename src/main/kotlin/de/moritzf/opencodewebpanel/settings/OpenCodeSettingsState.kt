@@ -28,6 +28,7 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
     var enableChatFileDrop: Boolean = true
     var forceCompactLayout: Boolean = true
     var hideWebsiteButton: Boolean = true
+    var fasterPathHoverPreview: Boolean = true
     var syncThemeWithIde: Boolean = true
     var suppressProjectSwitchPrompts: Boolean = true
     var mirrorBrowserCursor: Boolean = true
@@ -59,6 +60,7 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
         enableChatFileDrop = state.enableChatFileDrop
         forceCompactLayout = state.forceCompactLayout
         hideWebsiteButton = state.hideWebsiteButton
+        fasterPathHoverPreview = state.fasterPathHoverPreview
         syncThemeWithIde = state.syncThemeWithIde
         suppressProjectSwitchPrompts = state.suppressProjectSwitchPrompts
         mirrorBrowserCursor = state.mirrorBrowserCursor

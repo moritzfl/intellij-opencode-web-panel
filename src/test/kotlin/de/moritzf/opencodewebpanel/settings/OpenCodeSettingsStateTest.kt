@@ -140,6 +140,20 @@ class OpenCodeSettingsStateTest {
     }
 
     @Test
+    fun fasterPathHoverPreviewIsEnabledByDefault() {
+        assertEquals(true, OpenCodeSettingsState().fasterPathHoverPreview)
+    }
+
+    @Test
+    fun fasterPathHoverPreviewLoadsPersistedValue() {
+        val settings = OpenCodeSettingsState()
+
+        settings.loadState(OpenCodeSettingsState().apply { fasterPathHoverPreview = false })
+
+        assertEquals(false, settings.fasterPathHoverPreview)
+    }
+
+    @Test
     fun syncThemeWithIdeIsEnabledByDefault() {
         assertEquals(true, OpenCodeSettingsState().syncThemeWithIde)
     }

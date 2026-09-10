@@ -112,6 +112,9 @@ MARKERS=(
   'layout.page'
   # hide-website button (buildHideWebsiteButtonScript)
   'https://opencode.ai'
+  # path hover preview (buildPathHoverPreviewScript)
+  'session-tab-popover-trigger'
+  'home-project-row'
 )
 
 MISSING=0

@@ -968,6 +968,26 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun buildPathHoverPreviewScriptIsMissingWhenDisabled() {
+        assertNull(OpenCodeBrowserSnippets.buildPathHoverPreviewScript(enabled = false))
+    }
+
+    @Test
+    fun buildPathHoverPreviewScriptShortensTabDelayAndOverlaysProjectRows() {
+        val script = OpenCodeBrowserSnippets.buildPathHoverPreviewScript(enabled = true)!!
+
+        assertTrue(script.contains("window.__opencodeIntellijPathHoverPreviewInstalled"))
+        assertTrue(script.contains("session-tab-popover-trigger"))
+        assertTrue(script.contains("home-project-row"))
+        assertTrue(script.contains("opencode.global.dat:server"))
+        assertTrue(script.contains("const TAB_DELAY = ${OpenCodeBrowserSnippets.OPENCODE_TAB_POPOVER_OPEN_DELAY_MILLIS}"))
+        assertTrue(script.contains("const PREVIEW_DELAY = ${OpenCodeBrowserSnippets.PATH_HOVER_PREVIEW_DELAY_MILLIS}"))
+        assertTrue(script.contains("data-opencode-intellij-path-preview"))
+        assertTrue(script.contains("querySelectorAll(PROJECT_ROW)"))
+        assertFalse(script.contains("Projects"))
+    }
+
+    @Test
     fun buildEventStreamWatchdogScriptIsMissingWhenDisabled() {
         assertNull(OpenCodeBrowserSnippets.buildEventStreamWatchdogScript(enabled = false))
     }

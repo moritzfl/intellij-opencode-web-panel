@@ -15,6 +15,12 @@ internal object OpenCodeBrowserSnippets {
     /** Page-side heartbeat cadence; the JVM watchdog treats several missed beats as a stall. */
     const val RENDERER_HEARTBEAT_INTERVAL_MILLIS = 5_000
 
+    /** OpenCode session-tab popover (`titlebar-tab-popover` `OPEN_DELAY`). */
+    const val OPENCODE_TAB_POPOVER_OPEN_DELAY_MILLIS = 2_000
+
+    /** Panel hover delay for that popover and the injected project-row path preview. */
+    const val PATH_HOVER_PREVIEW_DELAY_MILLIS = 250
+
     /** Floor that keeps a misconfigured timeout from reconnect-looping through normal heartbeats. */
     const val MIN_EVENT_STREAM_STALL_TIMEOUT_MILLIS = 15_000
 
@@ -967,6 +973,187 @@ internal object OpenCodeBrowserSnippets {
               const root = document.documentElement || document;
               observer.observe(root, { childList: true, subtree: true });
               document.addEventListener('DOMContentLoaded', ensureStyle, { once: true });
+            })();
+        """
+        return script.trimIndent()
+    }
+
+    /**
+     * Shortens OpenCode's session-tab path popover (Kobalte `openDelay` 2000ms) to
+     * [PATH_HOVER_PREVIEW_DELAY_MILLIS], and adds the same styled preview on home project rows
+     * so duplicate display names still show distinct worktrees.
+     *
+     * Tab delay: Kobalte schedules `window.setTimeout(..., 2000)` when the pointer enters
+     * `[data-component="session-tab-popover-trigger"]`. The skip-window path uses 0 and is left
+     * alone. Project rows (`[data-component="home-project-row"]`) do not put the worktree in the
+     * DOM; the overlay maps row order onto `opencode.global.dat:server` `projects` and skips when
+     * counts do not match (name matching cannot disambiguate duplicates). The overlay reuses
+     * OpenCode's `session-tab-popover` slots so it picks up the page CSS. Must be removable by
+     * reload (safeguard); the builder returns null when disabled.
+     */
+    fun buildPathHoverPreviewScript(enabled: Boolean): String? {
+        if (!enabled) return null
+        val tabDelay = OPENCODE_TAB_POPOVER_OPEN_DELAY_MILLIS
+        val previewDelay = PATH_HOVER_PREVIEW_DELAY_MILLIS
+        @Language("JavaScript")
+        val script = """
+            (() => {
+              if (window.__opencodeIntellijPathHoverPreviewInstalled) return;
+              window.__opencodeIntellijPathHoverPreviewInstalled = true;
+              const TAB_DELAY = $tabDelay;
+              const PREVIEW_DELAY = $previewDelay;
+              const TAB_TRIGGER = '[data-component="session-tab-popover-trigger"]';
+              const PROJECT_ROW = '[data-component="home-project-row"]';
+              const nativeSetTimeout = window.setTimeout.bind(window);
+              const nativeClearTimeout = window.clearTimeout.bind(window);
+              if (typeof window.setTimeout === 'function') {
+                window.setTimeout = function(handler, timeout) {
+                  let delay = timeout;
+                  if (delay === TAB_DELAY) {
+                    try {
+                      if (document.querySelector(TAB_TRIGGER + ':hover')) delay = PREVIEW_DELAY;
+                    } catch (_) {}
+                  }
+                  const rest = [handler, delay];
+                  for (let index = 2; index < arguments.length; index += 1) rest.push(arguments[index]);
+                  return nativeSetTimeout.apply(window, rest);
+                };
+              }
+              $DECODE_ROUTE_DIRECTORY_JS
+              const prettyPath = (worktree) => {
+                if (typeof worktree !== 'string' || !worktree) return '';
+                let next = worktree.replace(/\\/g, '/');
+                next = next.replace(/^[A-Za-z]:\/Users\/[^/]+/i, '~');
+                next = next.replace(/^\/Users\/[^/]+/, '~');
+                next = next.replace(/^\/home\/[^/]+/, '~');
+                return next;
+              };
+              const projectNameFromRow = (row) => {
+                const label = row.querySelector('span');
+                const text = ((label && label.textContent) || row.textContent || '').trim();
+                return text;
+              };
+              const worktreesMatchingRowCount = (rowCount) => {
+                try {
+                  const parsed = JSON.parse(window.localStorage.getItem('opencode.global.dat:server') || '{}');
+                  const projects = parsed && parsed.projects;
+                  if (!projects || typeof projects !== 'object') return [];
+                  const arrays = [];
+                  if (Array.isArray(projects.local)) arrays.push(projects.local);
+                  Object.keys(projects).forEach((key) => {
+                    if (key === 'local') return;
+                    if (Array.isArray(projects[key])) arrays.push(projects[key]);
+                  });
+                  const treesOf = (items) => items.map((item) => item && item.worktree).filter((value) => typeof value === 'string' && value);
+                  for (let index = 0; index < arrays.length; index += 1) {
+                    const trees = treesOf(arrays[index]);
+                    if (trees.length === rowCount) return trees;
+                  }
+                  const all = [];
+                  arrays.forEach((items) => { treesOf(items).forEach((value) => all.push(value)); });
+                  if (all.length === rowCount) return all;
+                } catch (_) {}
+                return [];
+              };
+              const pathForProjectRow = (row) => {
+                const encoded = row.getAttribute('data-project');
+                if (encoded) {
+                  const decoded = decodeRouteDirectory(encoded);
+                  if (decoded) return decoded;
+                }
+                const rows = document.querySelectorAll(PROJECT_ROW);
+                const trees = worktreesMatchingRowCount(rows.length);
+                if (!trees.length) return '';
+                const index = Array.prototype.indexOf.call(rows, row);
+                if (index < 0 || index >= trees.length) return '';
+                return trees[index];
+              };
+              let overlay = null;
+              const hidePopover = () => {
+                if (!overlay) return;
+                if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+                overlay = null;
+              };
+              const showPopover = (anchor, title, path) => {
+                hidePopover();
+                if (!path) return;
+                const pop = document.createElement('div');
+                pop.setAttribute('data-component', 'session-tab-popover');
+                pop.setAttribute('data-opencode-intellij-path-preview', '');
+                const themeRoot = anchor.closest('[data-theme]') || document.documentElement;
+                const theme = themeRoot && themeRoot.getAttribute && themeRoot.getAttribute('data-theme');
+                if (theme) pop.setAttribute('data-theme', theme);
+                pop.style.position = 'fixed';
+                pop.style.zIndex = '50';
+                pop.style.pointerEvents = 'none';
+                const header = document.createElement('div');
+                header.setAttribute('data-slot', 'header');
+                if (title) {
+                  const titleEl = document.createElement('span');
+                  titleEl.setAttribute('data-slot', 'title');
+                  titleEl.textContent = title;
+                  header.appendChild(titleEl);
+                }
+                pop.appendChild(header);
+                const row = document.createElement('div');
+                row.setAttribute('data-slot', 'row');
+                const detail = document.createElement('span');
+                detail.setAttribute('data-slot', 'detail');
+                detail.textContent = path;
+                row.appendChild(detail);
+                pop.appendChild(row);
+                document.body.appendChild(pop);
+                overlay = pop;
+                const rect = anchor.getBoundingClientRect();
+                const size = pop.getBoundingClientRect();
+                let left = rect.left;
+                let top = rect.bottom + 6;
+                if (top + size.height > window.innerHeight - 8) top = Math.max(8, rect.top - size.height - 6);
+                if (left + size.width > window.innerWidth - 8) left = Math.max(8, window.innerWidth - size.width - 8);
+                if (left < 8) left = 8;
+                pop.style.left = left + 'px';
+                pop.style.top = top + 'px';
+              };
+              const projectRowFrom = (node) => {
+                if (!node || !node.closest) return null;
+                return node.closest(PROJECT_ROW);
+              };
+              let hoverTimer = 0;
+              let hoverRow = null;
+              const cancelHover = (row) => {
+                if (row && hoverRow !== row) return;
+                hoverRow = null;
+                if (hoverTimer) {
+                  nativeClearTimeout(hoverTimer);
+                  hoverTimer = 0;
+                }
+                hidePopover();
+              };
+              const scheduleHover = (row) => {
+                if (hoverRow === row) return;
+                cancelHover();
+                hoverRow = row;
+                hoverTimer = nativeSetTimeout(() => {
+                  hoverTimer = 0;
+                  if (hoverRow !== row) return;
+                  showPopover(row, projectNameFromRow(row), prettyPath(pathForProjectRow(row)));
+                }, PREVIEW_DELAY);
+              };
+              document.addEventListener('pointerover', (event) => {
+                const row = projectRowFrom(event.target);
+                if (row) scheduleHover(row);
+              }, true);
+              document.addEventListener('pointerout', (event) => {
+                const row = projectRowFrom(event.target);
+                if (!row) return;
+                if (projectRowFrom(event.relatedTarget) === row) return;
+                cancelHover(row);
+              }, true);
+              document.addEventListener('pointerdown', () => cancelHover(), true);
+              document.addEventListener('scroll', () => cancelHover(), true);
+              document.addEventListener('keydown', (event) => {
+                if (event.key === 'Escape') cancelHover();
+              }, true);
             })();
         """
         return script.trimIndent()

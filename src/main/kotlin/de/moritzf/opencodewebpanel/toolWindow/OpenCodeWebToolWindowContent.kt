@@ -266,6 +266,10 @@ class OpenCodeWebToolWindowContent(
         enabledInSettings = { OpenCodeSettingsState.getInstance().hideWebsiteButton },
         buildScript = { OpenCodeBrowserSnippets.buildHideWebsiteButtonScript(enabled = true) },
     )
+    private val pathHoverPreviewFeature = EarlyInjectedFeature(
+        enabledInSettings = { OpenCodeSettingsState.getInstance().fasterPathHoverPreview },
+        buildScript = { OpenCodeBrowserSnippets.buildPathHoverPreviewScript(enabled = true) },
+    )
     private val eventStreamWatchdogFeature = EarlyInjectedFeature(
         enabledInSettings = { OpenCodeSettingsState.getInstance().recoverStalledEventStream },
         buildScript = { OpenCodeBrowserSnippets.buildEventStreamWatchdogScript(enabled = true) },
@@ -299,6 +303,7 @@ class OpenCodeWebToolWindowContent(
         openProjectSeedFeature,
         matchMediaPatchFeature,
         hideWebsiteButtonFeature,
+        pathHoverPreviewFeature,
         eventStreamWatchdogFeature,
         chunkLoadRecoveryFeature,
     )
@@ -762,6 +767,7 @@ class OpenCodeWebToolWindowContent(
                         }
                         OpenCodeUiSetting.COMPACT_LAYOUT -> applyCompactLayout()
                         OpenCodeUiSetting.HIDE_WEBSITE_BUTTON -> applyHideWebsiteButton()
+                        OpenCodeUiSetting.PATH_HOVER_PREVIEW -> applyPathHoverPreview()
                         OpenCodeUiSetting.IDE_THEME_SYNC -> applyIdeThemeSync(enabled)
                         OpenCodeUiSetting.PROJECT_SWITCH_PROMPT_SUPPRESSION -> applyFeature(projectSwitchPromptSuppressionFeature, enabled)
                         OpenCodeUiSetting.BROWSER_CURSOR_MIRROR -> applyFeature(cursorMirrorFeature, enabled)
@@ -1722,6 +1728,10 @@ class OpenCodeWebToolWindowContent(
         // Off → reload so listeners/stylesheets are fully removed (safeguard contract).
         // On → reload so early inject runs before SPA chrome mounts.
         reloadForEarlyFeatureToggle(hideWebsiteButtonFeature)
+    }
+
+    private fun applyPathHoverPreview() {
+        reloadForEarlyFeatureToggle(pathHoverPreviewFeature)
     }
 
     private fun forceEventStreamReconnect() {

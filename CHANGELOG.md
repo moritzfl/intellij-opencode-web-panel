@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+### Added
+
+- Session tab path previews appear after 250ms instead of OpenCode's 2s
+  delay. Home project rows get the same path preview so duplicate names
+  stay distinguishable. Disable under Browser Appearance if an OpenCode
+  update clashes with the overlay.
+
 ### Fixed
 
 - Opening a chat file or code reference no longer surfaces a JetBrains Next Edit
