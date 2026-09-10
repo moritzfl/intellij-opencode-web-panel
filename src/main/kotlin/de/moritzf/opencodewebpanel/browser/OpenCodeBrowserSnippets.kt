@@ -984,8 +984,11 @@ internal object OpenCodeBrowserSnippets {
      * so duplicate display names still show distinct worktrees.
      *
      * Tab delay: Kobalte schedules `window.setTimeout(..., 2000)` when the pointer enters
-     * `[data-component="session-tab-popover-trigger"]`. The skip-window path uses 0 and is left
-     * alone. Project rows (`[data-component="home-project-row"]`) do not put the worktree in the
+     * `[data-component="session-tab-popover-trigger"]`. The clamp applies only to two-argument
+     * 2000ms timers scheduled within a short window of such a pointerenter, so unrelated page
+     * timers with the same 2000ms delay (copy-state reset, typewriter cursor) are untouched;
+     * the skip-window path uses 0 and is left alone. Project rows
+     * (`[data-component="home-project-row"]`) do not put the worktree in the
      * DOM; the overlay maps row order onto `opencode.global.dat:server` `projects` and skips when
      * counts do not match (name matching cannot disambiguate duplicates). The overlay reuses
      * OpenCode's `session-tab-popover` slots so it picks up the page CSS. Must be removable by
@@ -1006,12 +1009,29 @@ internal object OpenCodeBrowserSnippets {
               const PROJECT_ROW = '[data-component="home-project-row"]';
               const nativeSetTimeout = window.setTimeout.bind(window);
               const nativeClearTimeout = window.clearTimeout.bind(window);
+              // Kobalte schedules its hover open-delay synchronously inside the trigger's
+              // pointerenter handler; clamping any 2000ms timer while a trigger happens to be
+              // hovered would also clamp unrelated page timers (copy-state reset, typewriter
+              // cursor). Only timers scheduled within this window of a trigger pointerenter
+              // are Kobalte's open-delay.
+              const ENTER_CLAMP_WINDOW_MILLIS = 100;
+              let tabTriggerEnteredAt = -1;
+              document.addEventListener('pointerenter', (event) => {
+                const target = event.target;
+                if (target && target.closest && target.closest(TAB_TRIGGER)) {
+                  tabTriggerEnteredAt = Date.now();
+                }
+              }, true);
               if (typeof window.setTimeout === 'function') {
                 window.setTimeout = function(handler, timeout) {
                   let delay = timeout;
-                  if (delay === TAB_DELAY) {
+                  if (delay === TAB_DELAY && arguments.length === 2) {
                     try {
-                      if (document.querySelector(TAB_TRIGGER + ':hover')) delay = PREVIEW_DELAY;
+                      if (tabTriggerEnteredAt >= 0 &&
+                          Date.now() - tabTriggerEnteredAt <= ENTER_CLAMP_WINDOW_MILLIS &&
+                          document.querySelector(TAB_TRIGGER + ':hover')) {
+                        delay = PREVIEW_DELAY;
+                      }
                     } catch (_) {}
                   }
                   const rest = [handler, delay];
@@ -1180,7 +1200,9 @@ internal object OpenCodeBrowserSnippets {
      * never fire — the same TypeError is then copied into the error-page details field (engine
      * text, not a localized label). Scan that field with `setTimeout` retries: `requestAnimationFrame`
      * does not run in a hidden JCEF tool window, and Kobalte may assign `textarea.value` after
-     * the first frame. Every page gets at most one signal.
+     * the first frame. Only readOnly fields count as the error page: editable inputs can hold
+     * the same pasted engine text, and reloading a healthy session out from under the user is
+     * worse than missing the scan. Every page gets at most one signal.
      */
     fun buildChunkLoadRecoveryScript(enabled: Boolean, fatalCallback: String?): String? {
         if (!enabled || fatalCallback == null) return null
@@ -1228,11 +1250,18 @@ internal object OpenCodeBrowserSnippets {
                 if (typeof el.textContent === 'string') return el.textContent;
                 return '';
               };
+              // Solid's error boundary renders the engine text into a readOnly details field.
+              // Editable inputs (settings forms, the chat composer's textareas) can legitimately
+              // contain the same words when a user types or pastes them — a reload out of a healthy
+              // session. Only readOnly fields can be the error page.
+              const isReadOnlyField = (el) => !!(el && (el.readOnly === true || el.hasAttribute('readonly') || el.disabled === true));
               const scanErrorPage = () => {
                 if (notified) return;
                 const fields = document.querySelectorAll('textarea, input, [data-slot="input-input"]');
                 for (let i = 0; i < fields.length; i += 1) {
-                  const value = fieldText(fields[i]);
+                  const el = fields[i];
+                  if (!isReadOnlyField(el)) continue;
+                  const value = fieldText(el);
                   if (isChunkFailure(value)) {
                     notify(value);
                     return;

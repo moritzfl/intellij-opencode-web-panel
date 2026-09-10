@@ -1023,6 +1023,11 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("const PREVIEW_DELAY = ${OpenCodeBrowserSnippets.PATH_HOVER_PREVIEW_DELAY_MILLIS}"))
         assertTrue(script.contains("data-opencode-intellij-path-preview"))
         assertTrue(script.contains("querySelectorAll(PROJECT_ROW)"))
+        // Only Kobalte's pointerenter-scheduled 2000ms timer is clamped; unrelated page timers
+        // with the same delay (copy-state reset, typewriter cursor) must keep their timing.
+        assertTrue(script.contains("arguments.length === 2"))
+        assertTrue(script.contains("ENTER_CLAMP_WINDOW_MILLIS"))
+        assertTrue(script.contains("pointerenter"))
         assertFalse(script.contains("Projects"))
     }
 
@@ -1163,11 +1168,13 @@ class OpenCodeServerProtocolTest {
         // Solid's error boundary often catches the rejected lazy() promise, so the same engine
         // text is scanned from the error-page details field (textarea/input value).
         // Hidden JCEF does not run requestAnimationFrame; scans use setTimeout instead.
+        // Only readOnly fields are scanned: editable inputs can hold pasted engine text.
         assertTrue(script.contains("addEventListener('error'"))
         assertTrue(script.contains("addEventListener('unhandledrejection'"))
         assertTrue(script.contains("target.tagName === 'SCRIPT'"))
         assertTrue(script.contains("failed to fetch dynamically imported module"))
         assertTrue(script.contains("querySelectorAll('textarea, input, [data-slot=\"input-input\"]')"))
+        assertTrue(script.contains("isReadOnlyField"))
         assertTrue(script.contains("setTimeout"))
         assertTrue(script.contains("visibilitychange"))
         assertFalse(script.contains("requestAnimationFrame"))
