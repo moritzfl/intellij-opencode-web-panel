@@ -6,18 +6,23 @@
 
 ### Added
 
-- Session tab path previews appear after 250ms instead of OpenCode's 2s
-  delay. Home project rows get the same path preview so duplicate names
-  stay distinguishable. Disable under Browser Appearance if an OpenCode
-  update clashes with the overlay.
-- Optional Docker Sandboxes (`sbx`) runtime: one sandbox per project
-  directory, with `opencode serve` inside the VM published to host loopback.
-  Native Host CLI remains the default. Project `opencode-sbx/opencode-sbx.yaml`
-  is the source of truth. Apply writes `./opencode-sbx/opencode-sbx.sh` so
-  teammates can run `--web`, `--cli`, or `--acp` without the IDE. The launcher
-  never invents a server password. Provider keys stay on the host. Sessions can
-  persist across Reset. Invalid YAML fails closed instead of silently switching
-  to Host CLI.
+- Optional Docker Sandboxes (`sbx`) runtime. One sandbox per project directory;
+  native Host CLI remains the default and is also one `opencode serve` per
+  project. Project `opencode-sbx/opencode-sbx.yaml` is the source of truth
+  (runtime, port, mounts, kits). Apply writes `./opencode-sbx/opencode-sbx.sh`
+  so a teammate can run `--web`, `--cli`, or `--acp` without the IDE (Git Bash
+  on Windows; no `.cmd` wrapper). The launcher never invents a server password.
+  Provider keys stay on the host. Host OpenCode config can be mounted
+  read-only. `protectSandboxFiles` overlays `opencode-sbx/` and other local kit
+  directories read-only. Sessions can persist across Reset in a plugin data
+  directory. Apply previews live vs restart vs recreate; create-time drift is
+  labeled pending until Reset. The tool-window strip shows start stage, elapsed
+  time, Cancel, and recovery. Invalid YAML fails closed.
+
+- Session tab path previews appear after 250ms instead of OpenCode's 2s delay.
+  Home project rows get the same path overlay so duplicate names stay
+  distinguishable. Disable under Browser Appearance if an OpenCode update
+  clashes with the overlay.
 
 ### Fixed
 
@@ -27,9 +32,13 @@
   and ignored.
 - A failed lazy chunk import (`Failed to fetch dynamically imported module`, e.g.
   `new-session-*.js` after a server restart) no longer leaves the error page stuck
-  until a manual reload. Recovery still signals once from the page, but it no longer
-  waits on `requestAnimationFrame` (hidden JCEF never runs it), still recovers when
-  the host port changed, and reloads bypassing Chromium's cached HTML.
+  until a manual reload.
+- The recovery strip ticks elapsed time, dismisses on renderer heartbeat, and
+  hides after the page has painted.
+- Panel replacement waits for Chromium and registers page callbacks before the
+  first document. Unanswered basic-auth challenges are cancelled so Chromium
+  does not show a login dialog. Without a restorable session, boot on OpenCode
+  Home rather than the empty id-less session shell.
 
 
 ## [1.13.9] - 2026-09-04
