@@ -48,6 +48,61 @@ class SbxOpencodeConfigOverlayTest {
     }
 
     @Test
+    fun rewriteLoopbackUrlKeepsHttps() {
+        assertEquals(
+            "https://host.docker.internal:9443/mcp",
+            SbxOpencodeConfigOverlay.rewriteLoopbackUrl("https://localhost:9443/mcp"),
+        )
+        assertEquals(
+            "http://host.docker.internal:9999/sse",
+            SbxOpencodeConfigOverlay.rewriteLoopbackUrl("http://127.0.0.1:9999/sse"),
+        )
+        assertNull(SbxOpencodeConfigOverlay.rewriteLoopbackUrl("ftp://localhost/mcp"))
+    }
+
+    @Test
+    fun readHostConfigPrefersJsonThenJsonc() {
+        val root = java.nio.file.Files.createTempDirectory("opencode-overlay-config")
+        try {
+            val jsonc = root.resolve("opencode.jsonc")
+            java.nio.file.Files.writeString(
+                jsonc,
+                """
+                {
+                  // loopback MCP
+                  "mcp": { "other": { "type": "remote", "url": "http://127.0.0.1:9999/sse" } }
+                }
+                """.trimIndent(),
+            )
+            val overlay = SbxOpencodeConfigOverlay.buildContent(
+                shareHostConfig = true,
+                ideaMcpPort = null,
+                hostConfigJson = SbxOpencodeConfigOverlay.readHostConfig(
+                    jsonPath = root.resolve("missing.json"),
+                    jsoncPath = jsonc,
+                ),
+            )
+            assertTrue(overlay!!.contains("host.docker.internal:9999"))
+            java.nio.file.Files.writeString(
+                root.resolve("opencode.json"),
+                """{"mcp":{"other":{"type":"remote","url":"http://127.0.0.1:1111/sse"}}}""",
+            )
+            val jsonWins = SbxOpencodeConfigOverlay.buildContent(
+                shareHostConfig = true,
+                ideaMcpPort = null,
+                hostConfigJson = SbxOpencodeConfigOverlay.readHostConfig(
+                    jsonPath = root.resolve("opencode.json"),
+                    jsoncPath = jsonc,
+                ),
+            )
+            assertTrue(jsonWins!!.contains("host.docker.internal:1111"))
+            assertFalse(jsonWins.contains(":9999"))
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
     fun fileBasedConfigIsNotReplayedAsInlineOverrides() {
         assertNull(SbxOpencodeConfigOverlay.buildContent(
             shareHostConfig = true,

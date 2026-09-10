@@ -135,6 +135,13 @@ internal data class SbxLaunchSpec(
                     lists[key] = ArrayList()
                     continue
                 }
+                if (value.startsWith("[")) {
+                    val items = parseFlowSequence(value) ?: return null
+                    lists[key] = items.map { item ->
+                        if (key == "kits") SbxCli.posixPath(item) else item
+                    }.toMutableList()
+                    continue
+                }
                 values[key] = unquote(value)
             }
             val directory = values["canonicalDirectory"]?.trim().orEmpty()
@@ -358,11 +365,15 @@ internal data class SbxLaunchSpec(
         private fun stripYamlComment(line: String): String {
             var quote: Char? = null
             var escaped = false
-            for ((index, char) in line.withIndex()) {
+            var index = 0
+            while (index < line.length) {
+                val char = line[index]
                 if (escaped) {
                     escaped = false
                 } else if (quote == '"' && char == '\\') {
                     escaped = true
+                } else if (quote == '\'' && char == '\'' && index + 1 < line.length && line[index + 1] == '\'') {
+                    index++
                 } else if (quote != null) {
                     if (char == quote) quote = null
                 } else if ((char == '\'' || char == '"') && (index == 0 || line[index - 1].isWhitespace() || line[index - 1] == ':')) {
@@ -370,8 +381,51 @@ internal data class SbxLaunchSpec(
                 } else if (char == '#' && (index == 0 || line[index - 1].isWhitespace())) {
                     return line.substring(0, index)
                 }
+                index++
             }
             return line
+        }
+
+        private fun parseFlowSequence(value: String): List<String>? {
+            val trimmed = value.trim()
+            if (trimmed == "[]") return emptyList()
+            if (!trimmed.startsWith("[") || !trimmed.endsWith("]")) return null
+            val inner = trimmed.substring(1, trimmed.length - 1)
+            val items = ArrayList<String>()
+            val current = StringBuilder()
+            var quote: Char? = null
+            var escaped = false
+            var index = 0
+            while (index < inner.length) {
+                val char = inner[index]
+                if (escaped) {
+                    current.append(char)
+                    escaped = false
+                } else if (quote == '"' && char == '\\') {
+                    current.append(char)
+                    escaped = true
+                } else if (quote == '\'' && char == '\'' && index + 1 < inner.length && inner[index + 1] == '\'') {
+                    current.append("''")
+                    index++
+                } else if (quote != null) {
+                    current.append(char)
+                    if (char == quote) quote = null
+                } else if (char == '\'' || char == '"') {
+                    quote = char
+                    current.append(char)
+                } else if (char == ',') {
+                    val item = unquote(current.toString().trim())
+                    if (item.isNotBlank()) items += item
+                    current.clear()
+                } else {
+                    current.append(char)
+                }
+                index++
+            }
+            if (quote != null) return null
+            val last = unquote(current.toString().trim())
+            if (last.isNotBlank()) items += last
+            return items
         }
 
         private fun appendStringList(out: StringBuilder, key: String, values: List<String>) {

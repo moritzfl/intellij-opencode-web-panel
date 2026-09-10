@@ -17,6 +17,8 @@ internal object SbxOpencodeConfigOverlay {
 
     fun hostConfigPath(): Path = hostConfigDir().resolve("opencode.json")
 
+    fun hostConfigJsoncPath(): Path = hostConfigDir().resolve("opencode.jsonc")
+
     fun hostDataDir(): Path {
         val base = System.getenv("XDG_DATA_HOME")?.takeIf { it.isNotBlank() }
             ?: Path.of(System.getProperty("user.home"), ".local", "share").toString()
@@ -79,24 +81,81 @@ internal object SbxOpencodeConfigOverlay {
 
     fun rewriteLoopbackUrl(url: String): String? {
         val uri = runCatching { URI(url) }.getOrNull() ?: return null
+        val scheme = uri.scheme?.lowercase() ?: return null
+        if (scheme != "http" && scheme != "https" && scheme != "ws" && scheme != "wss") return null
         val host = uri.host?.lowercase() ?: return null
         if (host != "127.0.0.1" && host != "localhost" && host != "::1") return null
         val port = if (uri.port > 0) ":${uri.port}" else ""
         val path = uri.rawPath.orEmpty()
         val query = uri.rawQuery?.let { "?$it" }.orEmpty()
-        return "http://host.docker.internal$port$path$query"
+        return "$scheme://host.docker.internal$port$path$query"
     }
 
-    private fun readHostConfig(): String? {
-        val path = hostConfigPath()
-        if (!Files.isRegularFile(path)) return null
-        return runCatching { Files.readString(path) }.getOrNull()
+    internal fun readHostConfig(
+        jsonPath: Path = hostConfigPath(),
+        jsoncPath: Path = hostConfigJsoncPath(),
+    ): String? {
+        jsonPath.takeIf { Files.isRegularFile(it) }?.let { path ->
+            runCatching { Files.readString(path) }.getOrNull()?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
+        }
+        jsoncPath.takeIf { Files.isRegularFile(it) }?.let { path ->
+            runCatching { Files.readString(path) }.getOrNull()?.trim()?.takeIf { it.isNotEmpty() }?.let { return stripJsonc(it) }
+        }
+        return null
+    }
+
+    internal fun stripJsonc(text: String): String {
+        val out = StringBuilder(text.length)
+        var index = 0
+        var inString = false
+        var escaped = false
+        while (index < text.length) {
+            val char = text[index]
+            if (inString) {
+                out.append(char)
+                if (escaped) {
+                    escaped = false
+                } else if (char == '\\') {
+                    escaped = true
+                } else if (char == '"') {
+                    inString = false
+                }
+                index++
+                continue
+            }
+            if (char == '"') {
+                inString = true
+                out.append(char)
+                index++
+                continue
+            }
+            if (char == '/' && index + 1 < text.length) {
+                when (text[index + 1]) {
+                    '/' -> {
+                        index += 2
+                        while (index < text.length && text[index] != '\n') index++
+                        continue
+                    }
+                    '*' -> {
+                        index += 2
+                        while (index + 1 < text.length && !(text[index] == '*' && text[index + 1] == '/')) index++
+                        index = (index + 2).coerceAtMost(text.length)
+                        continue
+                    }
+                }
+            }
+            out.append(char)
+            index++
+        }
+        return out.toString()
     }
 
     private fun parseObject(json: String?): JsonObject? {
         if (json.isNullOrBlank()) return null
         return runCatching { JsonParser.parseString(json) }.getOrNull()
             ?.takeIf { it.isJsonObject }?.asJsonObject
+            ?: runCatching { JsonParser.parseString(stripJsonc(json)) }.getOrNull()
+                ?.takeIf { it.isJsonObject }?.asJsonObject
     }
 
     private fun ideaMcpObject(port: Int): JsonObject {

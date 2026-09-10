@@ -41,6 +41,8 @@
   the same VM, and only relinks persist data when that path is a workspace of
   this VM. Relative extra mounts are canonicalized before `link_mount`. Windows
   drive paths are treated as absolute. `--init --acp` writes setup text to stderr.
+- Sandbox specs accept flow-style `kits: […]` and keep `#` inside doubled single
+  quotes. Shared MCP overlays read `opencode.jsonc` and keep the original URL scheme.
 - Panel replacement waits for Chromium and registers page callbacks before the
   first document. Unanswered basic-auth challenges are cancelled so Chromium
   does not show a login dialog. Without a restorable session, boot on OpenCode

@@ -269,6 +269,44 @@ class SbxLaunchSpecTest {
     }
 
     @Test
+    fun parseYamlReadsFlowStyleKits() {
+        val parsed = SbxLaunchSpec.parseYaml(
+            """
+            schemaVersion: 1
+            canonicalDirectory: /tmp/project
+            kits: [./network-kit, "git+https://example.com/kit.git#ref=v1"]
+            """.trimIndent(),
+        )
+        assertEquals(listOf("./network-kit", "git+https://example.com/kit.git#ref=v1"), parsed!!.kits)
+    }
+
+    @Test
+    fun parseYamlKeepsQuotedHashAfterDoubledSingleQuotes() {
+        val parsed = SbxLaunchSpec.parseYaml(
+            """
+            schemaVersion: 1
+            canonicalDirectory: /tmp/project
+            kits:
+              - './kit ''quoted'' #1'
+            """.trimIndent(),
+        )
+        assertEquals(listOf("./kit 'quoted' #1"), parsed!!.kits)
+    }
+
+    @Test
+    fun parseYamlRejectsUnclosedFlowList() {
+        assertNull(
+            SbxLaunchSpec.parseYaml(
+                """
+                schemaVersion: 1
+                canonicalDirectory: /tmp/project
+                kits: [./network-kit
+                """.trimIndent(),
+            ),
+        )
+    }
+
+    @Test
     fun portArgumentMissingYamlUsesFallback() {
         val root = Files.createTempDirectory("opencode-sbx-noport")
         try {
