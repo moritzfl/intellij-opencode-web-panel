@@ -34,6 +34,12 @@ interface OpenCodeServerBackend {
 
     fun getServerUrl(): String?
     fun getServerPassword(): String?
+    /**
+     * Last origin that may receive Basic auth. Survives stop/restart so a parked
+     * JCEF document does not 401 into Chromium's login dialog.
+     */
+    fun getAuthServerUrl(): String? = getServerUrl()
+    fun getAuthPassword(): String? = getServerPassword()
     fun getServerVersion(): String?
     fun getLifecycleState(): OpenCodeServerLifecycleState
     fun getServerGeneration(): Long

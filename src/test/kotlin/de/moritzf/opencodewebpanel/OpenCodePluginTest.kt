@@ -220,6 +220,9 @@ class OpenCodePluginTest : BasePlatformTestCase() {
         assertNull(service.getServerProcess())
         assertNull(service.getServerUrl())
         assertNull(service.getServerPassword())
+        assertTrue(service.isServerReadyForAuth())
+        assertEquals("http://127.0.0.1:60482", service.getAuthServerUrl())
+        assertEquals("secret-password", service.getAuthPassword())
     }
 
     fun testStopCannotBeOvertakenByReservedHealthRestartPublication() {

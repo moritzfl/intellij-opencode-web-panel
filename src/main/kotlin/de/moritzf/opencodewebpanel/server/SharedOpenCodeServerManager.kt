@@ -65,6 +65,8 @@ class SharedOpenCodeServerManager(
     private var serverProcess: Process? = null
     private var serverUrl: String? = null
     private var serverPassword: String? = null
+    private var authServerUrl: String? = null
+    private var authServerPassword: String? = null
     private var serverVersion: String? = null
     private var unsupportedVersionWarningShownFor: String? = null
     private var embeddedProtocol = OpenCodeEmbeddedProtocol.UNKNOWN
@@ -189,12 +191,18 @@ class SharedOpenCodeServerManager(
     /**
      * Whether browser requests and auth challenges may use the current server credentials.
      *
-     * True when URL and password are known — independent of launcher process liveness, because
-     * on Windows the launcher exits after spawning the real server while the endpoint stays up.
+     * True when the last origin and password are known — independent of launcher process
+     * liveness and of live [getServerUrl], because stop/restart nulls the live URL while
+     * the parked JCEF page still retries. On Windows the launcher also exits after spawning
+     * the real server while the endpoint stays up.
      */
     override fun isServerReadyForAuth(): Boolean = synchronized(lock) {
-        !serverUrl.isNullOrBlank() && !serverPassword.isNullOrBlank()
+        !authServerUrl.isNullOrBlank() && !authServerPassword.isNullOrBlank()
     }
+
+    override fun getAuthServerUrl(): String? = synchronized(lock) { authServerUrl }
+
+    override fun getAuthPassword(): String? = synchronized(lock) { authServerPassword }
 
     /**
      * Verifies right now that the server responds. If it does, [onHealthy] runs on the EDT so the
@@ -313,6 +321,7 @@ class SharedOpenCodeServerManager(
             serverProcess = process
             serverUrl = url
             serverPassword = password
+            rememberBrowserAuth(url = url, password = password)
             checkScheduledFuture = checkFuture
         }
     }
@@ -437,6 +446,8 @@ class SharedOpenCodeServerManager(
                 startSequence++
                 starting = false
                 allowHealthRestart = false
+                authServerUrl = null
+                authServerPassword = null
                 pendingStarts.clear()
                 detachServerResources()
             }
@@ -945,6 +956,7 @@ class SharedOpenCodeServerManager(
             serverProcessDescendants = emptyList()
             serverUrl = null
             serverPassword = password
+            rememberBrowserAuth(password = password)
             serverGeneration++
             serverGenerationStartedAtMillis = System.currentTimeMillis()
             launcherExitNoticeLogged = false
@@ -963,6 +975,7 @@ class SharedOpenCodeServerManager(
         return synchronized(lock) {
             if (startId != startSequence) return@synchronized false
             serverUrl = url
+            rememberBrowserAuth(url = url)
             true
         }
     }
@@ -989,6 +1002,12 @@ class SharedOpenCodeServerManager(
             embeddedProtocol = OpenCodeEmbeddedProtocol.UNKNOWN
             serverProcessDescendants = emptyList()
         }
+    }
+
+    /** Caller holds [lock]. Live URL/password may be nulled on stop; this snapshot must not. */
+    private fun rememberBrowserAuth(url: String? = null, password: String? = null) {
+        if (!url.isNullOrBlank()) authServerUrl = url
+        if (!password.isNullOrBlank()) authServerPassword = password
     }
 
     private fun setLifecycleState(state: OpenCodeServerLifecycleState) {

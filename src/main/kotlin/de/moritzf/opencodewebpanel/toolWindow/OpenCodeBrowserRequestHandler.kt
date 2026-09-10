@@ -22,12 +22,13 @@ internal class OpenCodeBrowserRequestHandler(
 ) : CefRequestHandlerAdapter() {
     private val resourceRequestHandler = object : CefResourceRequestHandlerAdapter() {
         override fun onBeforeResourceLoad(browser: CefBrowser?, frame: CefFrame?, request: CefRequest?): Boolean {
-            val password = serverManager.getServerPassword() ?: return false
+            val password = serverManager.getAuthPassword() ?: serverManager.getServerPassword() ?: return false
             val requestUrl = request?.url ?: return false
-            // Gate on server readiness, not launcher process liveness: on Windows the launcher
-            // exits after spawning the real server while the HTTP endpoint stays up.
+            val origin = serverManager.getAuthServerUrl() ?: serverManager.getServerUrl()
+            // Gate on last-known origin+password, not live URL: stop/upgrade nulls getServerUrl()
+            // while the parked page still retries, which would 401 into Chromium's login dialog.
             if (serverManager.isServerReadyForAuth() &&
-                OpenCodeServerProtocol.shouldSendBasicAuthHeader(serverManager.getServerUrl(), requestUrl)
+                OpenCodeServerProtocol.shouldSendBasicAuthHeader(origin, requestUrl)
             ) {
                 request.setHeaderByName("Authorization", OpenCodeServerProtocol.buildBasicAuthHeader(password), true)
             }
@@ -93,8 +94,8 @@ internal class OpenCodeBrowserRequestHandler(
         scheme: String?,
         callback: CefAuthCallback?,
     ): Boolean {
-        val password = serverManager.getServerPassword()
-        val serverUrl = serverManager.getServerUrl()
+        val password = serverManager.getAuthPassword() ?: serverManager.getServerPassword()
+        val serverUrl = serverManager.getAuthServerUrl() ?: serverManager.getServerUrl()
         val ready = serverManager.isServerReadyForAuth()
         val reply = OpenCodeServerProtocol.replyToBasicAuthChallenge(isProxy, host, port, serverUrl, password, ready)
         thisLogger().info("jcef auth challenge host=$host port=$port proxy=$isProxy ready=$ready url=$serverUrl reply=$reply")
