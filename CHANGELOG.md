@@ -4,25 +4,31 @@
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-09-10
+
 ### Added
 
 - Optional Docker Sandboxes (`sbx`) runtime. One sandbox per project directory;
   native Host CLI remains the default and is also one `opencode serve` per
   project. Project `opencode-sbx/opencode-sbx.yaml` is the source of truth
-  (runtime, port, mounts, kits). Apply writes `./opencode-sbx/opencode-sbx.sh`
-  so a teammate can run `--web`, `--cli`, or `--acp` without the IDE (Git Bash
-  on Windows; no `.cmd` wrapper). The launcher never invents a server password.
-  Provider keys stay on the host. Host OpenCode config can be mounted
-  read-only. `protectSandboxFiles` overlays `opencode-sbx/` and other local kit
-  directories read-only. Sessions can persist across Reset in a plugin data
-  directory. Apply previews live vs restart vs recreate; create-time drift is
-  labeled pending until Reset. The tool-window strip shows start stage, elapsed
-  time, Cancel, and recovery. Invalid YAML fails closed.
+  (runtime, port, mounts, kits, including flow-style `kits: […]`). Apply writes
+  `./opencode-sbx/opencode-sbx.sh` so a teammate can run `--web`, `--cli`, or
+  `--acp` without the IDE (Git Bash on Windows; no `.cmd` wrapper). The launcher
+  never invents a server password. Provider keys stay on the host. Host OpenCode
+  config can be mounted read-only (`opencode.json` / `opencode.jsonc`).
+  `protectSandboxFiles` overlays `opencode-sbx/` and other local kit directories
+  read-only. Sessions persist across Reset in a plugin data directory (Windows
+  in-guest path `/c/Users/...`). Ownership is the persisted sandbox id. Apply
+  previews live vs restart vs recreate: port remap and kit append stay on the
+  running VM; memory/CPU/protect/persist apply at Reset; a runtime or directory
+  switch keeps the old VM. The tool-window strip shows start/restart stage,
+  elapsed time, Cancel, View log, and recovery (including sandbox upgrade).
+  Invalid YAML fails closed.
 
-- Session tab path previews appear after 250ms instead of OpenCode's 2s delay.
-  Home project rows get the same path overlay so duplicate names stay
-  distinguishable. Disable under Browser Appearance if an OpenCode update
-  clashes with the overlay.
+- Session tab path previews appear after 250ms instead of OpenCode's 2s delay
+  (the popover timer only; other page timers keep their delay). Home project
+  rows get the same path overlay so duplicate names stay distinguishable.
+  Disable under Browser Appearance if an OpenCode update clashes with the overlay.
 
 ### Changed
 
@@ -32,61 +38,21 @@
 
 ### Fixed
 
+- Opening a chat file or code reference no longer surfaces a JetBrains Next Edit
+  classloader `ClassCastException` as an OpenCode Web Panel error.
+- A failed lazy `new-session-*.js` chunk import no longer leaves OpenCode's error
+  page stuck until a manual reload (1.13.5 recovered other chunks; Solid's error
+  boundary swallowed this one).
+- Unanswered basic-auth challenges are cancelled so Chromium does not show a
+  login dialog. Without a restorable session, boot on OpenCode Home rather than
+  the empty id-less session shell.
 - Restarting (including sandbox Upgrade OpenCode) keeps the tool-window strip
   with Cancel, View log, elapsed time, and the last CLI line. Stage text no
-  longer draws over the buttons on a narrow panel. Stop still uses the idle
-  card.
+  longer draws over the buttons on a narrow panel.
 - Sandbox `opencode upgrade` streams into the server log and strip instead of
   buffering until exit.
 - JCEF Basic auth keeps the last origin/password after stop so a parked page
   does not 401 into Chromium's login dialog.
-- Opening a chat file or code reference no longer surfaces a JetBrains Next Edit
-  classloader `ClassCastException` as an OpenCode Web Panel error. Navigation still
-  uses `OpenFileDescriptor`; editor-listener failures from other plugins are logged
-  and ignored.
-- A failed lazy chunk import (`Failed to fetch dynamically imported module`, e.g.
-  `new-session-*.js` after a server restart) no longer leaves the error page stuck
-  until a manual reload.
-- The recovery strip ticks elapsed time, dismisses on renderer heartbeat, and
-  hides after the page has painted.
-- A failed sandbox stop still finishes Apply, so Host ↔ Docker Sandbox switches
-  restart the panel instead of leaving it bound to the previous runtime.
-- The colleague launcher only removes a sandbox when name and workspace belong to
-  the same VM, and only relinks persist data when that path is a workspace of
-  this VM. Relative extra mounts are canonicalized before `link_mount`. Windows
-  drive paths are treated as absolute. `--init --acp` writes setup text to stderr.
-- Sandbox specs accept flow-style `kits: […]` and keep `#` inside doubled single
-  quotes. Shared MCP overlays read `opencode.jsonc` and keep the original URL scheme.
-- Flow-style `kits` with more than one item parse identically in the plugin and
-  the colleague launcher: items after a comma no longer keep their leading space,
-  so `--kit` receives the exact reference (a space would make `sbx` reject it).
-- Settings Apply previews the destination directory's spec on a directory
-  switch, not the old directory's, and no longer offers "Recreate" for a write
-  that only creates a fresh spec. A hand-written sandbox `name` no longer keeps
-  Apply permanently enabled.
-- The tab-preview delay clamp only applies to the popover's own pointer-enter
-  timer; other 2000ms page timers (copy-state reset, typewriter cursor) keep
-  their delay even while a tab trigger is hovered.
-- Chunk-load recovery scans only read-only fields: pasted engine text in an
-  editable input no longer reloads a healthy session.
-- Agent sound busy state is tracked per backend; restarting the Host CLI server
-  no longer clears or satisfies another backend's sessions.
-- Sandbox ownership is the persisted sandbox id. Extra protect/persist
-  workspaces no longer make a later `sbx ls` look foreign.
-- Apply keeps a running sandbox up for live port remap and kit append. Memory,
-  CPU, protect, and persist changes labeled "applies at Reset" no longer stop
-  the VM.
-- A create that cannot be listed is removed instead of leaving a nameless
-  conflict. Stop still finishes if the lifecycle worker has already shut down.
-- Persist/extra-mount symlinks inside the VM use the in-guest bind path
-  (`C:/Users/...` → `/c/Users/...`). Trailing commas in shared `opencode.jsonc`
-  no longer skip the MCP rewrite. Agent-idle REST uses the event's backend, not
-  the current yaml runtime. Chat-file open only swallows `ClassCastException`.
-- Panel replacement waits for Chromium and registers page callbacks before the
-  first document. Unanswered basic-auth challenges are cancelled so Chromium
-  does not show a login dialog. Without a restorable session, boot on OpenCode
-  Home rather than the empty id-less session shell.
-
 
 ## [1.13.9] - 2026-09-04
 
@@ -826,7 +792,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.13.9...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.0.0...HEAD
+[2.0.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.13.9...2.0.0
 [1.13.9]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.13.8...1.13.9
 [1.13.8]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.13.7...1.13.8
 [1.13.7]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.13.6...1.13.7
