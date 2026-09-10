@@ -43,6 +43,20 @@
   drive paths are treated as absolute. `--init --acp` writes setup text to stderr.
 - Sandbox specs accept flow-style `kits: […]` and keep `#` inside doubled single
   quotes. Shared MCP overlays read `opencode.jsonc` and keep the original URL scheme.
+- Flow-style `kits` with more than one item parse identically in the plugin and
+  the colleague launcher: items after a comma no longer keep their leading space,
+  so `--kit` receives the exact reference (a space would make `sbx` reject it).
+- Settings Apply previews the destination directory's spec on a directory
+  switch, not the old directory's, and no longer offers "Recreate" for a write
+  that only creates a fresh spec. A hand-written sandbox `name` no longer keeps
+  Apply permanently enabled.
+- The tab-preview delay clamp only applies to the popover's own pointer-enter
+  timer; other 2000ms page timers (copy-state reset, typewriter cursor) keep
+  their delay even while a tab trigger is hovered.
+- Chunk-load recovery scans only read-only fields: pasted engine text in an
+  editable input no longer reloads a healthy session.
+- Agent sound busy state is tracked per backend; restarting the Host CLI server
+  no longer clears or satisfies another backend's sessions.
 - Panel replacement waits for Chromium and registers page callbacks before the
   first document. Unanswered basic-auth challenges are cancelled so Chromium
   does not show a login dialog. Without a restorable session, boot on OpenCode
