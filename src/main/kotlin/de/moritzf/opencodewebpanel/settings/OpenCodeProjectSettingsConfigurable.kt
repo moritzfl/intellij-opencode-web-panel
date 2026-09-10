@@ -340,7 +340,12 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         val settings = OpenCodeProjectSettingsState.getInstance(project)
         val directoryChanged = selectedProjectDirectoryMode() != settings.projectDirectoryModeValue() ||
             projectDirectory() != settings.openCodeProjectDirectory
-        return directoryChanged || currentSpec() != loadedOrDefaultSpec()
+        if (directoryChanged) return true
+        val loaded = loadedOrDefaultSpec() ?: return false
+        val current = currentSpec() ?: return true
+        // `name` is derived from the directory and has no form field; a hand-written name in
+        // the spec must not keep Apply permanently enabled (every apply would rewrite it).
+        return current.adoptStoredName(loaded) != loaded
     }
 
     override fun apply() {
@@ -384,15 +389,20 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
             }
             else -> Unit
         }
-        val oldSpec = oldDirectory?.let { SbxLaunchSpec.load(it) }
         val spec = currentSpec()
             ?: throw ConfigurationException("Set an OpenCode project directory first.")
+        // The preview compares what will be written against the *destination's* current spec.
+        // Diffing the old directory's spec on a directory switch would report kit/mount changes
+        // that are really another project's settings, and offer "Recreate" for a write that only
+        // creates a fresh spec. Stopping the previous backend is decided by directoryChanged below.
+        val storedDestinationSpec = SbxLaunchSpec.load(spec.canonicalDirectory)
+        val canonicalOldDirectory = OpenCodeServerProtocol.canonicalOpenCodeDirectory(oldDirectory) ?: oldDirectory
         val preview = de.moritzf.opencodewebpanel.server.SbxApplyPreview.build(
             directory = spec.canonicalDirectory,
-            oldSpec = oldSpec,
+            oldSpec = storedDestinationSpec,
             newSpec = spec,
-            directoryChanged = oldDirectory != spec.canonicalDirectory,
-            portChanged = oldSpec?.hostPort != spec.hostPort,
+            directoryChanged = canonicalOldDirectory != null && canonicalOldDirectory != spec.canonicalDirectory,
+            portChanged = storedDestinationSpec?.hostPort != spec.hostPort,
             historyNote = sandboxSessionRetentionSummary(spec.canonicalDirectory),
         )
         if (preview.effect != de.moritzf.opencodewebpanel.server.SbxApplyEffect.NONE &&
@@ -409,7 +419,10 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         val registry = OpenCodeServerBackendRegistry.getInstance()
         // Resolve before saving useSandbox: afterwards the registry selects the new runtime.
         val oldBackend = registry.backendFor(project)
-        if (SbxLaunchSpec.persist(spec) == null) {
+        // Keep a hand-written sandbox name from the destination spec; only the derived default
+        // is refreshed from the (possibly changed) directory.
+        val specToPersist = storedDestinationSpec?.let { spec.adoptStoredName(it) } ?: spec
+        if (SbxLaunchSpec.persist(specToPersist) == null) {
             throw ConfigurationException("Could not save ${SbxLaunchSpec.PROJECT_SPEC_NAME}. Check the project directory permissions and IDE log.")
         }
         settings.projectDirectoryMode = nextMode.name
@@ -419,8 +432,15 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         fixedPortField.text = settings.fixedPort.toString()
         val newDirectory = settings.effectiveProjectDirectory(project.basePath)
         val directoryChanged = oldDirectory != newDirectory
-        val sandboxChanged = oldSpec != spec
-        if (directoryChanged || sandboxChanged) {
+        // Stop when the runtime selection flips (covers the first Apply, where no stored spec
+        // exists yet) or when same-directory settings change — the effective spec covers both
+        // the on-disk yaml and the XML port fallback of spec-less projects. A directory switch
+        // is covered by directoryChanged alone and must not depend on cross-project spec diffs.
+        val runtimeChanged = (oldBackend is SbxOpenCodeServerBackend) != spec.useSandbox
+        val effectivePreviousSpec = loadedOrDefaultSpec()
+        val sandboxSpecChanged = !directoryChanged &&
+            effectivePreviousSpec?.let { spec.adoptStoredName(it) != it } == true
+        if (directoryChanged || runtimeChanged || sandboxSpecChanged) {
             // Switching runtimes/directories must stop the previous process, not delete its sessions.
             val modality = ModalityState.defaultModalityState()
             oldBackend.stopServer {

@@ -59,6 +59,16 @@ internal data class SbxLaunchSpec(
         return out.toString()
     }
 
+    /**
+     * The sandbox `name` is derived from the directory and has no settings-UI field. Comparisons
+     * against a stored spec (isModified, stop-decisions) must not flag or overwrite a hand-written
+     * name: keep the stored one when it belongs to this directory.
+     */
+    fun adoptStoredName(stored: SbxLaunchSpec): SbxLaunchSpec {
+        if (stored.canonicalDirectory != canonicalDirectory) return this
+        return if (name == stored.name) this else copy(name = stored.name)
+    }
+
     companion object {
         const val SCHEMA_VERSION = 1
         const val CONFIG_DIR_ENV = "OCWP_CONFIG_DIR"

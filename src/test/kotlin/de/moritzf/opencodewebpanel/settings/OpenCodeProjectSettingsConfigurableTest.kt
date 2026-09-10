@@ -13,6 +13,7 @@ import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState
 import de.moritzf.opencodewebpanel.server.SbxExtraMount
 import de.moritzf.opencodewebpanel.server.SbxLaunchSpec
+import de.moritzf.opencodewebpanel.server.SbxCli
 import de.moritzf.opencodewebpanel.server.SbxSandboxRecordStore
 import de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager
 import org.junit.After
@@ -230,6 +231,68 @@ class OpenCodeProjectSettingsConfigurableTest {
                 assertTrue("browse button must never be disabled", myBrowseButton.isEnabled)
                 assertEquals(custom, directoryField.textField.isEnabled)
             }
+        }
+    }
+
+    @Test
+    fun handWrittenSandboxNameDoesNotKeepApplyEnabledAndSurvivesApply() {
+        SwingUtilities.invokeAndWait {
+            val directory = temp.root.toPath().toRealPath().toString()
+            val customName = "my-own-sandbox-name"
+            // A root-level spec with an absolute canonicalDirectory is the one layout where
+            // load() honors a hand-written name (nested project specs derive it from the
+            // directory on purpose, so a clone cannot hijack another clone's sandbox).
+            Files.writeString(
+                temp.root.toPath().resolve(SbxLaunchSpec.PROJECT_SPEC_NAME),
+                "schemaVersion: 1\ncanonicalDirectory: $directory\nname: $customName\n",
+            )
+            assertEquals(customName, SbxLaunchSpec.load(directory)!!.name)
+            configurable.disposeUIResources()
+            configurable = OpenCodeProjectSettingsConfigurable(project)
+            configurable.createComponent()
+            assertFalse("a hand-written name must not mark the form modified", configurable.isModified())
+            // Persisting the form must carry the honored name into the machine copy path:
+            // adoptStoredName keeps it instead of silently switching to the derived default.
+            val spec = SbxLaunchSpec.fromSettings(appSettings, directory)
+            assertEquals(customName, spec.adoptStoredName(SbxLaunchSpec.load(directory)!!).name)
+            assertFalse(configurable.isModified())
+        }
+    }
+
+    @Test
+    fun applyOnDirectorySwitchPreviewsTheDestinationInsteadOfRecreatingTheOldProject() {
+        SwingUtilities.invokeAndWait {
+            val oldDirectory = temp.newFolder("old workspace").toPath().toRealPath().toString()
+            val newDirectory = temp.newFolder("new workspace").toPath().toRealPath().toString()
+            // The old directory owns a spec with a kit; the destination has none.
+            assertNotNull(
+                SbxLaunchSpec.persist(
+                    SbxLaunchSpec.fromSettings(appSettings, oldDirectory).copy(kits = listOf("./old-kit")),
+                ),
+            )
+            projectSettings.projectDirectoryMode = OpenCodeProjectDirectoryMode.CUSTOM.name
+            projectSettings.openCodeProjectDirectory = oldDirectory
+            configurable.disposeUIResources()
+            configurable = OpenCodeProjectSettingsConfigurable(project)
+            configurable.createComponent()
+            field<AbstractButton>("customProjectDirectoryRadioButton").isSelected = true
+            val directoryField = field<TextFieldWithBrowseButton>("projectDirectoryField")
+            directoryField.text = newDirectory
+            // Clicking Apply blurs the directory field in the real UI; the reload that
+            // loads the destination's settings hangs off that focus listener.
+            java.awt.event.FocusEvent(
+                directoryField.textField,
+                java.awt.event.FocusEvent.FOCUS_LOST,
+            ).let { event ->
+                directoryField.textField.focusListeners.forEach { it.focusLost(event) }
+            }
+            configurable.apply()
+            // Switching directories must move the panel without recreating anything: the
+            // destination gets a fresh spec and the old project's VM is left alone.
+            val written = SbxLaunchSpec.load(newDirectory)!!
+            assertEquals(SbxCli.sandboxName(newDirectory), written.name)
+            assertEquals(emptyList<String>(), written.kits)
+            assertFalse(configurable.isModified())
         }
     }
 
