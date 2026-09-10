@@ -34,7 +34,7 @@ class OpenCodeSoundServiceTest {
         OpenCodeSoundService.handleEvent(
             event = event,
             settings = settings,
-            fetchSession = { _, sessionID -> sessions[sessionID] },
+            fetchSession = { _, _, sessionID -> sessions[sessionID] },
             play = { played.add(it) },
         )
     }
@@ -119,6 +119,32 @@ class OpenCodeSoundServiceTest {
 
     companion object {
         private const val SBX = "sbx:some-sandbox"
+    }
+
+    @Test
+    fun idleLookupUsesEventBackendId() {
+        sessions["ses_1"] = OpenCodeServerProtocol.SessionInfo("Done", parentID = null)
+        val seen = mutableListOf<String>()
+        OpenCodeSoundService.handleEvent(
+            event("session.status", """{"sessionID":"ses_1","status":{"type":"busy"}}""", backendId = SBX),
+            settings = defaults,
+            fetchSession = { backendId, _, sessionID ->
+                seen += backendId
+                sessions[sessionID]
+            },
+            play = { played.add(it) },
+        )
+        OpenCodeSoundService.handleEvent(
+            event("session.idle", """{"sessionID":"ses_1"}""", backendId = SBX),
+            settings = defaults,
+            fetchSession = { backendId, _, sessionID ->
+                seen += backendId
+                sessions[sessionID]
+            },
+            play = { played.add(it) },
+        )
+        assertEquals(listOf(SBX), seen)
+        assertEquals(listOf(OpenCodeSoundSettings.DEFAULT_AGENT), played)
     }
 
     @Test

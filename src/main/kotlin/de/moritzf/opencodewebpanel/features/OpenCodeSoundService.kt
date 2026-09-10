@@ -87,7 +87,7 @@ internal object OpenCodeSoundService {
     internal fun handleEvent(
         event: OpenCodeGlobalEvent,
         settings: OpenCodeSoundSettings = currentSettings(),
-        fetchSession: (directory: String, sessionID: String) -> OpenCodeServerProtocol.SessionInfo? =
+        fetchSession: (backendId: String, directory: String, sessionID: String) -> OpenCodeServerProtocol.SessionInfo? =
             ::fetchSessionInfo,
         play: (String?) -> Unit = OpenCodeSoundPlayer::playById,
     ) {
@@ -115,7 +115,7 @@ internal object OpenCodeSoundService {
                 }
                 // Keep busy on a failed lookup so a later idle can retry. A new server generation
                 // clears reduced state; a transient SSE reconnect preserves the live transition.
-                val session = fetchSession(event.directory, sessionID) ?: return
+                val session = fetchSession(backendId, event.directory, sessionID) ?: return
                 if (!markIdle(backendId, sessionID)) return
                 if (session.parentID != null) return
                 play(settings.agent)
@@ -125,7 +125,7 @@ internal object OpenCodeSoundService {
                 val sessionID = event.properties.stringMember("sessionID")
                 if (!sessionID.isNullOrBlank()) {
                     if (!OpenCodeServerProtocol.isSessionId(sessionID)) return
-                    val session = fetchSession(event.directory, sessionID)
+                    val session = fetchSession(backendId, event.directory, sessionID)
                     if (session?.parentID != null) return
                 }
                 play(settings.errors)
@@ -144,8 +144,8 @@ internal object OpenCodeSoundService {
         return parseOpenCodeSoundSettings(OpenCodeSettingsState.getInstance().openCodeLocalStorageSnapshot)
     }
 
-    private fun fetchSessionInfo(directory: String, sessionID: String): OpenCodeServerProtocol.SessionInfo? {
-        val serverManager = OpenCodeServerBackendRegistry.getInstance().backendForCanonicalDirectory(directory)
+    private fun fetchSessionInfo(backendId: String, directory: String, sessionID: String): OpenCodeServerProtocol.SessionInfo? {
+        val serverManager = OpenCodeServerBackendRegistry.getInstance().backend(backendId) ?: return null
         val serverUrl = serverManager.getServerUrl() ?: return null
         val password = serverManager.getServerPassword() ?: return null
         return OpenCodeServerProtocol.fetchSessionInfo(

@@ -90,7 +90,7 @@ internal class OpenCodeIdeNavigation(
             OpenFileDescriptor(project, virtualFile, line ?: -1, column ?: -1).navigate(true)
         } catch (e: ProcessCanceledException) {
             throw e
-        } catch (e: Exception) {
+        } catch (e: ClassCastException) {
             thisLogger().warn("Could not open ${virtualFile.path} in the IDE", e)
         }
     }
