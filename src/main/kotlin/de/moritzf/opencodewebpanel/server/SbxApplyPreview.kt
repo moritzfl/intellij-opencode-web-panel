@@ -92,16 +92,16 @@ internal data class SbxApplyPreview(
                 changes += SbxApplyChange("New extra mount", SbxApplyEffect.RECREATE)
             }
             if (oldSpec.memory != newSpec.memory) {
-                changes += SbxApplyChange("Memory ${oldSpec.memory} → ${newSpec.memory} (applies at Reset)", SbxApplyEffect.RESTART)
+                changes += SbxApplyChange("Memory ${oldSpec.memory} → ${newSpec.memory} (applies at Reset)", SbxApplyEffect.NONE)
             }
             if (oldSpec.cpus != newSpec.cpus) {
-                changes += SbxApplyChange("CPUs ${oldSpec.cpus} → ${newSpec.cpus} (applies at Reset)", SbxApplyEffect.RESTART)
+                changes += SbxApplyChange("CPUs ${oldSpec.cpus} → ${newSpec.cpus} (applies at Reset)", SbxApplyEffect.NONE)
             }
             if (oldSpec.protectSandboxFiles != newSpec.protectSandboxFiles) {
-                changes += SbxApplyChange("Protect sandbox files (applies at Reset)", SbxApplyEffect.RESTART)
+                changes += SbxApplyChange("Protect sandbox files (applies at Reset)", SbxApplyEffect.NONE)
             }
             if (oldSpec.persistSandboxSessions != newSpec.persistSandboxSessions) {
-                changes += SbxApplyChange("Persist sandbox sessions (applies at Reset)", SbxApplyEffect.RESTART)
+                changes += SbxApplyChange("Persist sandbox sessions (applies at Reset)", SbxApplyEffect.NONE)
             }
             return SbxApplyPreview(directory, runtimeLabel(newSpec), changes, historyNote)
         }

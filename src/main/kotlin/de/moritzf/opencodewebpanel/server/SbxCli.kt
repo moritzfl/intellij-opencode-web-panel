@@ -57,11 +57,7 @@ internal data class SbxSandboxRecord(
     val adopted: Boolean = false,
 ) {
     fun matches(entry: SbxSandboxListEntry): Boolean {
-        if (sandboxId != entry.id) return false
-        if (name != entry.name) return false
-        if (agent != entry.agent) return false
-        val listed = entry.workspaces.firstOrNull()
-        return OpenCodeServerProtocol.isSameFilesystemPath(workspace, listed)
+        return sandboxId == entry.id
     }
 }
 
@@ -210,6 +206,20 @@ internal object SbxCli {
 
     fun posixPath(path: String): String {
         return FileUtil.toSystemIndependentName(path.trim())
+    }
+
+    /** In-guest spelling of a host bind. sbx mounts workspaces at the host path; Windows drives become `/c/...`. */
+    fun guestBindPath(hostPath: String): String {
+        val posix = posixPath(hostPath)
+        if (posix.length >= 3 && posix[0].isLetter() && posix[1] == ':' && posix[2] == '/') {
+            return "/${posix[0].lowercaseChar()}${posix.substring(2)}"
+        }
+        return posix
+    }
+
+    fun workspaceHostPath(arg: String): String {
+        val posix = posixPath(arg)
+        return if (posix.endsWith(":ro", ignoreCase = true)) posix.substring(0, posix.length - 3) else posix
     }
 
     fun networkKitTemplateYaml(): String {
@@ -483,8 +493,7 @@ internal object SbxCli {
     fun recordHasPersistMount(record: SbxSandboxRecord, persistHostPath: String): Boolean {
         val stored = parseCreateSnapshot(record.createSnapshot) ?: return false
         return stored.extraCreateArgs.any { arg ->
-            val host = arg.removeSuffix(":ro")
-            OpenCodeServerProtocol.isSameFilesystemPath(host, persistHostPath)
+            OpenCodeServerProtocol.isSameFilesystemPath(workspaceHostPath(arg), persistHostPath)
         }
     }
 
@@ -496,7 +505,7 @@ internal object SbxCli {
     ): List<String> {
         return listOf(
             executable, "exec", name, "sh", "-c", extraMountLinkScript(replaceExistingDirectory),
-            LINK_ARGV0, mount.hostPath, mount.sandboxPath,
+            LINK_ARGV0, guestBindPath(mount.hostPath), mount.sandboxPath,
         )
     }
 

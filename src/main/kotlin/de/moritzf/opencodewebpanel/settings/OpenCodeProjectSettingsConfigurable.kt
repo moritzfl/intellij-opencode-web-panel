@@ -405,7 +405,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
             portChanged = storedDestinationSpec?.hostPort != spec.hostPort,
             historyNote = sandboxSessionRetentionSummary(spec.canonicalDirectory),
         )
-        if (preview.effect != de.moritzf.opencodewebpanel.server.SbxApplyEffect.NONE &&
+        if (preview.changes.isNotEmpty() &&
             !ApplicationManager.getApplication().isUnitTestMode
         ) {
             val recreate = preview.effect == de.moritzf.opencodewebpanel.server.SbxApplyEffect.RECREATE
@@ -432,21 +432,29 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         fixedPortField.text = settings.fixedPort.toString()
         val newDirectory = settings.effectiveProjectDirectory(project.basePath)
         val directoryChanged = oldDirectory != newDirectory
-        // Stop when the runtime selection flips (covers the first Apply, where no stored spec
-        // exists yet) or when same-directory settings change — the effective spec covers both
-        // the on-disk yaml and the XML port fallback of spec-less projects. A directory switch
-        // is covered by directoryChanged alone and must not depend on cross-project spec diffs.
         val runtimeChanged = (oldBackend is SbxOpenCodeServerBackend) != spec.useSandbox
-        val effectivePreviousSpec = loadedOrDefaultSpec()
-        val sandboxSpecChanged = !directoryChanged &&
-            effectivePreviousSpec?.let { spec.adoptStoredName(it) != it } == true
-        if (directoryChanged || runtimeChanged || sandboxSpecChanged) {
-            // Switching runtimes/directories must stop the previous process, not delete its sessions.
-            val modality = ModalityState.defaultModalityState()
+        val shouldStop = directoryChanged || runtimeChanged ||
+            preview.effect == de.moritzf.opencodewebpanel.server.SbxApplyEffect.RESTART ||
+            preview.effect == de.moritzf.opencodewebpanel.server.SbxApplyEffect.RECREATE
+        val modality = ModalityState.defaultModalityState()
+        if (shouldStop) {
             oldBackend.stopServer {
                 ApplicationManager.getApplication().invokeLater({
                     if (!project.isDisposed) {
                         project.messageBus.syncPublisher(OpenCodeProjectSettingsListener.TOPIC).serverRestartRequested()
+                    }
+                }, modality)
+            }
+        } else if (preview.effect == de.moritzf.opencodewebpanel.server.SbxApplyEffect.LIVE &&
+            oldBackend is SbxOpenCodeServerBackend
+        ) {
+            val reload = preview.changes.any { it.summary == "Server port" } &&
+                oldBackend.getLifecycleState() == OpenCodeServerLifecycleState.RUNNING
+            oldBackend.applyLiveSettings {
+                if (!reload) return@applyLiveSettings
+                ApplicationManager.getApplication().invokeLater({
+                    if (!project.isDisposed) {
+                        project.messageBus.syncPublisher(OpenCodeProjectSettingsListener.TOPIC).serverReloadRequested()
                     }
                 }, modality)
             }

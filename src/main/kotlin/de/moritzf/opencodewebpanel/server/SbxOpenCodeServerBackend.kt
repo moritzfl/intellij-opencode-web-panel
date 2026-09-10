@@ -17,6 +17,7 @@ import java.nio.file.Path
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 
@@ -125,7 +126,7 @@ internal class SbxOpenCodeServerBackend(
                 sandboxId = entry.id,
                 name = entry.name,
                 agent = entry.agent,
-                workspace = entry.workspaces.firstOrNull() ?: canonicalDirectory,
+                workspace = canonicalDirectory,
                 adopted = true,
             ),
         )
@@ -140,7 +141,7 @@ internal class SbxOpenCodeServerBackend(
         val entry = synchronized(lock) { lastForeignSandbox } ?: return
         synchronized(lock) {
             if (disposed) return
-            lifecycleExecutor.execute {
+            runOnLifecycle {
                 try {
                     requiredCommand("Remove sandbox", SbxCli.buildRmForceCommand(sbxExecutable(), entry.name), 60_000L)
                     synchronized(lock) { lastForeignSandbox = null }
@@ -301,7 +302,9 @@ internal class SbxOpenCodeServerBackend(
             cancelPendingStarts()
             allowHealthRestart = false
             // Enqueue while holding the same lock as Start. A later Start cannot overtake this stop.
-            lifecycleExecutor.execute {
+            runOnLifecycle(
+                onReject = onStopped,
+            ) {
                 try {
                     if (!stopOwnedServe(stopVm = true)) {
                         setLifecycleState(OpenCodeServerLifecycleState.FAILED)
@@ -312,6 +315,26 @@ internal class SbxOpenCodeServerBackend(
             }
             // Publish only after enqueue: a synchronous lifecycle subscriber may request Start.
             setLifecycleState(OpenCodeServerLifecycleState.STOPPED)
+        }
+    }
+
+    fun applyLiveSettings(onDone: () -> Unit = {}) {
+        synchronized(lock) {
+            if (disposed) {
+                onDone()
+                return
+            }
+            runOnLifecycle(onReject = onDone) {
+                try {
+                    applyLiveOnWorker()
+                } catch (e: SbxCommandFailure) {
+                    recordCommandFailure(e)
+                } catch (e: Exception) {
+                    thisLogger().warn("Live sandbox apply failed: ${e.message}")
+                } finally {
+                    onDone()
+                }
+            }
         }
     }
 
@@ -444,7 +467,7 @@ internal class SbxOpenCodeServerBackend(
             disposed = true
             allowHealthRestart = false
             setLifecycleState(OpenCodeServerLifecycleState.STOPPED)
-            lifecycleExecutor.execute {
+            runOnLifecycle(onReject = { scheduler.shutdownNow() }) {
                 try {
                     stopOwnedServe(stopVm = true)
                 } finally {
@@ -462,6 +485,14 @@ internal class SbxOpenCodeServerBackend(
         val callbacks = pendingStarts.toList()
         pendingStarts.clear()
         notifyStartCallbacks(callbacks, success = false)
+    }
+
+    private fun runOnLifecycle(onReject: () -> Unit = {}, action: () -> Unit) {
+        try {
+            lifecycleExecutor.execute(action)
+        } catch (_: RejectedExecutionException) {
+            onReject()
+        }
     }
 
     private fun enqueueStart(
@@ -486,8 +517,15 @@ internal class SbxOpenCodeServerBackend(
             allowHealthRestart = true
             lastFailureDetails = null
             val startId = ++startSequence
-            lifecycleExecutor.execute {
-                if (!isCurrentStart(startId)) return@execute
+            runOnLifecycle(
+                onReject = {
+                    starting = false
+                    val callbacks = pendingStarts.toList()
+                    pendingStarts.clear()
+                    notifyStartCallbacks(callbacks, success = false)
+                },
+            ) {
+                if (!isCurrentStart(startId)) return@runOnLifecycle
                 try {
                     if (prepare(startId) && isCurrentStart(startId)) startServe(project, startId)
                 } catch (e: SbxCommandFailure) {
@@ -513,7 +551,7 @@ internal class SbxOpenCodeServerBackend(
                     runStart(startId, indicator)
                 }
             }
-            val indicator = BackgroundableProcessIndicator(task)
+            val indicator = progressIndicatorOnEdt(task)
             try {
                 ProgressManager.getInstance().runProcess({ task.run(indicator) }, indicator)
             } finally {
@@ -523,6 +561,14 @@ internal class SbxOpenCodeServerBackend(
             return
         }
         runStart(startId, indicator = null)
+    }
+
+    private fun progressIndicatorOnEdt(task: Backgroundable): BackgroundableProcessIndicator {
+        val app = ApplicationManager.getApplication()
+        if (app.isDispatchThread) return BackgroundableProcessIndicator(task)
+        var indicator: BackgroundableProcessIndicator? = null
+        app.invokeAndWait { indicator = BackgroundableProcessIndicator(task) }
+        return checkNotNull(indicator)
     }
 
     private fun runStart(startId: Long, indicator: ProgressIndicator?) {
@@ -610,24 +656,11 @@ internal class SbxOpenCodeServerBackend(
             val missingExtraMount = extraHostPaths.any { extra ->
                 listedWorkspaces.none { OpenCodeServerProtocol.isSameFilesystemPath(it, extra) }
             }
-            val previousKits = SbxCli.parseLineList(record?.kits)
             val desiredKits = SbxCli.parseLineList(kitsText)
-            if (owned != null && !missingExtraMount && record.shareHostConfig == shareHostConfig &&
-                desiredKits.size > previousKits.size && desiredKits.take(previousKits.size) == previousKits
-            ) {
-                // Native kit-add preserves session volumes. It appends only: replacing a same-named
-                // kit is rejected by sbx, so never use it to silently "refresh" an edited kit.
-                for (index in previousKits.size until desiredKits.size) {
-                    if (!isCurrentStart(startId)) return
-                    val currentRecord = checkNotNull(record)
-                    requiredCommand("Add sandbox kit", SbxCli.buildAddKitCommand(sbx, name, SbxCli.parseKitRefs(desiredKits[index]).single()),
-                        FIRST_START_TIMEOUT_MILLIS, Path.of(canonicalDirectory))
-                    record = currentRecord.copy(kits = desiredKits.take(index + 1).joinToString("\n"))
-                    recordStore().save(canonicalDirectory, record)
-                    val refreshed = parseSandboxList(requiredCommand("Verify sandbox after kit addition", SbxCli.buildLsCommand(sbx), 30_000L))
-                    if (SbxCli.findOwnedSandbox(refreshed, currentRecord) == null) {
-                        throw SbxCommandFailure("Add sandbox kit", -1, "Sandbox identity changed; refusing to adopt it automatically.")
-                    }
+            if (owned != null && !missingExtraMount) {
+                val current = checkNotNull(record)
+                if (current.shareHostConfig == shareHostConfig) {
+                    record = appendUniqueKits(sbx, name, current, desiredKits, startId)
                 }
             }
             val provisionChanged = record != null && !record.adopted && (
@@ -669,6 +702,7 @@ internal class SbxOpenCodeServerBackend(
                         }
                 }
                 if (createdEntry == null) {
+                    commandRunner.run(SbxCli.buildRmForceCommand(sbx, name), emptyMap(), 60_000L)
                     fail(startId, SbxFailureKind.SERVE_UNHEALTHY)
                     return
                 }
@@ -676,7 +710,7 @@ internal class SbxOpenCodeServerBackend(
                     sandboxId = createdEntry.id,
                     name = createdEntry.name,
                     agent = createdEntry.agent,
-                    workspace = createdEntry.workspaces.firstOrNull() ?: canonicalDirectory,
+                    workspace = canonicalDirectory,
                     kits = kitsText,
                     shareHostConfig = shareHostConfig,
                     hostPort = desiredHostPort,
@@ -904,6 +938,67 @@ internal class SbxOpenCodeServerBackend(
             thisLogger().warn("Could not publish sandbox port ${SbxCli.publishSpec(desiredHostPort)}: ${published.output}")
         }
         return published.exitCode == 0
+    }
+
+    private fun appendUniqueKits(
+        sbx: String,
+        name: String,
+        record: SbxSandboxRecord,
+        desiredKits: List<String>,
+        startId: Long? = null,
+    ): SbxSandboxRecord {
+        val previousKits = SbxCli.parseLineList(record.kits)
+        if (desiredKits.size <= previousKits.size || desiredKits.take(previousKits.size) != previousKits) {
+            return record
+        }
+        var current = record
+        for (index in previousKits.size until desiredKits.size) {
+            if (startId != null && !isCurrentStart(startId)) return current
+            requiredCommand(
+                "Add sandbox kit",
+                SbxCli.buildAddKitCommand(sbx, name, SbxCli.parseKitRefs(desiredKits[index]).single()),
+                FIRST_START_TIMEOUT_MILLIS,
+                Path.of(canonicalDirectory),
+            )
+            current = current.copy(kits = desiredKits.take(index + 1).joinToString("\n"))
+            recordStore().save(canonicalDirectory, current)
+            val refreshed = parseSandboxList(
+                requiredCommand("Verify sandbox after kit addition", SbxCli.buildLsCommand(sbx), 30_000L),
+            )
+            if (SbxCli.findOwnedSandbox(refreshed, current) == null) {
+                throw SbxCommandFailure("Add sandbox kit", -1, "Sandbox identity changed; refusing to adopt it automatically.")
+            }
+        }
+        return current
+    }
+
+    private fun applyLiveOnWorker() {
+        val spec = when (val inspection = SbxLaunchSpec.inspect(canonicalDirectory)) {
+            is SbxLaunchSpecInspection.Valid -> inspection.spec
+            else -> return
+        }
+        var record = recordStore().recordFor(canonicalDirectory) ?: return
+        val sbx = OpenCodeServerProtocol.detectExecutablePath(sbxExecutable()) ?: return
+        val listed = parseSandboxList(
+            requiredCommand("List sandbox for live apply", SbxCli.buildLsCommand(sbx), 30_000L),
+        )
+        val owned = SbxCli.findOwnedSandbox(listed, record) ?: return
+        val desiredKits = SbxCli.parseLineList(SbxCli.normalizeLineList(spec.kits.joinToString("\n")))
+        record = appendUniqueKits(sbx, owned.name, record, desiredKits)
+        if (record.hostPort != spec.hostPort) {
+            record = record.copy(hostPort = spec.hostPort)
+            recordStore().save(canonicalDirectory, record)
+        }
+        if (owned.status != "running") return
+        val ports = listPublishedPorts(sbx, owned.name)
+        ensurePublishedHostPort(sbx, owned.name, spec.hostPort, ports)
+        val password = getServerPassword() ?: return
+        val healthy = healthyPublishedSandboxUrl(listPublishedPorts(sbx, owned.name), spec.hostPort, password)
+            ?: return
+        synchronized(lock) { serverUrl = healthy }
+        if (getLifecycleState() == OpenCodeServerLifecycleState.RUNNING) {
+            updateGlobalEventStream(OpenCodeServerLifecycleState.RUNNING)
+        }
     }
 
     private fun fail(startId: Long, kind: SbxFailureKind) {

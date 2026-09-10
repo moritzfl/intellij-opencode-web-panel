@@ -11,6 +11,8 @@ interface OpenCodeProjectSettingsListener {
 
     fun serverRestartRequested() {}
 
+    fun serverReloadRequested() {}
+
     companion object {
         val TOPIC: Topic<OpenCodeProjectSettingsListener> = Topic.create(
             "OpenCode Web Panel project settings",

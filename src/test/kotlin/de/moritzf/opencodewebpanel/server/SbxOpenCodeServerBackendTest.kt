@@ -212,6 +212,120 @@ class SbxOpenCodeServerBackendTest {
     }
 
     @Test
+    fun createThatCannotBeListedRemovesTheNewNameAndStoresNoRecord() {
+        store.remove(directory)
+        val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
+        val spec = SbxLaunchSpec.fromSettings(settings, directory).copy(useSandbox = true, enableIntellijMcp = false)
+        assertNotNull(SbxLaunchSpec.persist(spec))
+        behavior = { command ->
+            when (command[1]) {
+                "ls" -> SbxCommandResult(0, """{"sandboxes":[]}""")
+                "create" -> SbxCommandResult(0, "")
+                "rm" -> SbxCommandResult(0, "")
+                else -> SbxCommandResult(0, "")
+            }
+        }
+        backend.ensureStarted(project, directory, { false }, {}, {})
+        drain()
+        assertTrue(calls.contains("create"))
+        assertTrue("Orphan create must be removed", calls.contains("rm"))
+        assertNull(store.recordFor(directory))
+        assertEquals(SbxFailureKind.SERVE_UNHEALTHY, backend.lastFailure())
+    }
+
+    @Test
+    fun extraWorkspaceFirstDoesNotMarkOwnedSandboxForeign() {
+        val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
+        val spec = SbxLaunchSpec.fromSettings(settings, directory).copy(useSandbox = true, enableIntellijMcp = false)
+        assertNotNull(SbxLaunchSpec.persist(spec))
+        store.save(directory, record.copy(kits = SbxCli.normalizeLineList(spec.kits.joinToString("\n"))))
+        val persist = "/tmp/persist-extra"
+        val protect = "$directory/opencode-sbx"
+        behavior = { command ->
+            when (command[1]) {
+                "ls" -> listed("stopped", listOf(protect, persist, directory))
+                "exec" -> SbxCommandResult(1, "link skipped")
+                else -> SbxCommandResult(0, "")
+            }
+        }
+        backend.ensureStarted(project, directory, { false }, {}, {})
+        drain()
+        assertFalse(calls.contains("create"))
+        assertFalse(calls.contains("rm"))
+        assertNull(backend.foreignSandbox())
+        assertEquals(SbxFailureKind.COMMAND_FAILED, backend.lastFailure())
+    }
+
+    @Test
+    fun livePortApplyRemapsWithoutStoppingTheVm() {
+        val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
+        val spec = SbxLaunchSpec.fromSettings(settings, directory).copy(
+            useSandbox = true, hostPort = 49123, enableIntellijMcp = false,
+        )
+        assertNotNull(SbxLaunchSpec.persist(spec))
+        behavior = { command ->
+            when (command[1]) {
+                "ls" -> listed("running")
+                "ports" -> when {
+                    command.contains("--unpublish") -> SbxCommandResult(0, "")
+                    command.contains("--publish") -> SbxCommandResult(0, "")
+                    else -> SbxCommandResult(
+                        0,
+                        """[{"host_ip":"127.0.0.1","host_port":49161,"sandbox_port":4096,"protocol":"tcp4"}]""",
+                    )
+                }
+                else -> SbxCommandResult(0, "")
+            }
+        }
+        val done = CountDownLatch(1)
+        backend.applyLiveSettings { done.countDown() }
+        assertTrue(done.await(5, TimeUnit.SECONDS))
+        drain()
+        assertFalse(calls.contains("stop"))
+        assertFalse(calls.contains("create"))
+        assertTrue(calls.contains("ports"))
+        assertEquals(49123, store.recordFor(directory)!!.hostPort)
+    }
+
+    @Test
+    fun liveKitApplyAppendsWithoutStoppingTheVm() {
+        val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
+        val spec = SbxLaunchSpec.fromSettings(settings, directory).copy(
+            useSandbox = true, kits = listOf("./first-kit", "./second-kit"), enableIntellijMcp = false,
+        )
+        assertNotNull(SbxLaunchSpec.persist(spec))
+        store.save(directory, record.copy(kits = "./first-kit"))
+        val added = mutableListOf<String>()
+        behavior = { command ->
+            when (command[1]) {
+                "ls" -> listed("stopped")
+                "kit" -> {
+                    added += command.last()
+                    SbxCommandResult(0, "kit added")
+                }
+                else -> SbxCommandResult(0, "")
+            }
+        }
+        val done = CountDownLatch(1)
+        backend.applyLiveSettings { done.countDown() }
+        assertTrue(done.await(5, TimeUnit.SECONDS))
+        drain()
+        assertEquals(listOf("./second-kit"), added)
+        assertFalse(calls.contains("stop"))
+        assertFalse(calls.contains("create"))
+        assertEquals("./first-kit\n./second-kit", store.recordFor(directory)!!.kits)
+    }
+
+    @Test
+    fun rejectedStopStillRunsOnStopped() {
+        executor.shutdown()
+        assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS))
+        val stopped = CountDownLatch(1)
+        backend.stopServer { stopped.countDown() }
+        assertTrue("Rejected lifecycle work must still hand off", stopped.await(5, TimeUnit.SECONDS))
+    }
+
+    @Test
     fun stopCompletionRunsAfterCleanup() {
         backend.stopServer { calls += "stopped callback" }
         drain()
@@ -419,8 +533,11 @@ class SbxOpenCodeServerBackendTest {
 
     private fun drain() = executor.submit {}.get(10, TimeUnit.SECONDS)
 
-    private fun listed(status: String = "running"): SbxCommandResult {
-        val workspace = directory.replace("\\", "\\\\")
-        return SbxCommandResult(0, """{"sandboxes":[{"id":"owned-id","name":"${record.name}","agent":"opencode","status":"$status","workspaces":["$workspace"]}]}""")
+    private fun listed(status: String = "running", workspaces: List<String> = listOf(directory)): SbxCommandResult {
+        val listedWorkspaces = workspaces.joinToString(",") { "\"${it.replace("\\", "\\\\")}\"" }
+        return SbxCommandResult(
+            0,
+            """{"sandboxes":[{"id":"owned-id","name":"${record.name}","agent":"opencode","status":"$status","workspaces":[$listedWorkspaces]}]}""",
+        )
     }
 }

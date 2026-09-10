@@ -762,6 +762,13 @@ class OpenCodeWebToolWindowContent(
                         schedulePanelReplacement()
                     }
                 }
+
+                override fun serverReloadRequested() {
+                    ApplicationManager.getApplication().invokeLater {
+                        if (isContentDisposed()) return@invokeLater
+                        reloadOpenCodePage()
+                    }
+                }
             },
         )
         // OOP JCEF snapshots message routers when creating the native browser. Register before

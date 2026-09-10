@@ -47,6 +47,7 @@ class OpenCodeProjectSettingsConfigurableTest {
     private lateinit var project: MockProject
     private lateinit var configurable: OpenCodeProjectSettingsConfigurable
     private var restarts = 0
+    private var reloads = 0
 
     @Before
     fun setUp() {
@@ -62,6 +63,7 @@ class OpenCodeProjectSettingsConfigurableTest {
             OpenCodeProjectSettingsListener.TOPIC,
             object : OpenCodeProjectSettingsListener {
                 override fun serverRestartRequested() { restarts++ }
+                override fun serverReloadRequested() { reloads++ }
             },
         )
         SwingUtilities.invokeAndWait {
@@ -110,6 +112,23 @@ class OpenCodeProjectSettingsConfigurableTest {
             assertSame("Switching back must retain sandbox ownership/backend", sandbox, registry.backend(sandbox.backendId))
             assertEquals(expected.copy(useSandbox = false), SbxLaunchSpec.load(project.basePath))
             assertFalse(configurable.isModified())
+        }
+    }
+
+    @Test
+    fun sandboxPortChangeDoesNotStopOrRestart() {
+        SwingUtilities.invokeAndWait {
+            field<AbstractButton>("sbxRuntimeRadioButton").isSelected = true
+            configurable.apply()
+            PlatformTestUtil.waitWithEventsDispatching("Missing Host to Sandbox restart", { restarts == 1 }, 5)
+            assertEquals(0, reloads)
+            field<AbstractButton>("fixedPortRadioButton").isSelected = true
+            field<JTextField>("fixedPortField").text = "49123"
+            configurable.apply()
+            assertEquals("LIVE port remap must not stop the VM or restart serve", 1, restarts)
+            assertEquals(0, reloads)
+            assertEquals(49123, SbxLaunchSpec.load(project.basePath)!!.hostPort)
+            assertTrue(registry.backendFor(project) is de.moritzf.opencodewebpanel.server.SbxOpenCodeServerBackend)
         }
     }
 

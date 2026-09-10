@@ -164,6 +164,11 @@ class SbxCliTest {
         )
         assertEquals("/Users/me/.config/opencode:ro", SbxCli.readOnlyWorkspaceArg("/Users/me/.config/opencode"))
         assertEquals("/Users/me/.config/opencode:ro", SbxCli.readOnlyWorkspaceArg("/Users/me/.config/opencode:ro"))
+        assertEquals("C:/Users/me/docs:ro", SbxCli.readOnlyWorkspaceArg("C:/Users/me/docs"))
+        assertEquals("C:/Users/me/docs", SbxCli.workspaceHostPath("C:/Users/me/docs:ro"))
+        assertEquals("/c/Users/me/docs", SbxCli.guestBindPath("C:/Users/me/docs"))
+        assertEquals("/c/Users/me/docs", SbxCli.guestBindPath("C:\\Users\\me\\docs"))
+        assertEquals("/Users/me/docs", SbxCli.guestBindPath("/Users/me/docs"))
     }
 
     @Test
@@ -244,7 +249,12 @@ class SbxCliTest {
         val replace = SbxCli.buildLinkExtraMountCommand(name = "ide-ocwp-abc", mount = mount, replaceExistingDirectory = true)
         assertTrue(replace[5].contains("cp -a"))
         assertTrue(replace[5].contains("rm -rf"))
-        assertEquals(listOf(SbxCli.LINK_ARGV0, mount.hostPath, mount.sandboxPath), replace.takeLast(3))
+        assertEquals(listOf(SbxCli.LINK_ARGV0, SbxCli.guestBindPath(mount.hostPath), mount.sandboxPath), replace.takeLast(3))
+        val windowsPersist = SbxExtraMount("C:/Users/me/AppData/Local/opencode-web-panel/sbx/ide-ocwp-abc", SbxCli.persistSandboxGuestPath())
+        assertEquals(
+            "/c/Users/me/AppData/Local/opencode-web-panel/sbx/ide-ocwp-abc",
+            SbxCli.buildLinkExtraMountCommand(name = "ide-ocwp-abc", mount = windowsPersist).takeLast(2).first(),
+        )
         assertFalse(SbxCli.persistMountIsAttached(emptyList(), mount))
         assertTrue(SbxCli.persistMountIsAttached(listOf(mount.hostPath), mount))
     }
@@ -488,26 +498,39 @@ class SbxCliTest {
     }
 
     @Test
-    fun ownedSandboxRequiresIdNameAgentAndWorkspace() {
-        val entries = SbxCli.parseLsJson(resource("sbx-ls-running.json"))
-        val workspace = entries.single().workspaces.single()
-        val record = SbxSandboxRecord(
-            sandboxId = "7ab26e93-c28f-4310-a567-0c059b22a4a3",
+    fun ownedSandboxMatchesByIdEvenWhenProjectIsNotFirstWorkspace() {
+        val project = "/tmp/project"
+        val persist = "/tmp/persist"
+        val protect = "/tmp/project/opencode-sbx"
+        val entry = SbxSandboxListEntry(
             name = "ide-ocwp-spike",
+            id = "7ab26e93-c28f-4310-a567-0c059b22a4a3",
             agent = "opencode",
-            workspace = workspace,
+            status = "running",
+            ports = emptyList(),
+            workspaces = listOf(protect, persist, project),
         )
-        assertFalse(record.shareHostConfig)
-        assertEquals(entries.single(), SbxCli.findOwnedSandbox(entries, record))
+        val record = SbxSandboxRecord(
+            sandboxId = entry.id,
+            name = "stale-name",
+            agent = "claude",
+            workspace = project,
+        )
+        assertEquals(entry, SbxCli.findOwnedSandbox(listOf(entry), record))
         assertNull(
             SbxCli.findOwnedSandbox(
-                entries,
+                listOf(entry),
                 record.copy(sandboxId = "00000000-0000-0000-0000-000000000000"),
             ),
         )
-        assertNull(SbxCli.findOwnedSandbox(entries, record.copy(name = "someone-elses-box")))
-        assertNull(SbxCli.findOwnedSandbox(entries, record.copy(agent = "claude")))
-        assertNull(SbxCli.findOwnedSandbox(entries, record.copy(workspace = "/tmp/other")))
+        val fixture = SbxCli.parseLsJson(resource("sbx-ls-running.json"))
+        assertEquals(
+            fixture.single(),
+            SbxCli.findOwnedSandbox(
+                fixture,
+                SbxSandboxRecord(fixture.single().id, "other", "opencode", "/tmp/other"),
+            ),
+        )
     }
 
     private fun resource(name: String): String {

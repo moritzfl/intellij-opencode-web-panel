@@ -28,12 +28,12 @@ class SbxApplyPreviewTest {
     }
 
     @Test
-    fun memoryChangeIsRestartNotRecreate() {
+    fun memoryChangeIsDeferredUntilReset() {
         val preview = SbxApplyPreview.build("/tmp/p", base, base.copy(memory = "8g"), false, false, "sessions kept")
-        assertEquals(SbxApplyEffect.RESTART, preview.effect)
+        assertEquals(SbxApplyEffect.NONE, preview.effect)
         assertTrue(preview.message().contains("applies at Reset"))
         assertTrue(preview.message().contains("sessions kept"))
-        assertEquals("Restart OpenCode", preview.confirmTitle())
+        assertEquals("Apply OpenCode settings", preview.confirmTitle())
     }
 
     @Test
