@@ -8,6 +8,8 @@ import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
+import de.moritzf.opencodewebpanel.server.SbxCli
+import de.moritzf.opencodewebpanel.server.SbxExtraMount
 
 // Roaming is disabled deliberately: the state mixes machine-specific values (binary path,
 // fixed port) and the mirrored OpenCode web-session snapshot (up to 2 MB of local browser
@@ -15,10 +17,20 @@ import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 @State(name = "OpenCodeWebPanelSettings", storages = [Storage("opencode-web-panel.xml", roamingType = RoamingType.DISABLED)])
 @Service(Service.Level.APP)
 class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
+    var runtimeMode: String = OpenCodeRuntimeMode.HOST.name
     var portMode: String = OpenCodePortMode.AUTO.name
     var fixedPort: Int = DEFAULT_FIXED_PORT
     var binaryMode: String = OpenCodeBinaryMode.AUTO.name
     var binaryPath: String = ""
+    var sbxBinaryMode: String = OpenCodeBinaryMode.AUTO.name
+    var sbxBinaryPath: String = ""
+    var sbxNetworkPolicyConsent: Boolean = false
+    var sbxMemory: String = SbxCli.DEFAULT_MEMORY
+    var sbxCpus: String = SbxCli.DEFAULT_CPUS
+    var sbxShareHostOpencodeConfig: Boolean = false
+    var sbxEnableIntellijMcp: Boolean = true
+    var sbxExtraWorkspaces: String = ""
+    var sbxExtraKits: String = ""
     var proxyMode: String = OpenCodeProxyMode.IDE.name
     var uiZoomPercent: Int = DEFAULT_UI_ZOOM_PERCENT
     var openFileLinksInIde: Boolean = true
@@ -47,10 +59,20 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
     override fun getState(): OpenCodeSettingsState = this
 
     override fun loadState(state: OpenCodeSettingsState) {
+        runtimeMode = OpenCodeRuntimeMode.fromStorageValue(state.runtimeMode).name
         portMode = OpenCodePortMode.fromStorageValue(state.portMode).name
         fixedPort = sanitizePort(state.fixedPort)
         binaryMode = OpenCodeBinaryMode.fromStorageValue(state.binaryMode).name
         binaryPath = state.binaryPath.trim()
+        sbxBinaryMode = OpenCodeBinaryMode.fromStorageValue(state.sbxBinaryMode).name
+        sbxBinaryPath = state.sbxBinaryPath.trim()
+        sbxNetworkPolicyConsent = state.sbxNetworkPolicyConsent
+        sbxMemory = SbxCli.sanitizeMemory(state.sbxMemory)
+        sbxCpus = SbxCli.sanitizeCpus(state.sbxCpus)
+        sbxShareHostOpencodeConfig = state.sbxShareHostOpencodeConfig
+        sbxEnableIntellijMcp = state.sbxEnableIntellijMcp
+        sbxExtraWorkspaces = SbxCli.normalizeExtraMountText(state.sbxExtraWorkspaces)
+        sbxExtraKits = SbxCli.normalizeLineList(state.sbxExtraKits)
         proxyMode = OpenCodeProxyMode.fromStorageValue(state.proxyMode).name
         uiZoomPercent = sanitizeUiZoomPercent(state.uiZoomPercent)
         openFileLinksInIde = state.openFileLinksInIde
@@ -97,9 +119,13 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
         }
     }
 
+    fun runtimeModeValue(): OpenCodeRuntimeMode = OpenCodeRuntimeMode.fromStorageValue(runtimeMode)
+
     fun portModeValue(): OpenCodePortMode = OpenCodePortMode.fromStorageValue(portMode)
 
     fun binaryModeValue(): OpenCodeBinaryMode = OpenCodeBinaryMode.fromStorageValue(binaryMode)
+
+    fun sbxBinaryModeValue(): OpenCodeBinaryMode = OpenCodeBinaryMode.fromStorageValue(sbxBinaryMode)
 
     fun proxyModeValue(): OpenCodeProxyMode = OpenCodeProxyMode.fromStorageValue(proxyMode)
 
@@ -110,12 +136,31 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
         }
     }
 
+    fun hostPortOrNull(): Int? {
+        return if (portModeValue() == OpenCodePortMode.FIXED) sanitizePort(fixedPort) else null
+    }
+
     fun executablePath(): String {
         return when (binaryModeValue()) {
             OpenCodeBinaryMode.AUTO -> OpenCodeServerProtocol.DEFAULT_EXECUTABLE
             OpenCodeBinaryMode.CUSTOM -> binaryPath.ifBlank { OpenCodeServerProtocol.DEFAULT_EXECUTABLE }
         }
     }
+
+    fun sbxExecutablePath(): String {
+        return when (sbxBinaryModeValue()) {
+            OpenCodeBinaryMode.AUTO -> SbxCli.DEFAULT_EXECUTABLE
+            OpenCodeBinaryMode.CUSTOM -> sbxBinaryPath.ifBlank { SbxCli.DEFAULT_EXECUTABLE }
+        }
+    }
+
+    fun sbxMemoryValue(): String = SbxCli.sanitizeMemory(sbxMemory)
+
+    fun sbxCpusValue(): String = SbxCli.sanitizeCpus(sbxCpus)
+
+    internal fun sbxExtraMounts(): List<SbxExtraMount> = SbxCli.parseExtraMounts(sbxExtraWorkspaces)
+
+    fun sbxKitRefs(): List<String> = SbxCli.parseKitRefs(sbxExtraKits)
 
     fun effectiveCodeNavigationEnabled(): Boolean {
         return openFileLinksInIde && enableCodeNavigation
@@ -169,6 +214,18 @@ enum class OpenCodeBinaryMode {
     companion object {
         fun fromStorageValue(value: String?): OpenCodeBinaryMode {
             return entries.firstOrNull { it.name == value } ?: AUTO
+        }
+    }
+}
+
+enum class OpenCodeRuntimeMode {
+    HOST,
+    DOCKER_SANDBOX,
+    ;
+
+    companion object {
+        fun fromStorageValue(value: String?): OpenCodeRuntimeMode {
+            return entries.firstOrNull { it.name == value } ?: HOST
         }
     }
 }

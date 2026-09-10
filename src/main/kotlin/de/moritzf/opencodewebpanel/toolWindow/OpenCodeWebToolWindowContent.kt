@@ -55,6 +55,7 @@ import de.moritzf.opencodewebpanel.server.shouldShowStartupError
 import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsListener
 import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsState
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable
+import de.moritzf.opencodewebpanel.settings.OpenCodeRestartScope
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsListener
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
 import de.moritzf.opencodewebpanel.settings.OpenCodeUiSetting
@@ -783,7 +784,7 @@ class OpenCodeWebToolWindowContent(
                     }
                 }
 
-                override fun serverRestartRequested() {
+                override fun serverRestartRequested(scope: OpenCodeRestartScope) {
                     restartOpenCodeServer()
                     schedulePanelReplacement()
                 }

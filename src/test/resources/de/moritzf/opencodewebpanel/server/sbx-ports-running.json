@@ -1,0 +1,8 @@
+[
+  {
+    "host_ip": "127.0.0.1",
+    "host_port": 49159,
+    "sandbox_port": 4096,
+    "protocol": "tcp4"
+  }
+]

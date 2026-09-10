@@ -1,0 +1,21 @@
+{
+  "sandboxes": [
+    {
+      "name": "ide-ocwp-spike",
+      "id": "7ab26e93-c28f-4310-a567-0c059b22a4a3",
+      "agent": "opencode",
+      "status": "running",
+      "ports": [
+        {
+          "host_ip": "127.0.0.1",
+          "host_port": 49161,
+          "sandbox_port": 4096,
+          "protocol": "tcp4"
+        }
+      ],
+      "workspaces": [
+        "/var/folders/9z/vghfln3n0s5c12b80dfmwmww0000gn/T/opencode/sbx-ocwp-spike-project"
+      ]
+    }
+  ]
+}

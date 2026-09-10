@@ -39,6 +39,8 @@ internal sealed interface OpenCodeProtocolResult<out T> {
 
 internal object OpenCodeServerProtocol {
     private const val HOST = "127.0.0.1"
+    const val SANDBOX_SERVE_HOST = "0.0.0.0"
+    const val SANDBOX_SERVE_PORT = 4096
     const val DYNAMIC_PORT = "0"
     const val CHECK_INTERVAL_SECONDS = 30L
     const val HEALTH_CHECK_CONFIRMATION_ATTEMPTS = 2
@@ -85,8 +87,11 @@ internal object OpenCodeServerProtocol {
      * session id, crashes its error boundary, so the plugin no longer uses it.
      */
     fun buildServerSessionUrl(serverUrl: String, sessionId: String? = null): String {
+        // The id-less /server/<key>/session shell has no page content in OpenCode 1.18.29.
+        // Home is a real landing page and lets OpenCode restore its own tabs/session selection.
+        if (sessionId.isNullOrBlank()) return buildServerRootUrl(serverUrl) + "/"
         val base = "${buildServerRootUrl(serverUrl)}/server/${encodeDirectory(buildOrigin(serverUrl))}/session"
-        return if (sessionId.isNullOrBlank()) base else "$base/$sessionId"
+        return "$base/$sessionId"
     }
 
     fun localFileDropText(file: File, projectBasePath: String?): String? {
@@ -801,10 +806,32 @@ internal object OpenCodeServerProtocol {
         return host.equals(uri.host, ignoreCase = true) && port == expectedPort
     }
 
+    /** This JCEF is OpenCode-only. Unanswered challenges become Chromium's login dialog. */
+    fun replyToBasicAuthChallenge(
+        isProxy: Boolean,
+        host: String?,
+        port: Int,
+        serverUrl: String?,
+        password: String?,
+        ready: Boolean,
+    ): BasicAuthChallengeReply {
+        if (isProxy) return BasicAuthChallengeReply.IGNORE
+        if (!password.isNullOrBlank() && ready && shouldHandleBasicAuthChallenge(serverUrl, isProxy, host, port)) {
+            return BasicAuthChallengeReply.CONTINUE
+        }
+        return BasicAuthChallengeReply.CANCEL
+    }
+
+    enum class BasicAuthChallengeReply { CONTINUE, CANCEL, IGNORE }
+
     fun parseServerUrl(line: String): String? {
         val match = Regex("opencode server listening on (https?://\\S+)", RegexOption.IGNORE_CASE).find(line)
         val candidate = match?.groupValues?.get(1)?.trimEnd('/') ?: return null
         return candidate.takeIf { isLoopbackServerUrl(it) }
+    }
+
+    fun publishedSandboxUrl(hostPort: Int): String {
+        return "http://$HOST:$hostPort"
     }
 
     /** Accept only loopback URLs so a misbehaving binary cannot redirect auth traffic. */

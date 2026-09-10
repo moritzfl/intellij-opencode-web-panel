@@ -118,6 +118,66 @@ class OpenCodeServerLifecycleTest {
     }
 
     @Test
+    fun cancelledStripIsNotUnhealthy() {
+        val html = formatOpenCodeLifecycleStrip(
+            OpenCodeLifecycleStripModel(OpenCodeServerLifecycleState.FAILED, cancelled = true),
+        )
+        assertTrue(html.contains("Cancelled"))
+        assertFalse(html.contains("Failed"))
+        assertTrue(isOpenCodeLifecycleStripVisible(OpenCodeLifecycleStripModel(OpenCodeServerLifecycleState.FAILED, cancelled = true)))
+    }
+
+    @Test
+    fun startingStripIncludesStageElapsedAndRecovery() {
+        val html = formatOpenCodeLifecycleStrip(
+            OpenCodeLifecycleStripModel(
+                OpenCodeServerLifecycleState.STARTING,
+                stage = "Creating sandbox…",
+                elapsedMillis = 65_000,
+                recovery = OpenCodeRecoveryNotice("sandbox serve was not responding", 1_000),
+            ),
+            nowMillis = 4_000,
+        )
+        assertTrue(html.contains("Creating sandbox"))
+        assertTrue(html.contains("1m 05s"))
+        assertTrue(html.contains("Last recovery"))
+        assertTrue(html.contains("sandbox serve was not responding"))
+    }
+
+    @Test
+    fun recoveryKeepsTheStripVisibleOnARunningServer() {
+        val notice = OpenCodeRecoveryNotice("stalled renderer heartbeat", 1)
+        val model = OpenCodeLifecycleStripModel(OpenCodeServerLifecycleState.RUNNING, recovery = notice)
+        assertTrue(isOpenCodeLifecycleStripVisible(model))
+        assertTrue(shouldTickLifecycleStrip(model))
+        assertTrue(formatOpenCodeLifecycleStrip(model, nowMillis = 1).contains("stalled renderer heartbeat"))
+        assertEquals(
+            notice,
+            visibleRecoveryNotice(notice, OpenCodeServerLifecycleState.RUNNING, true, false, 1 + 5_000),
+        )
+        assertNull(
+            visibleRecoveryNotice(
+                notice,
+                OpenCodeServerLifecycleState.RUNNING,
+                pagePainted = true,
+                pageLoadInProgress = false,
+                nowMillis = 1 + RECOVERY_BANNER_MILLIS,
+            ),
+        )
+        assertEquals(
+            notice,
+            visibleRecoveryNotice(notice, OpenCodeServerLifecycleState.RUNNING, true, true, 1 + RECOVERY_BANNER_MILLIS),
+        )
+    }
+
+    @Test
+    fun elapsedFormatterUsesMinutes() {
+        assertEquals("0s", formatElapsedMillis(0))
+        assertEquals("12s", formatElapsedMillis(12_400))
+        assertEquals("1m 05s", formatElapsedMillis(65_000))
+    }
+
+    @Test
     fun documentLoadTreatsCefStatusZeroAsSuccess() {
         assertTrue(isSuccessfulOpenCodeDocumentLoad(0))
         assertTrue(isSuccessfulOpenCodeDocumentLoad(200))

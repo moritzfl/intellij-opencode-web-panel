@@ -3,9 +3,60 @@ package de.moritzf.opencodewebpanel.settings
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class OpenCodeSettingsStateTest {
+
+    @Test
+    fun runtimeModeDefaultsToHost() {
+        assertEquals(OpenCodeRuntimeMode.HOST, OpenCodeSettingsState().runtimeModeValue())
+        val settings = OpenCodeSettingsState()
+        settings.loadState(OpenCodeSettingsState().apply { runtimeMode = "legacy-value" })
+        assertEquals(OpenCodeRuntimeMode.HOST, settings.runtimeModeValue())
+    }
+
+    @Test
+    fun sbxShareAndKitsDefaultEmpty() {
+        val settings = OpenCodeSettingsState()
+        assertFalse(settings.sbxShareHostOpencodeConfig)
+        assertTrue(settings.sbxEnableIntellijMcp)
+        assertEquals("", settings.sbxExtraWorkspaces)
+        assertEquals("", settings.sbxExtraKits)
+    }
+
+    @Test
+    fun sbxMemoryAndCpusDefaultAndSanitize() {
+        val settings = OpenCodeSettingsState()
+        assertEquals("4g", settings.sbxMemoryValue())
+        assertEquals("2", settings.sbxCpusValue())
+        settings.loadState(
+            OpenCodeSettingsState().apply {
+                sbxMemory = "8G"
+                sbxCpus = "4"
+            },
+        )
+        assertEquals("8g", settings.sbxMemoryValue())
+        assertEquals("4", settings.sbxCpusValue())
+        settings.loadState(
+            OpenCodeSettingsState().apply {
+                sbxMemory = "huge"
+                sbxCpus = "99"
+            },
+        )
+        assertEquals("4g", settings.sbxMemoryValue())
+        assertEquals("2", settings.sbxCpusValue())
+    }
+
+    @Test
+    fun sbxExecutablePathUsesSbxByDefault() {
+        assertEquals("sbx", OpenCodeSettingsState().sbxExecutablePath())
+        val settings = OpenCodeSettingsState().apply {
+            sbxBinaryMode = OpenCodeBinaryMode.CUSTOM.name
+            sbxBinaryPath = "/opt/homebrew/bin/sbx"
+        }
+        assertEquals("/opt/homebrew/bin/sbx", settings.sbxExecutablePath())
+    }
 
     @Test
     fun portArgumentUsesDynamicPortByDefault() {
@@ -322,5 +373,44 @@ class OpenCodeSettingsStateTest {
         settings.loadState(OpenCodeProjectSettingsState().apply { projectDirectoryMode = "legacy-value" })
 
         assertEquals(OpenCodeProjectDirectoryMode.AUTO, settings.projectDirectoryModeValue())
+    }
+
+    @Test
+    fun projectPortArgumentUsesDynamicPortByDefault() {
+        assertEquals("0", OpenCodeProjectSettingsState().portArgument())
+    }
+
+    @Test
+    fun projectPortArgumentUsesSanitizedFixedPort() {
+        val settings = OpenCodeProjectSettingsState().apply {
+            portMode = OpenCodePortMode.FIXED.name
+            fixedPort = 8181
+        }
+
+        assertEquals("8181", settings.portArgument())
+    }
+
+    @Test
+    fun projectInvalidFixedPortFallsBackToDefault() {
+        val settings = OpenCodeProjectSettingsState().apply {
+            portMode = OpenCodePortMode.FIXED.name
+            fixedPort = 99999
+        }
+
+        assertEquals(OpenCodeSettingsState.DEFAULT_FIXED_PORT.toString(), settings.portArgument())
+    }
+
+    @Test
+    fun projectUnknownPortModeFallsBackToAuto() {
+        val settings = OpenCodeProjectSettingsState()
+        settings.loadState(
+            OpenCodeProjectSettingsState().apply {
+                portMode = "legacy-value"
+                fixedPort = 8181
+            },
+        )
+
+        assertEquals(OpenCodePortMode.AUTO, settings.portModeValue())
+        assertEquals("0", settings.portArgument())
     }
 }

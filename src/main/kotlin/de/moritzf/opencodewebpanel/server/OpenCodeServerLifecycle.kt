@@ -25,6 +25,119 @@ interface OpenCodeServerLifecycleListener {
     }
 }
 
+internal fun formatOpenCodeServerRuntimeLabel(backendId: String): String {
+    return if (OpenCodeServerBackend.isNative(backendId)) "native CLI" else "sbx"
+}
+
+internal data class OpenCodeRecoveryNotice(
+    val reason: String,
+    val atMillis: Long,
+)
+
+internal data class OpenCodeLifecycleStripModel(
+    val state: OpenCodeServerLifecycleState,
+    val pageOpening: Boolean = false,
+    val cancelled: Boolean = false,
+    val stage: String? = null,
+    val elapsedMillis: Long? = null,
+    val recovery: OpenCodeRecoveryNotice? = null,
+)
+
+internal fun formatElapsedMillis(elapsedMillis: Long): String {
+    val totalSeconds = (elapsedMillis / 1000L).coerceAtLeast(0L)
+    val minutes = totalSeconds / 60L
+    val seconds = totalSeconds % 60L
+    return if (minutes == 0L) "${seconds}s" else "${minutes}m ${seconds.toString().padStart(2, '0')}s"
+}
+
+internal fun formatOpenCodeRecoveryLine(notice: OpenCodeRecoveryNotice, nowMillis: Long): String {
+    val ago = formatElapsedMillis((nowMillis - notice.atMillis).coerceAtLeast(0L))
+    return "Last recovery ${ago} ago: ${notice.reason}"
+}
+
+internal fun formatOpenCodeLifecycleStrip(model: OpenCodeLifecycleStripModel, nowMillis: Long = System.currentTimeMillis()): String {
+    if (model.pageOpening && model.state == OpenCodeServerLifecycleState.RUNNING && !model.cancelled) {
+        return formatOpenCodePageOpeningStatusText()
+    }
+    val state = if (model.cancelled) {
+        OpenCodeServerLifecycleState.FAILED
+    } else {
+        model.state
+    }
+    val label = if (model.cancelled) "Cancelled" else state.displayLabel
+    val color = if (model.cancelled) OpenCodeServerLifecycleState.STOPPED.colorHex else state.colorHex
+    val extra = buildString {
+        val stage = model.stage?.trim()?.takeIf { it.isNotEmpty() }
+        if (stage != null && (model.state == OpenCodeServerLifecycleState.STARTING || model.state == OpenCodeServerLifecycleState.RESTARTING)) {
+            append(" — ")
+            append(stage)
+        }
+        val elapsed = model.elapsedMillis
+        if (elapsed != null && (model.state == OpenCodeServerLifecycleState.STARTING || model.state == OpenCodeServerLifecycleState.RESTARTING)) {
+            append(" (")
+            append(formatElapsedMillis(elapsed))
+            append(")")
+        }
+        val recovery = model.recovery
+        if (recovery != null) {
+            append(". ")
+            append(formatOpenCodeRecoveryLine(recovery, nowMillis))
+        }
+    }
+    return "<html><span style=\"color: $color\">&#9679;</span>&nbsp;" +
+        "OpenCode server: ${StringUtil.escapeXmlEntities(label)}${StringUtil.escapeXmlEntities(extra)}</html>"
+}
+
+internal const val RECOVERY_BANNER_MILLIS = 15_000L
+
+internal fun visibleRecoveryNotice(
+    notice: OpenCodeRecoveryNotice?,
+    state: OpenCodeServerLifecycleState,
+    pagePainted: Boolean,
+    pageLoadInProgress: Boolean,
+    nowMillis: Long,
+): OpenCodeRecoveryNotice? {
+    if (notice == null) return null
+    if (state == OpenCodeServerLifecycleState.RUNNING &&
+        pagePainted &&
+        !pageLoadInProgress &&
+        nowMillis - notice.atMillis >= RECOVERY_BANNER_MILLIS
+    ) {
+        return null
+    }
+    return notice
+}
+
+internal fun isOpenCodeLifecycleStripVisible(model: OpenCodeLifecycleStripModel): Boolean {
+    if (model.cancelled) return true
+    if (model.pageOpening && model.state == OpenCodeServerLifecycleState.RUNNING) return true
+    if (model.recovery != null && model.state == OpenCodeServerLifecycleState.RUNNING) return true
+    return model.state == OpenCodeServerLifecycleState.STARTING || model.state == OpenCodeServerLifecycleState.FAILED
+}
+
+internal fun shouldTickLifecycleStrip(model: OpenCodeLifecycleStripModel): Boolean {
+    if (model.state == OpenCodeServerLifecycleState.STARTING ||
+        model.state == OpenCodeServerLifecycleState.RESTARTING
+    ) {
+        return true
+    }
+    return model.recovery != null && isOpenCodeLifecycleStripVisible(model)
+}
+
+internal fun formatOpenCodeServerStatusDetail(
+    state: OpenCodeServerLifecycleState,
+    serverUrl: String?,
+    version: String?,
+    backendId: String,
+): String {
+    val runtime = formatOpenCodeServerRuntimeLabel(backendId)
+    if (state == OpenCodeServerLifecycleState.RUNNING && !serverUrl.isNullOrBlank()) {
+        val versionPrefix = version?.takeIf { it.isNotBlank() }?.let { "OpenCode $it, " }.orEmpty()
+        return ": $serverUrl ($versionPrefix$runtime)"
+    }
+    return " ($runtime)"
+}
+
 /** [detail] is plain text and gets HTML-escaped here. */
 internal fun formatOpenCodeServerLifecycleStatusText(state: OpenCodeServerLifecycleState, detail: String = ""): String {
     return "<html><span style=\"color: ${state.colorHex}\">&#9679;</span>&nbsp;" +

@@ -6,6 +6,8 @@ import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleListener
 import de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager
 import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsConfigurable
+import de.moritzf.opencodewebpanel.settings.OpenCodeRuntimeMode
+import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable
 import de.moritzf.opencodewebpanel.toolWindow.OPEN_CODE_RESET_ZOOM_ACTION_ID
 import de.moritzf.opencodewebpanel.toolWindow.OPEN_CODE_ZOOM_IN_ACTION_ID
@@ -35,23 +37,52 @@ class OpenCodePluginTest : BasePlatformTestCase() {
         assertTrue(DumbAware::class.java.isAssignableFrom(OpenCodeWebToolWindowFactoryImpl::class.java))
     }
 
-    fun testSharedOpenCodeServerManagerIsApplicationScoped() {
-        assertSame(SharedOpenCodeServerManager.getInstance(), SharedOpenCodeServerManager.getInstance())
+    fun testNativeBackendIdIsPrefixedAndDistinct() {
+        val first = OpenCodeServerBackend.nativeBackendId("/tmp/project-a")
+        val second = OpenCodeServerBackend.nativeBackendId("/tmp/project-b")
+        assertTrue(OpenCodeServerBackend.isNative(OpenCodeServerBackend.NATIVE_ID))
+        assertTrue(OpenCodeServerBackend.isNative(first))
+        assertTrue(first.startsWith(OpenCodeServerBackend.NATIVE_ID_PREFIX))
+        assertFalse(first == second)
+        assertFalse(OpenCodeServerBackend.isNative("sbx:ide-ocwp-deadbeef"))
     }
 
     fun testOpenCodeServerBackendRegistryIsApplicationScoped() {
         assertSame(OpenCodeServerBackendRegistry.getInstance(), OpenCodeServerBackendRegistry.getInstance())
     }
 
-    fun testHostRuntimeReturnsSameNativeBackendForDifferentDirectories() {
+    fun testHostRuntimeReturnsSeparateNativeBackendsPerDirectory() {
         val registry = OpenCodeServerBackendRegistry.getInstance()
         val first = registry.backendForCanonicalDirectory("/tmp/project-a")
         val second = registry.backendForCanonicalDirectory("/tmp/project-b")
-        assertSame(first, second)
-        assertSame(SharedOpenCodeServerManager.getInstance(), first)
-        assertEquals(OpenCodeServerBackend.NATIVE_ID, first.backendId)
-        assertSame(registry.nativeBackend(), registry.backend(OpenCodeServerBackend.NATIVE_ID))
-        assertSame(registry.backendFor(project), registry.nativeBackend())
+        val same = registry.backendForCanonicalDirectory("/tmp/project-a")
+        assertSame(first, same)
+        assertNotSame(first, second)
+        assertTrue(OpenCodeServerBackend.isNative(first.backendId))
+        assertTrue(first.backendId.startsWith(OpenCodeServerBackend.NATIVE_ID_PREFIX))
+        assertFalse(first.backendId == second.backendId)
+        assertTrue(first.offersHostPortControls)
+        assertSame(first, registry.backend(first.backendId))
+        assertSame(second, registry.backend(second.backendId))
+    }
+
+    fun testSbxRuntimeReturnsSeparateBackendsPerDirectory() {
+        val settings = OpenCodeSettingsState.getInstance()
+        val previous = settings.runtimeMode
+        settings.runtimeMode = OpenCodeRuntimeMode.DOCKER_SANDBOX.name
+        try {
+            val registry = OpenCodeServerBackendRegistry.getInstance()
+            val first = registry.backendForCanonicalDirectory("/tmp/project-a")
+            val second = registry.backendForCanonicalDirectory("/tmp/project-b")
+            assertNotSame(first, second)
+            assertFalse(first.backendId == second.backendId)
+            assertTrue(first.offersHostPortControls)
+            assertTrue(OpenCodeServerBackend.isNative(registry.nativeBackend().backendId))
+            assertSame(first, registry.backend(first.backendId))
+        } finally {
+            settings.runtimeMode = previous
+            OpenCodeServerBackendRegistry.getInstance().stopAllSbxBackends()
+        }
     }
 
     fun testPluginDescriptorRegistersRightSidebarToolWindowAndSharedServerManager() {
@@ -66,7 +97,7 @@ class OpenCodePluginTest : BasePlatformTestCase() {
         assertTrue(pluginXml.contains("icon=\"/icons/opencode.svg\""))
         assertTrue(pluginXml.contains("factoryClass=\"de.moritzf.opencodewebpanel.toolWindow.OpenCodeWebToolWindowFactoryImpl\""))
         assertTrue(pluginXml.contains("applicationService"))
-        assertTrue(pluginXml.contains("serviceImplementation=\"de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager\""))
+        assertFalse(pluginXml.contains("serviceImplementation=\"de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager\""))
         assertTrue(pluginXml.contains("serviceImplementation=\"de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry\""))
         assertTrue(pluginXml.contains("applicationConfigurable"))
         assertTrue(pluginXml.contains("instance=\"de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable\""))
@@ -169,7 +200,7 @@ class OpenCodePluginTest : BasePlatformTestCase() {
     }
 
     fun testSharedServerManagerStopsServerAndClearsLifecycleState() {
-        val service = SharedOpenCodeServerManager.getInstance()
+        val service = nativeManager()
         val process = RecordingProcess()
         val future = RecordingFuture()
         service.installTestServerState(
@@ -192,7 +223,7 @@ class OpenCodePluginTest : BasePlatformTestCase() {
     }
 
     fun testStopCannotBeOvertakenByReservedHealthRestartPublication() {
-        val service = SharedOpenCodeServerManager.getInstance()
+        val service = nativeManager()
         val url = "http://127.0.0.1:60482"
         service.installTestServerState(url = url, password = "secret-password")
         service.setServerRunning(true)
@@ -226,7 +257,7 @@ class OpenCodePluginTest : BasePlatformTestCase() {
     }
 
     fun testSharedServerManagerForceKillsStubbornServerProcess() {
-        val service = SharedOpenCodeServerManager.getInstance()
+        val service = nativeManager()
         val process = StubbornProcess()
         service.installTestServerState(
             process = process,
@@ -244,7 +275,7 @@ class OpenCodePluginTest : BasePlatformTestCase() {
     }
 
     fun testSharedServerManagerTracksManualRunningLifecycleState() {
-        val service = SharedOpenCodeServerManager.getInstance()
+        val service = nativeManager()
 
         service.stopServer()
         assertEquals(OpenCodeServerLifecycleState.STOPPED, service.getLifecycleState())
@@ -257,7 +288,7 @@ class OpenCodePluginTest : BasePlatformTestCase() {
     }
 
     fun testServerReadyForAuthWhenUrlAndPasswordPresentEvenIfLauncherDead() {
-        val service = SharedOpenCodeServerManager.getInstance()
+        val service = nativeManager()
         val process = RecordingProcess()
         process.destroy()
         assertFalse(process.isAlive)
@@ -274,17 +305,22 @@ class OpenCodePluginTest : BasePlatformTestCase() {
     }
 
     fun testServerNotReadyForAuthWithoutCredentials() {
-        val service = SharedOpenCodeServerManager.getInstance()
+        val service = nativeManager()
         service.stopServer()
         assertFalse(service.isServerReadyForAuth())
     }
 
     override fun tearDown() {
         try {
-            SharedOpenCodeServerManager.getInstance().stopServer()
+            OpenCodeServerBackendRegistry.getInstance().stopAllNativeBackends()
         } finally {
             super.tearDown()
         }
+    }
+
+    private fun nativeManager(): SharedOpenCodeServerManager {
+        return OpenCodeServerBackendRegistry.getInstance()
+            .backendForCanonicalDirectory("/tmp/opencode-plugin-test") as SharedOpenCodeServerManager
     }
 
     private class RecordingProcess : Process() {

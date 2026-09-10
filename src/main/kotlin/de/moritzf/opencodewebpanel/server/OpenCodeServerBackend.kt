@@ -4,9 +4,8 @@ import com.intellij.openapi.project.Project
 import java.nio.file.Path
 
 /**
- * Process/URL owner behind one OpenCode web origin. Native Host mode is a single
- * application-wide instance; Docker Sandbox mode is one instance per canonical project
- * directory.
+ * Process/URL owner behind one OpenCode web origin. One instance per canonical
+ * project directory for both Host CLI and Docker Sandbox.
  */
 interface OpenCodeServerBackend {
     val backendId: String
@@ -22,7 +21,8 @@ interface OpenCodeServerBackend {
         onFailed: () -> Unit,
     )
 
-    fun stopServer()
+    /** [onStopped] runs after process cleanup, not merely after publishing STOPPED. */
+    fun stopServer(onStopped: () -> Unit = {})
 
     fun restartServer(
         project: Project,
@@ -43,8 +43,20 @@ interface OpenCodeServerBackend {
     fun getServerLogFile(): Path?
     fun consumeUnsupportedServerVersionWarning(): String?
     fun consumeV2ProtocolWarning(): Boolean
+    fun consumeCreateStaleWarning(): List<String> = emptyList()
+    fun startFailureMessage(): String? = null
 
     companion object {
         const val NATIVE_ID = "native"
+        const val NATIVE_ID_PREFIX = "native:"
+
+        fun isNative(backendId: String): Boolean {
+            return backendId == NATIVE_ID || backendId.startsWith(NATIVE_ID_PREFIX)
+        }
+
+        fun nativeBackendId(canonicalDirectory: String): String {
+            val directory = canonicalDirectory.trim().ifBlank { "unbound" }
+            return NATIVE_ID_PREFIX + SbxCli.sandboxName(directory)
+        }
     }
 }

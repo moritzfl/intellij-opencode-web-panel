@@ -8,6 +8,7 @@ import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.progress.Task.Backgroundable
 import com.intellij.openapi.project.Project
 import de.moritzf.opencodewebpanel.settings.OpenCodePasswordStore
+import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsState
 import de.moritzf.opencodewebpanel.settings.OpenCodeProxyMode
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
 import org.jetbrains.annotations.TestOnly
@@ -19,15 +20,13 @@ import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 
-class SharedOpenCodeServerManager : OpenCodeServerBackend, Disposable {
+class SharedOpenCodeServerManager(
+    private val canonicalDirectory: String,
+) : OpenCodeServerBackend, Disposable {
 
     companion object {
         private const val SERVER_START_TIMEOUT_MILLIS = 60_000L
         private const val SERVER_START_POLL_MILLIS = 1_000L
-
-        fun getInstance(): SharedOpenCodeServerManager {
-            return ApplicationManager.getApplication().getService(SharedOpenCodeServerManager::class.java)
-        }
     }
 
     private data class StartCallback(
@@ -50,7 +49,7 @@ class SharedOpenCodeServerManager : OpenCodeServerBackend, Disposable {
         val resources: ServerResourcesToStop,
     )
 
-    override val backendId: String = OpenCodeServerBackend.NATIVE_ID
+    override val backendId: String = OpenCodeServerBackend.nativeBackendId(canonicalDirectory)
 
     private val lock = Any()
     private val pendingStarts = mutableListOf<StartCallback>()
@@ -85,16 +84,17 @@ class SharedOpenCodeServerManager : OpenCodeServerBackend, Disposable {
     @Volatile
     private var lastPeriodicCheckMillis = 0L
     private var preferredBasePath: String? = null
+    private var lastPortArgument = OpenCodeServerProtocol.DYNAMIC_PORT
     private var consecutiveStartFailures = 0
     private var nextStartAllowedAtMillis = 0L
     private val processTerminator = OpenCodeProcessTerminator()
     private val globalEventStream = OpenCodeGlobalEventStream()
     private val scheduler = Executors.newSingleThreadScheduledExecutor { runnable ->
-        Thread(runnable, "OpenCode-Server-Checker").apply { isDaemon = true }
+        Thread(runnable, "OpenCode-Server-Checker-$backendId").apply { isDaemon = true }
     }
     // Serializes dispose + process kill so settings-driven stop and restart never race on a fixed port.
     private val stopExecutor = Executors.newSingleThreadExecutor { runnable ->
-        Thread(runnable, "OpenCode-Server-Stop").apply { isDaemon = true }
+        Thread(runnable, "OpenCode-Server-Stop-$backendId").apply { isDaemon = true }
     }
     private val serverLogBuffer = OpenCodeServerLogBuffer()
 
@@ -246,6 +246,8 @@ class SharedOpenCodeServerManager : OpenCodeServerBackend, Disposable {
         version
     }
 
+    override fun startFailureMessage(): String? = null
+
     /** Returns true once when the running server would make the embedded page use permission v2. */
     override fun consumeV2ProtocolWarning(): Boolean = synchronized(lock) {
         if (v2ProtocolWarningShown || embeddedProtocol != OpenCodeEmbeddedProtocol.V2) {
@@ -315,7 +317,7 @@ class SharedOpenCodeServerManager : OpenCodeServerBackend, Disposable {
         }
     }
 
-    override fun stopServer() {
+    override fun stopServer(onStopped: () -> Unit) {
         try {
             val callbacks: List<StartCallback>
             val resources = synchronized(lock) {
@@ -331,7 +333,7 @@ class SharedOpenCodeServerManager : OpenCodeServerBackend, Disposable {
             notifyStartCallbacks(callbacks, success = false)
             // Detach under the caller; kill off the EDT so settings apply never freezes the UI
             // while dispose + process termination run (can take several seconds).
-            stopResourcesAsync(resources)
+            stopResourcesAsync(resources, onStopped)
         } catch (e: Exception) {
             thisLogger().error("Error stopping OpenCode server: ${e.message}")
         }
@@ -566,7 +568,7 @@ class SharedOpenCodeServerManager : OpenCodeServerBackend, Disposable {
         if (project != null) {
             val task = object : Backgroundable(project, "Starting OpenCode server", true) {
                 override fun run(indicator: ProgressIndicator) {
-                    runOpenCodeServerStart(projectBasePath, startId, indicator)
+                    runOpenCodeServerStart(project, projectBasePath, startId, indicator)
                 }
             }
             ProgressManager.getInstance().run(task)
@@ -574,11 +576,12 @@ class SharedOpenCodeServerManager : OpenCodeServerBackend, Disposable {
         }
 
         ApplicationManager.getApplication().executeOnPooledThread {
-            runOpenCodeServerStart(projectBasePath, startId, indicator = null)
+            runOpenCodeServerStart(project, projectBasePath, startId, indicator = null)
         }
     }
 
     private fun runOpenCodeServerStart(
+        project: Project?,
         projectBasePath: String?,
         startId: Long,
         indicator: ProgressIndicator?,
@@ -603,7 +606,7 @@ class SharedOpenCodeServerManager : OpenCodeServerBackend, Disposable {
             }
             val password = OpenCodePasswordStore.getInstance().ensurePasswordBlocking()
             val settings = OpenCodeSettingsState.getInstance()
-            val port = settings.portArgument()
+            val port = portArgumentFor(project)
             val executable = settings.executablePath()
             val processBuilder = OpenCodeServerProtocol.createProcessBuilder(
                 projectBasePath,
@@ -796,12 +799,24 @@ class SharedOpenCodeServerManager : OpenCodeServerBackend, Disposable {
     }
 
     private fun rememberBasePath(projectBasePath: String?): String? {
+        val pinned = canonicalDirectory.trim().ifBlank { null }
         return synchronized(lock) {
             if (!projectBasePath.isNullOrBlank()) {
                 preferredBasePath = projectBasePath
             }
-            projectBasePath ?: preferredBasePath
+            projectBasePath?.ifBlank { null } ?: preferredBasePath ?: pinned
         }
+    }
+
+    private fun portArgumentFor(project: Project?): String {
+        if (project != null && !project.isDisposed) {
+            val settings = OpenCodeProjectSettingsState.getInstance(project)
+            lastPortArgument = SbxLaunchSpec.portArgument(
+                settings.effectiveProjectDirectory(project.basePath),
+                settings.portArgument(),
+            )
+        }
+        return lastPortArgument
     }
 
     /**

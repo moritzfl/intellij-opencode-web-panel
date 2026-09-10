@@ -10,6 +10,14 @@
   delay. Home project rows get the same path preview so duplicate names
   stay distinguishable. Disable under Browser Appearance if an OpenCode
   update clashes with the overlay.
+- Optional Docker Sandboxes (`sbx`) runtime: one sandbox per project
+  directory, with `opencode serve` inside the VM published to host loopback.
+  Native Host CLI remains the default. Project `opencode-sbx/opencode-sbx.yaml`
+  is the source of truth. Apply writes `./opencode-sbx/opencode-sbx.sh` so
+  teammates can run `--web`, `--cli`, or `--acp` without the IDE. The launcher
+  never invents a server password. Provider keys stay on the host. Sessions can
+  persist across Reset. Invalid YAML fails closed instead of silently switching
+  to Host CLI.
 
 ### Fixed
 

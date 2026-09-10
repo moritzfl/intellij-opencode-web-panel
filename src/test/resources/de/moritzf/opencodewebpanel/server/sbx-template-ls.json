@@ -1,0 +1,20 @@
+{
+  "images": [
+    {
+      "id": "d23d51e1eaa7",
+      "repository": "docker.io/docker/sandbox-templates",
+      "tag": "opencode-docker",
+      "flavor": "opencode-docker",
+      "created_at": "2026-09-03T16:24:26Z",
+      "size": 1448777935
+    },
+    {
+      "id": "aaaaaaaaaaaa",
+      "repository": "docker.io/docker/sandbox-templates",
+      "tag": "claude-code-docker",
+      "flavor": "claude-code-docker",
+      "created_at": "2026-09-03T16:24:26Z",
+      "size": 1
+    }
+  ]
+}

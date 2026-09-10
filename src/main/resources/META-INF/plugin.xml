@@ -6,7 +6,7 @@
 
     <description>
         OpenCode Web Panel embeds the OpenCode web app directly inside JetBrains IDEs. It starts and authenticates a
-        local OpenCode server, opens the current IDE project, preserves selected OpenCode UI state, and adds IDE-native
+        local OpenCode server (or an optional Docker Sandbox), opens the current IDE project, preserves selected OpenCode UI state, and adds IDE-native
         file-link, code-reference, and file-drop integrations.
 
         Browser-side integrations are configurable safeguards, so users can disable them if an OpenCode update conflicts
@@ -20,7 +20,6 @@
     <extensions defaultExtensionNs="com.intellij">
         <applicationConfigurable id="opencode.web.panel.settings" parentId="tools" displayName="OpenCode Web Panel" instance="de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable"/>
         <projectConfigurable id="opencode.web.panel.project.settings" parentId="tools" displayName="OpenCode Web Panel (Project)" instance="de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsConfigurable"/>
-        <applicationService serviceImplementation="de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager"/>
         <applicationService serviceImplementation="de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry"/>
         <notificationGroup id="OpenCode Web Panel" displayType="BALLOON"/>
         <toolWindow factoryClass="de.moritzf.opencodewebpanel.toolWindow.OpenCodeWebToolWindowFactoryImpl" id="OpenCode" anchor="right" icon="/icons/opencode.svg"/>

@@ -186,6 +186,14 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun resolveExecutableForLaunchKeepsBareNameWhenMissing() {
+        assertEquals(
+            "sbx",
+            OpenCodeServerProtocol.resolveExecutableForLaunch("sbx", path = "/tmp/does-not-exist-opencode-path"),
+        )
+    }
+
+    @Test
     fun detectExecutablePathFindsExecutableOnPath() {
         val executableDirectory = Files.createTempDirectory("opencode-bin")
         val executable = executableDirectory.resolve("opencode").toFile()
@@ -290,8 +298,12 @@ class OpenCodeServerProtocolTest {
             OpenCodeServerProtocol.parseServerUrl("OpenCode server listening on http://example.com:60482"),
         )
         assertFalse(OpenCodeServerProtocol.isLoopbackServerUrl("http://10.0.0.1:4096"))
+        assertFalse(OpenCodeServerProtocol.isLoopbackServerUrl("http://0.0.0.0:4096"))
         assertTrue(OpenCodeServerProtocol.isLoopbackServerUrl("http://127.0.0.1:4096"))
         assertTrue(OpenCodeServerProtocol.isLoopbackServerUrl("http://localhost:4096"))
+        val published = OpenCodeServerProtocol.publishedSandboxUrl(49161)
+        assertEquals("http://127.0.0.1:49161", published)
+        assertTrue(OpenCodeServerProtocol.isLoopbackServerUrl(published))
     }
 
     @Test
@@ -322,7 +334,7 @@ class OpenCodeServerProtocolTest {
     fun buildServerSessionUrlBuildsTheNativeServerRoute() {
         // serverKey is base64url (no padding) of the origin - the same encoding the SPA uses.
         assertEquals(
-            "http://127.0.0.1:60482/server/aHR0cDovLzEyNy4wLjAuMTo2MDQ4Mg/session",
+            "http://127.0.0.1:60482/",
             OpenCodeServerProtocol.buildServerSessionUrl("http://127.0.0.1:60482/"),
         )
         assertEquals(
@@ -592,6 +604,33 @@ class OpenCodeServerProtocolTest {
         assertTrue(html.contains("&#9679;"))
         assertTrue(html.contains("#FFC107"))
         assertTrue(html.contains("OpenCode server: Starting"))
+    }
+
+    @Test
+    fun lifecycleStatusDetailIncludesRuntimeAndVersion() {
+        val runningNative = formatOpenCodeServerStatusDetail(
+            OpenCodeServerLifecycleState.RUNNING,
+            "http://127.0.0.1:4096",
+            "1.18.23",
+            OpenCodeServerBackend.nativeBackendId("/tmp/project"),
+        )
+        val runningSbx = formatOpenCodeServerStatusDetail(
+            OpenCodeServerLifecycleState.RUNNING,
+            "http://127.0.0.1:49196",
+            "1.18.23",
+            "sbx:ide-ocwp-deadbeef",
+        )
+        val stoppedSbx = formatOpenCodeServerStatusDetail(
+            OpenCodeServerLifecycleState.STOPPED,
+            null,
+            null,
+            "sbx:ide-ocwp-deadbeef",
+        )
+        assertEquals(": http://127.0.0.1:4096 (OpenCode 1.18.23, native CLI)", runningNative)
+        assertEquals(": http://127.0.0.1:49196 (OpenCode 1.18.23, sbx)", runningSbx)
+        assertEquals(" (sbx)", stoppedSbx)
+        assertEquals("native CLI", formatOpenCodeServerRuntimeLabel(OpenCodeServerBackend.NATIVE_ID))
+        assertEquals("sbx", formatOpenCodeServerRuntimeLabel("sbx:ide-ocwp-deadbeef"))
     }
 
     @Test
@@ -2334,6 +2373,27 @@ class OpenCodeServerProtocolTest {
         assertFalse(OpenCodeServerProtocol.shouldHandleBasicAuthChallenge(serverUrl, false, "localhost", 60482))
         assertFalse(OpenCodeServerProtocol.shouldHandleBasicAuthChallenge(serverUrl, false, "127.0.0.1", 60483))
         assertFalse(OpenCodeServerProtocol.shouldHandleBasicAuthChallenge(null, false, "127.0.0.1", 60482))
+    }
+
+    @Test
+    fun unansweredLoopbackChallengeIsCancelledSoChromiumShowsNoLoginDialog() {
+        val live = "http://127.0.0.1:4096"
+        assertEquals(
+            OpenCodeServerProtocol.BasicAuthChallengeReply.CONTINUE,
+            OpenCodeServerProtocol.replyToBasicAuthChallenge(false, "127.0.0.1", 4096, live, "secret", true),
+        )
+        assertEquals(
+            OpenCodeServerProtocol.BasicAuthChallengeReply.CANCEL,
+            OpenCodeServerProtocol.replyToBasicAuthChallenge(false, "127.0.0.1", 49262, live, "secret", true),
+        )
+        assertEquals(
+            OpenCodeServerProtocol.BasicAuthChallengeReply.CANCEL,
+            OpenCodeServerProtocol.replyToBasicAuthChallenge(false, "127.0.0.1", 49262, null, null, false),
+        )
+        assertEquals(
+            OpenCodeServerProtocol.BasicAuthChallengeReply.IGNORE,
+            OpenCodeServerProtocol.replyToBasicAuthChallenge(true, "127.0.0.1", 4096, live, "secret", true),
+        )
     }
 
     @Test
