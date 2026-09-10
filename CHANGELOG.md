@@ -57,6 +57,17 @@
   editable input no longer reloads a healthy session.
 - Agent sound busy state is tracked per backend; restarting the Host CLI server
   no longer clears or satisfies another backend's sessions.
+- Sandbox ownership is the persisted sandbox id. Extra protect/persist
+  workspaces no longer make a later `sbx ls` look foreign.
+- Apply keeps a running sandbox up for live port remap and kit append. Memory,
+  CPU, protect, and persist changes labeled "applies at Reset" no longer stop
+  the VM.
+- A create that cannot be listed is removed instead of leaving a nameless
+  conflict. Stop still finishes if the lifecycle worker has already shut down.
+- Persist/extra-mount symlinks inside the VM use the in-guest bind path
+  (`C:/Users/...` → `/c/Users/...`). Trailing commas in shared `opencode.jsonc`
+  no longer skip the MCP rewrite. Agent-idle REST uses the event's backend, not
+  the current yaml runtime. Chat-file open only swallows `ClassCastException`.
 - Panel replacement waits for Chromium and registers page callbacks before the
   first document. Unanswered basic-auth challenges are cancelled so Chromium
   does not show a login dialog. Without a restorable session, boot on OpenCode
