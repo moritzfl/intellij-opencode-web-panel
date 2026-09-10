@@ -147,6 +147,45 @@ internal object SbxOpencodeConfigOverlay {
             out.append(char)
             index++
         }
+        return stripTrailingCommas(out.toString())
+    }
+
+    private fun stripTrailingCommas(text: String): String {
+        val out = StringBuilder(text.length)
+        var index = 0
+        var inString = false
+        var escaped = false
+        while (index < text.length) {
+            val char = text[index]
+            if (inString) {
+                out.append(char)
+                if (escaped) {
+                    escaped = false
+                } else if (char == '\\') {
+                    escaped = true
+                } else if (char == '"') {
+                    inString = false
+                }
+                index++
+                continue
+            }
+            if (char == '"') {
+                inString = true
+                out.append(char)
+                index++
+                continue
+            }
+            if (char == ',') {
+                var look = index + 1
+                while (look < text.length && text[look].isWhitespace()) look++
+                if (look < text.length && (text[look] == '}' || text[look] == ']')) {
+                    index++
+                    continue
+                }
+            }
+            out.append(char)
+            index++
+        }
         return out.toString()
     }
 

@@ -552,6 +552,7 @@ class SbxLauncherTest {
             .bufferedReader().use { it.readText() }
         // Integration probes deliberately stop at create, before serve and its health poller.
         assertTrue("Windows Git Bash identity must match SbxCli.sandboxIdentityPath", script.contains("identity_path"))
+        assertTrue("In-guest Windows binds are /c/..., not C:/...", script.contains("guest_bind_path"))
         assertTrue("Mount paths must be argv, not interpolated shell", script.contains("opencode-link"))
         assertTrue("Persist relink must require an attached workspace", script.contains("workspace_has"))
         assertFalse("Provisioning must not start the detached agent TUI", script.contains("run -d"))

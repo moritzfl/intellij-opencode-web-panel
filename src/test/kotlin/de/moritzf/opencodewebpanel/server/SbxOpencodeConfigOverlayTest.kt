@@ -48,6 +48,22 @@ class SbxOpencodeConfigOverlayTest {
     }
 
     @Test
+    fun stripJsoncRemovesTrailingCommas() {
+        val jsonc = """
+            {
+              // loopback MCP
+              "mcp": { "other": { "type": "remote", "url": "https://127.0.0.1:9443/mcp", }, },
+            }
+        """.trimIndent()
+        val overlay = SbxOpencodeConfigOverlay.buildContent(
+            shareHostConfig = true,
+            ideaMcpPort = null,
+            hostConfigJson = SbxOpencodeConfigOverlay.stripJsonc(jsonc),
+        )
+        assertTrue(overlay!!.contains("https://host.docker.internal:9443/mcp"))
+    }
+
+    @Test
     fun rewriteLoopbackUrlKeepsHttps() {
         assertEquals(
             "https://host.docker.internal:9443/mcp",

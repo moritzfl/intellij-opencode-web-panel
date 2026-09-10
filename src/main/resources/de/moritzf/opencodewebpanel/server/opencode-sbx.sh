@@ -123,6 +123,18 @@ is_absolute() {
   return 1
 }
 
+guest_bind_path() {
+  local p="$1"
+  p="${p//\\//}"
+  if [[ "$p" =~ ^[A-Za-z]:/ ]]; then
+    local drive
+    drive="$(printf '%s' "${p:0:1}" | tr 'A-Z' 'a-z')"
+    printf '/%s%s' "$drive" "${p:2}"
+  else
+    printf '%s' "$p"
+  fi
+}
+
 hash12() {
   printf '%s' "$1" | openssl dgst -sha256 -r | awk '{print substr($1,1,12)}'
 }
@@ -512,8 +524,10 @@ resolve_host_path() {
 }
 
 link_mount() {
-  local host="$1" sandbox="$2" replace="${3:-}"
-  local script
+  local host sandbox replace script
+  host="$(guest_bind_path "$1")"
+  sandbox="$2"
+  replace="${3:-}"
   if [[ "$replace" == replace ]]; then
     script='mkdir -p -- "$(dirname -- "$2")"
 if [ -d "$2" ] && [ ! -L "$2" ]; then
