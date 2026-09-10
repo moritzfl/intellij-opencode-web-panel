@@ -231,6 +231,7 @@ parse_flow_kits() {
       quote="$ch"
       item+="$ch"
     elif [[ "$ch" == "," ]]; then
+      item="${item#"${item%%[![:space:]]*}"}"
       item="$(yaml_unquote "$item")"
       [[ -n "$item" ]] && KITS+=("$item")
       item=""
@@ -238,6 +239,7 @@ parse_flow_kits() {
       item+="$ch"
     fi
   done
+  item="${item#"${item%%[![:space:]]*}"}"
   item="$(yaml_unquote "$item")"
   [[ -n "$item" ]] && KITS+=("$item")
 }

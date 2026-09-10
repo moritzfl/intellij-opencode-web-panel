@@ -482,10 +482,18 @@ class SbxLauncherTest {
     fun flowStyleKitsArePassedToCreate() {
         val project = directory("project")
         Files.createDirectory(project.resolve("network-kit"))
-        Files.writeString(project.resolve("opencode-sbx.yaml"), "canonicalDirectory: ./\nkits: [./network-kit]\n")
+        Files.writeString(
+            project.resolve("opencode-sbx.yaml"),
+            "canonicalDirectory: ./\nkits: [./network-kit, git+https://example.com/kits.git#ref=v1, './quoted kit']\n",
+        )
         val args = runLauncher(launcher(project), project)
+        // Items after a comma must not keep their leading space, and quoted flow items
+        // must reach --kit exactly as the Kotlin parser reads them.
         assertTrue(args.contains("--kit"))
         assertTrue(args.contains("./network-kit"))
+        assertFalse(args.contains(" ./"))
+        assertTrue(args.contains("git+https://example.com/kits.git#ref=v1"))
+        assertTrue(args.contains("./quoted kit"))
     }
 
     @Test
