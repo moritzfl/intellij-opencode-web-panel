@@ -8,12 +8,13 @@ internal data class OpenCodeNotificationServerIdentity(
     val generation: Long,
     val serverUrl: String,
     val notificationEpoch: Long,
+    val directory: String = "",
 )
 
 /** Drops queued or slow notification events when their originating server is no longer current. */
 internal class OpenCodeNotificationEventDispatcher(
     private val enabled: () -> Boolean,
-    private val serverIdentity: () -> OpenCodeNotificationServerIdentity?,
+    private val serverIdentity: (directory: String) -> OpenCodeNotificationServerIdentity?,
     private val process: (
         event: OpenCodeGlobalEvent,
         identity: OpenCodeNotificationServerIdentity,
@@ -26,24 +27,24 @@ internal class OpenCodeNotificationEventDispatcher(
 ) {
     fun eventReceived(event: OpenCodeGlobalEvent) {
         if (event.type !in OpenCodeNotificationEventProcessor.RELEVANT_EVENT_TYPES || !enabled()) return
-        val identity = serverIdentity() ?: return
+        val identity = serverIdentity(event.directory) ?: return
         executeAsync {
-            if (!stillCurrent(identity)) return@executeAsync
+            if (!stillCurrent(identity, event.directory)) return@executeAsync
             val outcome = process(event, identity) ?: return@executeAsync
-            if (!stillCurrent(identity)) return@executeAsync
+            if (!stillCurrent(identity, event.directory)) return@executeAsync
             dispatch(outcome, identity)
         }
     }
 
-    private fun stillCurrent(identity: OpenCodeNotificationServerIdentity): Boolean {
-        return enabled() && serverIdentity() == identity
+    private fun stillCurrent(identity: OpenCodeNotificationServerIdentity, directory: String): Boolean {
+        return enabled() && serverIdentity(directory) == identity
     }
 }
 
 /** Applies ordered event outcomes on the UI thread after one final identity check. */
 internal class OpenCodeNotificationOutcomeDispatcher(
     private val enabled: () -> Boolean,
-    private val serverIdentity: () -> OpenCodeNotificationServerIdentity?,
+    private val serverIdentity: (directory: String) -> OpenCodeNotificationServerIdentity?,
     private val notify: (
         payload: OpenCodeServerProtocol.SystemNotificationPayload,
         identity: OpenCodeNotificationServerIdentity,
@@ -57,7 +58,7 @@ internal class OpenCodeNotificationOutcomeDispatcher(
         identity: OpenCodeNotificationServerIdentity,
     ) {
         executeOnUi {
-            if (!enabled() || serverIdentity() != identity) return@executeOnUi
+            if (!enabled() || serverIdentity(directoryFor(outcome, identity)) != identity) return@executeOnUi
             when (outcome) {
                 is OpenCodeNotificationEventProcessor.Outcome.Notify -> notify(outcome.payload, identity)
                 is OpenCodeNotificationEventProcessor.Outcome.Dismiss -> dismiss(outcome.key)
@@ -67,8 +68,18 @@ internal class OpenCodeNotificationOutcomeDispatcher(
 
     fun reconcileRequestKeys(pendingKeys: Set<String>, identity: OpenCodeNotificationServerIdentity) {
         executeOnUi {
-            if (!enabled() || serverIdentity() != identity) return@executeOnUi
+            if (!enabled() || serverIdentity(identity.directory) != identity) return@executeOnUi
             (activeRequestKeys() - pendingKeys).forEach(dismiss)
+        }
+    }
+
+    private fun directoryFor(
+        outcome: OpenCodeNotificationEventProcessor.Outcome,
+        identity: OpenCodeNotificationServerIdentity,
+    ): String {
+        return when (outcome) {
+            is OpenCodeNotificationEventProcessor.Outcome.Notify -> outcome.payload.directory
+            is OpenCodeNotificationEventProcessor.Outcome.Dismiss -> identity.directory
         }
     }
 }
@@ -89,7 +100,7 @@ internal data class OpenCodePendingNotificationLoad(
 /** Reconciles durable permission/question state after the global SSE stream reconnects. */
 internal class OpenCodePendingNotificationReconciler(
     private val enabled: () -> Boolean,
-    private val serverIdentity: () -> OpenCodeNotificationServerIdentity?,
+    private val serverIdentity: (directory: String) -> OpenCodeNotificationServerIdentity?,
     private val directories: () -> List<String>,
     private val load: (
         identity: OpenCodeNotificationServerIdentity,
@@ -111,24 +122,33 @@ internal class OpenCodePendingNotificationReconciler(
 ) {
     fun reconcile() {
         if (!enabled()) return
-        val identity = serverIdentity() ?: return
         executeAsync {
-            if (!stillCurrent(identity)) return@executeAsync
             var allAuthoritative = true
             val pending = mutableListOf<OpenCodePendingNotificationRequest>()
+            var keyIdentity: OpenCodeNotificationServerIdentity? = null
             for (directory in directories()) {
-                if (!stillCurrent(identity)) return@executeAsync
+                val identity = serverIdentity(directory)
+                if (identity == null) {
+                    allAuthoritative = false
+                    continue
+                }
+                if (!stillCurrent(identity, directory)) return@executeAsync
                 val result = load(identity, directory)
+                if (!stillCurrent(identity, directory)) return@executeAsync
                 allAuthoritative = allAuthoritative && result.authoritative
                 pending.addAll(result.requests)
+                if (keyIdentity == null) keyIdentity = identity
             }
-            if (!stillCurrent(identity)) return@executeAsync
             if (allAuthoritative) {
-                val pendingKeys = pending.mapTo(mutableSetOf()) { "request:${it.id}" }
-                reconcileActiveRequestKeys(pendingKeys, identity)
+                val identity = keyIdentity
+                if (identity != null && stillCurrent(identity, identity.directory)) {
+                    val pendingKeys = pending.mapTo(mutableSetOf()) { "request:${it.id}" }
+                    reconcileActiveRequestKeys(pendingKeys, identity)
+                }
             }
             for (request in pending.distinctBy { it.id }) {
-                if (!stillCurrent(identity)) return@executeAsync
+                val identity = serverIdentity(request.directory) ?: continue
+                if (!stillCurrent(identity, request.directory)) return@executeAsync
                 val properties = JsonObject().apply {
                     addProperty("id", request.id)
                     addProperty("sessionID", request.sessionID)
@@ -142,14 +162,14 @@ internal class OpenCodePendingNotificationReconciler(
                     ),
                     identity,
                 ) ?: continue
-                if (!stillCurrent(identity)) return@executeAsync
+                if (!stillCurrent(identity, request.directory)) return@executeAsync
                 dispatch(outcome, identity)
             }
         }
     }
 
-    private fun stillCurrent(identity: OpenCodeNotificationServerIdentity): Boolean {
-        return enabled() && serverIdentity() == identity
+    private fun stillCurrent(identity: OpenCodeNotificationServerIdentity, directory: String): Boolean {
+        return enabled() && serverIdentity(directory) == identity
     }
 }
 

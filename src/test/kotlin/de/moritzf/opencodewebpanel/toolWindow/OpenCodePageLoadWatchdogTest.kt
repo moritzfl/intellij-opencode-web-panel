@@ -73,7 +73,7 @@ class OpenCodePageLoadWatchdogTest {
 
         assertEquals(current, OpenCodePageLoadWatchdog.retryTarget(serverUrl, null, current))
         assertEquals(
-            "$serverUrl/server/aHR0cDovLzEyNy4wLjAuMTo0MDk2/session",
+            "$serverUrl/",
             OpenCodePageLoadWatchdog.retryTarget(serverUrl, "https://example.com", "about:blank"),
         )
     }

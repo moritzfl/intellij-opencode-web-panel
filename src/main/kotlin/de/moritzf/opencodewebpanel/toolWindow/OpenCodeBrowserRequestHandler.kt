@@ -13,6 +13,7 @@ import org.cef.handler.CefResourceRequestHandlerAdapter
 import org.cef.handler.CefRequestHandlerAdapter
 import org.cef.misc.BoolRef
 import org.cef.network.CefRequest
+import com.intellij.openapi.diagnostic.thisLogger
 
 internal class OpenCodeBrowserRequestHandler(
     private val serverManager: OpenCodeServerBackend,
@@ -92,13 +93,22 @@ internal class OpenCodeBrowserRequestHandler(
         scheme: String?,
         callback: CefAuthCallback?,
     ): Boolean {
-        val password = serverManager.getServerPassword() ?: return false
-        if (!serverManager.isServerReadyForAuth()) return false
-        if (!OpenCodeServerProtocol.shouldHandleBasicAuthChallenge(serverManager.getServerUrl(), isProxy, host, port)) {
-            return false
+        val password = serverManager.getServerPassword()
+        val serverUrl = serverManager.getServerUrl()
+        val ready = serverManager.isServerReadyForAuth()
+        val reply = OpenCodeServerProtocol.replyToBasicAuthChallenge(isProxy, host, port, serverUrl, password, ready)
+        thisLogger().info("jcef auth challenge host=$host port=$port proxy=$isProxy ready=$ready url=$serverUrl reply=$reply")
+        return when (reply) {
+            OpenCodeServerProtocol.BasicAuthChallengeReply.IGNORE -> false
+            OpenCodeServerProtocol.BasicAuthChallengeReply.CANCEL -> {
+                callback?.cancel()
+                true
+            }
+            OpenCodeServerProtocol.BasicAuthChallengeReply.CONTINUE -> {
+                callback?.Continue(OpenCodeServerProtocol.BASIC_AUTH_USERNAME, password)
+                callback != null
+            }
         }
-        callback?.Continue(OpenCodeServerProtocol.BASIC_AUTH_USERNAME, password)
-        return callback != null
     }
 
     override fun onRenderProcessTerminated(

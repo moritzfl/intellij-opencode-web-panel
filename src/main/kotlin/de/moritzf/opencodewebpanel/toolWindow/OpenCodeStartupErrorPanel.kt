@@ -12,11 +12,12 @@ import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.components.BorderLayoutPanel
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLogBuffer
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
+import de.moritzf.opencodewebpanel.server.SbxLaunchSpec
 import de.moritzf.opencodewebpanel.settings.OpenCodePortMode
 import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsConfigurable
+import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsListener
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable
-import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsListener
-import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
+import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsState
 import java.awt.Font
 import java.nio.file.Path
 import javax.swing.Box
@@ -50,8 +51,8 @@ internal class OpenCodeStartupErrorPanel(
             ShowSettingsUtil.getInstance().showSettingsDialog(project, OpenCodeSettingsConfigurable::class.java)
         }
     }
-    private val openProjectSettingsButton = JButton("Project Directory", AllIcons.Nodes.Folder).apply {
-        toolTipText = "Choose which folder OpenCode uses for this IDE project"
+    private val openProjectSettingsButton = JButton("Project Settings", AllIcons.Actions.Properties).apply {
+        toolTipText = "Open OpenCode Web Panel project settings"
         addActionListener {
             ShowSettingsUtil.getInstance().showSettingsDialog(project, OpenCodeProjectSettingsConfigurable::class.java)
         }
@@ -64,11 +65,24 @@ internal class OpenCodeStartupErrorPanel(
         toolTipText = "Switch the server to automatic port selection and restart"
         isVisible = false
         addActionListener {
-            OpenCodeSettingsState.getInstance().portMode = OpenCodePortMode.AUTO.name
-            ApplicationManager.getApplication().messageBus
-                .syncPublisher(OpenCodeSettingsListener.TOPIC)
+            val settings = OpenCodeProjectSettingsState.getInstance(project)
+            settings.portMode = OpenCodePortMode.AUTO.name
+            settings.portImportedFromApplication = true
+            val directory = settings.effectiveProjectDirectory(project.basePath)
+            val spec = SbxLaunchSpec.load(directory)
+            if (spec != null) SbxLaunchSpec.persist(spec.copy(hostPort = null))
+            project.messageBus
+                .syncPublisher(OpenCodeProjectSettingsListener.TOPIC)
                 .serverRestartRequested()
         }
+    }
+    private val adoptSandboxButton = JButton("Adopt sandbox").apply {
+        toolTipText = "Take ownership of the existing sandbox at this workspace"
+        isVisible = false
+    }
+    private val createNewSandboxButton = JButton("Create new").apply {
+        toolTipText = "Remove the unmatched sandbox and create one owned by this panel"
+        isVisible = false
     }
     private val logArea = JBTextArea().apply {
         isEditable = false
@@ -103,6 +117,10 @@ internal class OpenCodeStartupErrorPanel(
                         add(Box.createHorizontalStrut(JBUI.scale(8)))
                         add(useAutoPortButton)
                         add(Box.createHorizontalStrut(JBUI.scale(8)))
+                        add(adoptSandboxButton)
+                        add(Box.createHorizontalStrut(JBUI.scale(8)))
+                        add(createNewSandboxButton)
+                        add(Box.createHorizontalStrut(JBUI.scale(8)))
                         add(openProjectSettingsButton)
                         add(Box.createHorizontalStrut(JBUI.scale(8)))
                         add(openSettingsButton)
@@ -130,22 +148,37 @@ internal class OpenCodeStartupErrorPanel(
         executable: String,
         serverLogFile: Path?,
         offerAutomaticPort: Boolean = true,
+        failureMessage: String? = null,
+        onAdoptForeign: (() -> Unit)? = null,
+        onCreateNewSandbox: (() -> Unit)? = null,
     ) {
         logFile = serverLogFile
-        messageLabel.text = "OpenCode was started as \u201C$executable\u201D but the server did not become available."
+        val cancelled = failureMessage?.contains("cancelled", ignoreCase = true) == true
+        titleLabel.text = if (cancelled) "Start cancelled" else "Could not start OpenCode"
+        messageLabel.text = failureMessage
+            ?: "OpenCode was started as \u201C$executable\u201D but the server did not become available."
+        adoptSandboxButton.isVisible = onAdoptForeign != null
+        createNewSandboxButton.isVisible = onCreateNewSandbox != null
+        adoptSandboxButton.actionListeners.forEach { adoptSandboxButton.removeActionListener(it) }
+        createNewSandboxButton.actionListeners.forEach { createNewSandboxButton.removeActionListener(it) }
+        if (onAdoptForeign != null) {
+            adoptSandboxButton.addActionListener { onAdoptForeign() }
+        }
+        if (onCreateNewSandbox != null) {
+            createNewSandboxButton.addActionListener { onCreateNewSandbox() }
+        }
         ApplicationManager.getApplication().executeOnPooledThread {
             val executableFound = runCatching { OpenCodeServerProtocol.detectExecutablePath(executable) != null }
                 .getOrDefault(true)
             val logTail = OpenCodeServerLogBuffer.tailLines(serverLogFile)
-            val settings = OpenCodeSettingsState.getInstance()
-            val fixedPort = if (settings.portModeValue() == OpenCodePortMode.FIXED) {
-                OpenCodeSettingsState.sanitizePort(settings.fixedPort)
-            } else {
-                null
-            }
+            val settings = OpenCodeProjectSettingsState.getInstance(project)
+            val directory = settings.effectiveProjectDirectory(project.basePath)
+            val yamlPort = SbxLaunchSpec.load(directory)?.hostPort?.takeIf { it in 1..65535 }
+            val fixedPort = yamlPort ?: settings.hostPortOrNull()
             val portConflict = executableFound && fixedPort != null && OpenCodeServerProtocol.logIndicatesPortConflict(logTail)
             ApplicationManager.getApplication().invokeLater {
                 messageLabel.text = when {
+                    !failureMessage.isNullOrBlank() -> failureMessage
                     !executableFound ->
                         "The OpenCode executable \u201C$executable\u201D was not found. " +
                             "Configure its location in the settings or install OpenCode."

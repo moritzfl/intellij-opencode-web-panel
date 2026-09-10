@@ -20,7 +20,7 @@ class OpenCodeNotificationDispatchTest {
         var identity = OpenCodeNotificationServerIdentity(1L, "http://127.0.0.1:4096", 0L)
         val dispatcher = OpenCodeNotificationEventDispatcher(
             enabled = { true },
-            serverIdentity = { identity },
+            serverIdentity = { _ -> identity },
             process = { event, _ ->
                 processed.add(event)
                 OpenCodeNotificationEventProcessor.Outcome.Dismiss("session:ses_1")
@@ -43,7 +43,7 @@ class OpenCodeNotificationDispatchTest {
         var identity = OpenCodeNotificationServerIdentity(1L, "http://127.0.0.1:4096", 0L)
         val dispatcher = OpenCodeNotificationEventDispatcher(
             enabled = { true },
-            serverIdentity = { identity },
+            serverIdentity = { _ -> identity },
             process = { _, _ ->
                 identity = identity.copy(generation = 2L)
                 OpenCodeNotificationEventProcessor.Outcome.Dismiss("session:ses_1")
@@ -64,7 +64,7 @@ class OpenCodeNotificationDispatchTest {
         var identity = OpenCodeNotificationServerIdentity(1L, "http://127.0.0.1:4096", 0L)
         val dispatcher = OpenCodeNotificationEventDispatcher(
             enabled = { true },
-            serverIdentity = { identity },
+            serverIdentity = { _ -> identity },
             process = { _, _ -> OpenCodeNotificationEventProcessor.Outcome.Dismiss("session:ses_1") },
             dispatch = { outcome, _ -> dispatched.add(outcome) },
             executeAsync = tasks::add,
@@ -83,7 +83,7 @@ class OpenCodeNotificationDispatchTest {
         val dispatched = mutableListOf<OpenCodeNotificationServerIdentity>()
         val dispatcher = OpenCodeNotificationEventDispatcher(
             enabled = { true },
-            serverIdentity = { identity },
+            serverIdentity = { _ -> identity },
             process = { _, _ -> OpenCodeNotificationEventProcessor.Outcome.Dismiss("session:ses_1") },
             dispatch = { _, captured -> dispatched.add(captured) },
             executeAsync = { it() },
@@ -102,7 +102,7 @@ class OpenCodeNotificationDispatchTest {
         val actions = mutableListOf<String>()
         val dispatcher = OpenCodeNotificationOutcomeDispatcher(
             enabled = { true },
-            serverIdentity = { identity },
+            serverIdentity = { _ -> identity },
             notify = { payload, _ ->
                 actions += "notify"
                 active += "request:${payload.requestID}"
@@ -139,7 +139,7 @@ class OpenCodeNotificationDispatchTest {
         val actions = mutableListOf<String>()
         val dispatcher = OpenCodeNotificationOutcomeDispatcher(
             enabled = { true },
-            serverIdentity = { identity },
+            serverIdentity = { _ -> identity },
             notify = { _, _ -> actions += "notify" },
             dismiss = { actions += "dismiss" },
             executeOnUi = uiTasks::add,
@@ -160,7 +160,7 @@ class OpenCodeNotificationDispatchTest {
         val actions = mutableListOf<String>()
         val outcomeDispatcher = OpenCodeNotificationOutcomeDispatcher(
             enabled = { true },
-            serverIdentity = { identity },
+            serverIdentity = { _ -> identity },
             notify = { payload, _ ->
                 actions += "notify"
                 active += "request:${payload.requestID}"
@@ -185,7 +185,7 @@ class OpenCodeNotificationDispatchTest {
         outcomeDispatcher.dispatch(OpenCodeNotificationEventProcessor.Outcome.Notify(payload), identity)
         val reconciler = OpenCodePendingNotificationReconciler(
             enabled = { true },
-            serverIdentity = { identity },
+            serverIdentity = { _ -> identity },
             directories = { listOf("/project") },
             load = { _, _ -> OpenCodePendingNotificationLoad(emptyList(), authoritative = true) },
             reconcileActiveRequestKeys = outcomeDispatcher::reconcileRequestKeys,
@@ -230,7 +230,7 @@ class OpenCodeNotificationDispatchTest {
         val outcomes = mutableListOf<OpenCodeNotificationEventProcessor.Outcome>()
         val reconciler = OpenCodePendingNotificationReconciler(
             enabled = { true },
-            serverIdentity = { identity },
+            serverIdentity = { _ -> identity },
             directories = { listOf("/project") },
             load = { _, directory ->
                 OpenCodePendingNotificationLoad(
@@ -269,7 +269,7 @@ class OpenCodeNotificationDispatchTest {
         val outcomes = mutableListOf<OpenCodeNotificationEventProcessor.Outcome>()
         val reconciler = OpenCodePendingNotificationReconciler(
             enabled = { true },
-            serverIdentity = { identity },
+            serverIdentity = { _ -> identity },
             directories = { listOf("/project") },
             load = { _, directory ->
                 OpenCodePendingNotificationLoad(
@@ -301,7 +301,7 @@ class OpenCodeNotificationDispatchTest {
         val outcomes = mutableListOf<OpenCodeNotificationEventProcessor.Outcome>()
         val reconciler = OpenCodePendingNotificationReconciler(
             enabled = { true },
-            serverIdentity = { identity },
+            serverIdentity = { _ -> identity },
             directories = { listOf("/project") },
             load = { _, directory ->
                 identity = identity.copy(generation = 2L)

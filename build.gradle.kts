@@ -34,7 +34,8 @@ dependencies {
 
     // IntelliJ Platform Gradle Plugin Dependencies Extension - read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-dependencies-extension.html
     intellijPlatform {
-        intellijIdea(providers.gradleProperty("platformVersion"))
+        val localIdePath = providers.gradleProperty("localIdePath").orNull
+        if (localIdePath != null) local(localIdePath) else intellijIdea(providers.gradleProperty("platformVersion"))
         bundledPlugin("com.intellij.modules.jcef")
         testFramework(TestFrameworkType.Platform)
     }
@@ -134,6 +135,7 @@ tasks {
             systemProperty("java.awt.headless", "false")
             systemProperty("ide.browser.jcef.testMode.enabled", "true")
             systemProperty("openCode.jcefTests", "true")
+            systemProperty("openCode.sbxJcefTests", providers.gradleProperty("sbxJcef").isPresent.toString())
         } else {
             exclude("**/jcef/**")
         }

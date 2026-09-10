@@ -38,6 +38,7 @@ OpenCode Web Panel brings the official OpenCode web UI into JetBrains IDEs. It o
 - **OpenCode where you code** - Use OpenCode beside your editor instead of switching to the terminal, desktop app, or standalone web app.
 - **Official web UI** - The embedded panel loads OpenCode's own web app, so the core experience stays familiar.
 - **Project-aware sessions** - OpenCode starts on the directory configured for the current IDE project.
+- **Optional Docker Sandboxes** - Run OpenCode inside a per-project Docker Sandbox (`sbx`) instead of a host `opencode serve`. Native CLI remains the default.
 - **IDE file navigation** - Click local file links and code references from chat to open them in the IDE.
 - **Chat file drop and paste** - Drag or paste project files into chat as `@relative/path` references, or attach dropped files.
 - **Send code to chat** - Add files or the current selection to the OpenCode chat from the editor and project view context menus.
@@ -53,8 +54,9 @@ OpenCode Web Panel brings the official OpenCode web UI into JetBrains IDEs. It o
 ## Requirements
 
 - A JetBrains IDE compatible with this plugin.
-- The OpenCode CLI installed on your machine.
+- The OpenCode CLI installed on your machine (Host runtime, the default).
 - The `opencode` command available on `PATH`, or configured manually in the plugin settings.
+- Optional: Docker Sandboxes (`sbx`) and a Docker account when **Runtime** is set to Docker Sandbox.
 
 ## Installation
 
@@ -85,7 +87,7 @@ The tool window title bar offers quick controls (also available in the tool wind
 
 - **Zoom out / Zoom in** - Scale the embedded OpenCode UI in 10% steps without reloading. Cmd/Ctrl with <kbd>+</kbd>, <kbd>-</kbd>, and <kbd>0</kbd> work inside the panel too.
 - **Reload Page** - Reload the embedded OpenCode UI. The server stays running.
-- **Restart Server** - Stop and restart the shared OpenCode server, and recreate the embedded browser. Recovers a stuck or crashed panel. Asks for confirmation while the server is running, since a restart interrupts OpenCode work in all open projects.
+- **Restart Server** - Stop and restart OpenCode, and recreate the embedded browser. Recovers a stuck or crashed panel. Host CLI: shared by all open projects. Docker Sandbox: this project only. Also on **OpenCode Web Panel (Project)**.
 - The gear menu additionally offers **Reset Zoom**, **View Server Log**, and **OpenCode Web Panel Settings**.
 
 ### Context Menu Actions
@@ -101,13 +103,18 @@ Open <kbd>Settings/Preferences</kbd> > <kbd>Tools</kbd> > <kbd>OpenCode Web Pane
 
 ### OpenCode Server Setup
 
+- Per project (**OpenCode Web Panel (Project)**): **Runtime** Host or Docker Sandbox, this project's server status/restart/log/port, plus mounts and kits. Stored in `opencode-sbx/opencode-sbx.yaml` (source of truth; the panel hydrates from it). Apply also writes `opencode-sbx/opencode-sbx.sh` so a teammate can run `./opencode-sbx/opencode-sbx.sh` (web), `./opencode-sbx/opencode-sbx.sh --cli` (TUI), or `./opencode-sbx/opencode-sbx.sh --acp` (ACP stdio) without the plugin. On Windows, run the `.sh` from Git Bash.
+- Application settings: Host CLI binary, password, HTTP proxy, `sbx` path, and network-policy consent.
+- **Share host OpenCode config and file secrets** mounts the host config directory read-only, including JSON/JSONC, skills, agents, commands, and plugins. The sandbox can use those files and cannot change them. Sandbox sessions and browser preferences remain separate.
+- **Protect sandbox files** overlays the `opencode-sbx/` folder (spec, launchers, extra-network kit) and other local kit directories read-only on top of the writable project mount (on by default). Reset the sandbox to apply to an existing VM.
+- **Persist sandbox sessions across Reset** keeps this sandbox's conversations on the host in a plugin data directory (not Host CLI's `opencode.db`). Reset recreates the VM and remounts the same store.
 - Choose whether the plugin should auto-detect `opencode` or use a custom executable path.
-- Let OpenCode select a port automatically, or set a fixed port.
+- Per project, let OpenCode select a port automatically, or set a fixed port. Host CLI binds that loopback port; Docker Sandbox republishes VM 4096 to it without recreating the sandbox.
 - Edit, generate, show, or copy the local server password stored in IntelliJ Password Safe.
 - Choose how the OpenCode server reaches the network: the IDE HTTP Proxy, environment
   variables, or no proxy.
-- Restart the local OpenCode server.
-- View recent OpenCode server output in your system text viewer.
+- Restart this project's OpenCode server from the tool window or **OpenCode Web Panel (Project)**.
+- View recent OpenCode server output from **OpenCode Web Panel (Project)**.
 
 ### OpenCode UI Settings
 
@@ -160,7 +167,7 @@ Project-specific settings are stored with the IDE project.
 
 **The panel is stuck, blank, or frozen on “Opening the OpenCode page…”**
 
-- Use **Restart Server** in the tool window title bar or gear menu. This restarts the shared server and recreates the embedded browser.
+- Use **Restart Server** in the tool window title bar, gear menu, or **OpenCode Web Panel (Project)** settings. Host CLI and Docker Sandbox restarts are this project only.
 - **Reload Page** reloads the UI without restarting the server; use Restart if that is not enough.
 
 **The embedded UI behaves unexpectedly after an OpenCode update**

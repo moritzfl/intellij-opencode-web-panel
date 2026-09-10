@@ -243,7 +243,7 @@ internal class OpenCodeSystemNotifications(
         )
         private val outcomeDispatcher = OpenCodeNotificationOutcomeDispatcher(
             enabled = { OpenCodeSettingsState.getInstance().enableSystemNotifications },
-            serverIdentity = ::currentServerIdentity,
+            serverIdentity = ::identityForDirectory,
             notify = ::showNow,
             dismiss = ::dismissByKeyNow,
             activeRequestKeys = { activeNotifications.keys("request:") },
@@ -251,14 +251,14 @@ internal class OpenCodeSystemNotifications(
         )
         private val eventDispatcher = OpenCodeNotificationEventDispatcher(
             enabled = { OpenCodeSettingsState.getInstance().enableSystemNotifications },
-            serverIdentity = ::currentServerIdentity,
+            serverIdentity = ::identityForDirectory,
             process = eventProcessor::process,
             dispatch = outcomeDispatcher::dispatch,
             executeAsync = { task -> eventExecutor.execute { task() } },
         )
         private val pendingReconciler = OpenCodePendingNotificationReconciler(
             enabled = { OpenCodeSettingsState.getInstance().enableSystemNotifications },
-            serverIdentity = ::currentServerIdentity,
+            serverIdentity = ::identityForDirectory,
             directories = ::targetDirectories,
             load = ::loadPendingNotificationRequests,
             reconcileActiveRequestKeys = outcomeDispatcher::reconcileRequestKeys,
@@ -319,12 +319,18 @@ internal class OpenCodeSystemNotifications(
             pendingReconciler.reconcile()
         }
 
-        private fun currentServerIdentity(): OpenCodeNotificationServerIdentity? {
-            val serverManager = OpenCodeServerBackendRegistry.getInstance().nativeBackend()
+        private fun identityForDirectory(directory: String): OpenCodeNotificationServerIdentity? {
+            val serverManager = OpenCodeServerBackendRegistry.getInstance()
+                .backendForCanonicalDirectory(directory.takeIf { it.isNotBlank() })
             if (serverManager.getLifecycleState() != OpenCodeServerLifecycleState.RUNNING) return null
             val serverUrl = serverManager.getServerUrl() ?: return null
             val generation = serverManager.getServerGeneration().takeIf { it > 0L } ?: return null
-            return OpenCodeNotificationServerIdentity(generation, serverUrl, notificationEpoch.get())
+            return OpenCodeNotificationServerIdentity(
+                generation,
+                serverUrl,
+                notificationEpoch.get(),
+                directory,
+            )
         }
 
         private fun fetchSessionForNotification(
@@ -346,7 +352,7 @@ internal class OpenCodeSystemNotifications(
             identity: OpenCodeNotificationServerIdentity,
             directory: String,
         ): OpenCodePendingNotificationLoad {
-            if (currentServerIdentity() != identity) return OpenCodePendingNotificationLoad(emptyList(), false)
+            if (identityForDirectory(directory) != identity) return OpenCodePendingNotificationLoad(emptyList(), false)
             val serverManager = OpenCodeServerBackendRegistry.getInstance().backendForCanonicalDirectory(directory)
             val password = serverManager.getServerPassword()
                 ?: return OpenCodePendingNotificationLoad(emptyList(), false)
@@ -357,7 +363,7 @@ internal class OpenCodeSystemNotifications(
                 OpenCodeServerProtocol.PERMISSION_LIST_PATH,
                 directory,
             )
-            if (currentServerIdentity() != identity) return OpenCodePendingNotificationLoad(emptyList(), false)
+            if (identityForDirectory(directory) != identity) return OpenCodePendingNotificationLoad(emptyList(), false)
             val questions = OpenCodeServerProtocol.fetchPendingRequestsResult(
                 identity.serverUrl,
                 authHeader,

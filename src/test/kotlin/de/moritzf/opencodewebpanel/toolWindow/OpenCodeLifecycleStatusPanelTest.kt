@@ -10,7 +10,7 @@ class OpenCodeLifecycleStatusPanelTest {
     @Test
     fun repeatedOpeningUpdatesDoNotRequestParentRelayout() {
         onEdt {
-            val panel = OpenCodeLifecycleStatusPanel {}
+            val panel = OpenCodeLifecycleStatusPanel(onRetry = {})
 
             assertTrue(panel.update(OpenCodeServerLifecycleState.RUNNING, pageOpening = true))
             assertFalse(panel.update(OpenCodeServerLifecycleState.RUNNING, pageOpening = true))
@@ -20,7 +20,7 @@ class OpenCodeLifecycleStatusPanelTest {
     @Test
     fun hidingTheStripAfterThePagePaintsRequestsParentRelayout() {
         onEdt {
-            val panel = OpenCodeLifecycleStatusPanel {}
+            val panel = OpenCodeLifecycleStatusPanel(onRetry = {})
 
             assertTrue(panel.update(OpenCodeServerLifecycleState.RUNNING, pageOpening = true))
             assertTrue(panel.update(OpenCodeServerLifecycleState.RUNNING, pageOpening = false))
@@ -31,7 +31,7 @@ class OpenCodeLifecycleStatusPanelTest {
     @Test
     fun stoppedAndRestartingHideTheStrip() {
         onEdt {
-            val panel = OpenCodeLifecycleStatusPanel {}
+            val panel = OpenCodeLifecycleStatusPanel(onRetry = {})
 
             assertTrue(panel.update(OpenCodeServerLifecycleState.STARTING))
             assertTrue(panel.component.isVisible)
@@ -43,9 +43,20 @@ class OpenCodeLifecycleStatusPanelTest {
     }
 
     @Test
+    fun cancelAndViewLogAppearWhileStarting() {
+        onEdt {
+            val panel = OpenCodeLifecycleStatusPanel(onRetry = {})
+            assertTrue(panel.update(OpenCodeServerLifecycleState.STARTING))
+            assertTrue(panel.component.isVisible)
+            assertTrue(panel.update(OpenCodeServerLifecycleState.FAILED, cancelled = true))
+            assertTrue(panel.component.isVisible)
+        }
+    }
+
+    @Test
     fun showingTheRetryButtonRequestsParentRelayout() {
         onEdt {
-            val panel = OpenCodeLifecycleStatusPanel {}
+            val panel = OpenCodeLifecycleStatusPanel(onRetry = {})
 
             assertTrue(panel.update(OpenCodeServerLifecycleState.STARTING))
             assertTrue(panel.update(OpenCodeServerLifecycleState.FAILED))

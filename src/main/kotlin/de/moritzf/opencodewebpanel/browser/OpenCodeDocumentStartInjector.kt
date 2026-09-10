@@ -75,6 +75,12 @@ internal class OpenCodeDocumentStartInjector(
         installedIdentifier != null
     }
 
+    /** Chromium already exists; do not load about:blank just to register document-start. */
+    fun markRendererReady() {
+        synchronized(lock) { bootstrapStarted = true }
+        documentReady.complete(Unit)
+    }
+
     private fun hasDocument(cefBrowser: CefBrowser?): Boolean {
         return safeCefBoolean { cefBrowser?.hasDocument() == true }
     }

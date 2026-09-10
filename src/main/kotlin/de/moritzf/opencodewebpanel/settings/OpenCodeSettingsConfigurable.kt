@@ -1,12 +1,15 @@
 package de.moritzf.opencodewebpanel.settings
 
 import com.intellij.icons.AllIcons
+import com.intellij.ide.BrowserUtil
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
+import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
 import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.options.ConfigurationException
 import com.intellij.openapi.progress.ProgressManager
+import com.intellij.openapi.ui.MessageDialogBuilder
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.ui.TextFieldWithBrowseButton
 import com.intellij.openapi.util.ThrowableComputable
@@ -16,15 +19,14 @@ import com.intellij.ui.components.JBPasswordField
 import com.intellij.ui.components.JBRadioButton
 import com.intellij.ui.components.JBTextField
 import com.intellij.ui.dsl.builder.AlignX
+import com.intellij.ui.dsl.builder.HyperlinkEventAction
 import com.intellij.ui.dsl.builder.RightGap
 import com.intellij.ui.dsl.builder.panel
 import com.intellij.util.ui.UIUtil
-import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleListener
-import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState
-import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
-import de.moritzf.opencodewebpanel.server.formatOpenCodeServerLifecycleStatusText
-import de.moritzf.opencodewebpanel.toolWindow.confirmOpenCodeServerRestart
+import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
+import de.moritzf.opencodewebpanel.server.SbxCli
+import de.moritzf.opencodewebpanel.server.SbxProcessRunner
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 import java.util.concurrent.atomic.AtomicLong
@@ -35,7 +37,7 @@ import javax.swing.JSpinner
 import javax.swing.JToggleButton
 import javax.swing.SpinnerNumberModel
 
-class OpenCodeSettingsConfigurable : Configurable {
+class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
     private var panel: JComponent? = null
     private val passwordField = JBPasswordField().apply {
         columns = 40
@@ -53,18 +55,38 @@ class OpenCodeSettingsConfigurable : Configurable {
         toolTipText = "Generate a new password; apply settings to save it"
         accessibleContext.accessibleName = "Generate password"
     }
-    private val autoPortRadioButton = JBRadioButton("Auto select")
-    private val fixedPortRadioButton = JBRadioButton("Fixed port")
-    private val fixedPortField = JBTextField().apply {
-        columns = 6
-        toolTipText = "Loopback port for the local OpenCode server"
-    }
+
     private val autoBinaryRadioButton = JBRadioButton("Auto detect")
     private val customBinaryRadioButton = JBRadioButton("OpenCode path")
+    private val autoSbxRadioButton = JBRadioButton("Auto detect")
+    private val customSbxRadioButton = JBRadioButton("sbx path")
+    private val sbxPathField = TextFieldWithBrowseButton().apply {
+        textField.columns = 40
+        toolTipText = "Path to the sbx executable"
+        // The chooser stays usable in auto mode as a way to fill the path; only typing is
+        // custom-only. Never disable the whole component: disabling hides the browse button
+        // completely and it is not reliably shown again after re-enabling.
+        addBrowseFolderListener(null, FileChooserDescriptorFactory.createSingleFileNoJarsDescriptor())
+        addActionListener { customSbxRadioButton.isSelected = true }
+    }
+    private val detectSbxButton = JButton("Detect").apply {
+        toolTipText = "Auto-detect sbx and fill the path"
+        accessibleContext.accessibleName = "Detect sbx path"
+    }
+    private val sbxLoginHintLabel = JBLabel("Sign in with sbx login in a terminal. The panel does not embed OAuth.")
+    private val sbxPolicyHintLabel = JBLabel("No sandbox network policy yet.")
+    private val setupChecklistLabel = JBLabel().apply {
+        foreground = UIUtil.getContextHelpForeground()
+    }
+    private val initSbxPolicyButton = JButton("Set up default network policy").apply {
+        toolTipText = "Runs Docker's balanced policy once on this computer so sandboxes can reach typical AI APIs and package sites"
+        accessibleContext.accessibleName = "Set up default sandbox network policy"
+    }
     private val binaryPathField = TextFieldWithBrowseButton().apply {
         textField.columns = 40
         toolTipText = "Path to the opencode executable"
         addBrowseFolderListener(null, FileChooserDescriptorFactory.createSingleFileNoJarsDescriptor())
+        addActionListener { customBinaryRadioButton.isSelected = true }
     }
     private val detectBinaryButton = JButton("Detect").apply {
         toolTipText = "Auto-detect opencode and fill the path"
@@ -73,18 +95,7 @@ class OpenCodeSettingsConfigurable : Configurable {
     private val ideProxyRadioButton = JBRadioButton("Use IDE HTTP Proxy")
     private val environmentProxyRadioButton = JBRadioButton("Use environment variables")
     private val noProxyRadioButton = JBRadioButton("No proxy")
-    private val restartServerButton = JButton("Restart Server", AllIcons.Actions.Restart).apply {
-        toolTipText = "Stop and restart the local OpenCode server"
-        accessibleContext.accessibleName = "Restart OpenCode server"
-    }
-    private val viewServerLogButton = JButton("View Server Log", AllIcons.Actions.Show).apply {
-        toolTipText = "Show recent OpenCode server output"
-        accessibleContext.accessibleName = "View OpenCode server log"
-    }
     private val enableServerLogsCheckBox = JBCheckBox("Write server logs to disk")
-    private val serverStatusLabel = JBLabel().apply {
-        toolTipText = "Current OpenCode server status"
-    }
     private val openFileLinksInIdeCheckBox = JBCheckBox("Enable IDE navigation from OpenCode")
     private val openExternalLinksInBrowserCheckBox = JBCheckBox("Open external HTTP links in the system browser")
     private val enableCodeNavigationCheckBox = JBCheckBox("Also navigate code references in chat")
@@ -121,7 +132,6 @@ class OpenCodeSettingsConfigurable : Configurable {
     private var savedPassword: String? = null
     private var passwordLoading = false
     private var passwordLoadError: String? = null
-    private var lifecycleConnection: com.intellij.util.messages.MessageBusConnection? = null
     private var controlListenersInstalled = false
 
     private data class CheckBoxSettingBinding(
@@ -160,32 +170,52 @@ class OpenCodeSettingsConfigurable : Configurable {
     override fun getDisplayName(): String = "OpenCode Web Panel"
 
     override fun createComponent(): JComponent {
+        return try {
+            createSettingsComponent()
+        } catch (error: Throwable) {
+            Logger.getInstance(OpenCodeSettingsConfigurable::class.java)
+                .error("Failed to create OpenCode Web Panel settings", error)
+            JBLabel(
+                "<html>Failed to open OpenCode settings.<br>${error.javaClass.simpleName}: ${error.message.orEmpty()}</html>",
+            ).also { panel = it }
+        }
+    }
+
+    private fun createSettingsComponent(): JComponent {
         installControlListenersOnce()
 
         val serverSetupPanel = panel {
-            buttonsGroup("OpenCode executable:") {
+            group("OpenCode launch") {
                 row {
-                    cell(autoBinaryRadioButton)
-                        .comment("Find opencode from PATH plus common install locations, including Homebrew, system paths, and npm locations on Windows.")
+                    comment("Which runtime starts OpenCode. Host CLI runs opencode on this machine; Docker Sandbox runs it inside a Docker Sandbox. Runtime is chosen per project.")
                 }
-                row {
-                    cell(customBinaryRadioButton).gap(RightGap.SMALL)
-                    cell(binaryPathField)
-                        .resizableColumn()
-                        .align(AlignX.FILL)
-                        .gap(RightGap.SMALL)
-                    cell(detectBinaryButton)
+                buttonsGroup("Host CLI — OpenCode executable:") {
+                    row {
+                        cell(autoBinaryRadioButton)
+                            .comment("Find opencode from PATH plus common install locations, including Homebrew, system paths, and npm locations on Windows.")
+                    }
+                    row {
+                        cell(customBinaryRadioButton).gap(RightGap.SMALL)
+                        cell(binaryPathField)
+                            .resizableColumn()
+                            .align(AlignX.FILL)
+                            .gap(RightGap.SMALL)
+                        cell(detectBinaryButton)
+                    }
                 }
-            }
-            buttonsGroup("Server port:") {
-                row {
-                    cell(autoPortRadioButton)
-                        .comment("Let OpenCode choose an available loopback port. This is the default.")
-                }
-                row {
-                    cell(fixedPortRadioButton).gap(RightGap.SMALL)
-                    cell(fixedPortField)
-                        .comment("Use a fixed port on 127.0.0.1. Default: ${OpenCodeSettingsState.DEFAULT_FIXED_PORT}.")
+                buttonsGroup("Docker Sandbox — sbx executable:") {
+                    row {
+                        cell(autoSbxRadioButton)
+                            .comment("Find sbx from PATH plus Homebrew and WinGet locations.")
+                    }
+                    row {
+                        cell(customSbxRadioButton).gap(RightGap.SMALL)
+                        cell(sbxPathField)
+                            .resizableColumn()
+                            .align(AlignX.FILL)
+                            .gap(RightGap.SMALL)
+                        cell(detectSbxButton)
+                    }
                 }
             }
             group("Authentication") {
@@ -215,14 +245,15 @@ class OpenCodeSettingsConfigurable : Configurable {
                     cell(noProxyRadioButton)
                         .comment("Do not send OpenCode provider traffic through a proxy.")
                 }
+                row {
+                    comment(
+                        "Applies to Host CLI only. Docker Sandboxes send provider traffic through the sandbox gateway; " +
+                            "do not set HTTP_PROXY inside the VM. If your company requires an HTTP proxy, configure it " +
+                            "in Docker Sandboxes on the host — this setting does not control or bypass that proxy.",
+                    )
+                }
             }
-            group("Server Lifecycle") {
-                row {
-                    cell(serverStatusLabel)
-                }
-                row {
-                    cell(restartServerButton)
-                }
+            group("Startup") {
                 row {
                     cell(waitForIntellijMcpServerCheckBox)
                         .comment("If IntelliJ's MCP server is enabled, wait briefly for it to report that it is running before launching OpenCode.")
@@ -233,11 +264,36 @@ class OpenCodeSettingsConfigurable : Configurable {
                     cell(enableServerLogsCheckBox)
                         .comment("Persist OpenCode server output in the IDE log directory and prune old log files automatically.")
                 }
-                indent {
-                    row {
-                        cell(viewServerLogButton)
-                            .comment("Show recent OpenCode server output.")
-                    }
+            }
+            group("Docker Sandboxes") {
+                row {
+                    comment(
+                        "Prerequisites for Docker Sandbox runtimes (per project on " +
+                            "Tools → OpenCode Web Panel (Project)). Not needed for Host CLI.",
+                    )
+                }
+                row {
+                    cell(sbxLoginHintLabel)
+                }
+                row {
+                    cell(sbxPolicyHintLabel)
+                }
+                row {
+                    cell(setupChecklistLabel)
+                }
+                row {
+                    cell(initSbxPolicyButton)
+                        .comment(
+                            "Sandboxes block all outbound internet until a policy exists. " +
+                                "Docker's balanced profile allows common AI APIs and package registries " +
+                                "and denies everything else. This is machine-wide (every sbx sandbox on this " +
+                                "computer), not just this IDE. The plugin never runs it silently. " +
+                                "<a href=\"$SBX_POLICY_DOCS_URL\">Docker network defaults</a>",
+                            action = HyperlinkEventAction { event ->
+                                val href = event.url?.toString() ?: event.description
+                                if (!href.isNullOrBlank()) BrowserUtil.browse(href)
+                            },
+                        )
                 }
             }
         }
@@ -338,22 +394,21 @@ class OpenCodeSettingsConfigurable : Configurable {
             addTab("OpenCode UI Settings", uiSettingsPanel)
         }
         reset()
-        subscribeToLifecycleChanges()
         return panel!!
     }
 
     override fun isModified(): Boolean {
         val settings = OpenCodeSettingsState.getInstance()
-        val selectedPortMode = selectedPortMode()
         val passwordModified = password() != savedPassword
-        val portModeModified = selectedPortMode != settings.portModeValue()
-        val fixedPortModified = fixedPortOrDefault() != OpenCodeSettingsState.sanitizePort(settings.fixedPort)
         val binaryModeModified = selectedBinaryMode() != settings.binaryModeValue()
         val binaryPathModified = binaryPath() != settings.binaryPath.trim()
+        val sbxBinaryModeModified = selectedSbxBinaryMode() != settings.sbxBinaryModeValue()
+        val sbxBinaryPathModified = sbxPath() != settings.sbxBinaryPath.trim()
         val proxyModified = isProxySettingModified(settings)
         val checkBoxSettingsModified = checkBoxSettingBindings.any { it.checkBox.isSelected != it.read(settings) }
         val uiZoomModified = uiZoomPercent() != OpenCodeSettingsState.sanitizeUiZoomPercent(settings.uiZoomPercent)
-        return passwordModified || portModeModified || fixedPortModified || binaryModeModified || binaryPathModified ||
+        return passwordModified || binaryModeModified ||
+            binaryPathModified || sbxBinaryModeModified || sbxBinaryPathModified ||
             proxyModified || checkBoxSettingsModified || uiZoomModified
     }
 
@@ -362,10 +417,10 @@ class OpenCodeSettingsConfigurable : Configurable {
         passwordLoading = false
         val editedPassword = password().takeIf { it != savedPassword }
         val settings = OpenCodeSettingsState.getInstance()
-        val oldPortMode = settings.portModeValue()
-        val oldFixedPort = OpenCodeSettingsState.sanitizePort(settings.fixedPort)
         val oldBinaryMode = settings.binaryModeValue()
         val oldBinaryPath = settings.binaryPath.trim()
+        val oldSbxBinaryMode = settings.sbxBinaryModeValue()
+        val oldSbxBinaryPath = settings.sbxBinaryPath.trim()
         val oldProxyMode = settings.proxyModeValue()
         val oldUiZoomPercent = OpenCodeSettingsState.sanitizeUiZoomPercent(settings.uiZoomPercent)
         val oldSystemNotificationsEnabled = settings.enableSystemNotifications
@@ -383,36 +438,41 @@ class OpenCodeSettingsConfigurable : Configurable {
         setPasswordText(nextPassword)
         passwordLoadError = null
 
-        val nextPortMode = selectedPortMode()
-        val nextFixedPort = fixedPortOrDefault()
         val nextBinaryMode = selectedBinaryMode()
         val nextBinaryPath = binaryPath()
+        val nextSbxBinaryMode = selectedSbxBinaryMode()
+        val nextSbxBinaryPath = sbxPath()
         val nextUiZoomPercent = uiZoomPercent()
-        settings.portMode = nextPortMode.name
-        settings.fixedPort = nextFixedPort
         settings.binaryMode = nextBinaryMode.name
         settings.binaryPath = nextBinaryPath
+        settings.sbxBinaryMode = nextSbxBinaryMode.name
+        settings.sbxBinaryPath = nextSbxBinaryPath
         settings.proxyMode = selectedProxyMode().name
         checkBoxSettingBindings.forEach { it.write(settings, it.checkBox.isSelected) }
         settings.uiZoomPercent = nextUiZoomPercent
-        fixedPortField.text = nextFixedPort.toString()
         binaryPathField.text = nextBinaryPath
+        sbxPathField.text = nextSbxBinaryPath
         updatePasswordHint()
-        updatePortControls()
         updateBinaryControls()
-        updateServerLogControls()
+        updateSbxControls()
+        updateRuntimeControls()
         updateUiDependencyControls()
-
-        if (oldPassword != nextPassword || oldPortMode != nextPortMode || oldFixedPort != nextFixedPort ||
-            oldBinaryMode != nextBinaryMode || oldBinaryPath != nextBinaryPath ||
+        val registry = OpenCodeServerBackendRegistry.getInstance()
+        val passwordChanged = oldPassword != nextPassword
+        val nativeChanged = oldBinaryMode != nextBinaryMode || oldBinaryPath != nextBinaryPath ||
             oldProxyMode != settings.proxyModeValue()
-        ) {
-            OpenCodeServerBackendRegistry.getInstance().nativeBackend().stopServer()
-            // Restart open panels right away; a stopped server would otherwise stay stopped until a
-            // new tool-window content is created, leaving existing panels blank.
+        val sbxChanged = oldSbxBinaryMode != nextSbxBinaryMode || oldSbxBinaryPath != nextSbxBinaryPath
+        if (passwordChanged || nativeChanged || sbxChanged) {
+            if (passwordChanged || nativeChanged) registry.stopAllNativeBackends()
+            if (passwordChanged || sbxChanged) registry.stopAllSbxBackends()
+            val scope = when {
+                passwordChanged || (nativeChanged && sbxChanged) -> OpenCodeRestartScope.ALL
+                nativeChanged -> OpenCodeRestartScope.NATIVE
+                else -> OpenCodeRestartScope.SBX
+            }
             ApplicationManager.getApplication().messageBus
                 .syncPublisher(OpenCodeSettingsListener.TOPIC)
-                .serverRestartRequested()
+                .serverRestartRequested(scope)
         }
         if (oldUiZoomPercent != nextUiZoomPercent) {
             ApplicationManager.getApplication().messageBus
@@ -433,16 +493,16 @@ class OpenCodeSettingsConfigurable : Configurable {
 
     override fun reset() {
         val settings = OpenCodeSettingsState.getInstance()
-        when (settings.portModeValue()) {
-            OpenCodePortMode.AUTO -> autoPortRadioButton.isSelected = true
-            OpenCodePortMode.FIXED -> fixedPortRadioButton.isSelected = true
-        }
         when (settings.binaryModeValue()) {
             OpenCodeBinaryMode.AUTO -> autoBinaryRadioButton.isSelected = true
             OpenCodeBinaryMode.CUSTOM -> customBinaryRadioButton.isSelected = true
         }
-        fixedPortField.text = OpenCodeSettingsState.sanitizePort(settings.fixedPort).toString()
         binaryPathField.text = settings.binaryPath.trim()
+        when (settings.sbxBinaryModeValue()) {
+            OpenCodeBinaryMode.AUTO -> autoSbxRadioButton.isSelected = true
+            OpenCodeBinaryMode.CUSTOM -> customSbxRadioButton.isSelected = true
+        }
+        sbxPathField.text = settings.sbxBinaryPath.trim()
         when (settings.proxyModeValue()) {
             OpenCodeProxyMode.IDE -> ideProxyRadioButton.isSelected = true
             OpenCodeProxyMode.ENVIRONMENT -> environmentProxyRadioButton.isSelected = true
@@ -452,18 +512,15 @@ class OpenCodeSettingsConfigurable : Configurable {
         uiZoomSpinner.value = OpenCodeSettingsState.sanitizeUiZoomPercent(settings.uiZoomPercent)
         loadPasswordField()
         updatePasswordHint()
-        updatePortControls()
         updateBinaryControls()
-        updateServerLogControls()
+        updateSbxControls()
+        updateRuntimeControls()
         updateUiDependencyControls()
-        updateServerStatus()
     }
 
     override fun disposeUIResources() {
         panel = null
         passwordLoadGeneration.incrementAndGet()
-        lifecycleConnection?.disconnect()
-        lifecycleConnection = null
     }
 
     private fun resolveAndSavePasswordOffEdt(editedPassword: String?): OpenCodePasswordStore.PasswordUpdate {
@@ -499,22 +556,22 @@ class OpenCodeSettingsConfigurable : Configurable {
         if (controlListenersInstalled) return
         controlListenersInstalled = true
         ButtonGroup().apply {
-            add(autoPortRadioButton)
-            add(fixedPortRadioButton)
-        }
-        ButtonGroup().apply {
             add(autoBinaryRadioButton)
             add(customBinaryRadioButton)
+        }
+        ButtonGroup().apply {
+            add(autoSbxRadioButton)
+            add(customSbxRadioButton)
         }
         ButtonGroup().apply {
             add(ideProxyRadioButton)
             add(environmentProxyRadioButton)
             add(noProxyRadioButton)
         }
-        autoPortRadioButton.addItemListener { updatePortControls() }
-        fixedPortRadioButton.addItemListener { updatePortControls() }
         autoBinaryRadioButton.addItemListener { updateBinaryControls() }
         customBinaryRadioButton.addItemListener { updateBinaryControls() }
+        autoSbxRadioButton.addItemListener { updateSbxControls() }
+        customSbxRadioButton.addItemListener { updateSbxControls() }
         showPasswordButton.addActionListener { updatePasswordVisibility() }
         copyPasswordButton.addActionListener { copyPassword() }
         generatePasswordButton.addActionListener {
@@ -522,60 +579,25 @@ class OpenCodeSettingsConfigurable : Configurable {
             updatePasswordHint()
         }
         detectBinaryButton.addActionListener { detectBinaryPath() }
-        restartServerButton.addActionListener { restartServer() }
-        viewServerLogButton.addActionListener { showServerLog() }
-        enableServerLogsCheckBox.addItemListener { updateServerLogControls() }
+        detectSbxButton.addActionListener { detectSbxPath() }
+        initSbxPolicyButton.addActionListener { consentToSbxPolicy() }
         openFileLinksInIdeCheckBox.addItemListener { updateUiDependencyControls() }
         enableSystemNotificationsCheckBox.addItemListener { updateUiDependencyControls() }
     }
 
-    private fun subscribeToLifecycleChanges() {
-        lifecycleConnection?.disconnect()
-        lifecycleConnection = ApplicationManager.getApplication().messageBus.connect().also { connection ->
-            connection.subscribe(
-                OpenCodeServerLifecycleListener.TOPIC,
-                object : OpenCodeServerLifecycleListener {
-                    override fun stateChanged(state: OpenCodeServerLifecycleState, backendId: String) {
-                        if (backendId != OpenCodeServerBackendRegistry.getInstance().nativeBackend().backendId) return
-                        ApplicationManager.getApplication().invokeLater {
-                            if (panel != null) updateServerStatus()
-                        }
-                    }
-                },
-            )
-        }
-    }
-
-    private fun updateServerStatus() {
-        val serverManager = OpenCodeServerBackendRegistry.getInstance().nativeBackend()
-        val state = serverManager.getLifecycleState()
-        val serverUrl = serverManager.getServerUrl()
-        val detail = if (state == OpenCodeServerLifecycleState.RUNNING && !serverUrl.isNullOrBlank()) {
-            val version = serverManager.getServerVersion()?.takeIf { it.isNotBlank() }
-                ?.let { " (OpenCode $it)" }
-                .orEmpty()
-            ": $serverUrl$version"
-        } else {
-            ""
-        }
-        serverStatusLabel.text = formatOpenCodeServerLifecycleStatusText(state, detail)
-    }
-
     private fun password(): String? = String(passwordField.password).trim().ifBlank { null }
-
-    private fun selectedPortMode(): OpenCodePortMode {
-        return if (fixedPortRadioButton.isSelected) OpenCodePortMode.FIXED else OpenCodePortMode.AUTO
-    }
-
-    private fun fixedPortOrDefault(): Int {
-        return OpenCodeSettingsState.sanitizePort(fixedPortField.text.trim().toIntOrNull() ?: OpenCodeSettingsState.DEFAULT_FIXED_PORT)
-    }
 
     private fun selectedBinaryMode(): OpenCodeBinaryMode {
         return if (customBinaryRadioButton.isSelected) OpenCodeBinaryMode.CUSTOM else OpenCodeBinaryMode.AUTO
     }
 
     private fun binaryPath(): String = binaryPathField.text.trim()
+
+    private fun selectedSbxBinaryMode(): OpenCodeBinaryMode {
+        return if (customSbxRadioButton.isSelected) OpenCodeBinaryMode.CUSTOM else OpenCodeBinaryMode.AUTO
+    }
+
+    private fun sbxPath(): String = sbxPathField.text.trim()
 
     private fun selectedProxyMode(): OpenCodeProxyMode {
         return when {
@@ -628,8 +650,15 @@ class OpenCodeSettingsConfigurable : Configurable {
                     },
                 )
                 updatePasswordHint()
-            }, ModalityState.stateForComponent(panel ?: passwordField))
+            }, passwordLoadModality())
         }
+    }
+
+    private fun passwordLoadModality(): ModalityState {
+        val component = panel ?: passwordField
+        if (!component.isShowing) return ModalityState.defaultModalityState()
+        return runCatching { ModalityState.stateForComponent(component) }
+            .getOrDefault(ModalityState.defaultModalityState())
     }
 
     private fun setPasswordText(password: String?) {
@@ -664,28 +693,58 @@ class OpenCodeSettingsConfigurable : Configurable {
         updateBinaryControls()
     }
 
-    private fun restartServer() {
-        if (!confirmOpenCodeServerRestart(null)) return
-        ApplicationManager.getApplication().messageBus
-            .syncPublisher(OpenCodeSettingsListener.TOPIC)
-            .serverRestartRequested()
-    }
-
-    private fun showServerLog() {
-        val serverManager = OpenCodeServerBackendRegistry.getInstance().nativeBackend()
-        val logFile = serverManager.getServerLogFile()
-        if (logFile == null) {
-            Messages.showErrorDialog(panel ?: viewServerLogButton, "No server log available yet.", "Open Server Log")
+    private fun detectSbxPath() {
+        customSbxRadioButton.isSelected = true
+        val detectedPath = OpenCodeServerProtocol.detectExecutablePath(SbxCli.DEFAULT_EXECUTABLE)
+        if (detectedPath == null) {
+            Messages.showWarningDialog(
+                panel ?: sbxPathField,
+                "Could not find sbx on PATH or in common install locations.",
+                "sbx Path Not Found",
+            )
             return
         }
-        try {
-            java.awt.Desktop.getDesktop().open(logFile.toFile())
-        } catch (e: Exception) {
-            Messages.showErrorDialog(
-                panel ?: restartServerButton,
-                "Could not open server log: ${e.message ?: e::class.java.simpleName}",
-                "Open Server Log",
+        sbxPathField.text = detectedPath
+        updateSbxControls()
+    }
+
+    private fun consentToSbxPolicy() {
+        val confirmed = MessageDialogBuilder.yesNo(
+            "Set up sandbox network policy",
+            "Docker Sandboxes start with no internet. This runs sbx policy init balanced once " +
+                "on this computer: typical AI APIs and package sites are allowed, and everything " +
+                "else stays blocked.\n\n" +
+                "It applies to every sandbox on this machine, including ones outside IntelliJ. " +
+                "The plugin will not change the policy again afterwards.",
+        )
+            .yesText("Set up policy")
+            .noText("Cancel")
+            .icon(Messages.getWarningIcon())
+            .ask(panel)
+        if (!confirmed) return
+        val settings = OpenCodeSettingsState.getInstance()
+        val executable = OpenCodeServerProtocol.resolveExecutableForLaunch(
+            if (customSbxRadioButton.isSelected) sbxPath() else settings.sbxExecutablePath(),
+        )
+        initSbxPolicyButton.isEnabled = false
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val result = SbxProcessRunner.run(
+                SbxCli.buildPolicyInitCommand(executable),
+                emptyMap(),
+                60_000L,
             )
+            ApplicationManager.getApplication().invokeLater {
+                if (result.exitCode == 0) {
+                    settings.sbxNetworkPolicyConsent = true
+                } else {
+                    Messages.showErrorDialog(
+                        panel ?: initSbxPolicyButton,
+                        "sbx policy init failed (exit ${result.exitCode}).\n${result.output.takeLast(2000)}",
+                        "Sandbox Network Policy",
+                    )
+                }
+                if (panel != null) updateRuntimeControls()
+            }
         }
     }
 
@@ -709,21 +768,40 @@ class OpenCodeSettingsConfigurable : Configurable {
         copyPasswordButton.isEnabled = currentPassword != null
     }
 
-    private fun updatePortControls() {
-        fixedPortField.isEnabled = fixedPortRadioButton.isSelected
-    }
-
     private fun updateBinaryControls() {
-        binaryPathField.isEnabled = customBinaryRadioButton.isSelected
+        binaryPathField.textField.isEnabled = customBinaryRadioButton.isSelected
         detectBinaryButton.isEnabled = customBinaryRadioButton.isSelected
     }
 
-    private fun updateServerLogControls() {
-        viewServerLogButton.isEnabled = enableServerLogsCheckBox.isSelected
+    private fun updateSbxControls() {
+        sbxPathField.textField.isEnabled = customSbxRadioButton.isSelected
+        detectSbxButton.isEnabled = customSbxRadioButton.isSelected
+    }
+
+    private fun updateRuntimeControls() {
+        val consented = OpenCodeSettingsState.getInstance().sbxNetworkPolicyConsent
+        sbxPolicyHintLabel.text = if (consented) {
+            "Default network policy is set on this machine. The plugin will not change it again."
+        } else {
+            "No sandbox network policy yet. Sandboxes cannot reach the internet until you set one up."
+        }
+        initSbxPolicyButton.isEnabled = !consented
+        val executable = if (customSbxRadioButton.isSelected) sbxPath() else OpenCodeSettingsState.getInstance().sbxExecutablePath()
+        val sbxFound = OpenCodeServerProtocol.detectExecutablePath(executable) != null
+        setupChecklistLabel.text = "<html>" +
+            de.moritzf.opencodewebpanel.server.SbxSetupChecklist.format(
+                de.moritzf.opencodewebpanel.server.SbxSetupChecklist.appSteps(sbxFound, consented),
+            ).replace("\n", "<br>") + "</html>"
+        updateSbxControls()
+        updateBinaryControls()
     }
 
     private fun updateUiDependencyControls() {
         enableCodeNavigationCheckBox.isEnabled = openFileLinksInIdeCheckBox.isSelected
         enablePermissionNotificationActionsCheckBox.isEnabled = enableSystemNotificationsCheckBox.isSelected
+    }
+
+    companion object {
+        private const val SBX_POLICY_DOCS_URL = "https://docs.docker.com/ai/sandboxes/security/defaults/"
     }
 }
