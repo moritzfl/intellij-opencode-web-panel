@@ -315,6 +315,42 @@ class OpenCodeProjectSettingsConfigurableTest {
         }
     }
 
+    @Test
+    fun directorySwitchAlwaysLoadsDestinationSpecWhenPresent() {
+        SwingUtilities.invokeAndWait {
+            val oldDirectory = temp.newFolder("old with kits").toPath().toRealPath().toString()
+            val newDirectory = temp.newFolder("new with kits").toPath().toRealPath().toString()
+            assertNotNull(
+                SbxLaunchSpec.persist(
+                    SbxLaunchSpec.fromSettings(appSettings, oldDirectory).copy(kits = listOf("./old-kit")),
+                ),
+            )
+            assertNotNull(
+                SbxLaunchSpec.persist(
+                    SbxLaunchSpec.fromSettings(appSettings, newDirectory).copy(kits = listOf("./dest-kit")),
+                ),
+            )
+            projectSettings.projectDirectoryMode = OpenCodeProjectDirectoryMode.CUSTOM.name
+            projectSettings.openCodeProjectDirectory = oldDirectory
+            configurable.disposeUIResources()
+            configurable = OpenCodeProjectSettingsConfigurable(project)
+            configurable.createComponent()
+            field<AbstractButton>("customProjectDirectoryRadioButton").isSelected = true
+            val directoryField = field<TextFieldWithBrowseButton>("projectDirectoryField")
+            directoryField.text = newDirectory
+            java.awt.event.FocusEvent(
+                directoryField.textField,
+                java.awt.event.FocusEvent.FOCUS_LOST,
+            ).let { event ->
+                directoryField.textField.focusListeners.forEach { it.focusLost(event) }
+            }
+            configurable.apply()
+            assertEquals(listOf("./dest-kit"), SbxLaunchSpec.load(newDirectory)!!.kits)
+            assertEquals(listOf("./old-kit"), SbxLaunchSpec.load(oldDirectory)!!.kits)
+            assertFalse(configurable.isModified())
+        }
+    }
+
     @Suppress("UNCHECKED_CAST")
     private fun <T> field(name: String): T = OpenCodeProjectSettingsConfigurable::class.java
         .getDeclaredField(name).apply { isAccessible = true }.get(configurable) as T

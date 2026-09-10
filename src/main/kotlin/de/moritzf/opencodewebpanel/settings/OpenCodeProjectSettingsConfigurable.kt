@@ -52,6 +52,7 @@ import javax.swing.table.TableCellEditor
 class OpenCodeProjectSettingsConfigurable(private val project: Project) : Configurable {
     private var panel: JComponent? = null
     private var controlListenersInstalled = false
+    private var hydrating = false
     private var lifecycleConnection: MessageBusConnection? = null
     private var loadedSpecDirectory: String? = null
     private val serverStatusLabel = JBLabel().apply {
@@ -465,16 +466,21 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
 
     override fun reset() {
         val settings = OpenCodeProjectSettingsState.getInstance(project)
-        when (settings.projectDirectoryModeValue()) {
-            OpenCodeProjectDirectoryMode.AUTO -> autoProjectDirectoryRadioButton.isSelected = true
-            OpenCodeProjectDirectoryMode.CUSTOM -> customProjectDirectoryRadioButton.isSelected = true
+        hydrating = true
+        try {
+            when (settings.projectDirectoryModeValue()) {
+                OpenCodeProjectDirectoryMode.AUTO -> autoProjectDirectoryRadioButton.isSelected = true
+                OpenCodeProjectDirectoryMode.CUSTOM -> customProjectDirectoryRadioButton.isSelected = true
+            }
+            projectDirectoryField.text = settings.openCodeProjectDirectory
+            loadSpecIntoUi(loadedOrDefaultSpec(), fromYaml = SbxLaunchSpec.load(effectiveDirectory()) != null)
+            loadedSpecDirectory = effectiveDirectory()
+            updateProjectDirectoryControls()
+            updateSandboxControls()
+            updateServerStatus()
+        } finally {
+            hydrating = false
         }
-        projectDirectoryField.text = settings.openCodeProjectDirectory
-        loadSpecIntoUi(loadedOrDefaultSpec(), fromYaml = SbxLaunchSpec.load(effectiveDirectory()) != null)
-        loadedSpecDirectory = effectiveDirectory()
-        updateProjectDirectoryControls()
-        updateSandboxControls()
-        updateServerStatus()
     }
 
     override fun disposeUIResources() {
@@ -833,6 +839,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
     }
 
     private fun onDirectoryTargetChanged() {
+        if (hydrating) return
         val next = effectiveDirectory()
         if (next == loadedSpecDirectory) return
         val inspection = SbxLaunchSpec.inspect(next)
@@ -844,19 +851,13 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                     hostPort = OpenCodeProjectSettingsState.getInstance(project).hostPortOrNull(),
                 )
             }
-        val loadDestination = when {
-            destination == null -> false
-            !isModified() -> true
-            ApplicationManager.getApplication().isUnitTestMode -> true
-            inspection is de.moritzf.opencodewebpanel.server.SbxLaunchSpecInspection.Valid ->
-                MessageDialogBuilder.yesNo(
-                    "Load destination sandbox settings",
-                    "The new directory already has sandbox settings. Load them now? Keep current keeps this form and will overwrite the destination on Apply.",
-                ).yesText("Load destination").noText("Keep current").ask(panel)
-            else -> false
-        }
-        if (loadDestination) {
-            loadSpecIntoUi(destination, fromYaml = inspection is de.moritzf.opencodewebpanel.server.SbxLaunchSpecInspection.Valid)
+        // Project YAML is the source of truth. A destination with a spec always hydrates the
+        // form; a destination without one gets app defaults. Do not keep the previous form.
+        if (destination != null) {
+            loadSpecIntoUi(
+                destination,
+                fromYaml = inspection is de.moritzf.opencodewebpanel.server.SbxLaunchSpecInspection.Valid,
+            )
         }
         loadedSpecDirectory = next
         updateSandboxControls()

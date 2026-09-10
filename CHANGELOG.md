@@ -24,6 +24,12 @@
   distinguishable. Disable under Browser Appearance if an OpenCode update
   clashes with the overlay.
 
+### Changed
+
+- Changing the OpenCode directory always loads that directory's
+  `opencode-sbx.yaml` when it exists. Project YAML is the source of truth;
+  there is no Keep-current prompt that would overwrite it on Apply.
+
 ### Fixed
 
 - Opening a chat file or code reference no longer surfaces a JetBrains Next Edit
