@@ -51,14 +51,14 @@ internal class OpenCodeIdleCard(onStart: () -> Unit) {
         )
     }
 
-    fun show(state: OpenCodeServerLifecycleState) {
+    fun show(state: OpenCodeServerLifecycleState, stage: String? = null) {
         val stopped = state == OpenCodeServerLifecycleState.STOPPED
         iconLabel.icon = if (stopped) AllIcons.Actions.Suspend else AllIcons.Actions.Refresh
         titleLabel.text = if (stopped) "OpenCode is stopped" else "Restarting OpenCode…"
-        messageLabel.text = if (stopped) {
-            "Start the server to open this project."
-        } else {
-            "The panel will reopen when the server is ready."
+        messageLabel.text = when {
+            stopped -> "Start the server to open this project."
+            !stage.isNullOrBlank() -> stage
+            else -> "The panel will reopen when the server is ready."
         }
         startButton.isVisible = stopped
         startButton.isEnabled = stopped

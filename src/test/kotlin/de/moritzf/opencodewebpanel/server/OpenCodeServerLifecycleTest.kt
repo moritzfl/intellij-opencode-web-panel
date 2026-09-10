@@ -88,7 +88,7 @@ class OpenCodeServerLifecycleTest {
         assertFalse(isOpenCodeLifecycleStripVisible(OpenCodeServerLifecycleState.RUNNING, pageOpening = false))
         assertTrue(isOpenCodeLifecycleStripVisible(OpenCodeServerLifecycleState.STARTING, pageOpening = true))
         assertFalse(isOpenCodeLifecycleStripVisible(OpenCodeServerLifecycleState.STOPPED))
-        assertFalse(isOpenCodeLifecycleStripVisible(OpenCodeServerLifecycleState.RESTARTING))
+        assertTrue(isOpenCodeLifecycleStripVisible(OpenCodeServerLifecycleState.RESTARTING))
         assertTrue(isOpenCodeLifecycleStripVisible(OpenCodeServerLifecycleState.FAILED))
     }
 
@@ -167,6 +167,28 @@ class OpenCodeServerLifecycleTest {
         assertEquals(
             notice,
             visibleRecoveryNotice(notice, OpenCodeServerLifecycleState.RUNNING, true, true, 1 + RECOVERY_BANNER_MILLIS),
+        )
+    }
+
+    @Test
+    fun restartingStripShowsUpgradeStageAndElapsed() {
+        val html = formatOpenCodeLifecycleStrip(
+            OpenCodeLifecycleStripModel(
+                OpenCodeServerLifecycleState.RESTARTING,
+                stage = "Upgrading OpenCode…",
+                elapsedMillis = 12_000,
+            ),
+        )
+        assertTrue(html.contains("Restarting"))
+        assertTrue(html.contains("Upgrading OpenCode"))
+        assertTrue(html.contains("12s"))
+        assertTrue(
+            isOpenCodeLifecycleStripVisible(
+                OpenCodeLifecycleStripModel(
+                    OpenCodeServerLifecycleState.RESTARTING,
+                    stage = "Downloading 50%",
+                ),
+            ),
         )
     }
 

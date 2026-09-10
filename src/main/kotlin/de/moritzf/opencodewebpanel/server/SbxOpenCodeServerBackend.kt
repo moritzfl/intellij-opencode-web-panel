@@ -77,6 +77,11 @@ internal class SbxOpenCodeServerBackend(
         val onFailed: () -> Unit,
     )
 
+    private data class PendingBinaryUpgrade(
+        val startId: Long,
+        val sandboxName: String,
+    )
+
     private val lock = Any()
     private val pendingStarts = mutableListOf<StartCallback>()
     private var startSequence = 0L
@@ -87,6 +92,8 @@ internal class SbxOpenCodeServerBackend(
     private var serverProcess: Process? = null
     private var serverUrl: String? = null
     private var serverPassword: String? = null
+    private var authServerUrl: String? = null
+    private var authServerPassword: String? = null
     private var serverVersion: String? = null
     private var unsupportedVersionWarningShownFor: String? = null
     private var embeddedProtocol = OpenCodeEmbeddedProtocol.UNKNOWN
@@ -96,6 +103,7 @@ internal class SbxOpenCodeServerBackend(
     private var lastFailure = SbxFailureKind.NONE
     private var lastFailureDetails: String? = null
     private var startupStage: String? = null
+    private var pendingBinaryUpgrade: PendingBinaryUpgrade? = null
     private var lastRecovery: OpenCodeRecoveryNotice? = null
     private var destruction: CompletableFuture<Boolean>? = null
     private var lastForeignSandbox: SbxSandboxListEntry? = null
@@ -213,8 +221,12 @@ internal class SbxOpenCodeServerBackend(
     }
 
     override fun isServerReadyForAuth(): Boolean = synchronized(lock) {
-        !serverUrl.isNullOrBlank() && !serverPassword.isNullOrBlank()
+        !authServerUrl.isNullOrBlank() && !authServerPassword.isNullOrBlank()
     }
+
+    override fun getAuthServerUrl(): String? = synchronized(lock) { authServerUrl }
+
+    override fun getAuthPassword(): String? = synchronized(lock) { authServerPassword }
 
     override fun verifyServerNow(callbackActive: () -> Boolean, onHealthy: () -> Unit) {
         ApplicationManager.getApplication().executeOnPooledThread {
@@ -400,18 +412,8 @@ internal class SbxOpenCodeServerBackend(
                 fail(startId, if (record == null) SbxFailureKind.UPGRADE_FAILED else SbxFailureKind.FOREIGN_SANDBOX)
                 return@enqueueStart false
             }
-            val upgraded = commandRunner.run(
-                SbxCli.buildExecUpgradeCommand(executable, owned.name),
-                emptyMap(),
-                UPGRADE_TIMEOUT_MILLIS,
-            )
-            upgraded.output.lineSequence().forEach { line ->
-                if (line.isNotBlank()) serverLogBuffer.append(line)
-            }
-            if (upgraded.exitCode != 0) {
-                thisLogger().warn("opencode upgrade failed (exit ${upgraded.exitCode}): ${upgraded.output}")
-                fail(startId, SbxFailureKind.UPGRADE_FAILED)
-                return@enqueueStart false
+            synchronized(lock) {
+                pendingBinaryUpgrade = PendingBinaryUpgrade(startId, owned.name)
             }
             true
         }
@@ -466,6 +468,8 @@ internal class SbxOpenCodeServerBackend(
             cancelPendingStarts()
             disposed = true
             allowHealthRestart = false
+            authServerUrl = null
+            authServerPassword = null
             setLifecycleState(OpenCodeServerLifecycleState.STOPPED)
             runOnLifecycle(onReject = { scheduler.shutdownNow() }) {
                 try {
@@ -482,6 +486,7 @@ internal class SbxOpenCodeServerBackend(
         if (starting) lastFailure = SbxFailureKind.CANCELLED
         startSequence++
         starting = false
+        pendingBinaryUpgrade = null
         val callbacks = pendingStarts.toList()
         pendingStarts.clear()
         notifyStartCallbacks(callbacks, success = false)
@@ -517,6 +522,7 @@ internal class SbxOpenCodeServerBackend(
             allowHealthRestart = true
             lastFailureDetails = null
             val startId = ++startSequence
+            serverGenerationStartedAtMillis = System.currentTimeMillis()
             runOnLifecycle(
                 onReject = {
                     starting = false
@@ -546,7 +552,9 @@ internal class SbxOpenCodeServerBackend(
     /** Called only by the lifecycle worker; progress must not reschedule startup onto another pool. */
     private fun startServe(project: Project?, startId: Long) {
         if (project != null && !project.isDisposed) {
-            val task = object : Backgroundable(project, "Starting OpenCode sandbox", true) {
+            val upgrading = synchronized(lock) { pendingBinaryUpgrade?.startId == startId }
+            val title = if (upgrading) "Upgrading OpenCode in sandbox" else "Starting OpenCode sandbox"
+            val task = object : Backgroundable(project, title, true) {
                 override fun run(indicator: ProgressIndicator) {
                     runStart(startId, indicator)
                 }
@@ -575,6 +583,8 @@ internal class SbxOpenCodeServerBackend(
         try {
             if (!isCurrentStart(startId)) return
             serverLogBuffer.startNewFile()
+            val upgrade = consumePendingBinaryUpgrade(startId)
+            if (upgrade != null && !runOpenCodeBinaryUpgrade(startId, upgrade.sandboxName, indicator)) return
             noteStartupStage("Checking Docker Sandboxes…")
             indicator?.text = "Checking Docker Sandboxes…"
             val sbx = OpenCodeServerProtocol.detectExecutablePath(sbxExecutable())
@@ -872,6 +882,7 @@ internal class SbxOpenCodeServerBackend(
             synchronized(lock) {
                 if (startId != startSequence) return
                 serverUrl = healthyUrl
+                rememberBrowserAuth(url = healthyUrl)
             }
             refreshServerVersion()
             finishStart(startId, success = true)
@@ -995,7 +1006,10 @@ internal class SbxOpenCodeServerBackend(
         val password = getServerPassword() ?: return
         val healthy = healthyPublishedSandboxUrl(listPublishedPorts(sbx, owned.name), spec.hostPort, password)
             ?: return
-        synchronized(lock) { serverUrl = healthy }
+        synchronized(lock) {
+            serverUrl = healthy
+            rememberBrowserAuth(url = healthy)
+        }
         if (getLifecycleState() == OpenCodeServerLifecycleState.RUNNING) {
             updateGlobalEventStream(OpenCodeServerLifecycleState.RUNNING)
         }
@@ -1234,8 +1248,8 @@ internal class SbxOpenCodeServerBackend(
             serverProcess = process
             serverUrl = null
             serverPassword = password
+            rememberBrowserAuth(password = password)
             serverGeneration++
-            serverGenerationStartedAtMillis = System.currentTimeMillis()
             true
         }
     }
@@ -1284,8 +1298,48 @@ internal class SbxOpenCodeServerBackend(
         return text.contains("No such file or directory", ignoreCase = true)
     }
 
+    private fun consumePendingBinaryUpgrade(startId: Long): PendingBinaryUpgrade? = synchronized(lock) {
+        val pending = pendingBinaryUpgrade?.takeIf { it.startId == startId } ?: return@synchronized null
+        pendingBinaryUpgrade = null
+        pending
+    }
+
+    private fun runOpenCodeBinaryUpgrade(
+        startId: Long,
+        sandboxName: String,
+        indicator: ProgressIndicator?,
+    ): Boolean {
+        if (!isCurrentStart(startId)) return false
+        noteStartupStage("Upgrading OpenCode…")
+        indicator?.text = "Upgrading OpenCode…"
+        val upgraded = commandRunner.run(
+            SbxCli.buildExecUpgradeCommand(sbxExecutable(), sandboxName),
+            emptyMap(),
+            UPGRADE_TIMEOUT_MILLIS,
+            null,
+        ) { line ->
+            serverLogBuffer.append(line)
+            val stage = line.take(STAGE_MAX_CHARS)
+            noteStartupStage(stage)
+            indicator?.text = stage
+        }
+        if (!isCurrentStart(startId)) return false
+        if (upgraded.exitCode != 0) {
+            thisLogger().warn("opencode upgrade failed (exit ${upgraded.exitCode}): ${upgraded.output}")
+            fail(startId, SbxFailureKind.UPGRADE_FAILED)
+            return false
+        }
+        return true
+    }
+
     private fun noteStartupStage(stage: String) {
         synchronized(lock) { startupStage = stage }
+    }
+
+    /** Caller holds [lock]. Live URL/password may be nulled on stop; this snapshot must not. */
+    private fun rememberBrowserAuth(url: String? = null, password: String? = null) {
+        if (!url.isNullOrBlank()) authServerUrl = url
+        if (!password.isNullOrBlank()) authServerPassword = password
     }
 
     private fun isCurrentStart(startId: Long): Boolean = synchronized(lock) { startId == startSequence }
@@ -1304,5 +1358,6 @@ internal class SbxOpenCodeServerBackend(
         private const val FIRST_START_TIMEOUT_MILLIS = 10 * 60 * 1000L
         private const val RECONNECT_TIMEOUT_MILLIS = 60_000L
         private const val UPGRADE_TIMEOUT_MILLIS = 180_000L
+        private const val STAGE_MAX_CHARS = 120
     }
 }

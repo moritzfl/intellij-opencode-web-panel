@@ -989,10 +989,10 @@ class OpenCodeWebToolWindowContent(
         if (state != OpenCodeServerLifecycleState.RUNNING) {
             resetAgentStatusTracking()
         }
-        if (shouldHideEmbeddedPage(state)) {
-            idleCard.show(state)
-        }
         val sbx = serverManager as? SbxOpenCodeServerBackend
+        if (shouldHideEmbeddedPage(state)) {
+            idleCard.show(state, stage = sbx?.startupStage())
+        }
         val starting = state == OpenCodeServerLifecycleState.STARTING ||
             state == OpenCodeServerLifecycleState.RESTARTING
         val startedAt = serverManager.getServerGenerationStartedAtMillis()

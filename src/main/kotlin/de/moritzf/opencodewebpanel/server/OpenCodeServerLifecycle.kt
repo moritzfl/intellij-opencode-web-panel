@@ -112,7 +112,9 @@ internal fun isOpenCodeLifecycleStripVisible(model: OpenCodeLifecycleStripModel)
     if (model.cancelled) return true
     if (model.pageOpening && model.state == OpenCodeServerLifecycleState.RUNNING) return true
     if (model.recovery != null && model.state == OpenCodeServerLifecycleState.RUNNING) return true
-    return model.state == OpenCodeServerLifecycleState.STARTING || model.state == OpenCodeServerLifecycleState.FAILED
+    return model.state == OpenCodeServerLifecycleState.STARTING ||
+        model.state == OpenCodeServerLifecycleState.RESTARTING ||
+        model.state == OpenCodeServerLifecycleState.FAILED
 }
 
 internal fun shouldTickLifecycleStrip(model: OpenCodeLifecycleStripModel): Boolean {
@@ -149,13 +151,15 @@ internal fun isOpenCodeServerLifecycleStatusVisible(state: OpenCodeServerLifecyc
 }
 
 /** Keep the strip up after the server is running until the embedded page actually paints.
- *  Stopped/restarting use the idle card instead, so the strip would duplicate Start. */
+ *  Stopped uses the idle card (Start). Restarting keeps the strip for stage/log/cancel. */
 internal fun isOpenCodeLifecycleStripVisible(
     state: OpenCodeServerLifecycleState,
     pageOpening: Boolean = false,
 ): Boolean {
     if (pageOpening && state == OpenCodeServerLifecycleState.RUNNING) return true
-    return state == OpenCodeServerLifecycleState.STARTING || state == OpenCodeServerLifecycleState.FAILED
+    return state == OpenCodeServerLifecycleState.STARTING ||
+        state == OpenCodeServerLifecycleState.RESTARTING ||
+        state == OpenCodeServerLifecycleState.FAILED
 }
 
 /** Hide "Opening…" on later in-app navigations once a page has already painted. */

@@ -20,7 +20,9 @@ internal class OpenCodeLifecycleStatusPanel(
     onViewLog: () -> Unit = {},
     onCancel: () -> Unit = {},
 ) {
-    private val lifecycleStatusLabel = JBLabel()
+    private val lifecycleStatusLabel = JBLabel().apply {
+        border = JBUI.Borders.emptyRight(8)
+    }
     private val retryServerButton = JButton("Retry", AllIcons.Actions.Restart).apply {
         isVisible = false
         addActionListener { onRetry() }
@@ -47,7 +49,7 @@ internal class OpenCodeLifecycleStatusPanel(
         isOpaque = false
         isVisible = false
         border = JBUI.Borders.empty(4, 8)
-        addToLeft(lifecycleStatusLabel)
+        addToCenter(lifecycleStatusLabel)
         addToRight(buttons)
     }
 

@@ -32,6 +32,14 @@
 
 ### Fixed
 
+- Restarting (including sandbox Upgrade OpenCode) keeps the tool-window strip
+  with Cancel, View log, elapsed time, and the last CLI line. Stage text no
+  longer draws over the buttons on a narrow panel. Stop still uses the idle
+  card.
+- Sandbox `opencode upgrade` streams into the server log and strip instead of
+  buffering until exit.
+- JCEF Basic auth keeps the last origin/password after stop so a parked page
+  does not 401 into Chromium's login dialog.
 - Opening a chat file or code reference no longer surfaces a JetBrains Next Edit
   classloader `ClassCastException` as an OpenCode Web Panel error. Navigation still
   uses `OpenFileDescriptor`; editor-listener failures from other plugins are logged

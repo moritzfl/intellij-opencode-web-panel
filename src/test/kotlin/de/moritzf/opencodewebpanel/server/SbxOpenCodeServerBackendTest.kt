@@ -127,6 +127,41 @@ class SbxOpenCodeServerBackendTest {
     }
 
     @Test
+    fun upgradeRunsOpencodeUpgradeAndSurfacesCliOutputAsStage() {
+        var stageDuringUpgrade: String? = null
+        val original = behavior
+        behavior = { command ->
+            if (command.contains("upgrade")) {
+                stageDuringUpgrade = backend.startupStage()
+                SbxCommandResult(0, "Downloading 50%\nUpgraded to 1.99.0")
+            } else {
+                original(command)
+            }
+        }
+        backend.upgradeOpenCodeBinary(project)
+        drain()
+        assertEquals("Upgrading OpenCode…", stageDuringUpgrade)
+        assertTrue(calls.contains("exec"))
+        assertTrue(calls.indexOf("exec") < calls.indexOf("diagnose"))
+    }
+
+    @Test
+    fun failedUpgradeKeepsSessionsAndDoesNotStartServe() {
+        val original = behavior
+        behavior = { command ->
+            if (command.contains("upgrade")) {
+                SbxCommandResult(1, "upgrade failed")
+            } else {
+                original(command)
+            }
+        }
+        backend.upgradeOpenCodeBinary(project)
+        drain()
+        assertEquals(SbxFailureKind.UPGRADE_FAILED, backend.lastFailure())
+        assertFalse(calls.contains("diagnose"))
+    }
+
+    @Test
     fun resetLeavesBackendAbleToStartAgain() {
         backend.resetSandbox(project, { false }, {}, {})
         drain()
