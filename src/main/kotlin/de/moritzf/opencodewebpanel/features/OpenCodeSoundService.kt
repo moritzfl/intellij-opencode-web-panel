@@ -19,6 +19,9 @@ import org.jetbrains.annotations.TestOnly
  * Uses the JVM `/global/event` stream (same source as system notifications) and the mirrored
  * `settings.v3` sound preferences, so cues work even when the embedded page's HTMLAudioElement
  * path stays silent.
+ *
+ * Busy state is scoped per backend: Host CLI and Docker Sandbox can serve the same directory at
+ * different times, and a restart of one backend must not clear or satisfy the other's sessions.
  */
 internal object OpenCodeSoundService {
     private val lock = Any()
@@ -27,9 +30,9 @@ internal object OpenCodeSoundService {
         "OpenCode Sound Events",
         1,
     )
-    private data class SessionKey(val directory: String, val sessionID: String)
+    private data class SessionKey(val backendId: String, val sessionID: String)
     private val busySessions = mutableSetOf<SessionKey>()
-    private var connectedGeneration: Long? = null
+    private val connectedGenerations = mutableMapOf<String, Long>()
 
     /**
      * Subscribes to the application event bus. Safe to call repeatedly: re-subscribes after the
@@ -46,7 +49,7 @@ internal object OpenCodeSoundService {
                     override fun connected(backendId: String) {
                         val backend = parent.backend(backendId) ?: return
                         val generation = backend.getServerGeneration()
-                        eventExecutor.execute { handleConnected(generation) }
+                        eventExecutor.execute { handleConnected(backendId, generation) }
                     }
 
                     override fun eventReceived(event: OpenCodeGlobalEvent) {
@@ -68,16 +71,16 @@ internal object OpenCodeSoundService {
     internal fun resetForTests() {
         synchronized(busySessions) {
             busySessions.clear()
-            connectedGeneration = null
+            connectedGenerations.clear()
         }
     }
 
     /** Preserve busy state across a transient SSE reconnect; only a new server invalidates it. */
-    internal fun handleConnected(serverGeneration: Long) {
+    internal fun handleConnected(backendId: String, serverGeneration: Long) {
         synchronized(busySessions) {
-            if (connectedGeneration == serverGeneration) return
-            busySessions.clear()
-            connectedGeneration = serverGeneration
+            if (connectedGenerations[backendId] == serverGeneration) return
+            busySessions.removeAll { it.backendId == backendId }
+            connectedGenerations[backendId] = serverGeneration
         }
     }
 
@@ -88,13 +91,14 @@ internal object OpenCodeSoundService {
             ::fetchSessionInfo,
         play: (String?) -> Unit = OpenCodeSoundPlayer::playById,
     ) {
+        val backendId = event.backendId
         var type = event.type
         if (type == "session.status") {
             val statusType = event.properties.objectMember("status")?.stringMember("type")
             if (statusType == "busy" || statusType == "retry") {
                 event.properties.stringMember("sessionID")
                     ?.takeIf(OpenCodeServerProtocol::isSessionId)
-                    ?.let { markBusy(event.directory, it) }
+                    ?.let { markBusy(backendId, it) }
                 return
             }
             if (statusType != "idle") return
@@ -104,15 +108,15 @@ internal object OpenCodeSoundService {
             "session.idle" -> {
                 val sessionID = event.properties.stringMember("sessionID") ?: return
                 if (!OpenCodeServerProtocol.isSessionId(sessionID)) return
-                if (!isBusy(event.directory, sessionID)) return
+                if (!isBusy(backendId, sessionID)) return
                 if (!settings.agentEnabled) {
-                    markIdle(event.directory, sessionID)
+                    markIdle(backendId, sessionID)
                     return
                 }
                 // Keep busy on a failed lookup so a later idle can retry. A new server generation
                 // clears reduced state; a transient SSE reconnect preserves the live transition.
                 val session = fetchSession(event.directory, sessionID) ?: return
-                if (!markIdle(event.directory, sessionID)) return
+                if (!markIdle(backendId, sessionID)) return
                 if (session.parentID != null) return
                 play(settings.agent)
             }
@@ -135,6 +139,8 @@ internal object OpenCodeSoundService {
     }
 
     private fun currentSettings(): OpenCodeSoundSettings {
+        // Sound preferences are app-level: the native snapshot has always carried them, and
+        // per-backend page state (theme, layout) is not sound-relevant.
         return parseOpenCodeSoundSettings(OpenCodeSettingsState.getInstance().openCodeLocalStorageSnapshot)
     }
 
@@ -150,21 +156,21 @@ internal object OpenCodeSoundService {
         )
     }
 
-    private fun isBusy(directory: String, sessionID: String): Boolean {
+    private fun isBusy(backendId: String, sessionID: String): Boolean {
         synchronized(busySessions) {
-            return SessionKey(directory, sessionID) in busySessions
+            return SessionKey(backendId, sessionID) in busySessions
         }
     }
 
-    private fun markIdle(directory: String, sessionID: String): Boolean {
+    private fun markIdle(backendId: String, sessionID: String): Boolean {
         synchronized(busySessions) {
-            return busySessions.remove(SessionKey(directory, sessionID))
+            return busySessions.remove(SessionKey(backendId, sessionID))
         }
     }
 
-    private fun markBusy(directory: String, sessionID: String) {
+    private fun markBusy(backendId: String, sessionID: String) {
         synchronized(busySessions) {
-            busySessions.add(SessionKey(directory, sessionID))
+            busySessions.add(SessionKey(backendId, sessionID))
         }
     }
 }

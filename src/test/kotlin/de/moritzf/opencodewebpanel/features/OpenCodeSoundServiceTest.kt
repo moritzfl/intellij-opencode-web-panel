@@ -3,6 +3,7 @@ package de.moritzf.opencodewebpanel.features
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import de.moritzf.opencodewebpanel.server.OpenCodeGlobalEvent
+import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -20,9 +21,13 @@ class OpenCodeSoundServiceTest {
         sessions.clear()
     }
 
-    private fun event(type: String, propertiesJson: String = "{}"): OpenCodeGlobalEvent {
+    private fun event(
+        type: String,
+        propertiesJson: String = "{}",
+        backendId: String = OpenCodeServerBackend.NATIVE_ID,
+    ): OpenCodeGlobalEvent {
         val properties = JsonParser.parseString(propertiesJson).asJsonObject as JsonObject
-        return OpenCodeGlobalEvent("/tmp/project", type, "", properties)
+        return OpenCodeGlobalEvent("/tmp/project", type, "", properties, backendId = backendId)
     }
 
     private fun handle(event: OpenCodeGlobalEvent, settings: OpenCodeSoundSettings = defaults) {
@@ -81,20 +86,39 @@ class OpenCodeSoundServiceTest {
 
     @Test
     fun failedSessionLookupKeepsBusyForRetryAndTransientReconnect() {
-        OpenCodeSoundService.handleConnected(1)
+        OpenCodeSoundService.handleConnected(OpenCodeServerBackend.NATIVE_ID, 1)
         handle(event("session.status", """{"sessionID":"ses_1","status":{"type":"busy"}}"""))
         handle(event("session.idle", """{"sessionID":"ses_1"}"""))
         assertTrue(played.isEmpty())
 
-        OpenCodeSoundService.handleConnected(1)
+        OpenCodeSoundService.handleConnected(OpenCodeServerBackend.NATIVE_ID, 1)
         sessions["ses_1"] = OpenCodeServerProtocol.SessionInfo("Done", parentID = null)
         handle(event("session.idle", """{"sessionID":"ses_1"}"""))
         assertEquals(listOf(OpenCodeSoundSettings.DEFAULT_AGENT), played)
 
         handle(event("session.status", """{"sessionID":"ses_2","status":{"type":"busy"}}"""))
-        OpenCodeSoundService.handleConnected(2)
+        OpenCodeSoundService.handleConnected(OpenCodeServerBackend.NATIVE_ID, 2)
         handle(event("session.idle", """{"sessionID":"ses_2"}"""))
         assertEquals(listOf(OpenCodeSoundSettings.DEFAULT_AGENT), played)
+    }
+
+    @Test
+    fun backendRestartDoesNotClearOtherBackendsBusyState() {
+        sessions["ses_native"] = OpenCodeServerProtocol.SessionInfo("Done", parentID = null)
+        sessions["ses_sbx"] = OpenCodeServerProtocol.SessionInfo("Done", parentID = null)
+        handle(event("session.status", """{"sessionID":"ses_native","status":{"type":"busy"}}"""))
+        handle(event("session.status", """{"sessionID":"ses_sbx","status":{"type":"busy"}}""", backendId = SBX))
+        // A new server generation on one backend must only invalidate that backend's sessions.
+        OpenCodeSoundService.handleConnected(SBX, 1)
+        handle(event("session.idle", """{"sessionID":"ses_native"}"""))
+        assertEquals(listOf(OpenCodeSoundSettings.DEFAULT_AGENT), played)
+        // The sandbox backend's busy marker was cleared by its own reconnect.
+        handle(event("session.idle", """{"sessionID":"ses_sbx"}""", backendId = SBX))
+        assertEquals(1, played.size)
+    }
+
+    companion object {
+        private const val SBX = "sbx:some-sandbox"
     }
 
     @Test
