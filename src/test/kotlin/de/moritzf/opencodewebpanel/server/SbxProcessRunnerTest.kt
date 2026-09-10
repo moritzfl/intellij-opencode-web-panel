@@ -9,6 +9,8 @@ import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 class SbxProcessRunnerTest {
@@ -52,6 +54,54 @@ class SbxProcessRunnerTest {
     }
 
     @Test
+    fun streamsStdoutLinesBeforeTheProcessExits() {
+        val first = CountDownLatch(1)
+        val lines = CopyOnWriteArrayList<String>()
+        val result = SbxProcessRunner.run(probe("stream"), emptyMap(), 10_000L, null) { line ->
+            lines += line
+            if (line == "first") first.countDown()
+        }
+        assertTrue("Live callback must see the first line before exit", first.await(5, TimeUnit.SECONDS))
+        assertEquals(0, result.exitCode)
+        assertTrue(lines.contains("first"))
+        assertTrue(lines.contains("second"))
+        assertTrue(lines.indexOf("first") < lines.indexOf("second"))
+    }
+
+    @Test
+    fun splitProcessOutputTreatsCarriageReturnAsALine() {
+        val lines = mutableListOf<String>()
+        val pending = StringBuilder()
+        splitProcessOutputLines(pending, "Downloading 10%\rDownloading 20%\nDone\n", lines::add)
+        flushProcessOutputLines(pending, lines::add)
+        assertEquals(listOf("Downloading 10%", "Downloading 20%", "Done"), lines)
+    }
+
+    @Test
+    fun sanitizeCliOutputDropsAnsiProgressJunk() {
+        assertEquals("", sanitizeCliOutputLine("\u001B[?25l |"))
+        assertEquals("", sanitizeCliOutputLine("[?25l |"))
+        assertEquals("", sanitizeCliOutputLine("\u001B[999D\u001B[J"))
+        assertEquals("", sanitizeCliOutputLine("[999D [J"))
+        assertEquals("Upgrading 40%", sanitizeCliOutputLine("\u001B[32mUpgrading 40%\u001B[0m"))
+        assertEquals("Upgrading 40%", sanitizeCliOutputLine("\u001B[999D\u001B[JUpgrading 40%"))
+        assertEquals("Upgrading 40%", sanitizeCliOutputLine("[999D [J Upgrading 40%"))
+    }
+
+    @Test
+    fun splitProcessOutputTreatsProgressCsiAsALineBreak() {
+        val lines = mutableListOf<String>()
+        val pending = StringBuilder()
+        splitProcessOutputLines(
+            pending,
+            "\u001B[?25l\u001B[999D\u001B[JUpgrading 10%\u001B[999D\u001B[JUpgrading 20%\n",
+            lines::add,
+        )
+        flushProcessOutputLines(pending, lines::add)
+        assertEquals(listOf("Upgrading 10%", "Upgrading 20%"), lines)
+    }
+
+    @Test
     fun missingExecutableReturnsAnActionableFailure() {
         val result = SbxProcessRunner.run(listOf(temp.root.resolve("missing-executable").path), emptyMap(), 1_000L)
         assertEquals(-1, result.exitCode)
@@ -76,6 +126,12 @@ class SbxProcessRunnerTest {
                             System.out.print("x".repeat(256 * 1024));
                             System.err.println("stderr-marker");
                             System.exit(7);
+                            break;
+                        case "stream":
+                            System.out.println("first");
+                            System.out.flush();
+                            Thread.sleep(400);
+                            System.out.println("second");
                             break;
                         case "cwd":
                             System.out.println(Path.of(".").toRealPath());
