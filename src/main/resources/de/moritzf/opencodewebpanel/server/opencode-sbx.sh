@@ -116,6 +116,13 @@ identity_path() {
   printf '%s' "$p"
 }
 
+is_absolute() {
+  local p="$1"
+  [[ "$p" == /* || "$p" == //* ]] && return 0
+  [[ "$p" =~ ^[A-Za-z]:(/|\\) ]] && return 0
+  return 1
+}
+
 hash12() {
   printf '%s' "$1" | openssl dgst -sha256 -r | awk '{print substr($1,1,12)}'
 }
@@ -148,7 +155,7 @@ if ! command -v "$SBX" >/dev/null 2>&1; then
   echo "opencode-sbx: sbx not found. Install Docker Sandboxes and ensure sbx is on PATH." >&2
   exit 1
 fi
-if [[ "$SBX" == */* && "$SBX" != /* ]]; then
+if [[ "$SBX" == */* ]] && ! is_absolute "$SBX"; then
   SBX="$(pwd)/$SBX"
 fi
 
@@ -198,6 +205,43 @@ MOUNT_HOSTS=()
 MOUNT_SANDBOXES=()
 MOUNT_READONLY=()
 
+parse_flow_kits() {
+  local raw="$1" inner item="" quote="" escaped=0 i ch
+  inner="${raw#\[}"
+  inner="${inner%\]}"
+  KITS=()
+  inner="${inner#"${inner%%[![:space:]]*}"}"
+  inner="${inner%"${inner##*[![:space:]]}"}"
+  [[ -z "$inner" ]] && return 0
+  for ((i = 0; i < ${#inner}; i++)); do
+    ch="${inner:i:1}"
+    if [[ "$escaped" -eq 1 ]]; then
+      item+="$ch"
+      escaped=0
+    elif [[ "$quote" == '"' && "$ch" == '\' ]]; then
+      item+="$ch"
+      escaped=1
+    elif [[ "$quote" == "'" && "$ch" == "'" && "${inner:i+1:1}" == "'" ]]; then
+      item+="''"
+      i=$((i + 1))
+    elif [[ -n "$quote" ]]; then
+      item+="$ch"
+      [[ "$ch" == "$quote" ]] && quote=""
+    elif [[ "$ch" == '"' || "$ch" == "'" ]]; then
+      quote="$ch"
+      item+="$ch"
+    elif [[ "$ch" == "," ]]; then
+      item="$(yaml_unquote "$item")"
+      [[ -n "$item" ]] && KITS+=("$item")
+      item=""
+    else
+      item+="$ch"
+    fi
+  done
+  item="$(yaml_unquote "$item")"
+  [[ -n "$item" ]] && KITS+=("$item")
+}
+
 parse_spec() {
   local file="$1"
   local list=""
@@ -227,8 +271,10 @@ parse_spec() {
     fi
     if [[ "$line" =~ ^([A-Za-z][A-Za-z0-9_]*):[[:space:]]*(.*)$ ]]; then
       local key="${BASH_REMATCH[1]}"
+      local raw="${BASH_REMATCH[2]}"
+      raw="${raw%"${raw##*[![:space:]]}"}"
       local val
-      val="$(yaml_unquote "${BASH_REMATCH[2]}")"
+      val="$(yaml_unquote "$raw")"
       list="$key"
       host=""
       case "$key" in
@@ -240,7 +286,16 @@ parse_spec() {
         shareHostOpencodeConfig) SHARE_CONFIG="$val" ;;
         protectSandboxFiles) PROTECT_FILES="$val" ;;
         persistSandboxSessions) PERSIST_SESSIONS="$val" ;;
-        kits|setupCommands|networkAllows|networkAllowPresets|extraNetworkAllows|extraMounts) ;;
+        kits)
+          if [[ "$raw" == "["* ]]; then
+            if [[ "$raw" != *"]" ]]; then
+              echo "opencode-sbx: invalid kits list in spec" >&2
+              exit 1
+            fi
+            parse_flow_kits "$raw"
+          fi
+          ;;
+        setupCommands|networkAllows|networkAllowPresets|extraNetworkAllows|extraMounts) ;;
       esac
     fi
   done < "$file"
@@ -265,10 +320,10 @@ EOF
 
 if [[ "$INIT" -eq 1 ]]; then
   if [[ -n "$SPEC" ]]; then
-    echo "opencode-sbx: spec already exists at $SPEC"
+    echo "opencode-sbx: spec already exists at $SPEC" >&2
   else
     write_init_spec
-    echo "Wrote $CANONICAL/$CONTROL_DIR/$SPEC_NAME"
+    echo "Wrote $CANONICAL/$CONTROL_DIR/$SPEC_NAME" >&2
     SPEC="$CANONICAL/$CONTROL_DIR/$SPEC_NAME"
   fi
 fi
@@ -286,11 +341,13 @@ if [[ "$(basename "$spec_dir")" == "$CONTROL_DIR" && "$(basename "$SPEC")" == "$
 else
   spec_base="$spec_dir"
 fi
-if [[ "$CANONICAL" != /* ]]; then
-  CANONICAL="$(identity_path "$(cd "$spec_base/$CANONICAL" && pwd -P)")"
+if ! is_absolute "$CANONICAL"; then
+  resolved="$(cd "$spec_base/$CANONICAL" && pwd -P)" || exit 1
+  CANONICAL="$(identity_path "$resolved")"
   NAME="ide-ocwp-$(hash12 "$CANONICAL")"
 else
-  CANONICAL="$(identity_path "$(cd "$CANONICAL" && pwd -P)")"
+  resolved="$(cd "$CANONICAL" && pwd -P)" || exit 1
+  CANONICAL="$(identity_path "$resolved")"
 fi
 # Local kit and mount paths are project-relative, including for the machine launcher.
 cd "$CANONICAL"
@@ -299,10 +356,79 @@ sandbox_json() {
   "$SBX" ls --json 2>/dev/null || true
 }
 
-sandbox_owned() {
-  local json
+json_sandbox_objects() {
+  printf '%s' "$1" | awk '
+    {
+      line = line $0
+    }
+    END {
+      start = index(line, "\"sandboxes\"")
+      if (start == 0) exit
+      rest = substr(line, start)
+      br = index(rest, "[")
+      if (br == 0) exit
+      rest = substr(rest, br + 1)
+      depth = 0
+      obj = ""
+      in_str = 0
+      esc = 0
+      for (i = 1; i <= length(rest); i++) {
+        c = substr(rest, i, 1)
+        if (in_str) {
+          obj = obj c
+          if (esc) esc = 0
+          else if (c == "\\") esc = 1
+          else if (c == "\"") in_str = 0
+          continue
+        }
+        if (c == "\"") { in_str = 1; if (depth > 0) obj = obj c; continue }
+        if (c == "{") { depth++; obj = obj c; continue }
+        if (c == "}") {
+          obj = obj c
+          depth--
+          if (depth == 0 && obj != "") { print obj; obj = "" }
+          continue
+        }
+        if (depth > 0) obj = obj c
+        if (c == "]" && depth == 0) break
+      }
+    }
+  '
+}
+
+json_string() {
+  printf '"%s"' "$1"
+}
+
+sandbox_entry_for_name() {
+  local name="$1" json obj needle
   json="$(sandbox_json)"
-  printf '%s' "$json" | grep -Fq "\"$NAME\"" && printf '%s' "$json" | grep -Fq "$CANONICAL"
+  needle="$(json_string "$name")"
+  while IFS= read -r obj; do
+    [[ -z "$obj" ]] && continue
+    case "$obj" in
+      *"\"name\":${needle}"*|*"\"name\": ${needle}"*)
+        printf '%s' "$obj"
+        return 0
+        ;;
+    esac
+  done < <(json_sandbox_objects "$json")
+  return 1
+}
+
+entry_has_workspace() {
+  local obj="$1" path="$2" needle
+  needle="$(json_string "$path")"
+  case "$obj" in
+    *"${needle},"*|*"${needle}]"*|*"${needle} "* ) return 0 ;;
+  esac
+  return 1
+}
+
+sandbox_owned() {
+  local obj
+  obj="$(sandbox_entry_for_name "$NAME")" || return 1
+  entry_has_workspace "$obj" "$CANONICAL"
 }
 
 if [[ "$REMOVE" -eq 1 ]]; then
@@ -319,7 +445,9 @@ if [[ "$REMOVE" -eq 1 ]]; then
 fi
 
 if [[ "$RECREATE" -eq 1 ]]; then
-  "$SBX" rm --force "$NAME" || true
+  if sandbox_owned; then
+    "$SBX" rm --force "$NAME" || true
+  fi
 fi
 
 "$SBX" daemon start >/dev/null 2>&1 || true
@@ -356,11 +484,29 @@ if [[ "$PERSIST_SESSIONS" == "true" ]]; then
 fi
 
 sandbox_exists() {
-  sandbox_json | grep -Fq "\"$NAME\""
+  sandbox_entry_for_name "$NAME" >/dev/null
 }
 
 workspace_has() {
-  sandbox_json | grep -Fq "$1"
+  local obj
+  obj="$(sandbox_entry_for_name "$NAME")" || return 1
+  entry_has_workspace "$obj" "$1"
+}
+
+resolve_host_path() {
+  local host="$1"
+  if [[ "$host" == "~"* ]]; then
+    host="${HOME}${host:1}"
+  fi
+  if ! is_absolute "$host"; then
+    host="$CANONICAL/${host#./}"
+  fi
+  if [[ -d "$host" ]]; then
+    host="$(identity_path "$(cd "$host" && pwd -P)")"
+  elif [[ -e "$host" ]]; then
+    host="$(identity_path "$(cd "$(dirname -- "$host")" && pwd -P)/$(basename -- "$host")")"
+  fi
+  printf '%s' "$host"
 }
 
 link_mount() {
@@ -429,10 +575,8 @@ if ! sandbox_exists; then
   fi
   i=0
   while [[ $i -lt ${#MOUNT_HOSTS[@]} ]]; do
-    host="${MOUNT_HOSTS[$i]}"
-    if [[ "$host" == "~"* ]]; then
-      host="${HOME}${host:1}"
-    fi
+    host="$(resolve_host_path "${MOUNT_HOSTS[$i]}")"
+    MOUNT_HOSTS[$i]="$host"
     if [[ -n "$host" && "$host" != "$CANONICAL" && -e "$host" ]]; then
       if [[ "${MOUNT_READONLY[$i]:-0}" == "1" ]]; then
         create+=( "$host:ro" )
@@ -445,11 +589,8 @@ if ! sandbox_exists; then
   "${create[@]}"
   i=0
   while [[ $i -lt ${#MOUNT_HOSTS[@]} ]]; do
-    host="${MOUNT_HOSTS[$i]}"
+    host="$(resolve_host_path "${MOUNT_HOSTS[$i]}")"
     sandbox="${MOUNT_SANDBOXES[$i]}"
-    if [[ "$host" == "~"* ]]; then
-      host="${HOME}${host:1}"
-    fi
     if [[ -n "$sandbox" && "$host" != "$sandbox" ]]; then
       link_mount "$host" "$sandbox"
     fi

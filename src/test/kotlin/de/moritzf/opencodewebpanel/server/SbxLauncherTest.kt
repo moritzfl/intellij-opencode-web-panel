@@ -71,7 +71,7 @@ class SbxLauncherTest {
                 "--kit", "./team's-kit",
                 "opencode", project.toString(),
             ) + protectCreateArgs(project, listOf("./kit #1", "./kit \"quoted\" #2", "./kit 'quoted' #3", "./kit\\path", "./team's-kit")) + persistCreateArgs(project) + listOf(
-                fileMount.toString(), "./${directoryMount.fileName}",
+                fileMount.toString(), directoryMount.toString(),
             ),
             actual,
         )
@@ -417,6 +417,87 @@ class SbxLauncherTest {
     }
 
     @Test
+    fun rmDoesNotDeleteWhenNameAndWorkspaceAreInDifferentEntries() {
+        val project = directory("project")
+        Files.writeString(project.resolve("opencode-sbx.yaml"), "canonicalDirectory: ./\n")
+        val name = SbxCli.sandboxName(project.toString())
+        val lsJson = """{"sandboxes":[{"name":"$name","workspaces":["/other/project"]},{"name":"other-box","workspaces":["$project"]}]}"""
+        runLauncher(launcher(project), project, "--rm", expectedExit = 1, lsJson = lsJson)
+        assertFalse(Files.exists(temp.root.toPath().resolve("log/rm.args")))
+        assertTrue(launcherOutput().contains("no owned sandbox"))
+    }
+
+    @Test
+    fun recreateDoesNotRemoveUnownedNameMatch() {
+        val project = directory("project")
+        Files.writeString(project.resolve("opencode-sbx.yaml"), "canonicalDirectory: ./\n")
+        val name = SbxCli.sandboxName(project.toString())
+        val lsJson = """{"sandboxes":[{"name":"$name","workspaces":["/other/project"]}]}"""
+        runLauncher(launcher(project), project, "--recreate", serve = true, expectedExit = 37, lsJson = lsJson)
+        assertFalse(Files.exists(temp.root.toPath().resolve("log/rm.args")))
+    }
+
+    @Test
+    fun persistReplaceRequiresThisSandboxWorkspace() {
+        val project = directory("project")
+        Files.writeString(project.resolve("opencode-sbx.yaml"), "canonicalDirectory: ./\n")
+        val name = SbxCli.sandboxName(project.toString())
+        val persist = persistCreateArgs(project, name).single()
+        val lsJson = """{"sandboxes":[{"name":"$name","workspaces":["$project"]},{"name":"other-box","workspaces":["$persist"]}]}"""
+        val args = runLauncher(launcher(project), project, serve = true, lsJson = lsJson)
+        assertFalse(args.contains("opencode-link"))
+        assertTrue(args.contains("serve"))
+    }
+
+    @Test
+    fun windowsDriveCanonicalDirectoryIsNotPrefixedWithSpecBase() {
+        val project = directory("project")
+        Files.writeString(project.resolve("opencode-sbx.yaml"), "canonicalDirectory: C:/definitely-missing-ocwp-test\n")
+        runLauncher(launcher(project), project, expectedExit = 1)
+        val output = launcherOutput()
+        assertFalse(output.contains("${project}/C:"))
+        assertTrue(output.contains("C:/definitely-missing-ocwp-test") || output.contains("No such file"))
+    }
+
+    @Test
+    fun relativeExtraMountIsCanonicalizedBeforeLink() {
+        val project = directory("project")
+        val docs = Files.createDirectory(project.resolve("docs"))
+        Files.writeString(
+            project.resolve("opencode-sbx.yaml"),
+            """
+            canonicalDirectory: ./
+            extraMounts:
+              - host: ./docs
+                sandbox: /home/agent/docs
+            """.trimIndent() + "\n",
+        )
+        val args = runLauncher(launcher(project), project, createExit = 0, resultCommand = "exec")
+        assertTrue(args.contains("opencode-link"))
+        assertTrue(args.contains(docs.toString()))
+        assertFalse(args.contains("./docs"))
+    }
+
+    @Test
+    fun flowStyleKitsArePassedToCreate() {
+        val project = directory("project")
+        Files.createDirectory(project.resolve("network-kit"))
+        Files.writeString(project.resolve("opencode-sbx.yaml"), "canonicalDirectory: ./\nkits: [./network-kit]\n")
+        val args = runLauncher(launcher(project), project)
+        assertTrue(args.contains("--kit"))
+        assertTrue(args.contains("./network-kit"))
+    }
+
+    @Test
+    fun initAcpWritesSetupToStderrNotStdout() {
+        val project = directory("project")
+        Files.writeString(project.resolve("opencode-sbx.yaml"), "canonicalDirectory: ./\n")
+        runLauncher(launcher(project), project, "--init", "--acp", serve = true, mergeErrorStream = false)
+        assertEquals("", Files.readString(temp.root.resolve("launcher-output.txt").toPath()).trim())
+        assertTrue(Files.readString(temp.root.resolve("launcher-error.txt").toPath()).contains("spec already exists"))
+    }
+
+    @Test
     fun initWritesPortableSpecInCallerDirectoryForMachineLauncher() {
         val project = directory("new project")
         val scriptDirectory = directory("machine bin")
@@ -505,6 +586,9 @@ class SbxLauncherTest {
         resultCommand: String? = null,
         owned: Boolean = false,
         serverPassword: String? = "launcher-test-only",
+        lsJson: String? = null,
+        mergeErrorStream: Boolean = true,
+        createExit: Int = 37,
     ): List<String> {
         val bin = directory("fake bin")
         val log = directory("log")
@@ -532,7 +616,7 @@ class SbxLauncherTest {
                 else
                   printf '[]\n'
                 fi ;;
-              create) exit 37 ;;
+              create) exit "${'$'}{OCWP_TEST_CREATE_EXIT:-37}" ;;
               rm) exit 0 ;;
               exec)
                 printf '%s' "${'$'}{XDG_CONFIG_HOME:-}" > "${'$'}OCWP_TEST_LOG/config-home"
@@ -556,11 +640,13 @@ class SbxLauncherTest {
         // The health poller must never contact a real server in these launcher tests.
         assertTrue(Files.writeString(bin.resolve("curl"), "#!/bin/sh\n: > \"\$OCWP_TEST_LOG/health-checked\"\nexit 0\n").toFile().setExecutable(true, true))
         val output = temp.root.resolve("launcher-output.txt")
+        val error = temp.root.resolve("launcher-error.txt")
         val process = ProcessBuilder(listOf("/bin/bash", script.toString()) + args)
             .directory(cwd.toFile())
-            .redirectErrorStream(true)
+            .redirectErrorStream(mergeErrorStream)
             .redirectOutput(output)
             .apply {
+                if (!mergeErrorStream) redirectError(error)
                 // Never inherit credentials, BASH_ENV, sbx overrides, or the user's executable PATH.
                 environment().clear()
                 environment().putAll(
@@ -572,25 +658,26 @@ class SbxLauncherTest {
                         "OCWP_TEST_LOG" to log.toString(),
                         "OCWP_TEST_SERVE" to serve.toString(),
                         "OCWP_TEST_NAME" to SbxCli.sandboxName(script.parent.toString()),
-                        "OCWP_TEST_LS" to if (owned) {
+                        "OCWP_TEST_CREATE_EXIT" to createExit.toString(),
+                        "OCWP_TEST_LS" to (lsJson ?: if (owned) {
                             """{"sandboxes":[{"name":"${SbxCli.sandboxName(cwd.toString())}","workspaces":["$cwd"]}]}"""
                         } else {
                             ""
-                        },
+                        }),
                     ),
                 )
                 if (serverPassword != null) environment()["OPENCODE_SERVER_PASSWORD"] = serverPassword
             }.start()
         try {
             assertTrue("Launcher timed out", process.waitFor(10, TimeUnit.SECONDS))
-            assertEquals(Files.readString(output.toPath()), expectedExit, process.exitValue())
+            assertEquals(Files.readString(output.toPath()) + if (error.exists()) Files.readString(error.toPath()) else "", expectedExit, process.exitValue())
         } finally {
             process.descendants().use { children -> children.forEach { it.destroyForcibly() } }
             process.destroyForcibly()
             process.waitFor(5, TimeUnit.SECONDS)
         }
         if (expectedExit != 37 && resultCommand == null) return emptyList()
-        if (!serve && expectedExit == 37) {
+        if (!serve && expectedExit == 37 && createExit != 0) {
             assertEquals(listOf("daemon", "ls", "create"), Files.readAllLines(log.resolve("calls")))
         }
         val command = resultCommand ?: if (serve) "exec" else "create"

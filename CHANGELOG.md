@@ -37,6 +37,10 @@
   hides after the page has painted.
 - A failed sandbox stop still finishes Apply, so Host ↔ Docker Sandbox switches
   restart the panel instead of leaving it bound to the previous runtime.
+- The colleague launcher only removes a sandbox when name and workspace belong to
+  the same VM, and only relinks persist data when that path is a workspace of
+  this VM. Relative extra mounts are canonicalized before `link_mount`. Windows
+  drive paths are treated as absolute. `--init --acp` writes setup text to stderr.
 - Panel replacement waits for Chromium and registers page callbacks before the
   first document. Unanswered basic-auth challenges are cancelled so Chromium
   does not show a login dialog. Without a restorable session, boot on OpenCode
