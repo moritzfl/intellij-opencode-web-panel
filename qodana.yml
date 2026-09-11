@@ -10,3 +10,5 @@ exclude:
   - name: All
     paths:
       - .qodana
+  # Product names (OpenCode, Docker Sandboxes, Reset Sandbox) trip sentence-case checks.
+  - name: IncorrectStringCapitalization
