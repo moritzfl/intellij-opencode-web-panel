@@ -58,7 +58,7 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
     private val autoBinaryRadioButton = JBRadioButton("Auto detect")
     private val customBinaryRadioButton = JBRadioButton("OpenCode path")
     private val autoSbxRadioButton = JBRadioButton("Auto detect")
-    private val customSbxRadioButton = JBRadioButton("sbx path")
+    private val customSbxRadioButton = JBRadioButton("Sbx path")
     private val sbxPathField = TextFieldWithBrowseButton().apply {
         textField.columns = 40
         toolTipText = "Path to the sbx executable"
@@ -184,7 +184,7 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
         installControlListenersOnce()
 
         val serverSetupPanel = panel {
-            group("OpenCode launch") {
+            group("OpenCode Launch") {
                 row {
                     comment("Which runtime starts OpenCode. Host CLI runs opencode on this machine; Docker Sandbox runs it inside a Docker Sandbox. Runtime is chosen per project.")
                 }
@@ -231,7 +231,7 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
                     cell(hintLabel)
                 }
             }
-            buttonsGroup("HTTP Proxy:") {
+            buttonsGroup("HTTP proxy:") {
                 row {
                     cell(ideProxyRadioButton)
                         .comment("Forward the IDE HTTP or SOCKS proxy, including auto-detect and PAC. PAC is resolved for a generic HTTPS target.")
@@ -699,7 +699,7 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
             Messages.showWarningDialog(
                 panel ?: sbxPathField,
                 "Could not find sbx on PATH or in common install locations.",
-                "sbx Path Not Found",
+                "Sbx Path Not Found",
             )
             return
         }

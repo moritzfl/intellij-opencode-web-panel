@@ -159,7 +159,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
             .apply { isForcedToUseIdeaFileChooser = true },
     )
     private val extraMountTableModel = ListTableModel<ExtraMountRow>(
-        object : ColumnInfo<ExtraMountRow, String>("Host path") {
+        object : ColumnInfo<ExtraMountRow, String>("Host Path") {
             override fun valueOf(item: ExtraMountRow): String = item.hostPath
             override fun isCellEditable(item: ExtraMountRow): Boolean = true
             override fun setValue(item: ExtraMountRow, value: String?) {
@@ -167,7 +167,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
             }
             override fun getEditor(item: ExtraMountRow): TableCellEditor = hostPathEditor
         },
-        object : ColumnInfo<ExtraMountRow, String>("Sandbox path") {
+        object : ColumnInfo<ExtraMountRow, String>("Sandbox Path") {
             override fun valueOf(item: ExtraMountRow): String = item.sandboxPath
             override fun isCellEditable(item: ExtraMountRow): Boolean = true
             override fun setValue(item: ExtraMountRow, value: String?) {
@@ -277,7 +277,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                 cell(setupChecklistLabel)
             }
             row {
-                comment("sbx location, login, and network policy: Tools → OpenCode Web Panel → Docker Sandboxes.")
+                comment("Sbx location, login, and network policy: Tools → OpenCode Web Panel → Docker Sandboxes.")
             }
         }
     }
@@ -720,7 +720,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         Messages.showInfoMessage(
             panel ?: createNetworkKitButton,
             "Wrote ${SbxCli.posixPath(specPath.toString())}. Configure it before Apply. A new kit is appended without deleting sessions. Editing an installed kit requires Reset Sandbox, which deletes VM-only data; Restart alone does not reload it.",
-            "Extra-network kit template",
+            "Extra-Network Kit Template",
         )
     }
 

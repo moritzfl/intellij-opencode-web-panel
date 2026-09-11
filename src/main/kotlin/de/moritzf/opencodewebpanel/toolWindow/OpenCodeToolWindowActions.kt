@@ -105,7 +105,7 @@ internal class OpenCodeOpenKeymapAction : DumbAwareAction(
     }
 
     override fun update(e: AnActionEvent) {
-        e.presentation.description = "New Session, Close Tab, Choose Model…"
+        e.presentation.description = "New session, close tab, choose model…"
     }
 
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
