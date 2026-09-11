@@ -157,5 +157,5 @@ private val ANSI_SEQUENCE = Regex(
         "\u001B[@-Z\\\\-_]",
 )
 private val ORPHAN_CSI = Regex("\\[(?:\\?\\d+[lh]|\\d+D|\\d*[JK](?![A-Za-z]))")
-private val SPINNER_ONLY = Regex($$"^[|/\\\\-]+$")
+private val SPINNER_ONLY = Regex("""^[|/\\-]+${'$'}""")
 private val WHITESPACE = Regex("\\s+")

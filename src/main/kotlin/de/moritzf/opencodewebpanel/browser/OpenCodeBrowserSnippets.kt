@@ -187,7 +187,7 @@ internal object OpenCodeBrowserSnippets {
             (() => {
               const directory = '$${directory}';
               const scope = 'local';
-              $${originGuard}
+              $$originGuard
               const sameWorktree = (left, right) => {
                 if (typeof left !== 'string' || typeof right !== 'string') return false;
                 const norm = (value) => {
@@ -658,7 +658,7 @@ internal object OpenCodeBrowserSnippets {
                 event.stopImmediatePropagation();
                 $${openCodeCallback};
               }, true);
-              $${POINTER_CURSOR_KIT_JS}
+              $$POINTER_CURSOR_KIT_JS
               document.addEventListener('mouseover', (event) => {
                 const code = (event.target && event.target.closest && event.target.closest('code')) || codeBesideLocator(event);
                 markHovered(code && extractRef(code) ? code : null);
@@ -1670,7 +1670,7 @@ internal object OpenCodeBrowserSnippets {
               const explicitProtocol = /^[a-zA-Z][a-zA-Z0-9+.-]*:/;
               const supportedFileProtocol = /^(file|sandbox):/i;
               const absoluteFilePath = /^(\/|\\\\|[A-Za-z]:[\\/])/;
-              $${DECODE_ROUTE_DIRECTORY_JS}
+              $$DECODE_ROUTE_DIRECTORY_JS
               const openCodeRoutePath = (value) => {
                 const text = (value || '').trim();
                 if (text.startsWith('/')) return text;
@@ -1796,7 +1796,7 @@ internal object OpenCodeBrowserSnippets {
               document.addEventListener('pointerdown', (event) => handleFileOpenEvent(event, true), true);
               document.addEventListener('mousedown', (event) => handleFileOpenEvent(event, true), true);
               document.addEventListener('click', (event) => handleFileOpenEvent(event, false), true);
-              $${POINTER_CURSOR_KIT_JS}
+              $$POINTER_CURSOR_KIT_JS
               document.addEventListener('mouseover', (event) => {
                 const target = event.target && event.target.nodeType === 1 ? event.target : null;
                 const resolved = target ? resolveFileOpenTarget(target, false) : null;
