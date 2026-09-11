@@ -38,6 +38,7 @@ internal class OpenCodeWorkspaceRefreshCoordinator(
 
     private val lock = Any()
     private val debouncer = RefreshDebouncer(debounceMillis, maxWaitMillis)
+    @Suppress("UnstableApiUsage")
     private val alarm = Alarm(Alarm.ThreadToUse.POOLED_THREAD, parentDisposable)
 
     override fun connected(backendId: String) {

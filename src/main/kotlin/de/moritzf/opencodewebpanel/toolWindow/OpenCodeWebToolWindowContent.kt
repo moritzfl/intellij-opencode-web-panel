@@ -134,6 +134,7 @@ class OpenCodeWebToolWindowContent(
             serverManager.stopServer()
         },
     )
+    @Suppress("UnstableApiUsage")
     private val stripTickAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
     private var lastPanelRecovery: OpenCodeRecoveryNotice? = null
     private val startupErrorPanel = OpenCodeStartupErrorPanel(project, ::restartOpenCodeServer)
@@ -185,11 +186,15 @@ class OpenCodeWebToolWindowContent(
         serverManager::getServerPassword,
         backendId = { serverManager.backendId },
     )
+    @Suppress("UnstableApiUsage")
     private val openProjectAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
+    @Suppress("UnstableApiUsage")
     private val pageLoadWatchdogAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
     // Own alarm: the page-load alarms are cancelled on every navigation, and this request must
     // survive the panel's initial load.
+    @Suppress("UnstableApiUsage")
     private val panelRecoveryAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
+    @Suppress("UnstableApiUsage")
     private val repaintAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
     private val scriptScheduler = OpenCodeBrowserScriptScheduler(project, browser, openProjectAlarm)
     private val repaintScheduler = OpenCodeBrowserScriptScheduler(project, browser, repaintAlarm)

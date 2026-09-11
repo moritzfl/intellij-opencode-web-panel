@@ -52,6 +52,7 @@ internal class OpenCodeRendererWatchdog(
         if (app != null) app.invokeLater(action) else action()
     },
 ) {
+    @Suppress("UnstableApiUsage")
     private val alarm = parentDisposable?.let { Alarm(Alarm.ThreadToUse.SWING_THREAD, it) }
     private val running = AtomicBoolean(false)
 

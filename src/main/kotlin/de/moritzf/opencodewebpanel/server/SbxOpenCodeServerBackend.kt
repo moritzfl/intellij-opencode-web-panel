@@ -667,10 +667,10 @@ internal class SbxOpenCodeServerBackend(
                 listedWorkspaces.none { OpenCodeServerProtocol.isSameFilesystemPath(it, extra) }
             }
             val desiredKits = SbxCli.parseLineList(kitsText)
-            val currentRecord = record
-            if (owned != null && currentRecord != null && !missingExtraMount) {
-                if (currentRecord.shareHostConfig == shareHostConfig) {
-                    record = appendUniqueKits(sbx, name, currentRecord, desiredKits, startId)
+            if (owned != null && !missingExtraMount) {
+                val current = record
+                if (current.shareHostConfig == shareHostConfig) {
+                    record = appendUniqueKits(sbx, name, current, desiredKits, startId)
                 }
             }
             val provisionChanged = record != null && !record.adopted && (
