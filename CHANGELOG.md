@@ -4,6 +4,18 @@
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-09-11
+
+### Fixed
+
+- Clicking a file, class, or method in chat now opens it when OpenCode reported a
+  sandbox path that differs from the host (extra mounts, persist data, Windows
+  `/c/Users/...` binds). `Type.method` and `Type#method` open the type and jump
+  to the member instead of being treated as filenames.
+- Opening the tool-window gear menu no longer freezes the IDE for many seconds
+  on Windows. New Session no longer `realpath`s the project directory on the UI
+  thread; canonical path lookups are cached.
+
 ## [2.0.0] - 2026-09-10
 
 ### Added
