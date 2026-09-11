@@ -1397,6 +1397,8 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("isQualifiedClass"))
         assertTrue(script.contains("isPascalCase"))
         assertTrue(script.contains("isTypeMember"))
+        assertTrue(script.contains("isTypeMemberBare"))
+        assertTrue(script.contains("fileExt"))
         assertTrue(script.contains("adjacentLocator"))
         assertTrue(script.contains("withAdjacentLocator"))
         assertTrue(script.contains("codeBesideLocator"))
@@ -1745,6 +1747,7 @@ class OpenCodeServerProtocolTest {
         val method = OpenCodeServerProtocol.parseCodeReference("PackagingMailingBarcodeDefinition.isWithScanRule()")!!
         assertEquals("PackagingMailingBarcodeDefinition", method.fileName)
         assertEquals("PackagingMailingBarcodeDefinition", method.path)
+        assertEquals("isWithScanRule", method.memberName)
         assertNull(method.qualifiedName)
         assertNull(method.extension)
         assertNull(method.line)
@@ -1757,6 +1760,7 @@ class OpenCodeServerProtocolTest {
         assertEquals("Optional", qualified.fileName)
         assertEquals("java.util.Optional", qualified.path)
         assertEquals("java.util.Optional", qualified.qualifiedName)
+        assertEquals("of", qualified.memberName)
         assertNull(qualified.extension)
     }
 
@@ -1774,6 +1778,37 @@ class OpenCodeServerProtocolTest {
         assertEquals("Manuelle Verpackung und PM-Mobile.xml", ref.path)
         assertEquals("xml", ref.extension)
         assertEquals(1062, ref.line)
+    }
+
+    @Test
+    fun parseCodeReferenceTreatsBareTypeMemberAndHashAsMethodsNotFiles() {
+        val dotted = OpenCodeServerProtocol.parseCodeReference("OpenCodeIdeNavigation.openFileLinkInIde")!!
+        assertEquals("OpenCodeIdeNavigation", dotted.fileName)
+        assertEquals("openFileLinkInIde", dotted.memberName)
+        assertNull(dotted.extension)
+
+        val hash = OpenCodeServerProtocol.parseCodeReference("OpenCodeIdeNavigation#openFileLinkInIde")!!
+        assertEquals("OpenCodeIdeNavigation", hash.fileName)
+        assertEquals("openFileLinkInIde", hash.memberName)
+
+        val file = OpenCodeServerProtocol.parseCodeReference("Main.kt")!!
+        assertEquals("Main.kt", file.path)
+        assertEquals("kt", file.extension)
+        assertNull(file.memberName)
+    }
+
+    @Test
+    fun findMemberLineIndexFindsKotlinAndGenericCalls() {
+        val source = """
+            package demo
+            class OpenCodeIdeNavigation {
+                fun openFileLinkInIde(href: String?) {}
+                fun other() {}
+            }
+        """.trimIndent()
+        assertEquals(2, OpenCodeServerProtocol.findMemberLineIndex(source, "openFileLinkInIde"))
+        assertEquals(3, OpenCodeServerProtocol.findMemberLineIndex(source, "other"))
+        assertNull(OpenCodeServerProtocol.findMemberLineIndex(source, "missing"))
     }
 
     @Test
@@ -2248,6 +2283,103 @@ class OpenCodeServerProtocolTest {
         assertNull(target.column)
     }
 
+    @Test
+    fun windowsDriveGuestToHostDoesNotTreatUnixRootsAsDrives() {
+        assertEquals("C:/Users/me/project/src/Main.kt", OpenCodeServerProtocol.windowsDriveGuestToHost("/c/Users/me/project/src/Main.kt"))
+        assertEquals("C:/", OpenCodeServerProtocol.windowsDriveGuestToHost("/c"))
+        assertEquals("C:/", OpenCodeServerProtocol.windowsDriveGuestToHost("/c/"))
+        assertNull(OpenCodeServerProtocol.windowsDriveGuestToHost("/home/agent/src/Main.kt"))
+        assertNull(OpenCodeServerProtocol.windowsDriveGuestToHost("/usr/bin/env"))
+        assertNull(OpenCodeServerProtocol.windowsDriveGuestToHost("src/Main.kt"))
+    }
+
+    @Test
+    fun applyGuestToHostPrefixesPrefersTheLongestGuestPrefix() {
+        val prefixes = listOf(
+            "/home/agent" to "/tmp/persist",
+            "/home/agent/docs" to "/Users/me/docs",
+        )
+        assertEquals(
+            "/Users/me/docs/guide.md",
+            OpenCodeServerProtocol.applyGuestToHostPrefixes("/home/agent/docs/guide.md", prefixes),
+        )
+        assertEquals(
+            "/tmp/persist/.local/share/opencode/sessions/x.json",
+            OpenCodeServerProtocol.applyGuestToHostPrefixes("/home/agent/.local/share/opencode/sessions/x.json", prefixes),
+        )
+        assertEquals("src/Main.kt", OpenCodeServerProtocol.applyGuestToHostPrefixes("src/Main.kt", prefixes))
+    }
+
+    @Test
+    fun resolveFileLinkMapsSandboxGuestPathsOntoHostMounts() {
+        val projectDir = Files.createTempDirectory("opencode-host-project")
+        val extraHost = Files.createTempDirectory("opencode-extra-host")
+        Files.createDirectories(projectDir.resolve("src"))
+        val projectFile = Files.writeString(projectDir.resolve("src/Main.kt"), "x")
+        val extraFile = Files.writeString(extraHost.resolve("guide.md"), "y")
+        val prefixes = listOf(
+            "/home/agent/docs" to extraHost.toString(),
+            "/home/agent/project" to projectDir.toString(),
+        )
+
+        assertEquals(
+            extraFile.normalize(),
+            OpenCodeServerProtocol.resolveFileLinkWithBases(
+                "/home/agent/docs/guide.md",
+                listOf(projectDir.toString()),
+                guestToHostPrefixes = prefixes,
+            )?.path,
+        )
+        assertEquals(
+            extraFile.normalize(),
+            OpenCodeServerProtocol.resolveFileLinkWithBases(
+                "~/docs/guide.md",
+                listOf(projectDir.toString()),
+                guestToHostPrefixes = prefixes,
+                home = "/home/agent",
+            )?.path,
+        )
+        assertEquals(
+            projectFile.normalize(),
+            OpenCodeServerProtocol.resolveFileLinkWithBases(
+                "/home/agent/project/src/Main.kt:42",
+                listOf(projectDir.toString()),
+                guestToHostPrefixes = prefixes,
+            )?.path,
+        )
+        assertEquals(
+            41,
+            OpenCodeServerProtocol.resolveFileLinkWithBases(
+                "/home/agent/project/src/Main.kt:42",
+                listOf(projectDir.toString()),
+                guestToHostPrefixes = prefixes,
+            )?.line,
+        )
+        assertEquals(
+            extraFile.normalize(),
+            OpenCodeServerProtocol.resolveFileLinkWithBases(
+                "guide.md",
+                listOf(projectDir.toString()),
+                guestToHostPrefixes = prefixes,
+            )?.path,
+        )
+    }
+
+    @Test
+    fun fileLinkPathAliasesIncludeWindowsDriveGuestAndTilde() {
+        val aliases = OpenCodeServerProtocol.fileLinkPathAliases(
+            "~/docs/guide.md",
+            guestToHostPrefixes = listOf("/home/agent/docs" to "/Users/me/docs"),
+            home = "/home/agent",
+        )
+        assertTrue(aliases.contains("~/docs/guide.md"))
+        assertTrue(aliases.contains("/home/agent/docs/guide.md"))
+        assertTrue(aliases.contains("/Users/me/docs/guide.md"))
+        assertEquals(
+            listOf("/c/Users/me/src/Main.kt", "C:/Users/me/src/Main.kt"),
+            OpenCodeServerProtocol.fileLinkPathAliases("/c/Users/me/src/Main.kt"),
+        )
+    }
 
     @Test
     fun buildBasicAuthHeaderUsesOpenCodeUsername() {

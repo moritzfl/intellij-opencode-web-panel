@@ -213,26 +213,40 @@ internal object OpenCodeServerProtocol {
         return resolveFileLink(href, projectBasePath, routeBasePath = null)
     }
 
-    fun resolveFileLink(href: String?, projectBasePath: String?, routeBasePath: String?): FileLinkTarget? {
+    fun resolveFileLink(
+        href: String?,
+        projectBasePath: String?,
+        routeBasePath: String?,
+        guestToHostPrefixes: List<Pair<String, String>> = emptyList(),
+        home: String? = null,
+    ): FileLinkTarget? {
         val basePaths = listOfNotNull(routeBasePath?.takeIf { it.isNotBlank() }, projectBasePath?.takeIf { it.isNotBlank() })
             .distinct()
-        return resolveFileLinkWithBases(href, basePaths)
+        return resolveFileLinkWithBases(href, basePaths, guestToHostPrefixes = guestToHostPrefixes, home = home)
     }
 
     internal fun resolveFileLinkWithBases(
         href: String?,
         basePaths: List<String>,
         caseSensitive: Boolean = SystemInfo.isFileSystemCaseSensitive,
+        guestToHostPrefixes: List<Pair<String, String>> = emptyList(),
+        home: String? = null,
     ): FileLinkTarget? {
-        if (href.isNullOrBlank() || basePaths.isEmpty()) return null
+        if (href.isNullOrBlank()) return null
         val cleanedHref = cleanFileLinkHref(href).ifBlank { return null }
         // Check the route exclusion on the cleaned spelling too: a decorated SPA route must not
         // slip past it and get preventDefault-ed as a file.
         if (isOpenCodeSessionRouteHref(href) || isOpenCodeSessionRouteHref(cleanedHref)) return null
         if (isUnixRootRelativeHref(cleanedHref) && !lastPathSegmentLooksLikeFile(cleanedHref)) return null
         val parsed = parseFileLink(cleanedHref) ?: return null
-        val hit = candidateFileLinkPaths(parsed, basePaths).firstOrNull { Files.isRegularFile(it.second) }
-            ?: bestGuessFileLinkPath(parsed, basePaths, caseSensitive)
+        val aliased = parsed.copy(paths = aliasedFileLinkSpellings(parsed, guestToHostPrefixes, home))
+        val bases = (basePaths + guestToHostPrefixes.map { it.second })
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .distinct()
+        if (bases.isEmpty()) return null
+        val hit = candidateFileLinkPaths(aliased, bases).firstOrNull { Files.isRegularFile(it.second) }
+            ?: bestGuessFileLinkPath(aliased, bases, caseSensitive)
             ?: return null
         val (spelling, path) = hit
         return FileLinkTarget(path, spelling.line?.coerceAtLeast(0), spelling.column?.coerceAtLeast(0))
@@ -304,14 +318,34 @@ internal object OpenCodeServerProtocol {
 
     private val QUALIFIED_CLASS = Regex("^(?:[a-zA-Z_][a-zA-Z0-9_]*\\.)+[A-Z][a-zA-Z0-9_]*$")
     private val TYPE_MEMBER_CALL = Regex(
-        """^((?:[a-zA-Z_][a-zA-Z0-9_]*\.)*[A-Z][a-zA-Z0-9_]*)(?:\.[a-z_][a-zA-Z0-9_]*)?\(.*\)$""",
+        """^((?:[a-zA-Z_][a-zA-Z0-9_]*\.)*[A-Z][a-zA-Z0-9_]*)(?:[.#]([a-z_][a-zA-Z0-9_]*))?\(.*\)$""",
+    )
+    private val TYPE_MEMBER_BARE = Regex(
+        """^((?:[a-zA-Z_][a-zA-Z0-9_]*\.)*[A-Z][a-zA-Z0-9_]*)[.#]([a-z_][a-zA-Z0-9_]*)$""",
+    )
+    private val FILE_EXTENSIONS = setOf(
+        "kt", "kts", "java", "ts", "tsx", "js", "jsx", "mjs", "cjs",
+        "py", "rb", "go", "rs", "c", "h", "cc", "cpp", "hpp", "cs", "swift",
+        "m", "mm", "scala", "groovy", "gradle", "xml", "json", "yml", "yaml",
+        "md", "txt", "toml", "properties", "sql", "sh", "bash", "zsh",
+        "html", "css", "scss", "vue", "svelte", "proto",
     )
 
     fun parseCodeReference(ref: String): ParsedCodeReference? {
         val text = ref.trim().ifBlank { return null }
         val (pathPart, line, column) = splitPathAndLocation(text)
         if (pathPart.isBlank()) return null
-        val resolved = TYPE_MEMBER_CALL.matchEntire(pathPart)?.groupValues?.get(1) ?: pathPart
+        val call = TYPE_MEMBER_CALL.matchEntire(pathPart)
+        val bare = if (call == null) TYPE_MEMBER_BARE.matchEntire(pathPart) else null
+        val memberFromCall = call?.groupValues?.get(2)?.takeIf { it.isNotBlank() }
+        val memberFromBare = bare?.groupValues?.get(2)?.takeIf { member ->
+            member.isNotBlank() && member.lowercase(Locale.ROOT) !in FILE_EXTENSIONS
+        }
+        val resolved = when {
+            call != null -> call.groupValues[1]
+            bare != null && memberFromBare != null -> bare.groupValues[1]
+            else -> pathPart
+        }
         val hasPath = resolved.contains('/') || resolved.contains('\\')
         val qualifiedName = if (!hasPath && QUALIFIED_CLASS.matches(resolved)) {
             resolved
@@ -330,6 +364,7 @@ internal object OpenCodeServerProtocol {
             line = line,
             column = column,
             hasPath = hasPath,
+            memberName = memberFromCall ?: memberFromBare,
         )
     }
 
@@ -341,7 +376,21 @@ internal object OpenCodeServerProtocol {
         val line: Int?,
         val column: Int? = null,
         val hasPath: Boolean,
+        val memberName: String? = null,
     )
+
+    internal fun findMemberLineIndex(source: String, member: String): Int? {
+        val name = member.trim().ifBlank { return null }
+        val escaped = Regex.escape(name)
+        val patterns = listOf(
+            Regex("""\bfun\s+`?$escaped`?\b"""),
+            Regex("""\b(?:func|fn|def|function)\s+$escaped\b"""),
+            Regex("""\b$escaped\s*\("""),
+        )
+        return source.lineSequence().withIndex()
+            .firstOrNull { (_, line) -> patterns.any { it.containsMatchIn(line) } }
+            ?.index
+    }
 
     /**
      * Among [candidatePaths], keep a unique hit for [referencePath]. One path always wins;
@@ -495,6 +544,72 @@ internal object OpenCodeServerProtocol {
             .substringAfterLast('\\')
             .replace(CODE_REF_LOCATOR, "")
         return Regex("\\.[A-Za-z0-9]{1,8}$").containsMatchIn(last)
+    }
+
+    internal fun expandLeadingTilde(path: String, home: String?): String {
+        val root = home?.trim()?.takeIf { it.isNotBlank() } ?: return path
+        if (path == "~") return root
+        if (path.startsWith("~/") || path.startsWith("~\\")) return root + path.substring(1)
+        return path
+    }
+
+    /**
+     * Git-Bash / sbx Windows bind: `/c/Users/foo` → `C:/Users/foo`.
+     * Requires a slash after the drive letter so `/home/agent` is not treated as `H:`.
+     */
+    internal fun windowsDriveGuestToHost(path: String): String? {
+        val posix = path.replace('\\', '/')
+        val match = Regex("^/([A-Za-z])(?:/(.*))?$").matchEntire(posix) ?: return null
+        val drive = match.groupValues[1][0].uppercaseChar()
+        val rest = match.groupValues[2]
+        return if (rest.isEmpty()) "$drive:/" else "$drive:/$rest"
+    }
+
+    internal fun applyGuestToHostPrefixes(path: String, prefixes: List<Pair<String, String>>): String {
+        if (prefixes.isEmpty()) return path
+        val posix = path.replace('\\', '/')
+        for ((guest, host) in prefixes.sortedByDescending { it.first.replace('\\', '/').trimEnd('/').length }) {
+            val prefix = guest.replace('\\', '/').trimEnd('/')
+            val mapped = host.replace('\\', '/').trimEnd('/')
+            if (prefix.isEmpty() || mapped.isEmpty()) continue
+            if (posix == prefix) return mapped
+            if (posix.startsWith("$prefix/")) return mapped + posix.substring(prefix.length)
+        }
+        return path
+    }
+
+    internal fun fileLinkPathAliases(
+        path: String,
+        guestToHostPrefixes: List<Pair<String, String>> = emptyList(),
+        home: String? = null,
+    ): List<String> {
+        val seen = LinkedHashSet<String>()
+        fun add(value: String) {
+            if (value.isNotBlank()) seen += value
+        }
+        add(path)
+        val tilde = expandLeadingTilde(path, home)
+        add(tilde)
+        windowsDriveGuestToHost(path)?.let(::add)
+        windowsDriveGuestToHost(tilde)?.let(::add)
+        for (candidate in seen.toList()) {
+            val mapped = applyGuestToHostPrefixes(candidate, guestToHostPrefixes)
+            add(mapped)
+            windowsDriveGuestToHost(mapped)?.let(::add)
+        }
+        return seen.toList()
+    }
+
+    private fun aliasedFileLinkSpellings(
+        parsed: ParsedFileLink,
+        guestToHostPrefixes: List<Pair<String, String>>,
+        home: String?,
+    ): List<PathSpelling> {
+        return parsed.paths.flatMap { spelling ->
+            fileLinkPathAliases(spelling.text, guestToHostPrefixes, home).mapNotNull { alias ->
+                spellingOf(alias, spelling.line, spelling.column)
+            }
+        }.distinctBy { it.text }
     }
 
     private fun candidateFileLinkPaths(

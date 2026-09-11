@@ -172,6 +172,25 @@ class SbxCliTest {
     }
 
     @Test
+    fun guestToHostPathMappingsCoverExtraMountsPersistAndWindowsBinds() {
+        val mappings = SbxCli.guestToHostPathMappings(
+            "C:/Users/me/project",
+            listOf(SbxExtraMount("/Users/me/docs", "/home/agent/docs")),
+            persistHostPath = "/Users/me/.local/share/opencode-web-panel/sbx/ide-ocwp-x",
+        )
+        assertEquals("/Users/me/docs/guide.md", OpenCodeServerProtocol.applyGuestToHostPrefixes("/home/agent/docs/guide.md", mappings))
+        assertEquals(
+            "/Users/me/.local/share/opencode-web-panel/sbx/ide-ocwp-x/opencode.db",
+            OpenCodeServerProtocol.applyGuestToHostPrefixes(
+                "${SbxCli.persistSandboxGuestPath()}/opencode.db",
+                mappings,
+            ),
+        )
+        assertEquals("C:/Users/me/project/src/Main.kt", OpenCodeServerProtocol.applyGuestToHostPrefixes("/c/Users/me/project/src/Main.kt", mappings))
+        assertTrue(mappings.zipWithNext().all { it.first.first.length >= it.second.first.length })
+    }
+
+    @Test
     fun sandboxProtectMountsCoverLocalKitDirectoriesNotFiles() {
         val root = java.nio.file.Path.of(System.getProperty("java.io.tmpdir")).resolve("ocwp-protect").toAbsolutePath().normalize()
         val control = root.resolve(SbxCli.PROJECT_CONTROL_DIR)

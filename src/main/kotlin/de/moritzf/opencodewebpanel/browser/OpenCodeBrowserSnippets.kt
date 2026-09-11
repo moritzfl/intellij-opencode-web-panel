@@ -530,19 +530,22 @@ internal object OpenCodeBrowserSnippets {
               const isUrl = /^[a-z][a-z0-9+.-]*:\/\//i;
               const isPascalCase = /^[A-Z][a-zA-Z0-9_]*$/;
               const isQualifiedClass = /^(?:[a-zA-Z_][a-zA-Z0-9_]*\.)+[A-Z][a-zA-Z0-9_]*$/;
-              const isTypeMember = /^(?:[a-zA-Z_][a-zA-Z0-9_]*\.)*[A-Z][a-zA-Z0-9_]*(?:\.[a-z_][a-zA-Z0-9_]*)?\(.*\)$/;
+              const isTypeMember = /^(?:[a-zA-Z_][a-zA-Z0-9_]*\.)*[A-Z][a-zA-Z0-9_]*(?:[.#][a-z_][a-zA-Z0-9_]*)?\(.*\)$/;
+              const isTypeMemberBare = /^(?:[a-zA-Z_][a-zA-Z0-9_]*\.)*[A-Z][a-zA-Z0-9_]*[.#][a-z_][a-zA-Z0-9_]*$/;
+              const fileExt = /\.(kt|kts|java|ts|tsx|js|jsx|mjs|cjs|py|rb|go|rs|c|h|cc|cpp|hpp|cs|swift|md|json|yml|yaml|xml|toml|txt)$/i;
               const isSnakeCase = /^[a-z][a-z0-9]*_[a-z0-9_]+$/;
               const looksLikeCodeRef = (text) => {
                 const t = text.trim();
                 if (t.length < 2 || t.length > 512) return false;
                 if (t.includes('\n')) return false;
                 if (isUrl.test(t)) return false;
+                if (isTypeMember.test(t)) return true;
+                if (isTypeMemberBare.test(t) && !fileExt.test(t)) return true;
                 if (hasExtension.test(t)) return true;
                 if (t.includes(' ')) return false;
                 if (hasPathLocator.test(t)) return true;
                 if (isPascalCase.test(t)) return true;
                 if (isQualifiedClass.test(t)) return true;
-                if (isTypeMember.test(t)) return true;
                 if (isSnakeCase.test(t)) return true;
                 return false;
               };

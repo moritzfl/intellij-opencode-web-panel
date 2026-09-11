@@ -216,6 +216,37 @@ internal object SbxCli {
         return posix
     }
 
+    /**
+     * Guest path prefix → host path prefix, longest guest first.
+     * Extra mounts may alias `/home/agent/docs` onto a different host folder;
+     * Windows primary workspaces appear as `/c/Users/...` in the VM.
+     */
+    fun guestToHostPathMappings(
+        primaryWorkspace: String,
+        extraMounts: List<SbxExtraMount> = emptyList(),
+        persistHostPath: String? = null,
+    ): List<Pair<String, String>> {
+        val maps = LinkedHashMap<String, String>()
+        fun add(guest: String, host: String) {
+            val prefix = posixPath(guest).trimEnd('/')
+            val mapped = posixPath(host).trimEnd('/')
+            if (prefix.isBlank() || mapped.isBlank() || prefix == mapped) return
+            maps.putIfAbsent(prefix, mapped)
+        }
+        add(guestBindPath(primaryWorkspace), primaryWorkspace)
+        extraMounts.forEach { mount ->
+            add(mount.sandboxPath, mount.hostPath)
+            add(guestBindPath(mount.hostPath), mount.hostPath)
+        }
+        persistHostPath?.trim()?.takeIf { it.isNotBlank() }?.let { host ->
+            add(persistSandboxGuestPath(), host)
+            add(guestBindPath(host), host)
+        }
+        return maps.entries
+            .map { it.key to it.value }
+            .sortedByDescending { it.first.length }
+    }
+
     fun workspaceHostPath(arg: String): String {
         val posix = posixPath(arg)
         return if (posix.endsWith(":ro", ignoreCase = true)) posix.dropLast(3) else posix
