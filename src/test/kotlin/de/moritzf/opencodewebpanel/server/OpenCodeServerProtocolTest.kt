@@ -1914,6 +1914,19 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun canonicalOpenCodeDirectoryCachesResolvedAndIdentitySpellings() {
+        val root = Files.createTempDirectory("opencode-canonical-cache")
+        try {
+            val first = OpenCodeServerProtocol.canonicalOpenCodeDirectory(root.toString())
+            val second = OpenCodeServerProtocol.canonicalOpenCodeDirectory(root.toString())
+            assertEquals(first, second)
+            assertEquals(first, OpenCodeServerProtocol.canonicalOpenCodeDirectory(first))
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
     fun adoptOpenCodeDirectoryPrefersTheServerSpellingOfTheSameFolder() {
         val root = Files.createTempDirectory("opencode-adopt-dir")
         try {

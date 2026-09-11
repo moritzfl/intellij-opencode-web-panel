@@ -64,11 +64,10 @@ internal class OpenCodeNewSessionAction : DumbAwareAction(
 
     override fun update(e: AnActionEvent) {
         val content = openCodePanelContent(e)
-        val serverUrl = openCodeBackend(e.project).getServerUrl()
         e.presentation.isEnabled = content != null &&
             OpenCodeBrowserShortcutHandler.isCommandAvailable(
                 OpenCodeBrowserCommand.NEW_SESSION,
-                serverUrl,
+                content.openCodeServerUrl(),
                 content.currentPageUrl(),
             )
         e.presentation.description = "Start a new conversation"

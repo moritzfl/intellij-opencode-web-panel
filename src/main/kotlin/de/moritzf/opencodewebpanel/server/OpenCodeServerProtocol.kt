@@ -286,9 +286,13 @@ internal object OpenCodeServerProtocol {
      */
     fun canonicalOpenCodeDirectory(path: String?): String? {
         val raw = path?.trim()?.takeIf { it.isNotBlank() } ?: return null
-        return runCatching { Path.of(raw).toRealPath().toString() }
-            .recoverCatching { Path.of(raw).toAbsolutePath().normalize().toString() }
-            .getOrDefault(raw)
+        val resolved = canonicalDirectoryCache.computeIfAbsent(raw) {
+            runCatching { Path.of(raw).toRealPath().toString() }
+                .recoverCatching { Path.of(raw).toAbsolutePath().normalize().toString() }
+                .getOrDefault(raw)
+        }
+        if (resolved != raw) canonicalDirectoryCache.putIfAbsent(resolved, resolved)
+        return resolved
     }
 
     /**
@@ -301,6 +305,7 @@ internal object OpenCodeServerProtocol {
         return if (isSameFilesystemPath(canonical ?: idePath, server)) server else canonical
     }
 
+    private val canonicalDirectoryCache = ConcurrentHashMap<String, String>()
     private val canonicalPathCache = ConcurrentHashMap<String, String>()
 
     fun filesystemPathKey(path: String?): String? {

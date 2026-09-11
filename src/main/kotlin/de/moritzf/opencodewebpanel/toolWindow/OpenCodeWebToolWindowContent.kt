@@ -2010,6 +2010,8 @@ class OpenCodeWebToolWindowContent(
 
     internal fun currentPageUrl(): String? = browser.cefBrowser.url
 
+    internal fun openCodeServerUrl(): String? = serverManager.getServerUrl()
+
     internal fun displayedSessionID(): String? {
         return OpenCodeServerProtocol.sessionIdFromUrl(browser.cefBrowser.url)
     }
