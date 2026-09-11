@@ -107,9 +107,9 @@ internal object SbxCli {
         OpenCodeServerProtocol.SANDBOX_SERVE_PORT.toString(),
         "--print-logs",
     )
-    private val SERVE_PKILL_PATTERN =
-        "^opencode serve --hostname ${OpenCodeServerProtocol.SANDBOX_SERVE_HOST} " +
-            "--port ${OpenCodeServerProtocol.SANDBOX_SERVE_PORT} --print-logs\$"
+    private const val SERVE_PKILL_PATTERN =
+        $$"^opencode serve --hostname $${OpenCodeServerProtocol.SANDBOX_SERVE_HOST} " +
+            $$"--port $${OpenCodeServerProtocol.SANDBOX_SERVE_PORT} --print-logs$"
 
     fun sandboxIdentityPath(
         canonicalDirectory: String,
@@ -465,17 +465,17 @@ internal object SbxCli {
 
     fun extraMountLinkScript(replaceExistingDirectory: Boolean): String {
         return if (replaceExistingDirectory) {
-            """
-            mkdir -p -- "$(dirname -- "${'$'}2")"
-            if [ -d "${'$'}2" ] && [ ! -L "${'$'}2" ]; then
-              mkdir -p -- "${'$'}1"
-              cp -a -- "${'$'}2"/. "${'$'}1"/ || exit 1
-              rm -rf -- "${'$'}2"
+            $$"""
+            mkdir -p -- "$(dirname -- "$2")"
+            if [ -d "$2" ] && [ ! -L "$2" ]; then
+              mkdir -p -- "$1"
+              cp -a -- "$2"/. "$1"/ || exit 1
+              rm -rf -- "$2"
             fi
-            ln -sfn -- "${'$'}1" "${'$'}2"
+            ln -sfn -- "$1" "$2"
             """.trimIndent()
         } else {
-            """mkdir -p -- "$(dirname -- "${'$'}2")" && ln -sfn -- "${'$'}1" "${'$'}2""""
+            $$"""mkdir -p -- "$(dirname -- "$2")" && ln -sfn -- "$1" "$2""""
         }
     }
 
@@ -695,7 +695,7 @@ internal object SbxCli {
     }
 
     fun ideMcpLoopbackPort(statusMessage: String): Int? {
-        val match = Regex("""https?://(?:127\.0\.0\.1|localhost|\[::1\]):(\d+)""").find(statusMessage)
+        val match = Regex("""https?://(?:127\.0\.0\.1|localhost|\[::1]):(\d+)""").find(statusMessage)
         return match?.groupValues?.get(1)?.toIntOrNull()
     }
 

@@ -81,29 +81,29 @@ internal object OpenCodeBrowserSnippets {
 
     /** The OpenCode localStorage keys mirrored into the IDE-side settings store. */
     @Language("JavaScript")
-    private val PERSISTED_STORAGE_KEY_FILTER_JS = """
+    private val PERSISTED_STORAGE_KEY_FILTER_JS = $$"""
         const exactKeys = new Set([
-          '${OpenCodeServerProtocol.OPEN_CODE_THEME_ID_STORAGE_KEY}',
-          '${OpenCodeServerProtocol.OPEN_CODE_COLOR_SCHEME_STORAGE_KEY}',
+          '$${OpenCodeServerProtocol.OPEN_CODE_THEME_ID_STORAGE_KEY}',
+          '$${OpenCodeServerProtocol.OPEN_CODE_COLOR_SCHEME_STORAGE_KEY}',
           'opencode-theme-css-light',
           'opencode-theme-css-dark',
           'settings.v3',
         ]);
-        const globalKeys = /^opencode\.global\.dat:(language|model|layout|layout\.page|permission|notification|tabs|open\.app|go-upsell|home\.servers|review-panel-v2|new-session\.provider-tip)${'$'}/;
-        const workspaceKeys = /^opencode\.workspace\.[^:]+:workspace:(model-selection|terminal|project|icon|vcs)${'$'}/;
-        const windowKeys = /^opencode\.window\.browser\.dat:tabs(\.(recent|info|closed))?${'$'}/;
+        const globalKeys = /^opencode\.global\.dat:(language|model|layout|layout\.page|permission|notification|tabs|open\.app|go-upsell|home\.servers|review-panel-v2|new-session\.provider-tip)$/;
+        const workspaceKeys = /^opencode\.workspace\.[^:]+:workspace:(model-selection|terminal|project|icon|vcs)$/;
+        const windowKeys = /^opencode\.window\.browser\.dat:tabs(\.(recent|info|closed))?$/;
         const shouldPersistKey = (key) => typeof key === 'string' && (exactKeys.has(key) || globalKeys.test(key) || workspaceKeys.test(key) || windowKeys.test(key));
         // Tabs / layout / home.servers persist the server connection key as the full origin
         // (and base64url(origin) inside session routes). Auto-port relaunches change origin →
         // restoring a prior snapshot would point at a dead port. Rewrite loopback origins to
         // the live page origin on restore and before the IDE snapshot is saved.
-        const LOOPBACK_ORIGIN_RE = /^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?${'$'}/i;
+        const LOOPBACK_ORIGIN_RE = /^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?$/i;
         const LOOPBACK_ORIGIN_IN_TEXT_RE = /https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?/gi;
         const encodeServerKey = (value) => {
           const bytes = new TextEncoder().encode(value);
           let binary = '';
           bytes.forEach((byte) => binary += String.fromCharCode(byte));
-          return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+${'$'}/g, '');
+          return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
         };
         const decodeServerKey = (value) => {
           try {
@@ -183,15 +183,15 @@ internal object OpenCodeBrowserSnippets {
             }
             .orEmpty()
         @Language("JavaScript")
-        val script = """
+        val script = $$"""
             (() => {
-              const directory = '$directory';
+              const directory = '$${directory}';
               const scope = 'local';
-              $originGuard
+              $${originGuard}
               const sameWorktree = (left, right) => {
                 if (typeof left !== 'string' || typeof right !== 'string') return false;
                 const norm = (value) => {
-                  let next = value.replace(/\\/g, '/').replace(/\/+${'$'}/g, '');
+                  let next = value.replace(/\\/g, '/').replace(/\/+$/g, '');
                   if (/^[A-Za-z]:\//.test(next) || next.startsWith('//')) next = next.toLowerCase();
                   return next;
                 };
@@ -399,9 +399,9 @@ internal object OpenCodeBrowserSnippets {
             "document.querySelector('[data-slot=\"titlebar-v2\"]') ? $newLayout : $classic"
         }
         @Language("JavaScript")
-        val script = """
+        val script = $$"""
             (() => {
-              const configs = $configs;
+              const configs = $${configs};
               const isMac = /(Mac|iPod|iPhone|iPad)/.test(navigator.platform);
               const namedKeys = {
                 comma: ',', plus: '+', space: ' ', escape: 'Escape', esc: 'Escape',
@@ -411,9 +411,9 @@ internal object OpenCodeBrowserSnippets {
                 arrowdown: 'ArrowDown', arrowleft: 'ArrowLeft', arrowright: 'ArrowRight'
               };
               const codeFor = (key) => {
-                if (/^[a-z]${'$'}/.test(key)) return 'Key' + key.toUpperCase();
-                if (/^[0-9]${'$'}/.test(key)) return 'Digit' + key;
-                if (/^F(?:[1-9]|1[0-9]|2[0-4])${'$'}/.test(key)) return key;
+                if (/^[a-z]$/.test(key)) return 'Key' + key.toUpperCase();
+                if (/^[0-9]$/.test(key)) return 'Digit' + key;
+                if (/^F(?:[1-9]|1[0-9]|2[0-4])$/.test(key)) return key;
                 return ({
                   "'": 'Quote', '.': 'Period', ',': 'Comma', ';': 'Semicolon',
                   '/': 'Slash', '\\': 'Backslash', '-': 'Minus', '=': 'Equal',
@@ -435,7 +435,7 @@ internal object OpenCodeBrowserSnippets {
                   } else if (part === 'shift') {
                     binding.shiftKey = true;
                   } else if (!binding.key) {
-                    binding.key = namedKeys[part] || (/^f[0-9]+${'$'}/.test(part) ? part.toUpperCase() : part);
+                    binding.key = namedKeys[part] || (/^f[0-9]+$/.test(part) ? part.toUpperCase() : part);
                   } else {
                     return null;
                   }
@@ -519,19 +519,19 @@ internal object OpenCodeBrowserSnippets {
     fun buildCodeNavigationScript(enabled: Boolean, openCodeCallback: String?): String? {
         if (!enabled || openCodeCallback == null) return null
         @Language("JavaScript")
-        val script = """
+        val script = $$"""
             (() => {
               if (window.__opencodeIntellijCodeNavInstalled) return;
               window.__opencodeIntellijCodeNavInstalled = true;
-              const hasExtension = /\.[a-zA-Z][a-zA-Z0-9]{0,8}(?::L?\d+(?:-L?\d+)?|:\d+:\d+|#L?\d+(?:-L?\d+)?|\(L?\d+(?:\s*,\s*\d+)?\))?${'$'}/i;
-              const hasPathLocator = /[\\/].*(?::L?\d+(?:-L?\d+)?|:\d+:\d+|#L?\d+(?:-L?\d+)?|\(L?\d+(?:\s*,\s*\d+)?\))${'$'}/i;
+              const hasExtension = /\.[a-zA-Z][a-zA-Z0-9]{0,8}(?::L?\d+(?:-L?\d+)?|:\d+:\d+|#L?\d+(?:-L?\d+)?|\(L?\d+(?:\s*,\s*\d+)?\))?$/i;
+              const hasPathLocator = /[\\/].*(?::L?\d+(?:-L?\d+)?|:\d+:\d+|#L?\d+(?:-L?\d+)?|\(L?\d+(?:\s*,\s*\d+)?\))$/i;
               const fileLoc = /(?:[A-Za-z]:)?(?:[^\s<>"'`]+[\/\\])*[^\s\/\\]+\.[A-Za-z][a-zA-Z0-9]{0,8}(?::L?\d+(?:-L?\d+)?|:\d+:\d+|#L?\d+(?:-L?\d+)?|\(L?\d+(?:\s*,\s*\d+)?\))/i;
               const locatorAtStart = /^\s*(:L?\d+(?:-L?\d+)?|:\d+:\d+|#L?\d+(?:-L?\d+)?|\(L?\d+(?:\s*,\s*\d+)?\))/i;
               const isUrl = /^[a-z][a-z0-9+.-]*:\/\//i;
-              const isPascalCase = /^[A-Z][a-zA-Z0-9_]*${'$'}/;
-              const isQualifiedClass = /^(?:[a-zA-Z_][a-zA-Z0-9_]*\.)+[A-Z][a-zA-Z0-9_]*${'$'}/;
-              const isTypeMember = /^(?:[a-zA-Z_][a-zA-Z0-9_]*\.)*[A-Z][a-zA-Z0-9_]*(?:\.[a-z_][a-zA-Z0-9_]*)?\(.*\)${'$'}/;
-              const isSnakeCase = /^[a-z][a-z0-9]*_[a-z0-9_]+${'$'}/;
+              const isPascalCase = /^[A-Z][a-zA-Z0-9_]*$/;
+              const isQualifiedClass = /^(?:[a-zA-Z_][a-zA-Z0-9_]*\.)+[A-Z][a-zA-Z0-9_]*$/;
+              const isTypeMember = /^(?:[a-zA-Z_][a-zA-Z0-9_]*\.)*[A-Z][a-zA-Z0-9_]*(?:\.[a-z_][a-zA-Z0-9_]*)?\(.*\)$/;
+              const isSnakeCase = /^[a-z][a-z0-9]*_[a-z0-9_]+$/;
               const looksLikeCodeRef = (text) => {
                 const t = text.trim();
                 if (t.length < 2 || t.length > 512) return false;
@@ -656,9 +656,9 @@ internal object OpenCodeBrowserSnippets {
                 if (!ref) return;
                 event.preventDefault();
                 event.stopImmediatePropagation();
-                $openCodeCallback;
+                $${openCodeCallback};
               }, true);
-              $POINTER_CURSOR_KIT_JS
+              $${POINTER_CURSOR_KIT_JS}
               document.addEventListener('mouseover', (event) => {
                 const code = (event.target && event.target.closest && event.target.closest('code')) || codeBesideLocator(event);
                 markHovered(code && extractRef(code) ? code : null);
@@ -1305,7 +1305,7 @@ internal object OpenCodeBrowserSnippets {
     fun buildCursorMirrorScript(enabled: Boolean, cursorCallback: String?): String? {
         if (!enabled || cursorCallback == null) return null
         @Language("JavaScript")
-        val script = """
+        val script = $$"""
             (() => {
               if (window.__opencodeIntellijCursorMirrorInstalled) return;
               window.__opencodeIntellijCursorMirrorInstalled = true;
@@ -1317,7 +1317,7 @@ internal object OpenCodeBrowserSnippets {
                 lastSent = cursor;
                 try {
                   const payload = cursor;
-                  $cursorCallback;
+                  $${cursorCallback};
                 } catch (_) {}
               };
               const effectiveCursor = (x, y, target) => {
@@ -1328,7 +1328,7 @@ internal object OpenCodeBrowserSnippets {
                 if (el.isContentEditable) return 'text';
                 const tag = el.tagName;
                 if (tag === 'TEXTAREA') return 'text';
-                if (tag === 'INPUT' && !/^(button|submit|reset|checkbox|radio|range|file|color|image)${'$'}/i.test(el.type)) return 'text';
+                if (tag === 'INPUT' && !/^(button|submit|reset|checkbox|radio|range|file|color|image)$/i.test(el.type)) return 'text';
                 // Over selectable text, auto renders as the text I-beam. Point-to-caret APIs
                 // snap to the nearest text, so require the point to be inside its element.
                 if (document.caretPositionFromPoint || document.caretRangeFromPoint) {
@@ -1662,15 +1662,15 @@ internal object OpenCodeBrowserSnippets {
             ?: openFileFallback
 
         @Language("JavaScript")
-        val script = """
+        val script = $$"""
             (() => {
               if (window.__opencodeIntellijFileLinksInstalled) return;
               window.__opencodeIntellijFileLinksInstalled = true;
-              const directory = '$directory';
+              const directory = '$${directory}';
               const explicitProtocol = /^[a-zA-Z][a-zA-Z0-9+.-]*:/;
               const supportedFileProtocol = /^(file|sandbox):/i;
               const absoluteFilePath = /^(\/|\\\\|[A-Za-z]:[\\/])/;
-              $DECODE_ROUTE_DIRECTORY_JS
+              $${DECODE_ROUTE_DIRECTORY_JS}
               const openCodeRoutePath = (value) => {
                 const text = (value || '').trim();
                 if (text.startsWith('/')) return text;
@@ -1690,9 +1690,9 @@ internal object OpenCodeBrowserSnippets {
                 const path = openCodeRoutePath(value);
                 if (!path) return false;
                 if (path === '/' || path === '') return true;
-                if (/^\/server(?:\/|[/?#]|${'$'})/.test(path)) return true;
-                if (/^\/new-session(?:\/|[/?#]|${'$'})/.test(path)) return true;
-                const match = /^\/([^/?#]+)(?:\/session(?:[/?#]|${'$'})|[/?#]|${'$'})/.exec(path);
+                if (/^\/server(?:\/|[/?#]|$)/.test(path)) return true;
+                if (/^\/new-session(?:\/|[/?#]|$)/.test(path)) return true;
+                const match = /^\/([^/?#]+)(?:\/session(?:[/?#]|$)|[/?#]|$)/.exec(path);
                 if (!match) return false;
                 return absoluteFilePath.test(decodeRouteDirectory(match[1]));
               };
@@ -1730,7 +1730,7 @@ internal object OpenCodeBrowserSnippets {
                 const directory = cleanDisplayedPath(info && info.querySelector ? info.querySelector('[data-slot="session-review-directory"]')?.textContent : '');
                 const fileName = cleanDisplayedPath(info && info.querySelector ? info.querySelector('[data-slot="session-review-filename"]')?.textContent : '');
                 if (!fileName) return '';
-                return directory ? directory.replace(/[\\/]?${'$'}/, '/') + fileName : fileName;
+                return directory ? directory.replace(/[\\/]?$/, '/') + fileName : fileName;
               };
               // The redesigned (v2) review panel (default new layout on desktop, i.e. when
               // forceCompactLayout is off) drops the per-file "open" button for an in-app sidebar
@@ -1746,12 +1746,12 @@ internal object OpenCodeBrowserSnippets {
                 const fileName = cleanDisplayedPath(header.querySelector ? header.querySelector('[data-slot="session-review-v2-file-name"]')?.textContent : '');
                 if (!fileName) return '';
                 const directory = cleanDisplayedPath(header.querySelector ? header.querySelector('[data-slot="session-review-v2-file-path"]')?.textContent : '');
-                return directory ? directory.replace(/[\\/]?${'$'}/, '/') + fileName : fileName;
+                return directory ? directory.replace(/[\\/]?$/, '/') + fileName : fileName;
               };
               const lastSegmentLooksLikeFile = (value) => {
-                const path = String(value || '').split('?')[0].split('#')[0].replace(/[\\/]+${'$'}/, '');
-                const last = (path.split(/[\\/]/).filter(Boolean).pop() || '').replace(/:\\d+(?::\\d+)?${'$'}/, '');
-                return /\\.[a-zA-Z0-9]{1,8}${'$'}/.test(last);
+                const path = String(value || '').split('?')[0].split('#')[0].replace(/[\\/]+$/, '');
+                const last = (path.split(/[\\/]/).filter(Boolean).pop() || '').replace(/:\\d+(?::\\d+)?$/, '');
+                return /\\.[a-zA-Z0-9]{1,8}$/.test(last);
               };
               const isLocalFileLink = (href) => {
                 if (!href || href.startsWith('#')) return false;
@@ -1767,7 +1767,7 @@ internal object OpenCodeBrowserSnippets {
                 if (rawHref === lastOpenedHref && now - lastOpenedAt < 750) return;
                 lastOpenedHref = rawHref;
                 lastOpenedAt = now;
-                $openFileAction;
+                $${openFileAction};
               };
               const resolveFileOpenTarget = (target, changedButtonOnly) => {
                 const changedFileHref = changedFileButtonLink(target);
@@ -1796,7 +1796,7 @@ internal object OpenCodeBrowserSnippets {
               document.addEventListener('pointerdown', (event) => handleFileOpenEvent(event, true), true);
               document.addEventListener('mousedown', (event) => handleFileOpenEvent(event, true), true);
               document.addEventListener('click', (event) => handleFileOpenEvent(event, false), true);
-              $POINTER_CURSOR_KIT_JS
+              $${POINTER_CURSOR_KIT_JS}
               document.addEventListener('mouseover', (event) => {
                 const target = event.target && event.target.nodeType === 1 ? event.target : null;
                 const resolved = target ? resolveFileOpenTarget(target, false) : null;
@@ -1820,7 +1820,7 @@ internal object OpenCodeBrowserSnippets {
         if (!enabled || openDiffCallback == null) return null
 
         @Language("JavaScript")
-        val script = """
+        val script = $$"""
             (() => {
               if (window.__opencodeIntellijDiffNavInstalled) return;
               window.__opencodeIntellijDiffNavInstalled = true;
@@ -1838,7 +1838,7 @@ internal object OpenCodeBrowserSnippets {
                 const dir = clean(root.querySelector(dirSel)?.textContent).replace(/\\/g, '/');
                 const name = clean(root.querySelector(nameSel)?.textContent).replace(/\\/g, '/');
                 if (!name) return '';
-                return dir ? dir.replace(/[\\/]?${'$'}/, '/') + name : name;
+                return dir ? dir.replace(/[\\/]?$/, '/') + name : name;
               };
               const isMac = /Mac|iPhone|iPod|iPad/.test(navigator.platform);
               const isDiffGesture = (event) => event.altKey || (isMac ? event.metaKey : event.ctrlKey);
@@ -1869,7 +1869,7 @@ internal object OpenCodeBrowserSnippets {
                 const filePath = target.filePath || '';
                 const partID = target.partID || '';
                 try {
-                  $openDiffCallback;
+                  $${openDiffCallback};
                 } catch (error) {
                   if (window.console && window.console.warn) {
                     window.console.warn('Failed to forward diff target to IntelliJ', error);

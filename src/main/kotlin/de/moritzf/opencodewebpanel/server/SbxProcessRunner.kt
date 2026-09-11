@@ -152,10 +152,10 @@ private fun indexOfCsiFinalByte(text: CharSequence, from: Int): Int? {
 private const val PROGRESS_CSI_FINALS = "DJKGH"
 private val ANSI_SEQUENCE = Regex(
     "\u001B\\[[\\d;?=]*[ -/]*[@-~]|" +
-        "\u001B\\][^\\u0007\\u001B]*(?:\\u0007|\u001B\\\\)|" +
+        "\u001B][^\\u0007\\u001B]*(?:\\u0007|\u001B\\\\)|" +
         "\u001B[()].|" +
         "\u001B[@-Z\\\\-_]",
 )
 private val ORPHAN_CSI = Regex("\\[(?:\\?\\d+[lh]|\\d+D|\\d*[JK](?![A-Za-z]))")
-private val SPINNER_ONLY = Regex("^[|/\\\\-]+\$")
+private val SPINNER_ONLY = Regex($$"^[|/\\\\-]+$")
 private val WHITESPACE = Regex("\\s+")
