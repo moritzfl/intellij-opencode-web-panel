@@ -48,7 +48,7 @@ class OpenCodePasswordStore {
     fun saveBlocking(password: String?) {
         val sanitized = password?.ifBlank { null }
         synchronized(lock) {
-            PasswordSafe.instance.set(attributes, sanitized?.let { Credentials(USER_NAME, it) })
+            PasswordSafe.instance[attributes] = sanitized?.let { Credentials(USER_NAME, it) }
             cachedPassword = sanitized
         }
     }
@@ -61,7 +61,7 @@ class OpenCodePasswordStore {
                 ?: previous
                 ?: generatePasswordForEditing()
             if (current != previous) {
-                PasswordSafe.instance.set(attributes, Credentials(USER_NAME, current))
+                PasswordSafe.instance[attributes] = Credentials(USER_NAME, current)
             }
             cachedPassword = current
             PasswordUpdate(previous, current)
@@ -77,7 +77,7 @@ class OpenCodePasswordStore {
      * overwrite the server password.
      */
     private fun readPasswordSafe(): String? {
-        return PasswordSafe.instance.get(attributes)?.getPasswordAsString()?.ifBlank { null }
+        return PasswordSafe.instance[attributes]?.getPasswordAsString()?.ifBlank { null }
     }
 
     companion object {

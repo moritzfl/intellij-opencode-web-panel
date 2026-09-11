@@ -1380,12 +1380,12 @@ class OpenCodeWebToolWindowContent(
             CompletableFuture.delayedExecutor(waitMillis, TimeUnit.MILLISECONDS),
         )
         val install = runCatching { installDocumentStartScripts(serverUrl) }.getOrElse { error ->
-            thisLogger().info("Could not prepare OpenCode document-start scripts: ${error.message}")
+            thisLogger().info("Could not start OpenCode document-start install: ${error.message}")
             CompletableFuture.completedFuture(false)
         }
         install.applyToEither(timeout) { it }.whenComplete { installed, error ->
             if (error != null) {
-                thisLogger().info("Could not prepare OpenCode document-start scripts: ${error.message}")
+                thisLogger().info("OpenCode document-start install failed: ${error.message}")
             } else if (!installed) {
                 thisLogger().info("OpenCode document-start script was unavailable; using onLoadStart fallback")
             }

@@ -167,7 +167,7 @@ internal class OpenCodeDocumentStartInjector(
                         }
                     }
                 }.exceptionally { error ->
-                    thisLogger().info("Could not register OpenCode document-start script: ${error.message}")
+                    thisLogger().info("Could not register OpenCode document-start script via DevTools: ${error.message}")
                     false
                 }
             } catch (e: Exception) {
@@ -185,7 +185,7 @@ internal class OpenCodeDocumentStartInjector(
         return try {
             devTools.executeDevToolsMethod(REMOVE_METHOD, identifierPayload(identifier)).handle { _, error ->
                 if (error != null) {
-                    thisLogger().info("Could not replace OpenCode document-start script: ${error.message}")
+                    thisLogger().info("Could not replace OpenCode document-start script via DevTools: ${error.message}")
                     false
                 } else {
                     true

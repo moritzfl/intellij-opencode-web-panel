@@ -8,7 +8,7 @@ package de.moritzf.opencodewebpanel.toolWindow
  */
 internal object OpenCodeInjectedFeaturePolicy {
     enum class Action {
-        /** Inject [script] into the current page. */
+        /** Inject the feature script into the current page. */
         INJECT,
 
         /** Reload the page (and run optional onDisable cleanup) to drop previous injections. */

@@ -32,7 +32,6 @@ import java.util.concurrent.atomic.AtomicLong
 import javax.imageio.ImageIO
 import javax.swing.JComponent
 import javax.swing.TransferHandler
-import org.cef.callback.CefDragData
 import org.cef.handler.CefDragHandler
 import org.cef.handler.CefKeyboardHandler.CefKeyEvent
 import org.cef.handler.CefKeyboardHandler.CefKeyEvent.EventType
@@ -227,21 +226,13 @@ internal class OpenCodeFileDropHandler(
     }
 
     private fun installDragHandler() {
-        val handler = object : CefDragHandler {
-            override fun onDragEnter(
-                cefBrowser: org.cef.browser.CefBrowser?,
-                dragData: CefDragData?,
-                mask: Int,
-            ): Boolean {
-                // macOS screenshot drags sometimes arrive as a CEF-native drag (file
-                // promise) instead of going through the Swing TransferHandler. A native
-                // OSR drop leaves Chromium holding focus while macOS has no key window ->
-                // IDE typing dies. Returning `true` forwards the drag to the embedded
-                // component's Swing TransferHandler so the existing restore path always
-                // runs.
-                return true
-            }
-        }
+        // macOS screenshot drags sometimes arrive as a CEF-native drag (file
+        // promise) instead of going through the Swing TransferHandler. A native
+        // OSR drop leaves Chromium holding focus while macOS has no key window ->
+        // IDE typing dies. Returning `true` forwards the drag to the embedded
+        // component's Swing TransferHandler so the existing restore path always
+        // runs.
+        val handler = CefDragHandler { _, _, _ -> true }
         browser.jbCefClient.addDragHandler(handler, browser.cefBrowser)
         Disposer.register(parentDisposable) {
             browser.jbCefClient.removeDragHandler(handler, browser.cefBrowser)

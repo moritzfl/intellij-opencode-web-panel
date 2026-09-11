@@ -193,7 +193,7 @@ internal class OpenCodeRendererWatchdog(
 
     init {
         parentDisposable?.let { parent ->
-            Disposer.register(parent, Disposable { stop() })
+            Disposer.register(parent) { stop() }
         }
     }
 

@@ -35,7 +35,7 @@ internal class OpenCodeProcessTerminator(
             }
             destroyForcibly(descendants)
         }
-        thisLogger().info("OpenCode server stopped")
+        thisLogger().info("OpenCode server process stopped")
     }
 
     fun descendantHandles(process: Process): List<ProcessHandle> {
@@ -50,7 +50,7 @@ internal class OpenCodeProcessTerminator(
         destroyGracefully(aliveHandles)
         waitForExit(aliveHandles)
         destroyRemainingDescendants(aliveHandles)
-        thisLogger().info("OpenCode server stopped")
+        thisLogger().info("OpenCode server descendants stopped")
     }
 
     private fun destroyGracefully(handles: List<ProcessHandle>) {

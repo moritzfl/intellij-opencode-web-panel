@@ -218,7 +218,7 @@ internal object SbxCli {
 
     fun workspaceHostPath(arg: String): String {
         val posix = posixPath(arg)
-        return if (posix.endsWith(":ro", ignoreCase = true)) posix.substring(0, posix.length - 3) else posix
+        return if (posix.endsWith(":ro", ignoreCase = true)) posix.dropLast(3) else posix
     }
 
     fun networkKitTemplateYaml(): String {

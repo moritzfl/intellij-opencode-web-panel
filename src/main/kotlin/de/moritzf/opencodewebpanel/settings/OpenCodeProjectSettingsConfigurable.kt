@@ -149,14 +149,14 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
             .withTitle("Select Host Path")
             .withDescription("Choose a file or folder to mount into the sandbox.")
             .withShowHiddenFiles(true)
-            .apply { setForcedToUseIdeaFileChooser(true) },
+            .apply { isForcedToUseIdeaFileChooser = true },
     )
     private val kitPathEditor = BrowsePathCellEditor(
         FileChooserDescriptorFactory.createSingleFolderDescriptor()
             .withTitle("Select Kit")
             .withDescription("Choose a local kit directory. File refs, Git URLs, and OCI refs can be typed. Protect sandbox files only overlays kit directories.")
             .withShowHiddenFiles(true)
-            .apply { setForcedToUseIdeaFileChooser(true) },
+            .apply { isForcedToUseIdeaFileChooser = true },
     )
     private val extraMountTableModel = ListTableModel<ExtraMountRow>(
         object : ColumnInfo<ExtraMountRow, String>("Host path") {
@@ -177,7 +177,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
     )
     private val extraMountTable = TableView<ExtraMountRow>(extraMountTableModel).apply {
         tableHeader.reorderingAllowed = false
-        setVisibleRowCount(4)
+        visibleRowCount = 4
         accessibleContext.accessibleName = "Extra sandbox file and directory mounts"
     }
     private val extraMountPanel = ToolbarDecorator.createDecorator(extraMountTable)
@@ -201,7 +201,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
     )
     private val kitTable = TableView<KitRow>(kitTableModel).apply {
         tableHeader.reorderingAllowed = false
-        setVisibleRowCount(4)
+        visibleRowCount = 4
         accessibleContext.accessibleName = "Sandbox kits"
         toolTipText = "Local kit file, Git URL, or OCI ref (for example docker.io/sbx/playwright-kit:latest)"
     }

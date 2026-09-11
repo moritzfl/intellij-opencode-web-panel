@@ -368,7 +368,7 @@ internal data class SbxLaunchSpec(
                 } else if ((char == '\'' || char == '"') && (index == 0 || line[index - 1].isWhitespace() || line[index - 1] == ':')) {
                     quote = char
                 } else if (char == '#' && (index == 0 || line[index - 1].isWhitespace())) {
-                    return line.substring(0, index)
+                    return line.take(index)
                 }
                 index++
             }

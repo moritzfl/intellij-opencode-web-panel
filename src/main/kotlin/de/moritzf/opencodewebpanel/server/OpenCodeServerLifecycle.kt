@@ -52,7 +52,7 @@ internal fun formatElapsedMillis(elapsedMillis: Long): String {
 
 internal fun formatOpenCodeRecoveryLine(notice: OpenCodeRecoveryNotice, nowMillis: Long): String {
     val ago = formatElapsedMillis((nowMillis - notice.atMillis).coerceAtLeast(0L))
-    return "Last recovery ${ago} ago: ${notice.reason}"
+    return "Last recovery $ago ago: ${notice.reason}"
 }
 
 internal fun formatOpenCodeLifecycleStrip(model: OpenCodeLifecycleStripModel, nowMillis: Long = System.currentTimeMillis()): String {

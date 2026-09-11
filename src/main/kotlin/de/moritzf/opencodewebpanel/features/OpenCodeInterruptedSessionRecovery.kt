@@ -34,14 +34,16 @@ internal class OpenCodeRecoveryClaimRegistry {
     fun reserve(key: String, token: Long): Boolean {
         var reserved = false
         claims.compute(key) { _, current ->
-            if (current?.token == token && current.state == State.READY) {
-                reserved = true
-                current.copy(state = State.IN_PROGRESS)
-            } else if (current?.token == token) {
-                current
-            } else {
-                reserved = true
-                Claim(token, State.IN_PROGRESS)
+            when {
+                current?.token == token && current.state == State.READY -> {
+                    reserved = true
+                    current.copy(state = State.IN_PROGRESS)
+                }
+                current?.token == token -> current
+                else -> {
+                    reserved = true
+                    Claim(token, State.IN_PROGRESS)
+                }
             }
         }
         return reserved

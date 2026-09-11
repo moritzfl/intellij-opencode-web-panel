@@ -754,7 +754,7 @@ internal object OpenCodeBrowserSnippets {
      * page keeps its last state, never learns about `permission.replied` (so an IDE-answered
      * permission prompt stays on screen) and cannot start a new turn until a manual reload.
      *
-     * The fix stays outside SPA internals: [window.fetch] is wrapped so the event-stream response
+     * The fix stays outside SPA internals: `window.fetch` is wrapped so the event-stream response
      * body is piped through a reader that aborts the request after [stallTimeoutMillis] without a
      * single byte. The abort surfaces as a normal stream error, which is exactly the signal
      * OpenCode's own reconnect loop already handles. The server emits `server.heartbeat` every

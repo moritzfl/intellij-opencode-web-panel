@@ -5,7 +5,7 @@ import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 /**
  * Pure policy for retrying a hung embedded page load.
  *
- * Never interrupt a navigation that has already started and is still within [timeoutMillis].
+ * Never interrupt a navigation that has already started and is still within [DEFAULT_TIMEOUT_MILLIS].
  * `stopLoad` + `loadURL` during that window is what left the first panel stuck on
  * "Opening the OpenCode page…".
  */

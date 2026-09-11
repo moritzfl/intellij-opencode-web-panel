@@ -354,7 +354,7 @@ internal object OpenCodeServerProtocol {
         val ranked = unique.map { it to scoreFilePathSuffix(it, referencePath) }
         val best = ranked.maxOf { it.second }
         if (best <= 0) return null
-        return ranked.filter { it.second == best }.singleOrNull()?.first
+        return ranked.singleOrNull { it.second == best }?.first
     }
 
     data class SystemNotificationPayload(
@@ -606,7 +606,7 @@ internal object OpenCodeServerProtocol {
 
     internal fun splitPathAndLocation(text: String): Triple<String, Int?, Int?> {
         val match = CODE_REF_LOCATOR.find(text) ?: return Triple(text, null, null)
-        val path = text.substring(0, match.range.first)
+        val path = text.take(match.range.first)
         if (path.isBlank()) return Triple(text, null, null)
         val groups = match.groupValues
         val line = listOf(groups[1], groups[3], groups[5], groups[6], groups[7], groups[9])
@@ -816,7 +816,7 @@ internal object OpenCodeServerProtocol {
         ready: Boolean,
     ): BasicAuthChallengeReply {
         if (isProxy) return BasicAuthChallengeReply.IGNORE
-        if (!password.isNullOrBlank() && ready && shouldHandleBasicAuthChallenge(serverUrl, isProxy, host, port)) {
+        if (!password.isNullOrBlank() && ready && shouldHandleBasicAuthChallenge(serverUrl, false, host, port)) {
             return BasicAuthChallengeReply.CONTINUE
         }
         return BasicAuthChallengeReply.CANCEL
@@ -913,7 +913,7 @@ internal object OpenCodeServerProtocol {
     /**
      * Mirrors the SPA's `detectServerProtocol`: `/global/health` with `{healthy:true}` is v1;
      * `/api/health` with a numeric `pid` is v2; `{healthy:true}` on `/api/health` is still v1;
-     * otherwise a reachable server defaults to v2. Unreachable probes stay [UNKNOWN] so a
+     * otherwise a reachable server defaults to v2. Unreachable probes stay [OpenCodeEmbeddedProtocol.UNKNOWN] so a
      * transport blip does not warn that permissions will vanish.
      */
     fun detectEmbeddedProtocol(

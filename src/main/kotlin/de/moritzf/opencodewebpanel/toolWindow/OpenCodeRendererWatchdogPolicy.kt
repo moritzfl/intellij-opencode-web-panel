@@ -53,7 +53,7 @@ internal object OpenCodeRendererWatchdogPolicy {
 
     /**
      * The effective process-wide recreate budget: halved once per [RECREATE_BUDGET_HALVING_MILLIS]
-     * of heartbeat-free silence. [elapsedSinceLastDecay] is clamped at zero by the caller.
+     * of heartbeat-free silence. [elapsedSinceLastDecayMillis] is clamped at zero by the caller.
      */
     fun decayedRecreateBudget(current: Int, elapsedSinceLastDecayMillis: Long): Int {
         if (current <= 0) return 0

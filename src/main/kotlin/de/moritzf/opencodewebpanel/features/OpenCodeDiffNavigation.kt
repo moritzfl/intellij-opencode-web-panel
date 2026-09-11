@@ -21,8 +21,8 @@ import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 /**
  * Opens the IDE's native diff viewer for a diff target the user Ctrl/Cmd+Clicked or Alt+Clicked in the OpenCode page
  * (see `OpenCodeBrowserSnippets.buildDiffNavigationScript`). The page sends
- * `messageID\nfilePath\npartID` (each optional). Chat edit/write/patch uses [partID] (`prt_…`)
- * and the tool part's own patch; review/turn-summary uses [messageID] + `session.diff`.
+ * `messageID\nfilePath\npartID` (each optional). Chat edit/write/patch uses `partID` (`prt_…`)
+ * and the tool part's own patch; review/turn-summary uses `messageID` + `session.diff`.
  * Session id and directory are derived here.
  */
 internal class OpenCodeDiffNavigation(
@@ -128,10 +128,7 @@ internal class OpenCodeDiffNavigation(
             if (filePath == null) return diffs
             val exact = diffs.filter { pathsEqual(it.file, filePath, caseSensitive) }
             if (exact.isNotEmpty()) return exact
-            return diffs.filter { matchesFile(it.file, filePath, caseSensitive) }
-                .singleOrNull()
-                ?.let(::listOf)
-                .orEmpty()
+            return listOfNotNull(diffs.singleOrNull { matchesFile(it.file, filePath, caseSensitive) })
         }
 
         /** Match a unique relative-path suffix after exact matches have been exhausted. */
