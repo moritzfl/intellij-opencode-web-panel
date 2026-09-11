@@ -82,10 +82,6 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
     }
     private val autoPortRadioButton = JBRadioButton("Auto select")
     private val fixedPortRadioButton = JBRadioButton("Fixed port")
-    private val portModeGroup = ButtonGroup().apply {
-        add(autoPortRadioButton)
-        add(fixedPortRadioButton)
-    }
     private val fixedPortField = JBTextField().apply {
         columns = 6
         toolTipText = "Loopback port for this project's OpenCode server"
@@ -105,10 +101,6 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
     }
     private val autoProjectDirectoryRadioButton = JBRadioButton("Auto detect")
     private val customProjectDirectoryRadioButton = JBRadioButton("Custom directory")
-    private val projectDirectoryModeGroup = ButtonGroup().apply {
-        add(autoProjectDirectoryRadioButton)
-        add(customProjectDirectoryRadioButton)
-    }
     private val projectDirectoryField = TextFieldWithBrowseButton().apply {
         textField.columns = 40
         toolTipText = "Directory OpenCode should open for this IDE project"
@@ -124,9 +116,19 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
     }
     private val hostRuntimeRadioButton = JBRadioButton("Host (native CLI)")
     private val sbxRuntimeRadioButton = JBRadioButton("Docker Sandbox (sbx)")
-    private val runtimeGroup = ButtonGroup().apply {
-        add(hostRuntimeRadioButton)
-        add(sbxRuntimeRadioButton)
+    init {
+        ButtonGroup().apply {
+            add(autoPortRadioButton)
+            add(fixedPortRadioButton)
+        }
+        ButtonGroup().apply {
+            add(autoProjectDirectoryRadioButton)
+            add(customProjectDirectoryRadioButton)
+        }
+        ButtonGroup().apply {
+            add(hostRuntimeRadioButton)
+            add(sbxRuntimeRadioButton)
+        }
     }
     private val sbxMemoryField = JBTextField().apply {
         columns = 6

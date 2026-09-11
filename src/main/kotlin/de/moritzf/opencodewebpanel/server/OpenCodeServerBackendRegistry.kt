@@ -4,8 +4,6 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
 import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsState
-import de.moritzf.opencodewebpanel.settings.OpenCodeRuntimeMode
-import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
 
 /**
  * Application-wide map from canonical directory to the OpenCode backend that owns that origin.
@@ -26,8 +24,6 @@ class OpenCodeServerBackendRegistry : Disposable {
     fun nativeBackend(): OpenCodeServerBackend {
         return backendForCanonicalDirectory(null)
     }
-
-    fun runtimeMode(): OpenCodeRuntimeMode = OpenCodeSettingsState.getInstance().runtimeModeValue()
 
     fun backendFor(project: Project?): OpenCodeServerBackend {
         if (project == null || project.isDisposed) return nativeBackend()

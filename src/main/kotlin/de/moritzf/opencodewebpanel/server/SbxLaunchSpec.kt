@@ -1,8 +1,6 @@
 package de.moritzf.opencodewebpanel.server
 
 import com.intellij.openapi.diagnostic.logger
-import com.intellij.openapi.project.ProjectManager
-import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsState
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
@@ -231,13 +229,6 @@ internal data class SbxLaunchSpec(
             }
         }
 
-        fun usesSandbox(project: com.intellij.openapi.project.Project): Boolean {
-            if (project.isDisposed) return false
-            val directory = OpenCodeProjectSettingsState.getInstance(project)
-                .effectiveProjectDirectory(project.basePath)
-            return usesSandbox(directory)
-        }
-
         fun configDir(): Path {
             val override = System.getenv(CONFIG_DIR_ENV)?.trim()?.ifBlank { null }
             if (override != null) return Path.of(override)
@@ -334,18 +325,6 @@ internal data class SbxLaunchSpec(
             }.onFailure { error ->
                 logger<SbxLaunchSpec>().warn("Could not persist SBX launch spec: ${error.message}")
             }.getOrNull()
-        }
-
-        fun persistOpenProjects(settings: OpenCodeSettingsState = OpenCodeSettingsState.getInstance()) {
-            val app = com.intellij.openapi.application.ApplicationManager.getApplication()
-            if (app == null || app.isDisposed) return
-            ProjectManager.getInstance().openProjects.forEach { project ->
-                if (project.isDisposed) return@forEach
-                val projectSettings = OpenCodeProjectSettingsState.getInstance(project)
-                val directory = projectSettings.effectiveProjectDirectory(project.basePath)
-                    ?: return@forEach
-                persist(settings, directory, projectSettings.hostPortOrNull())
-            }
         }
 
         fun yamlScalar(value: String): String {

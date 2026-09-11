@@ -9,7 +9,6 @@ import com.intellij.openapi.components.Storage
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.server.SbxCli
-import de.moritzf.opencodewebpanel.server.SbxExtraMount
 
 // Roaming is disabled deliberately: the state mixes machine-specific values (binary path,
 // fixed port) and the mirrored OpenCode web-session snapshot (up to 2 MB of local browser
@@ -157,10 +156,6 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
     fun sbxMemoryValue(): String = SbxCli.sanitizeMemory(sbxMemory)
 
     fun sbxCpusValue(): String = SbxCli.sanitizeCpus(sbxCpus)
-
-    internal fun sbxExtraMounts(): List<SbxExtraMount> = SbxCli.parseExtraMounts(sbxExtraWorkspaces)
-
-    fun sbxKitRefs(): List<String> = SbxCli.parseKitRefs(sbxExtraKits)
 
     fun effectiveCodeNavigationEnabled(): Boolean {
         return openFileLinksInIde && enableCodeNavigation

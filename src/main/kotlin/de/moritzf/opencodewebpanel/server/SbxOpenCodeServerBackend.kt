@@ -667,10 +667,10 @@ internal class SbxOpenCodeServerBackend(
                 listedWorkspaces.none { OpenCodeServerProtocol.isSameFilesystemPath(it, extra) }
             }
             val desiredKits = SbxCli.parseLineList(kitsText)
-            if (owned != null && !missingExtraMount) {
-                val current = checkNotNull(record)
-                if (current.shareHostConfig == shareHostConfig) {
-                    record = appendUniqueKits(sbx, name, current, desiredKits, startId)
+            val currentRecord = record
+            if (owned != null && currentRecord != null && !missingExtraMount) {
+                if (currentRecord.shareHostConfig == shareHostConfig) {
+                    record = appendUniqueKits(sbx, name, currentRecord, desiredKits, startId)
                 }
             }
             val provisionChanged = record != null && !record.adopted && (
@@ -875,9 +875,7 @@ internal class SbxOpenCodeServerBackend(
                 return
             }
             record.takeIf { it.hostPort != desiredHostPort }?.let { current ->
-                val updated = current.copy(hostPort = desiredHostPort)
-                record = updated
-                recordStore().save(canonicalDirectory, updated)
+                recordStore().save(canonicalDirectory, current.copy(hostPort = desiredHostPort))
             }
             synchronized(lock) {
                 if (startId != startSequence) return
@@ -1343,8 +1341,6 @@ internal class SbxOpenCodeServerBackend(
     }
 
     private fun isCurrentStart(startId: Long): Boolean = synchronized(lock) { startId == startSequence }
-
-    private fun isHealthRestartAllowed(): Boolean = synchronized(lock) { allowHealthRestart && !disposed }
 
     private fun looksUnauthenticated(output: String): Boolean {
         val text = output.lowercase()

@@ -74,7 +74,6 @@ internal object SbxCli {
     const val OPENCODE_SERVER_PASSWORD_ENV = "OPENCODE_SERVER_PASSWORD"
     const val OPENCODE_CONFIG_CONTENT_ENV = "OPENCODE_CONFIG_CONTENT"
     const val OPENCODE_AUTH_CONTENT_ENV = "OPENCODE_AUTH_CONTENT"
-    const val XDG_DATA_HOME_ENV = "XDG_DATA_HOME"
     const val DATA_DIR_ENV = "OCWP_DATA_DIR"
     const val SANDBOX_HOME = "/home/agent"
     const val DEFAULT_OPENCODE_TEMPLATE = "docker.io/docker/sandbox-templates:opencode-docker"
@@ -462,8 +461,6 @@ internal object SbxCli {
             !OpenCodeServerProtocol.isSameFilesystemPath(mount.hostPath, mount.sandboxPath)
     }
 
-    fun posixSingleQuote(value: String): String = "'" + value.replace("'", "'\\''") + "'"
-
     const val LINK_ARGV0 = "opencode-link"
 
     fun extraMountLinkScript(replaceExistingDirectory: Boolean): String {
@@ -674,10 +671,6 @@ internal object SbxCli {
         return listOf(executable, "daemon", "start")
     }
 
-    fun buildDaemonStatusCommand(executable: String = DEFAULT_EXECUTABLE): List<String> {
-        return listOf(executable, "daemon", "status")
-    }
-
     fun buildDiagnoseJsonCommand(executable: String = DEFAULT_EXECUTABLE): List<String> {
         return listOf(executable, "diagnose", "-o", "json")
     }
@@ -687,14 +680,6 @@ internal object SbxCli {
         profile: String = "balanced",
     ): List<String> {
         return listOf(executable, "policy", "init", profile)
-    }
-
-    fun buildPolicyCheckCommand(
-        executable: String = DEFAULT_EXECUTABLE,
-        name: String,
-        target: String,
-    ): List<String> {
-        return listOf(executable, "policy", "check", "network", "--sandbox", name, target, "--json")
     }
 
     fun buildPolicyAllowCommand(

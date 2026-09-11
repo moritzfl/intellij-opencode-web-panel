@@ -1,6 +1,5 @@
 package de.moritzf.opencodewebpanel.server
 
-import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.thisLogger
