@@ -42,8 +42,12 @@ class SbxOpencodeConfigOverlayTest {
         assertFalse(SbxCli.needsSandboxLink(shared))
         val writableSamePath = SbxExtraMount(shared.hostPath, shared.sandboxPath)
         assertEquals(
+            listOf(extra, writableSamePath),
+            SbxOpencodeConfigOverlay.withHostConfigShare(listOf(extra, writableSamePath), share = true, exists = { false }),
+        )
+        assertEquals(
             listOf(extra, shared),
-            SbxOpencodeConfigOverlay.withHostConfigShare(listOf(extra, writableSamePath), share = true),
+            SbxOpencodeConfigOverlay.withHostConfigShare(listOf(extra, writableSamePath), share = true, exists = { true }),
         )
     }
 

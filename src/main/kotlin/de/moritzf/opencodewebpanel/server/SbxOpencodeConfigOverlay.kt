@@ -38,9 +38,13 @@ internal object SbxOpencodeConfigOverlay {
         return SbxExtraMount(hostStr, hostStr, readOnly = true)
     }
 
-    fun withHostConfigShare(mounts: List<SbxExtraMount>, share: Boolean): List<SbxExtraMount> {
+    fun withHostConfigShare(
+        mounts: List<SbxExtraMount>,
+        share: Boolean,
+        exists: (Path) -> Boolean = { Files.isDirectory(it) },
+    ): List<SbxExtraMount> {
         if (!share) return mounts
-        val extra = hostConfigShareMount() ?: return mounts
+        val extra = hostConfigShareMount(exists) ?: return mounts
         val others = mounts.filterNot {
             OpenCodeServerProtocol.isSameFilesystemPath(it.hostPath, extra.hostPath)
         }
