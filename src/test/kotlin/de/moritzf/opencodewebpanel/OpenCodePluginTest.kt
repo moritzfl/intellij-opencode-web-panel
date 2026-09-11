@@ -308,8 +308,8 @@ class OpenCodePluginTest : BasePlatformTestCase() {
     }
 
     fun testServerNotReadyForAuthWithoutCredentials() {
-        val service = nativeManager()
-        service.stopServer()
+        val service = OpenCodeServerBackendRegistry.getInstance()
+            .backendForCanonicalDirectory("/tmp/opencode-plugin-test-no-auth") as SharedOpenCodeServerManager
         assertFalse(service.isServerReadyForAuth())
     }
 
