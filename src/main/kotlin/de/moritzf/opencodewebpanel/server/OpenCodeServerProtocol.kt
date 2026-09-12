@@ -143,9 +143,13 @@ internal object OpenCodeServerProtocol {
 
     fun parseOpenFileLinkPayload(payload: String?): OpenFileLinkPayload? {
         val text = payload?.takeIf { it.isNotBlank() } ?: return null
-        val parts = text.split('\n', limit = 2)
+        val parts = text.split('\n', limit = 3)
         val href = parts.firstOrNull()?.takeIf { it.isNotBlank() } ?: return null
-        return OpenFileLinkPayload(href, parts.getOrNull(1)?.takeIf { it.isNotBlank() })
+        return OpenFileLinkPayload(
+            href,
+            parts.getOrNull(1)?.takeIf { it.isNotBlank() },
+            parts.getOrNull(2)?.takeIf { it.isNotBlank() },
+        )
     }
 
     private fun openFileLinkQueryParameter(requestUrl: String?, name: String): String? {
@@ -982,7 +986,7 @@ internal object OpenCodeServerProtocol {
 
     data class FileLinkTarget(val path: Path, val line: Int?, val column: Int?)
 
-    data class OpenFileLinkPayload(val href: String, val basePath: String?)
+    data class OpenFileLinkPayload(val href: String, val basePath: String?, val partID: String? = null)
 
     data class DroppedFilePayload(
         val name: String,

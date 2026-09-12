@@ -7,6 +7,39 @@ import org.junit.Test
 class OpenCodeUnifiedDiffTest {
 
     @Test
+    fun firstChangedLineIndexSkipsHunkContext() {
+        val patch = """
+            --- a/foo.txt
+            +++ b/foo.txt
+            @@ -1,3 +1,3 @@
+             line1
+            -old
+            +new
+             line3
+        """.trimIndent()
+        assertEquals(1, OpenCodeUnifiedDiff.firstChangedLineIndex(patch))
+    }
+
+    @Test
+    fun firstChangedLineIndexUsesNewFileStartForAdditions() {
+        val patch = """
+            --- /dev/null
+            +++ b/new.txt
+            @@ -0,0 +1,2 @@
+            +alpha
+            +beta
+        """.trimIndent()
+        assertEquals(0, OpenCodeUnifiedDiff.firstChangedLineIndex(patch))
+    }
+
+    @Test
+    fun firstChangedLineIndexReturnsNullWithoutHunks() {
+        assertNull(OpenCodeUnifiedDiff.firstChangedLineIndex(null))
+        assertNull(OpenCodeUnifiedDiff.firstChangedLineIndex(""))
+        assertNull(OpenCodeUnifiedDiff.firstChangedLineIndex("diff --git a/x b/x\n--- a/x\n+++ b/x\n"))
+    }
+
+    @Test
     fun reconstructsModifiedHunkAndSkipsHeaderNoise() {
         val patch = """
             diff --git a/foo.txt b/foo.txt

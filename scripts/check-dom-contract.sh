@@ -44,6 +44,7 @@ MARKERS=(
   'session-turn-diff-trigger'
   'session-turn-diff-directory'
   'session-turn-diff-filename'
+  'session-turn-diff-meta'
   'apply-patch-trigger-content'
   'apply-patch-directory'
   'apply-patch-filename'

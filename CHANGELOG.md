@@ -12,6 +12,10 @@
   definition over an earlier call, including Java methods and Kotlin properties.
 - Grep/glob output, stack traces, and `File "…", line N` now resolve (trailing
   `:` headers and `(Foo.kt:12)` wrappers).
+- Edit, write, apply-patch, and turn "Changed files" headers show an open-file
+  icon. Clicking it opens the file (then jumps to the first changed line when
+  a tool part is known). Accordion expand is suppressed only on the icon.
+  Alt/Ctrl/Cmd+Click still opens the IDE diff.
 
 ## [2.0.1] - 2026-09-11
 

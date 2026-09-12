@@ -24,6 +24,30 @@ object OpenCodeUnifiedDiff {
      * Splits [patch] into the reconstructed before/after hunk text. Returns null when the patch
      * has no textual hunks to show (empty, header-only, or binary).
      */
+    /**
+     * 0-based line in the *after* file of the first addition or deletion.
+     * Context lines at the start of a hunk are skipped.
+     */
+    fun firstChangedLineIndex(patch: String?): Int? {
+        if (patch.isNullOrBlank()) return null
+        val lines = patch.split('\n').map { it.removeSuffix("\r") }
+        var newLine: Int? = null
+        for (line in lines) {
+            if (line.startsWith("@@")) {
+                val match = Regex("""^@@\s+-\d+(?:,\d+)?\s+\+(\d+)(?:,\d+)?\s+@@""").find(line) ?: continue
+                newLine = match.groupValues[1].toIntOrNull() ?: continue
+                continue
+            }
+            val at = newLine ?: continue
+            when {
+                line.startsWith("+") || line.startsWith("-") -> return (at - 1).coerceAtLeast(0)
+                line.startsWith("\\") -> Unit
+                else -> newLine = at + 1
+            }
+        }
+        return newLine?.minus(1)?.coerceAtLeast(0)
+    }
+
     fun sides(patch: String?): Sides? {
         if (patch.isNullOrEmpty()) return null
         val before = StringBuilder()

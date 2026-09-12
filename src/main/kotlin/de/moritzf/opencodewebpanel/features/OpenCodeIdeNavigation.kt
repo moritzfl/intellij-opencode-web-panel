@@ -17,8 +17,10 @@ import com.intellij.util.concurrency.AppExecutorUtil
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicLong
+import de.moritzf.opencodewebpanel.server.OpenCodeProtocolResult
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
+import de.moritzf.opencodewebpanel.server.OpenCodeUnifiedDiff
 import de.moritzf.opencodewebpanel.server.SbxCli
 import de.moritzf.opencodewebpanel.server.SbxLaunchSpec
 import de.moritzf.opencodewebpanel.server.SbxLaunchSpecInspection
@@ -35,6 +37,7 @@ internal class OpenCodeIdeNavigation(
     fun openFileLinkInIde(href: String?, basePath: String? = null) {
         val payload = OpenCodeServerProtocol.parseOpenFileLinkPayload(href)
         val targetHref = payload?.href ?: href
+        val partID = payload?.partID
         val routeBasePath = OpenCodeServerProtocol.routeDirectoryFromUrl(browser.cefBrowser.url)
         val projectBasePath = projectDirectory()
         val baseCandidates = listOfNotNull(basePath, payload?.basePath, routeBasePath, projectBasePath).distinct()
@@ -51,9 +54,17 @@ internal class OpenCodeIdeNavigation(
             if (requestGeneration != fileLinkRequestGeneration.get()) return@executeOnPooledThread
             val virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(target.path)
                 ?: return@executeOnPooledThread
+            val hintedLine = target.line
             ApplicationManager.getApplication().invokeLater {
                 if (requestGeneration != fileLinkRequestGeneration.get()) return@invokeLater
-                navigateToEditor(virtualFile, target.line, target.column)
+                navigateToEditor(virtualFile, hintedLine, target.column)
+            }
+            if (hintedLine != null || partID.isNullOrBlank()) return@executeOnPooledThread
+            val line = runCatching { firstChangeLineFromPart(partID, targetHref) }.getOrNull()
+                ?: return@executeOnPooledThread
+            ApplicationManager.getApplication().invokeLater {
+                if (requestGeneration != fileLinkRequestGeneration.get()) return@invokeLater
+                navigateToEditor(virtualFile, line, target.column)
             }
         }
     }
@@ -92,6 +103,24 @@ internal class OpenCodeIdeNavigation(
             }.coalesceBy(coalesceKey)
                 .submit(AppExecutorUtil.getAppExecutorService())
         }
+    }
+
+    private fun firstChangeLineFromPart(partID: String?, fileHint: String?): Int? {
+        if (partID.isNullOrBlank()) return null
+        val serverUrl = serverManager.getServerUrl() ?: return null
+        val password = serverManager.getServerPassword() ?: return null
+        val sessionID = OpenCodeServerProtocol.sessionIdFromUrl(browser.cefBrowser.url) ?: return null
+        val directory = projectDirectory()?.takeIf { it.isNotBlank() } ?: return null
+        val result = OpenCodeServerProtocol.fetchToolPartChange(
+            serverUrl,
+            OpenCodeServerProtocol.buildBasicAuthHeader(password),
+            directory,
+            sessionID,
+            partID,
+        )
+        val change = (result as? OpenCodeProtocolResult.Success)?.value ?: return null
+        val diffs = OpenCodeDiffNavigation.resolvePartDiffs(change.diffs, fileHint)
+        return diffs.firstNotNullOfOrNull { OpenCodeUnifiedDiff.firstChangedLineIndex(it.patch) }
     }
 
     private fun navigateToEditor(virtualFile: VirtualFile, line: Int?, column: Int?) {

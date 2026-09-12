@@ -1652,14 +1652,12 @@ internal object OpenCodeBrowserSnippets {
             ?.let { callback ->
                 @Language("JavaScript")
                 val action = """
-                    if (typeof window.cefQuery === 'function') {
-                      try {
-                        $callback;
-                        return;
-                      } catch (error) {
-                        if (window.console && window.console.warn) {
-                          window.console.warn('Failed to forward file link to IntelliJ', error);
-                        }
+                    try {
+                      $callback;
+                      return;
+                    } catch (error) {
+                      if (window.console && window.console.warn) {
+                        window.console.warn('Failed to forward file link to IntelliJ', error);
                       }
                     }
                     $openFileFallback;
@@ -1755,7 +1753,7 @@ internal object OpenCodeBrowserSnippets {
                 const directory = cleanDisplayedPath(header.querySelector ? header.querySelector('[data-slot="session-review-v2-file-path"]')?.textContent : '');
                 return directory ? directory.replace(/[\\/]?$/, '/') + fileName : fileName;
               };
-               const lastSegmentLooksLikeFile = (value) => {
+              const lastSegmentLooksLikeFile = (value) => {
                 const path = String(value || '').split('?')[0].split('#')[0].replace(/[\\/]+$/, '');
                 const last = (path.split(/[\\/]/).filter(Boolean).pop() || '').replace(/:\\d+(?::\\d+)?$/, '');
                 return /\\.[a-zA-Z0-9]{1,8}$/.test(last);
@@ -1769,30 +1767,125 @@ internal object OpenCodeBrowserSnippets {
                 if (href.startsWith('./') || href.startsWith('../')) return true;
                 return !href.startsWith('//') && !href.includes('://');
               };
-              const openFileInIde = (rawHref) => {
+              const openFileInIde = (rawHref, partID) => {
                 const now = Date.now();
                 if (rawHref === lastOpenedHref && now - lastOpenedAt < 750) return;
                 lastOpenedHref = rawHref;
                 lastOpenedAt = now;
+                partID = partID || '';
                 $${openFileAction};
               };
+              const toolOpenIconSelector = '[data-slot="opencode-intellij-open-file"]';
+              const toolOpenRootSelector = '[data-component="edit-trigger"], [data-component="write-trigger"], [data-slot="apply-patch-trigger-content"], [data-slot="session-turn-diff-trigger"]';
+              const closestElement = (node, selector) => {
+                let el = node;
+                while (el && el.nodeType !== 1) el = el.parentNode;
+                while (el) {
+                  if (el.matches && el.matches(selector)) return el;
+                  if (typeof el.closest === 'function') return el.closest(selector);
+                  el = el.parentElement;
+                }
+                return null;
+              };
+              const pathFromToolRoot = (root) => {
+                if (!root || !root.querySelector) return '';
+                const fileName = cleanDisplayedPath(root.querySelector('[data-slot="message-part-title-filename"], [data-slot="apply-patch-filename"], [data-slot="session-turn-diff-filename"]')?.textContent);
+                if (!fileName) return '';
+                const directory = cleanDisplayedPath(root.querySelector('[data-slot="message-part-directory"], [data-slot="apply-patch-directory"], [data-slot="session-turn-diff-directory"]')?.textContent);
+                return directory ? directory.replace(/[\\/]?$/, '/') + fileName : fileName;
+              };
+              const toolOpenIconLink = (target) => {
+                const icon = closestElement(target, toolOpenIconSelector);
+                if (!icon) return '';
+                const stored = icon.getAttribute('data-href');
+                if (stored) return stored;
+                const root = closestElement(icon, toolOpenRootSelector);
+                return pathFromToolRoot(root);
+              };
               const resolveFileOpenTarget = (target, changedButtonOnly) => {
-                 const changedFileHref = changedFileButtonLink(target);
-                 const reviewV2Href = changedFileHref ? '' : reviewV2FileLink(target);
-                 if (changedButtonOnly && !changedFileHref && !reviewV2Href) return null;
-                 const link = !changedFileHref && !reviewV2Href && target && target.closest ? target.closest('a') : null;
-                 if (link && (!link.closest('[data-component="markdown"]') || link.target !== '_blank')) return null;
-                 const rawHref = changedFileHref || reviewV2Href || (link ? (link.getAttribute('href') || inferredFileLink(link)) : '');
-                 if (!isLocalFileLink(rawHref)) return null;
-                 const element = changedFileHref
-                   ? target.closest(changedFileButtonSelector)
-                   : (reviewV2Href ? target.closest(reviewV2FileButtonSelector) : link);
+                const iconHref = toolOpenIconLink(target);
+                if (iconHref) {
+                  return { element: closestElement(target, toolOpenIconSelector), href: iconHref };
+                }
+                const changedFileHref = changedFileButtonLink(target);
+                const reviewV2Href = changedFileHref ? '' : reviewV2FileLink(target);
+                if (changedButtonOnly && !changedFileHref && !reviewV2Href) return null;
+                const link = !changedFileHref && !reviewV2Href && target && target.closest ? target.closest('a') : null;
+                if (link && (!link.closest('[data-component="markdown"]') || link.target !== '_blank')) return null;
+                const rawHref = changedFileHref || reviewV2Href || (link ? (link.getAttribute('href') || inferredFileLink(link)) : '');
+                if (!isLocalFileLink(rawHref)) return null;
+                const element = changedFileHref
+                  ? target.closest(changedFileButtonSelector)
+                  : (reviewV2Href ? target.closest(reviewV2FileButtonSelector) : link);
                 return { element: element, href: rawHref };
               };
+              const partIdOf = (node) => {
+                const el = node && node.closest ? node.closest('[data-timeline-part-id]') : null;
+                return el ? (el.getAttribute('data-timeline-part-id') || '') : '';
+              };
+              const insertToolOpenIcons = () => {
+                const roots = document.querySelectorAll(toolOpenRootSelector);
+                for (const root of roots) {
+                  const href = pathFromToolRoot(root);
+                  if (!href) continue;
+                  const actions = root.querySelector('[data-slot="message-part-actions"], [data-slot="apply-patch-trigger-actions"], [data-slot="session-turn-diff-meta"]');
+                  if (!actions) continue;
+                  const partID = partIdOf(root);
+                  const existing = root.querySelector(toolOpenIconSelector);
+                  if (existing) {
+                    existing.setAttribute('data-href', href);
+                    existing.setAttribute('data-part-id', partID);
+                    continue;
+                  }
+                  const icon = document.createElement('span');
+                  icon.setAttribute('data-slot', 'opencode-intellij-open-file');
+                  icon.setAttribute('data-href', href);
+                  icon.setAttribute('data-part-id', partID);
+                  icon.setAttribute('role', 'button');
+                  icon.setAttribute('tabindex', '0');
+                  icon.style.cssText = 'display:inline-flex;align-items:center;flex:0 0 auto;width:14px;height:14px;margin-inline-end:6px;color:inherit;opacity:0.72;';
+                  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                  svg.setAttribute('viewBox', '0 0 20 20');
+                  svg.setAttribute('width', '14');
+                  svg.setAttribute('height', '14');
+                  svg.setAttribute('aria-hidden', 'true');
+                  svg.style.pointerEvents = 'none';
+                  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                  path.setAttribute('d', 'M11.7 4.6H15.4V8.3M15.2 4.8L10 10M4.6 6.2V15.4H13.8V11.2');
+                  path.setAttribute('fill', 'none');
+                  path.setAttribute('stroke', 'currentColor');
+                  path.setAttribute('stroke-linecap', 'square');
+                  svg.appendChild(path);
+                  icon.appendChild(svg);
+                  actions.insertBefore(icon, actions.firstChild);
+                }
+              };
+              let insertQueued = false;
+              const queueInsertToolOpenIcons = () => {
+                if (insertQueued) return;
+                insertQueued = true;
+                queueMicrotask(() => {
+                  insertQueued = false;
+                  insertToolOpenIcons();
+                });
+              };
+              new MutationObserver(queueInsertToolOpenIcons).observe(document.documentElement, { childList: true, subtree: true });
+              queueInsertToolOpenIcons();
               const handleFileOpenEvent = (event, changedButtonOnly) => {
+                const icon = closestElement(event.target, toolOpenIconSelector);
+                if (icon) {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  event.stopImmediatePropagation();
+                  if (event.type !== 'mousedown') {
+                    const iconHref = toolOpenIconLink(icon);
+                    if (iconHref) openFileInIde(iconHref, icon.getAttribute('data-part-id') || partIdOf(icon));
+                  }
+                  return;
+                }
                 if (event.defaultPrevented) return;
                 // Alt and Ctrl/Cmd+Click are reserved for the IDE diff gesture
-                // (buildDiffNavigationScript); a plain click still opens the file.
+                // (buildDiffNavigationScript); a plain click still opens markdown/review files.
                 if (event.altKey || (/Mac|iPhone|iPod|iPad/.test(navigator.platform) ? event.metaKey : event.ctrlKey)) return;
                 const resolved = resolveFileOpenTarget(event.target, changedButtonOnly);
                 if (!resolved) return;
@@ -1800,9 +1893,9 @@ internal object OpenCodeBrowserSnippets {
                 event.stopImmediatePropagation();
                 openFileInIde(resolved.href);
               };
-              document.addEventListener('pointerdown', (event) => handleFileOpenEvent(event, true), true);
-              document.addEventListener('mousedown', (event) => handleFileOpenEvent(event, true), true);
-              document.addEventListener('click', (event) => handleFileOpenEvent(event, false), true);
+              window.addEventListener('pointerdown', (event) => handleFileOpenEvent(event, true), true);
+              window.addEventListener('mousedown', (event) => handleFileOpenEvent(event, true), true);
+              window.addEventListener('click', (event) => handleFileOpenEvent(event, false), true);
               $$POINTER_CURSOR_KIT_JS
               document.addEventListener('mouseover', (event) => {
                 const target = event.target && event.target.nodeType === 1 ? event.target : null;
@@ -1854,6 +1947,7 @@ internal object OpenCodeBrowserSnippets {
               // there is no GET-by-part, so the JVM pages session.messages to find it.
               const resolveDiffTarget = (start) => {
                 if (!start || !start.closest) return null;
+                if (start.closest('[data-slot="opencode-intellij-open-file"]')) return null;
                 const fileItem = start.closest('[data-file]');
                 if (fileItem) return { messageID: messageIdOf(fileItem), filePath: fileItem.getAttribute('data-file') || '', partID: '' };
                 const turnRow = start.closest('[data-slot="session-turn-diff-trigger"]');

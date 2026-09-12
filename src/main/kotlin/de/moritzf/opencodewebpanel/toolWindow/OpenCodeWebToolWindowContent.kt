@@ -341,7 +341,7 @@ class OpenCodeWebToolWindowContent(
             OpenCodeBrowserSnippets.buildFileLinkHandlerScript(
                 openCodeProjectDirectory(),
                 enabled = true,
-                openFileCallback = openFileLinkQuery.inject("rawHref + '\\n' + directory"),
+                openFileCallback = openFileLinkQuery.inject("rawHref + '\\n' + directory + '\\n' + partID"),
             )
         },
     )
