@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Web localStorage restore no longer seeds tabs, layout, or other session
+  state into isolated per-project servers. Only settings, theme, language,
+  and model preferences are mirrored, and they are shared across backends.
+
 ## [2.0.2] - 2026-09-12
 
 ### Fixed

@@ -301,17 +301,19 @@ class OpenCodeSettingsStateTest {
     }
 
     @Test
-    fun backendLocalStorageSnapshotIsKeyedSeparately() {
+    fun localStorageSnapshotIsSharedAcrossBackends() {
         val settings = OpenCodeSettingsState()
         settings.setLocalStorageSnapshot("sbx:abc", """{"x":1}""")
-        assertEquals("{}", settings.localStorageSnapshot())
-        assertEquals("""{"x":1}""", settings.localStorageSnapshot("sbx:abc"))
+        assertEquals("""{"x":1}""", settings.openCodeLocalStorageSnapshot)
+        assertEquals("""{"x":1}""", settings.localStorageSnapshot())
+        assertEquals("""{"x":1}""", settings.localStorageSnapshot("native:other"))
+        assertTrue(settings.openCodeLocalStorageSnapshotsByBackend.isEmpty())
         settings.setLocalStorageSnapshot("sbx:abc", "{}")
-        assertFalse(settings.openCodeLocalStorageSnapshotsByBackend.containsKey("sbx:abc"))
+        assertEquals("{}", settings.localStorageSnapshot())
     }
 
     @Test
-    fun backendLocalStorageMapDropsNativeKeyAndInvalidJson() {
+    fun legacyBackendSnapshotsFallBackWhenSharedIsEmpty() {
         val settings = OpenCodeSettingsState()
         settings.loadState(
             OpenCodeSettingsState().apply {
@@ -322,9 +324,10 @@ class OpenCodeSettingsStateTest {
                 )
             },
         )
-        assertFalse(settings.openCodeLocalStorageSnapshotsByBackend.containsKey(OpenCodeServerBackend.NATIVE_ID))
-        assertEquals("{}", settings.localStorageSnapshot("sbx:bad"))
-        assertEquals("""{"ok":true}""", settings.localStorageSnapshot("sbx:ok"))
+        assertTrue(settings.openCodeLocalStorageSnapshotsByBackend.isEmpty())
+        assertEquals("""{"ok":true}""", settings.openCodeLocalStorageSnapshot)
+        assertEquals("""{"ok":true}""", settings.localStorageSnapshot())
+        assertEquals("""{"ok":true}""", settings.localStorageSnapshot("sbx:other"))
     }
 
     @Test

@@ -11,8 +11,8 @@ import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.server.SbxCli
 
 // Roaming is disabled deliberately: the state mixes machine-specific values (binary path,
-// fixed port) and the mirrored OpenCode web-session snapshot (up to 2 MB of local browser
-// state), none of which belong in Settings Sync or exported settings.
+// fixed port) and the mirrored OpenCode settings snapshot (theme/language/model/`settings.v3`),
+// none of which belong in Settings Sync or exported settings.
 @State(name = "OpenCodeWebPanelSettings", storages = [Storage("opencode-web-panel.xml", roamingType = RoamingType.DISABLED)])
 @Service(Service.Level.APP)
 class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
@@ -95,27 +95,27 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
         waitForIntellijMcpServer = state.waitForIntellijMcpServer
         enableServerLogs = state.enableServerLogs
         openCodeLocalStorageSnapshot = sanitizeOpenCodeLocalStorageSnapshot(state.openCodeLocalStorageSnapshot)
-        openCodeLocalStorageSnapshotsByBackend = sanitizeLocalStorageSnapshotsByBackend(
+        val legacySnapshots = sanitizeLocalStorageSnapshotsByBackend(
             state.openCodeLocalStorageSnapshotsByBackend,
         )
+        if (openCodeLocalStorageSnapshot == "{}") {
+            openCodeLocalStorageSnapshot = firstNonEmptySnapshot(legacySnapshots.values)
+        }
+        openCodeLocalStorageSnapshotsByBackend = HashMap()
     }
 
     fun localStorageSnapshot(backendId: String = OpenCodeServerBackend.NATIVE_ID): String {
-        if (backendId == OpenCodeServerBackend.NATIVE_ID) return openCodeLocalStorageSnapshot
-        return sanitizeOpenCodeLocalStorageSnapshot(openCodeLocalStorageSnapshotsByBackend[backendId])
+        val shared = sanitizeOpenCodeLocalStorageSnapshot(openCodeLocalStorageSnapshot)
+        if (shared != "{}") return shared
+        val keyed = sanitizeOpenCodeLocalStorageSnapshot(openCodeLocalStorageSnapshotsByBackend[backendId])
+        if (keyed != "{}") return keyed
+        return firstNonEmptySnapshot(openCodeLocalStorageSnapshotsByBackend.values)
     }
 
+    @Suppress("UNUSED_PARAMETER")
     fun setLocalStorageSnapshot(backendId: String, snapshot: String) {
-        val sanitized = sanitizeOpenCodeLocalStorageSnapshot(snapshot)
-        if (backendId == OpenCodeServerBackend.NATIVE_ID) {
-            openCodeLocalStorageSnapshot = sanitized
-            return
-        }
-        if (sanitized == "{}") {
-            openCodeLocalStorageSnapshotsByBackend.remove(backendId)
-        } else {
-            openCodeLocalStorageSnapshotsByBackend[backendId] = sanitized
-        }
+        openCodeLocalStorageSnapshot = sanitizeOpenCodeLocalStorageSnapshot(snapshot)
+        openCodeLocalStorageSnapshotsByBackend.clear()
     }
 
     fun runtimeModeValue(): OpenCodeRuntimeMode = OpenCodeRuntimeMode.fromStorageValue(runtimeMode)
@@ -196,6 +196,10 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
                 if (sanitized != "{}") result[id] = sanitized
             }
             return result
+        }
+
+        private fun firstNonEmptySnapshot(source: Collection<String>): String {
+            return source.map(::sanitizeOpenCodeLocalStorageSnapshot).firstOrNull { it != "{}" } ?: "{}"
         }
 
     }

@@ -79,7 +79,14 @@ internal object OpenCodeBrowserSnippets {
         }, true);
     """.trimIndent()
 
-    /** The OpenCode localStorage keys mirrored into the IDE-side settings store. */
+    /**
+     * OpenCode localStorage keys mirrored into the IDE-side settings store.
+     *
+     * Isolated serve processes (one per IDE project) do not share sessions, so
+     * only user settings/prefs are restored: `settings.v3`, theme, language, and
+     * model favorites. Tabs, layout, home.servers, workspace, and notification
+     * lists stay with the live origin.
+     */
     @Language("JavaScript")
     private val PERSISTED_STORAGE_KEY_FILTER_JS = $$"""
         const exactKeys = new Set([
@@ -89,14 +96,10 @@ internal object OpenCodeBrowserSnippets {
           'opencode-theme-css-dark',
           'settings.v3',
         ]);
-        const globalKeys = /^opencode\.global\.dat:(language|model|layout|layout\.page|permission|notification|tabs|open\.app|go-upsell|home\.servers|review-panel-v2|new-session\.provider-tip)$/;
-        const workspaceKeys = /^opencode\.workspace\.[^:]+:workspace:(model-selection|terminal|project|icon|vcs)$/;
-        const windowKeys = /^opencode\.window\.browser\.dat:tabs(\.(recent|info|closed))?$/;
-        const shouldPersistKey = (key) => typeof key === 'string' && (exactKeys.has(key) || globalKeys.test(key) || workspaceKeys.test(key) || windowKeys.test(key));
-        // Tabs / layout / home.servers persist the server connection key as the full origin
-        // (and base64url(origin) inside session routes). Auto-port relaunches change origin →
-        // restoring a prior snapshot would point at a dead port. Rewrite loopback origins to
-        // the live page origin on restore and before the IDE snapshot is saved.
+        const globalKeys = /^opencode\.global\.dat:(language|model)$/;
+        const shouldPersistKey = (key) => typeof key === 'string' && (exactKeys.has(key) || globalKeys.test(key));
+        // Settings values should not embed server origins; keep the rewrite so a
+        // leftover loopback URL in an older snapshot cannot pin a dead port.
         const LOOPBACK_ORIGIN_RE = /^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?$/i;
         const LOOPBACK_ORIGIN_IN_TEXT_RE = /https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?/gi;
         const encodeServerKey = (value) => {

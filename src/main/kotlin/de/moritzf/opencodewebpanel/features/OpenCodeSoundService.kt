@@ -139,9 +139,7 @@ internal object OpenCodeSoundService {
     }
 
     private fun currentSettings(): OpenCodeSoundSettings {
-        // Sound preferences are app-level: the native snapshot has always carried them, and
-        // per-backend page state (theme, layout) is not sound-relevant.
-        return parseOpenCodeSoundSettings(OpenCodeSettingsState.getInstance().openCodeLocalStorageSnapshot)
+        return parseOpenCodeSoundSettings(OpenCodeSettingsState.getInstance().localStorageSnapshot())
     }
 
     private fun fetchSessionInfo(backendId: String, directory: String, sessionID: String): OpenCodeServerProtocol.SessionInfo? {
