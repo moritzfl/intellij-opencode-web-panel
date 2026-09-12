@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [2.0.2] - 2026-09-12
+
 ### Fixed
 
 - Chat code navigation matches incomplete subpaths and class names more often
