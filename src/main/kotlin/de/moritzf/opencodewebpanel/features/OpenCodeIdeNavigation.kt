@@ -140,26 +140,13 @@ internal class OpenCodeIdeNavigation(
         parsed: OpenCodeServerProtocol.ParsedCodeReference,
         scope: GlobalSearchScope,
     ): VirtualFile? {
-        val fileNames = if (parsed.extension == null && !parsed.hasPath) {
-            listOf(
-                parsed.fileName,
-                "${parsed.fileName}.kt",
-                "${parsed.fileName}.kts",
-                "${parsed.fileName}.java",
-                "${parsed.fileName}.ts",
-                "${parsed.fileName}.tsx",
-                "${parsed.fileName}.js",
-                "${parsed.fileName}.jsx",
-            )
-        } else {
-            listOf(parsed.fileName)
-        }
-        val matches = fileNames.asSequence()
+        val matches = OpenCodeServerProtocol.codeReferenceFileNames(parsed).asSequence()
             .flatMap { fileName -> FilenameIndex.getVirtualFilesByName(fileName, scope).asSequence() }
+            .distinct()
             .toList()
         val picked = OpenCodeServerProtocol.pickDistinctPath(matches.map { it.path }, parsed.path)
             ?: return null
-        return matches.firstOrNull { it.path == picked }
+        return matches.firstOrNull { it.path.replace('\\', '/') == picked.replace('\\', '/') }
     }
 
     private fun memberLine(virtualFile: VirtualFile, memberName: String?): Int? {

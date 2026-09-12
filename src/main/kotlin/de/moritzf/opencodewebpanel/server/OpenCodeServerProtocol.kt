@@ -323,7 +323,7 @@ internal object OpenCodeServerProtocol {
 
     private val QUALIFIED_CLASS = Regex("^(?:[a-zA-Z_][a-zA-Z0-9_]*\\.)+[A-Z][a-zA-Z0-9_]*$")
     private val TYPE_MEMBER_CALL = Regex(
-        """^((?:[a-zA-Z_][a-zA-Z0-9_]*\.)*[A-Z][a-zA-Z0-9_]*)(?:[.#]([a-z_][a-zA-Z0-9_]*))?\(.*\)$""",
+        """^((?:[a-zA-Z_][a-zA-Z0-9_]*\.)*[A-Z][a-zA-Z0-9_]*)(?:[.#]([a-z_][a-zA-Z0-9_]*))?\s*\(.*\)$""",
     )
     private val TYPE_MEMBER_BARE = Regex(
         """^((?:[a-zA-Z_][a-zA-Z0-9_]*\.)*[A-Z][a-zA-Z0-9_]*)[.#]([a-z_][a-zA-Z0-9_]*)$""",
@@ -335,9 +335,37 @@ internal object OpenCodeServerProtocol {
         "md", "txt", "toml", "properties", "sql", "sh", "bash", "zsh",
         "html", "css", "scss", "vue", "svelte", "proto",
     )
+    private val SOURCE_FILE_EXTENSIONS = setOf(
+        "kt", "kts", "java", "ts", "tsx", "js", "jsx", "mjs", "cjs",
+        "py", "rb", "go", "rs", "c", "h", "cc", "cpp", "hpp", "cs", "swift",
+        "m", "mm", "scala", "groovy",
+    )
+    private val CLASS_FILE_EXTENSIONS = listOf("kt", "kts", "java", "ts", "tsx", "js", "jsx")
+
+    /**
+     * Chat, grep, glob, and stack traces decorate paths. Strip bidi marks, a trailing colon
+     * (`Foo.kt:` from grep headers), Python `File "…", line N`, and `(Foo.kt:12)` wrappers.
+     */
+    internal fun normalizeNavigablePath(text: String): String {
+        var value = stripBidiMarks(text.trim())
+        val python = Regex("""^File\s+"([^"\n]+)"\s*,\s*line\s+(\d+)$""", RegexOption.IGNORE_CASE).matchEntire(value)
+        if (python != null) return "${python.groupValues[1]}:${python.groupValues[2]}"
+        val parenFile = Regex(
+            """\(([^()\s]+?\.[A-Za-z][A-Za-z0-9]{0,8}(?::L?\d+(?::\d+)?)?)\)$""",
+        ).find(value)
+        if (parenFile != null) {
+            val inner = parenFile.groupValues[1]
+            val ext = inner.substringBefore(':').substringAfterLast('.').lowercase(Locale.ROOT)
+            if (ext in FILE_EXTENSIONS) value = inner
+        }
+        if (value.endsWith(':') && !(value.length == 2 && value[0].isLetter())) {
+            value = value.replace(Regex(":+$"), "")
+        }
+        return value
+    }
 
     fun parseCodeReference(ref: String): ParsedCodeReference? {
-        val text = ref.trim().ifBlank { return null }
+        val text = normalizeNavigablePath(ref).ifBlank { return null }
         val (pathPart, line, column) = splitPathAndLocation(text)
         if (pathPart.isBlank()) return null
         val call = TYPE_MEMBER_CALL.matchEntire(pathPart)
@@ -387,14 +415,53 @@ internal object OpenCodeServerProtocol {
     internal fun findMemberLineIndex(source: String, member: String): Int? {
         val name = member.trim().ifBlank { return null }
         val escaped = Regex.escape(name)
-        val patterns = listOf(
-            Regex("""\bfun\s+`?$escaped`?\b"""),
+        val definitions = listOf(
+            Regex("""\bfun\s+(?:<[^>\n]*>\s*)?(?:[A-Za-z_][\w.]+\.)?`?$escaped`?\b"""),
             Regex("""\b(?:func|fn|def|function)\s+$escaped\b"""),
-            Regex("""\b$escaped\s*\("""),
+            Regex("""\b(?:val|var|let|const)\s+$escaped\b"""),
         )
-        return source.lineSequence().withIndex()
-            .firstOrNull { (_, line) -> patterns.any { it.containsMatchIn(line) } }
-            ?.index
+        val call = Regex("""\b$escaped\s*\(""")
+        val declarationHint = Regex(
+            """\b(?:fun|func|fn|def|function|void|public|protected|private|internal|static|override|open|suspend|async|final|abstract|class|object)\b""",
+        )
+        val lines = source.lineSequence().withIndex().map { indexed ->
+            indexed.copy(value = indexed.value.trimEnd('\r'))
+        }.filterNot { isIgnorableSourceLine(it.value) }.toList()
+        lines.firstOrNull { (_, line) -> definitions.any { it.containsMatchIn(line) } }?.index?.let { return it }
+        val calls = lines.filter { (_, line) -> call.containsMatchIn(line) }
+        return calls.firstOrNull { (_, line) -> declarationHint.containsMatchIn(line) }?.index
+            ?: calls.firstOrNull()?.index
+    }
+
+    private fun isIgnorableSourceLine(line: String): Boolean {
+        val trimmed = line.trim()
+        return trimmed.isEmpty() ||
+            trimmed.startsWith("//") ||
+            trimmed.startsWith('#') ||
+            trimmed.startsWith('*') ||
+            trimmed.startsWith("/*")
+    }
+
+    /**
+     * Filenames the project index should probe for [parsed]. Class names try common source
+     * suffixes; `Foo.Bar` / `Foo.Companion` also try the outer type's file.
+     */
+    internal fun codeReferenceFileNames(parsed: ParsedCodeReference): List<String> {
+        val names = LinkedHashSet<String>()
+        fun addBase(base: String) {
+            val trimmed = base.trim().ifBlank { return }
+            names += trimmed
+            val ext = trimmed.substringAfterLast('.', "")
+            if (ext.isNotEmpty() && ext.lowercase(Locale.ROOT) in FILE_EXTENSIONS) return
+            CLASS_FILE_EXTENSIONS.forEach { names += "$trimmed.$it" }
+        }
+        addBase(parsed.fileName)
+        val parts = parsed.qualifiedName?.split('.').orEmpty()
+        if (parts.size >= 2) {
+            val outer = parts[parts.size - 2]
+            if (outer.firstOrNull()?.isUpperCase() == true) addBase(outer)
+        }
+        return names.toList()
     }
 
     /**
@@ -408,7 +475,19 @@ internal object OpenCodeServerProtocol {
         val ranked = unique.map { it to scoreFilePathSuffix(it, referencePath) }
         val best = ranked.maxOf { it.second }
         if (best <= 0) return null
-        return ranked.singleOrNull { it.second == best }?.first
+        val winners = ranked.filter { it.second == best }
+        if (winners.size == 1) return winners[0].first
+        val byTestPenalty = winners.map { it.first to testPathPenalty(it.first) }
+        val lightest = byTestPenalty.minOf { it.second }
+        return byTestPenalty.singleOrNull { it.second == lightest }?.first
+    }
+
+    private fun testPathPenalty(path: String): Int {
+        val normalized = path.replace('\\', '/').lowercase(Locale.ROOT)
+        var penalty = 0
+        if ("/src/test/" in normalized || "/src/tests/" in normalized) penalty += 2
+        if ("/test/" in normalized || "/tests/" in normalized || "/__tests__/" in normalized) penalty += 1
+        return penalty
     }
 
     data class SystemNotificationPayload(
@@ -593,8 +672,10 @@ internal object OpenCodeServerProtocol {
             if (value.isNotBlank()) seen += value
         }
         add(path)
+        add(path.replace('\\', '/'))
         val tilde = expandLeadingTilde(path, home)
         add(tilde)
+        add(tilde.replace('\\', '/'))
         windowsDriveGuestToHost(path)?.let(::add)
         windowsDriveGuestToHost(tilde)?.let(::add)
         for (candidate in seen.toList()) {
@@ -653,7 +734,7 @@ internal object OpenCodeServerProtocol {
     }
 
     /** Strips surrounding whitespace a chat link can pick up before it reaches the resolver. */
-    private fun cleanFileLinkHref(href: String): String = href.trim()
+    private fun cleanFileLinkHref(href: String): String = normalizeNavigablePath(href)
 
     /** Bidi marks survive percent-decoding, so they are stripped from the decoded spelling. */
     private fun stripBidiMarks(value: String): String =
@@ -816,7 +897,7 @@ internal object OpenCodeServerProtocol {
                         stack.addLast(entry to depth + 1)
                         continue
                     }
-                    if (!name.equals(fileName, ignoreCase = !caseSensitive)) continue
+                    if (!fileNameMatches(name, fileName, caseSensitive)) continue
                     val score = matchedSuffixSegments(entry, segments, caseSensitive)
                     val entryDepth = entry.nameCount
                     val better = score > bestScore || (score == bestScore && entryDepth < bestDepth) ||
@@ -838,11 +919,14 @@ internal object OpenCodeServerProtocol {
         var candidateIndex = candidate.nameCount - 1
         var segmentIndex = segments.size - 1
         while (candidateIndex >= 0 && segmentIndex >= 0) {
-            if (!candidate.getName(candidateIndex).toString()
-                    .equals(segments[segmentIndex], ignoreCase = !caseSensitive)
-            ) {
-                break
+            val candidateName = candidate.getName(candidateIndex).toString()
+            val segment = segments[segmentIndex]
+            val matches = if (segmentIndex == segments.lastIndex) {
+                fileNameMatches(candidateName, segment, caseSensitive)
+            } else {
+                candidateName.equals(segment, ignoreCase = !caseSensitive)
             }
+            if (!matches) break
             matched++
             candidateIndex--
             segmentIndex--
@@ -852,21 +936,48 @@ internal object OpenCodeServerProtocol {
 
     /** Higher is better. Exact trailing-segment match outranks a filename-only hit. */
     internal fun scoreFilePathSuffix(candidatePath: String, referencePath: String): Int {
-        val needle = referencePath.replace('\\', '/').trimStart('/')
-        val segments = needle.split('/').filter { it.isNotBlank() }
+        val segments = referencePathSegments(referencePath)
         if (segments.isEmpty()) return 0
-        val path = candidatePath.replace('\\', '/')
-        if (path.endsWith("/$needle") || path.endsWith(needle)) return segments.size + 1
-        val parts = path.split('/').filter { it.isNotBlank() }
+        val parts = candidatePath.replace('\\', '/').split('/').filter { it.isNotBlank() }
+        if (parts.isEmpty()) return 0
         var matched = 0
         var pathIndex = parts.lastIndex
         var segmentIndex = segments.lastIndex
-        while (pathIndex >= 0 && segmentIndex >= 0 && parts[pathIndex] == segments[segmentIndex]) {
+        while (pathIndex >= 0 && segmentIndex >= 0) {
+            val matches = if (segmentIndex == segments.lastIndex) {
+                fileNameMatches(parts[pathIndex], segments[segmentIndex], caseSensitive = false)
+            } else {
+                parts[pathIndex].equals(segments[segmentIndex], ignoreCase = true)
+            }
+            if (!matches) break
             matched++
             pathIndex--
             segmentIndex--
         }
-        return matched
+        if (matched == 0) return 0
+        return if (matched == segments.size) matched + 1 else matched
+    }
+
+    private fun referencePathSegments(referencePath: String): List<String> {
+        val slash = referencePath.replace('\\', '/').trimStart('/')
+        if (slash.isBlank()) return emptyList()
+        if (slash.contains('/')) return slash.split('/').filter { it.isNotBlank() }
+        val ext = slash.substringAfterLast('.', "")
+        if (ext.isNotEmpty() && ext.lowercase(Locale.ROOT) in FILE_EXTENSIONS) return listOf(slash)
+        if (QUALIFIED_CLASS.matches(slash) || (slash.contains('.') && ext.lowercase(Locale.ROOT) !in FILE_EXTENSIONS)) {
+            val dotted = slash.split('.').filter { it.isNotBlank() }
+            if (dotted.size > 1) return dotted
+        }
+        return listOf(slash)
+    }
+
+    private fun fileNameMatches(actual: String, referenced: String, caseSensitive: Boolean): Boolean {
+        if (actual.equals(referenced, ignoreCase = !caseSensitive)) return true
+        if (referenced.contains('.')) return false
+        val ext = actual.substringAfterLast('.', "")
+        if (ext.isEmpty() || ext.lowercase(Locale.ROOT) !in SOURCE_FILE_EXTENSIONS) return false
+        val base = actual.substring(0, actual.length - ext.length - 1)
+        return base.equals(referenced, ignoreCase = !caseSensitive)
     }
 
     data class FileLinkTarget(val path: Path, val line: Int?, val column: Int?)

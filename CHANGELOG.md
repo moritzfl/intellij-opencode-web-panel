@@ -4,6 +4,15 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Chat code navigation matches incomplete subpaths and class names more often
+  (`src/Foo` → `Foo.kt`, `com.example.Foo` uses package folders, `Foo.Bar` /
+  `Foo.Companion` fall back to the outer file). Member clicks prefer the
+  definition over an earlier call, including Java methods and Kotlin properties.
+- Grep/glob output, stack traces, and `File "…", line N` now resolve (trailing
+  `:` headers and `(Foo.kt:12)` wrappers).
+
 ## [2.0.1] - 2026-09-11
 
 ### Fixed

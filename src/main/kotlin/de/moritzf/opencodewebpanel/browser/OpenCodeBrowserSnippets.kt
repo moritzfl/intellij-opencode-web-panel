@@ -525,7 +525,8 @@ internal object OpenCodeBrowserSnippets {
               window.__opencodeIntellijCodeNavInstalled = true;
               const hasExtension = /\.[a-zA-Z][a-zA-Z0-9]{0,8}(?::L?\d+(?:-L?\d+)?|:\d+:\d+|#L?\d+(?:-L?\d+)?|\(L?\d+(?:\s*,\s*\d+)?\))?$/i;
               const hasPathLocator = /[\\/].*(?::L?\d+(?:-L?\d+)?|:\d+:\d+|#L?\d+(?:-L?\d+)?|\(L?\d+(?:\s*,\s*\d+)?\))$/i;
-              const fileLoc = /(?:[A-Za-z]:)?(?:[^\s<>"'`]+[\/\\])*[^\s\/\\]+\.[A-Za-z][a-zA-Z0-9]{0,8}(?::L?\d+(?:-L?\d+)?|:\d+:\d+|#L?\d+(?:-L?\d+)?|\(L?\d+(?:\s*,\s*\d+)?\))/i;
+              const fileLocWithDir = /(?:[A-Za-z]:)?(?:[^\s<>"'`()]+[\/\\])+[^\s\/\\():]+\.[A-Za-z][A-Za-z0-9]{0,8}(?::L?\d+(?:-L?\d+)?|:\d+:\d+|#L?\d+(?:-L?\d+)?|\(L?\d+(?:\s*,\s*\d+)?\))?/i;
+              const fileLocBare = /[^\s\/\\():]+\.[A-Za-z][A-Za-z0-9]{0,8}(?::L?\d+(?:-L?\d+)?|:\d+:\d+|#L?\d+(?:-L?\d+)?|\(L?\d+(?:\s*,\s*\d+)?\))/i;
               const locatorAtStart = /^\s*(:L?\d+(?:-L?\d+)?|:\d+:\d+|#L?\d+(?:-L?\d+)?|\(L?\d+(?:\s*,\s*\d+)?\))/i;
               const isUrl = /^[a-z][a-z0-9+.-]*:\/\//i;
               const isPascalCase = /^[A-Z][a-zA-Z0-9_]*$/;
@@ -579,7 +580,7 @@ internal object OpenCodeBrowserSnippets {
                 if (path) return withAdjacentLocator(path, codeEl);
                 return withAdjacentLocator(text, codeEl);
               };
-              const inOutput = (el) => !!(el && el.closest && el.closest('pre, [data-slot="bash-pre"], [data-component="tool-output"]'));
+              const inOutput = (el) => !!(el && el.closest && el.closest('pre, [data-slot="bash-pre"], [data-component="tool-output"], [data-component="tool-loaded-file"]'));
               const skipEmptyText = (node) => {
                 let current = node;
                 while (current && current.nodeType === Node.TEXT_NODE && !/\S/.test(current.textContent || '')) {
@@ -634,7 +635,7 @@ internal object OpenCodeBrowserSnippets {
                 let end = offset;
                 while (start > 0 && !isBreak(text[start - 1])) start -= 1;
                 while (end < text.length && !isBreak(text[end])) end += 1;
-                const token = text.slice(start, end);
+                const token = text.slice(start, end).replace(/:+$/, '');
                 if (isUrl.test(token)) return '';
                 const glueAfter = () => {
                   const rest = text.slice(end).replace(/^[\s<>"'`]+/, '');
@@ -646,11 +647,14 @@ internal object OpenCodeBrowserSnippets {
                   while (prevEnd > 0 && isBreak(text[prevEnd - 1])) prevEnd -= 1;
                   let prevStart = prevEnd;
                   while (prevStart > 0 && !isBreak(text[prevStart - 1])) prevStart -= 1;
-                  return text.slice(prevStart, prevEnd) + token;
+                  return text.slice(prevStart, prevEnd).replace(/:+$/, '') + token;
                 };
-                const candidate = fileLoc.test(token) ? token : glueAfter();
-                const match = (fileLoc.test(candidate) ? candidate : glueBefore()).match(fileLoc);
-                return match ? match[0] : '';
+                const pick = (value) => {
+                  const cleaned = (value || '').replace(/:+$/, '');
+                  return (fileLocWithDir.exec(cleaned) || fileLocBare.exec(cleaned) || [])[0] || '';
+                };
+                const candidate = pick(token) ? token : glueAfter();
+                return pick(candidate) || pick(glueBefore());
               };
               document.addEventListener('click', (event) => {
                 if (event.defaultPrevented) return;
@@ -1751,7 +1755,7 @@ internal object OpenCodeBrowserSnippets {
                 const directory = cleanDisplayedPath(header.querySelector ? header.querySelector('[data-slot="session-review-v2-file-path"]')?.textContent : '');
                 return directory ? directory.replace(/[\\/]?$/, '/') + fileName : fileName;
               };
-              const lastSegmentLooksLikeFile = (value) => {
+               const lastSegmentLooksLikeFile = (value) => {
                 const path = String(value || '').split('?')[0].split('#')[0].replace(/[\\/]+$/, '');
                 const last = (path.split(/[\\/]/).filter(Boolean).pop() || '').replace(/:\\d+(?::\\d+)?$/, '');
                 return /\\.[a-zA-Z0-9]{1,8}$/.test(last);
@@ -1773,16 +1777,16 @@ internal object OpenCodeBrowserSnippets {
                 $${openFileAction};
               };
               const resolveFileOpenTarget = (target, changedButtonOnly) => {
-                const changedFileHref = changedFileButtonLink(target);
-                const reviewV2Href = changedFileHref ? '' : reviewV2FileLink(target);
-                if (changedButtonOnly && !changedFileHref && !reviewV2Href) return null;
-                const link = !changedFileHref && !reviewV2Href && target && target.closest ? target.closest('a') : null;
-                if (link && (!link.closest('[data-component="markdown"]') || link.target !== '_blank')) return null;
-                const rawHref = changedFileHref || reviewV2Href || (link ? (link.getAttribute('href') || inferredFileLink(link)) : '');
-                if (!isLocalFileLink(rawHref)) return null;
-                const element = changedFileHref
-                  ? target.closest(changedFileButtonSelector)
-                  : (reviewV2Href ? target.closest(reviewV2FileButtonSelector) : link);
+                 const changedFileHref = changedFileButtonLink(target);
+                 const reviewV2Href = changedFileHref ? '' : reviewV2FileLink(target);
+                 if (changedButtonOnly && !changedFileHref && !reviewV2Href) return null;
+                 const link = !changedFileHref && !reviewV2Href && target && target.closest ? target.closest('a') : null;
+                 if (link && (!link.closest('[data-component="markdown"]') || link.target !== '_blank')) return null;
+                 const rawHref = changedFileHref || reviewV2Href || (link ? (link.getAttribute('href') || inferredFileLink(link)) : '');
+                 if (!isLocalFileLink(rawHref)) return null;
+                 const element = changedFileHref
+                   ? target.closest(changedFileButtonSelector)
+                   : (reviewV2Href ? target.closest(reviewV2FileButtonSelector) : link);
                 return { element: element, href: rawHref };
               };
               const handleFileOpenEvent = (event, changedButtonOnly) => {
