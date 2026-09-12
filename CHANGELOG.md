@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [2.0.3] - 2026-09-12
+
 ### Changed
 
 - Web localStorage restore no longer seeds tabs, layout, or other session
