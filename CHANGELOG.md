@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [2.0.4] - 2026-09-13
+
 ### Fixed
 
 - Jump to Source (F4) from a conversation diff now opens the original file at the matching line.
