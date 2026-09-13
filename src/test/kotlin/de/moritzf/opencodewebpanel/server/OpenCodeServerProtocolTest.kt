@@ -2002,6 +2002,36 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun resolveFileLinkSkipsIncompleteGuessWhenDisabled() {
+        val guessBase = Files.createTempDirectory("opencode-no-guess")
+        Files.createDirectories(guessBase.resolve("nested/src"))
+        val guessed = Files.writeString(guessBase.resolve("nested/src/Main.kt"), "guess")
+        val exactBase = Files.createTempDirectory("opencode-no-guess-exact")
+        Files.createDirectories(exactBase.resolve("src"))
+        val exact = Files.writeString(exactBase.resolve("src/Main.kt"), "exact")
+
+        assertEquals(
+            guessed.normalize(),
+            OpenCodeServerProtocol.resolveFileLinkWithBases("src/Main.kt", listOf(guessBase.toString()))?.path,
+        )
+        assertNull(
+            OpenCodeServerProtocol.resolveFileLinkWithBases(
+                "src/Main.kt",
+                listOf(guessBase.toString()),
+                guessIncomplete = false,
+            ),
+        )
+        assertEquals(
+            exact.normalize(),
+            OpenCodeServerProtocol.resolveFileLinkWithBases(
+                "src/Main.kt",
+                listOf(exactBase.toString()),
+                guessIncomplete = false,
+            )?.path,
+        )
+    }
+
+    @Test
     fun resolveFileLinkGuessUsesCaseInsensitiveFilesystemSemanticsWhenRequested() {
         val base = Files.createTempDirectory("opencode-case-guess")
         Files.createDirectories(base.resolve("nested/src"))

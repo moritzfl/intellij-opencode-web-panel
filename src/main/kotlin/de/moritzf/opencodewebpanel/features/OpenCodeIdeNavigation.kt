@@ -17,13 +17,11 @@ import com.intellij.util.concurrency.AppExecutorUtil
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicLong
+import de.moritzf.opencodewebpanel.server.OpenCodeHostPaths
 import de.moritzf.opencodewebpanel.server.OpenCodeProtocolResult
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.server.OpenCodeUnifiedDiff
-import de.moritzf.opencodewebpanel.server.SbxCli
-import de.moritzf.opencodewebpanel.server.SbxLaunchSpec
-import de.moritzf.opencodewebpanel.server.SbxLaunchSpecInspection
 
 internal class OpenCodeIdeNavigation(
     private val project: Project,
@@ -184,20 +182,9 @@ internal class OpenCodeIdeNavigation(
         return OpenCodeServerProtocol.findMemberLineIndex(text, member)
     }
 
-    private fun pathHome(): String? {
-        return if (OpenCodeServerBackend.isNative(serverManager.backendId)) {
-            System.getProperty("user.home")
-        } else {
-            SbxCli.SANDBOX_HOME
-        }
-    }
+    private fun pathHome(): String? = OpenCodeHostPaths.pathHome(serverManager.backendId)
 
     private fun guestToHostPrefixes(): List<Pair<String, String>> {
-        val dir = projectDirectory() ?: return emptyList()
-        if (OpenCodeServerBackend.isNative(serverManager.backendId)) return emptyList()
-        val spec = (SbxLaunchSpec.inspect(dir) as? SbxLaunchSpecInspection.Valid)?.spec
-        val extra = spec?.let { SbxCli.resolveExtraMounts(it.extraMounts, dir) }.orEmpty()
-        val persist = spec?.takeIf { it.persistSandboxSessions }?.let { SbxCli.sandboxPersistDataHome(it.name) }
-        return SbxCli.guestToHostPathMappings(dir, extra, persist)
+        return OpenCodeHostPaths.guestToHostPrefixes(serverManager.backendId, projectDirectory())
     }
 }

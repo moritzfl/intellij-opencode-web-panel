@@ -12,7 +12,10 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.fileTypes.FileTypeManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.SystemInfo
+import com.intellij.openapi.vfs.LocalFileSystem
+import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.jcef.JBCefBrowser
+import de.moritzf.opencodewebpanel.server.OpenCodeHostPaths
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.server.OpenCodeProtocolResult
 import de.moritzf.opencodewebpanel.server.OpenCodeUnifiedDiff
@@ -156,16 +159,33 @@ internal class OpenCodeDiffNavigation(
     private fun buildDiffRequest(diff: OpenCodeServerProtocol.SnapshotFileDiff): DiffRequest? {
         val sides = OpenCodeUnifiedDiff.sides(diff.patch) ?: return null
         val name = diff.file?.takeIf { it.isNotBlank() } ?: "diff"
-        val fileName = name.substringAfterLast('/').substringAfterLast('\\')
-        val fileType = FileTypeManager.getInstance().getFileTypeByFileName(fileName)
         val factory = DiffContentFactory.getInstance()
+        val highlightFile = resolveHighlightFile(diff.file)
+        val after = if (highlightFile != null) {
+            factory.create(project, sides.after, highlightFile)
+        } else {
+            val fileName = name.substringAfterLast('/').substringAfterLast('\\')
+            factory.create(project, sides.after, FileTypeManager.getInstance().getFileTypeByFileName(fileName))
+        }
         return SimpleDiffRequest(
             name,
-            factory.create(project, sides.before, fileType),
-            factory.create(project, sides.after, fileType),
+            factory.create(project, sides.before, after),
+            after,
             "Before",
             "After",
         )
+    }
+
+    private fun resolveHighlightFile(filePath: String?): VirtualFile? {
+        val directory = projectDirectory()?.takeIf { it.isNotBlank() } ?: return null
+        val target = OpenCodeServerProtocol.resolveFileLinkWithBases(
+            filePath,
+            listOf(directory),
+            guestToHostPrefixes = OpenCodeHostPaths.guestToHostPrefixes(serverManager.backendId, directory),
+            home = OpenCodeHostPaths.pathHome(serverManager.backendId),
+            guessIncomplete = false,
+        ) ?: return null
+        return LocalFileSystem.getInstance().refreshAndFindFileByNioFile(target.path)
     }
 
     private fun showDiffRequests(requests: List<DiffRequest>) {

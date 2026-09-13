@@ -235,6 +235,7 @@ internal object OpenCodeServerProtocol {
         caseSensitive: Boolean = SystemInfo.isFileSystemCaseSensitive,
         guestToHostPrefixes: List<Pair<String, String>> = emptyList(),
         home: String? = null,
+        guessIncomplete: Boolean = true,
     ): FileLinkTarget? {
         if (href.isNullOrBlank()) return null
         val cleanedHref = cleanFileLinkHref(href).ifBlank { return null }
@@ -250,7 +251,7 @@ internal object OpenCodeServerProtocol {
             .distinct()
         if (bases.isEmpty()) return null
         val hit = candidateFileLinkPaths(aliased, bases).firstOrNull { Files.isRegularFile(it.second) }
-            ?: bestGuessFileLinkPath(aliased, bases, caseSensitive)
+            ?: (if (guessIncomplete) bestGuessFileLinkPath(aliased, bases, caseSensitive) else null)
             ?: return null
         val (spelling, path) = hit
         return FileLinkTarget(path, spelling.line?.coerceAtLeast(0), spelling.column?.coerceAtLeast(0))

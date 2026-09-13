@@ -336,7 +336,7 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
                 }
                 row {
                     cell(openDiffsInIdeCheckBox)
-                        .comment("Ctrl+Click (Cmd+Click on macOS) or Alt+Click a diff in chat or in the changes list to open it in the IDE's diff viewer.")
+                        .comment("Ctrl+Click (Cmd+Click on macOS) or Alt+Click a diff in chat or in the changes list to open it in the IDE's diff viewer. F4 then jumps to the original file.")
                 }
             }
             group("Link Handling") {
