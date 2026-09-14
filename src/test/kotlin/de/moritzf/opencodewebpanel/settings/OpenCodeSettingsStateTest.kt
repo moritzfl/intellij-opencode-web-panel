@@ -3,6 +3,9 @@ package de.moritzf.opencodewebpanel.settings
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -376,6 +379,38 @@ class OpenCodeSettingsStateTest {
         settings.loadState(OpenCodeProjectSettingsState().apply { projectDirectoryMode = "legacy-value" })
 
         assertEquals(OpenCodeProjectDirectoryMode.AUTO, settings.projectDirectoryModeValue())
+    }
+
+    @Test
+    fun defaultProjectSettingsAreNotPersisted() {
+        assertNull(OpenCodeProjectSettingsState().getState())
+    }
+
+    @Test
+    fun importedDefaultPortFlagIsNotPersisted() {
+        val settings = OpenCodeProjectSettingsState().apply { portImportedFromApplication = true }
+        assertNull(settings.getState())
+        settings.loadState(OpenCodeProjectSettingsState().apply { portImportedFromApplication = true })
+        assertNull(settings.getState())
+    }
+
+    @Test
+    fun customProjectDirectoryIsPersisted() {
+        val settings = OpenCodeProjectSettingsState().apply {
+            projectDirectoryMode = OpenCodeProjectDirectoryMode.CUSTOM.name
+            openCodeProjectDirectory = "/tmp/opencode"
+        }
+        assertSame(settings, settings.getState())
+    }
+
+    @Test
+    fun nonDefaultProjectPortIsPersisted() {
+        val settings = OpenCodeProjectSettingsState().apply {
+            portMode = OpenCodePortMode.FIXED.name
+            fixedPort = 8181
+        }
+        assertNotNull(settings.getState())
+        assertSame(settings, settings.getState())
     }
 
     @Test

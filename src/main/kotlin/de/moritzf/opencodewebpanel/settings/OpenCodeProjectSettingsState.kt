@@ -8,9 +8,9 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.io.FileUtil
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 
-// Deliberately a shareable .idea file: pointing OpenCode at a subfolder of the checked-out
-// project is team configuration, and the path-macro substitution in project storage keeps
-// project-relative paths portable across machines.
+// Shareable .idea file for team-visible project settings (custom OpenCode directory, XML port
+// fallback). Path-macro substitution keeps project-relative paths portable. getState() is null
+// while those stay at defaults so a one-shot in-memory port-import flag cannot create the file.
 @State(name = "OpenCodeWebPanelProjectSettings", storages = [Storage("opencode-web-panel-project.xml")])
 @Service(Service.Level.PROJECT)
 class OpenCodeProjectSettingsState : PersistentStateComponent<OpenCodeProjectSettingsState> {
@@ -20,7 +20,14 @@ class OpenCodeProjectSettingsState : PersistentStateComponent<OpenCodeProjectSet
     var fixedPort: Int = OpenCodeSettingsState.DEFAULT_FIXED_PORT
     var portImportedFromApplication: Boolean = false
 
-    override fun getState(): OpenCodeProjectSettingsState = this
+    override fun getState(): OpenCodeProjectSettingsState? {
+        return if (hasShareableSettings()) this else null
+    }
+
+    private fun hasShareableSettings(): Boolean {
+        return projectDirectoryModeValue() != OpenCodeProjectDirectoryMode.AUTO ||
+            portModeValue() != OpenCodePortMode.AUTO
+    }
 
     override fun loadState(state: OpenCodeProjectSettingsState) {
         projectDirectoryMode = OpenCodeProjectDirectoryMode.fromStorageValue(state.projectDirectoryMode).name
