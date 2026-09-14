@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [2.0.5] - 2026-09-14
+
+### Fixed
+
+- Default project settings no longer write `.idea/opencode-web-panel-project.xml`.
+
 ## [2.0.4] - 2026-09-13
 
 ### Fixed
