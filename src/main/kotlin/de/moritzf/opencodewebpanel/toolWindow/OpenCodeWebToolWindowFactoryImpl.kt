@@ -19,9 +19,6 @@ import com.intellij.ui.content.ContentManager
 import javax.swing.JComponent
 import kotlin.jvm.JvmDefaultWithoutCompatibility
 
-/** Must match the `toolWindow id` declared in plugin.xml. */
-internal const val OPEN_CODE_TOOL_WINDOW_ID = "OpenCode"
-
 internal fun openCodeToolWindowHeading(project: Project?): String {
     val native = OpenCodeServerBackend.isNative(
         OpenCodeServerBackendRegistry.getInstance().backendFor(project).backendId,
