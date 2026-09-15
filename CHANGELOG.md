@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+## [2.0.6] - 2026-09-15
+
+### Fixed
+
+- Stopping a Docker Sandbox now SIGKILLs leftover OpenCode serve processes, including bun/node wrappers.
+- Cancelling sandbox start is reported as cancelled instead of an unhealthy server.
+- Server log tails no longer show a garbled first line when the 64KiB window starts mid-character.
+
 ## [2.0.5] - 2026-09-14
 
 ### Fixed
