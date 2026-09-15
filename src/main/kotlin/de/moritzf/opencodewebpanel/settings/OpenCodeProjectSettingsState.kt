@@ -59,13 +59,17 @@ class OpenCodeProjectSettingsState : PersistentStateComponent<OpenCodeProjectSet
     }
 
     private fun importLegacyApplicationPortIfNeeded() {
-        if (portImportedFromApplication) return
-        portImportedFromApplication = true
-        if (portModeValue() != OpenCodePortMode.AUTO) return
-        if (OpenCodeSettingsState.sanitizePort(fixedPort) != OpenCodeSettingsState.DEFAULT_FIXED_PORT) return
-        val app = OpenCodeSettingsState.getInstance()
-        portMode = app.portMode
-        fixedPort = OpenCodeSettingsState.sanitizePort(app.fixedPort)
+        synchronized(this) {
+            if (portImportedFromApplication) return
+            if (portModeValue() == OpenCodePortMode.AUTO &&
+                OpenCodeSettingsState.sanitizePort(fixedPort) == OpenCodeSettingsState.DEFAULT_FIXED_PORT
+            ) {
+                val app = OpenCodeSettingsState.getInstance()
+                portMode = app.portMode
+                fixedPort = OpenCodeSettingsState.sanitizePort(app.fixedPort)
+            }
+            portImportedFromApplication = true
+        }
     }
 
     fun effectiveProjectDirectory(ideProjectBasePath: String?): String? {
