@@ -201,7 +201,8 @@ internal class OpenCodeServerLogBuffer(
             if (file == null || !Files.isRegularFile(file)) return emptyList()
             return try {
                 val size = Files.size(file)
-                val text = if (size <= TAIL_MAX_BYTES) {
+                val fromStart = size <= TAIL_MAX_BYTES
+                val decoded = if (fromStart) {
                     Files.readString(file, StandardCharsets.UTF_8)
                 } else {
                     Files.newByteChannel(file).use { channel ->
@@ -214,10 +215,16 @@ internal class OpenCodeServerLogBuffer(
                         String(buffer.array(), 0, buffer.limit(), StandardCharsets.UTF_8)
                     }
                 }
+                val text = if (fromStart) decoded else dropIncompleteLeadingLine(decoded)
                 text.lines().filter { it.isNotBlank() }.takeLast(maxLines)
             } catch (_: Exception) {
                 emptyList()
             }
+        }
+
+        private fun dropIncompleteLeadingLine(text: String): String {
+            val newline = text.indexOf('\n')
+            return if (newline >= 0) text.substring(newline + 1) else text
         }
     }
 }

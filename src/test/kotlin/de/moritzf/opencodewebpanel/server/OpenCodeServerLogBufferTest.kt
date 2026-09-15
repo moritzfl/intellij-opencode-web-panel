@@ -147,6 +147,26 @@ class OpenCodeServerLogBufferTest {
         }
     }
 
+    @Test
+    fun tailLinesDropsSplitUtf8AtWindowStart() {
+        val dir = Files.createTempDirectory("opencode-server-log-tail-utf8")
+        try {
+            val file = dir.resolve("split.log")
+            val tailText = "\nVISIBLE-LINE\n"
+            val window = ByteArray(64 * 1024) { 'x'.code.toByte() }
+            window[0] = 0xAC.toByte()
+            val tailBytes = tailText.toByteArray(Charsets.UTF_8)
+            tailBytes.copyInto(window, window.size - tailBytes.size)
+            Files.write(file, byteArrayOf('p'.code.toByte(), 0xE2.toByte(), 0x82.toByte()) + window)
+
+            val tail = OpenCodeServerLogBuffer.tailLines(file, maxLines = 30)
+            assertTrue(tail.contains("VISIBLE-LINE"))
+            assertFalse(tail.any { it.contains('\uFFFD') })
+        } finally {
+            deleteRecursively(dir)
+        }
+    }
+
     private fun writeLog(dir: Path, name: String, daysAgo: Long, ageOffsetMillis: Long = 0): Path {
         val file = dir.resolve("$name.log")
         Files.writeString(file, "{}")
