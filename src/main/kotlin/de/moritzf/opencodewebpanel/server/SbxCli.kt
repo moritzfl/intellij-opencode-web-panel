@@ -108,8 +108,8 @@ internal object SbxCli {
         "--print-logs",
     )
     private const val SERVE_PKILL_PATTERN =
-        $$"^opencode serve --hostname $${OpenCodeServerProtocol.SANDBOX_SERVE_HOST} " +
-            $$"--port $${OpenCodeServerProtocol.SANDBOX_SERVE_PORT} --print-logs$"
+        $$"[o]pencode serve --hostname $${OpenCodeServerProtocol.SANDBOX_SERVE_HOST} " +
+            $$"--port $${OpenCodeServerProtocol.SANDBOX_SERVE_PORT} --print-logs"
 
     fun sandboxIdentityPath(
         canonicalDirectory: String,
@@ -642,7 +642,16 @@ internal object SbxCli {
             name,
             "sh",
             "-lc",
-            "pkill -TERM -f '$SERVE_PKILL_PATTERN'",
+            $$"""
+            pkill -TERM -f '$${SERVE_PKILL_PATTERN}' || true
+            i=0
+            while [ "$i" -lt 5 ]; do
+              pkill -0 -f '$${SERVE_PKILL_PATTERN}' || exit 0
+              sleep 0.2
+              i=$((i+1))
+            done
+            pkill -KILL -f '$${SERVE_PKILL_PATTERN}' || true
+            """.trimIndent(),
         )
     }
 

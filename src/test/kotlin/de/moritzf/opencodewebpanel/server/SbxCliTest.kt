@@ -425,17 +425,18 @@ class SbxCliTest {
     }
 
     @Test
-    fun remotePkillTargetsExactServeArgv() {
+    fun remotePkillEscalatesToKillAndMatchesWrappedArgv() {
         val command = SbxCli.buildRemotePkillCommand(name = "ide-ocwp-abc")
         assertEquals("sbx", command[0])
         assertEquals("exec", command[1])
         assertEquals("ide-ocwp-abc", command[2])
         assertEquals("sh", command[3])
         assertEquals("-lc", command[4])
-        assertEquals(
-            "pkill -TERM -f '^opencode serve --hostname 0.0.0.0 --port 4096 --print-logs\$'",
-            command[5],
-        )
+        val script = command[5]
+        assertTrue(script.contains("pkill -TERM -f '[o]pencode serve --hostname 0.0.0.0 --port 4096 --print-logs'"))
+        assertTrue(script.contains("pkill -KILL -f '[o]pencode serve --hostname 0.0.0.0 --port 4096 --print-logs'"))
+        assertTrue(script.contains("pkill -0 -f"))
+        assertFalse(script.contains("^opencode serve"))
         assertFalse(SbxCli.commandContainsBoundEnvAssignment(command))
     }
 
