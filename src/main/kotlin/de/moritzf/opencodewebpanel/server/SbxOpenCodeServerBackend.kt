@@ -885,8 +885,8 @@ internal class SbxOpenCodeServerBackend(
             refreshServerVersion()
             finishStart(startId, success = true)
         } catch (e: InterruptedException) {
-            Thread.currentThread().interrupt()
             if (isCurrentStart(startId)) fail(startId, SbxFailureKind.CANCELLED)
+            Thread.currentThread().interrupt()
         } catch (e: SbxCommandFailure) {
             if (!isCurrentStart(startId)) return
             recordCommandFailure(e)
