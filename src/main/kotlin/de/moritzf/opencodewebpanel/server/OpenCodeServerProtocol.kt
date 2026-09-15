@@ -291,7 +291,7 @@ internal object OpenCodeServerProtocol {
      */
     fun canonicalOpenCodeDirectory(path: String?): String? {
         val raw = path?.trim()?.takeIf { it.isNotBlank() } ?: return null
-        val resolved = canonicalDirectoryCache.computeIfAbsent(raw) {
+        val resolved = lookupOrCompute(canonicalDirectoryCache, raw) {
             runCatching { Path.of(raw).toRealPath().toString() }
                 .recoverCatching { Path.of(raw).toAbsolutePath().normalize().toString() }
                 .getOrDefault(raw)
@@ -315,7 +315,7 @@ internal object OpenCodeServerProtocol {
 
     fun filesystemPathKey(path: String?): String? {
         val raw = path?.trim()?.takeIf { it.isNotBlank() } ?: return null
-        return canonicalPathCache.computeIfAbsent(raw) {
+        return lookupOrCompute(canonicalPathCache, raw) {
             val lexical = raw.replace('\\', '/').trimEnd('/')
             if (Regex("^[A-Za-z]:/").containsMatchIn(lexical) || lexical.startsWith("//")) {
                 lexical.lowercase(Locale.ROOT)
@@ -324,6 +324,12 @@ internal object OpenCodeServerProtocol {
                     .getOrElse { lexical }
             }
         }
+    }
+
+    private fun <K : Any, V : Any> lookupOrCompute(cache: ConcurrentHashMap<K, V>, key: K, compute: () -> V): V {
+        cache[key]?.let { return it }
+        val value = compute()
+        return cache.putIfAbsent(key, value) ?: value
     }
 
     private val QUALIFIED_CLASS = Regex("^(?:[a-zA-Z_][a-zA-Z0-9_]*\\.)+[A-Z][a-zA-Z0-9_]*$")
