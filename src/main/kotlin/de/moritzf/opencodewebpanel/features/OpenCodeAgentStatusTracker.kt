@@ -6,6 +6,7 @@ import de.moritzf.opencodewebpanel.server.OpenCodeGlobalEvent
 import de.moritzf.opencodewebpanel.server.OpenCodeGlobalEventListener
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
+import de.moritzf.opencodewebpanel.server.OpenCodeWireProtocol
 import de.moritzf.opencodewebpanel.server.objectMember
 import de.moritzf.opencodewebpanel.server.stringMember
 
@@ -97,11 +98,13 @@ internal class OpenCodeAgentStatusTracker(
     private val serverUrl: () -> String?,
     private val serverPassword: () -> String?,
     private val serverGeneration: () -> Long,
-    private val loadSnapshot: (String, String, String) -> OpenCodeAgentStatusSnapshot = ::loadAgentStatusSnapshot,
+    private val loadSnapshot: (String, String, String, OpenCodeWireProtocol) -> OpenCodeAgentStatusSnapshot =
+        ::loadAgentStatusSnapshot,
     private val executeAsync: ((() -> Unit) -> Unit) = { task ->
         ApplicationManager.getApplication().executeOnPooledThread(task)
     },
     private val backendId: () -> String = { OpenCodeServerBackend.NATIVE_ID },
+    private val wireProtocol: () -> OpenCodeWireProtocol = { OpenCodeWireProtocol.V1_18 },
 ) : OpenCodeGlobalEventListener {
 
     private val lock = Any()
@@ -157,7 +160,7 @@ internal class OpenCodeAgentStatusTracker(
         val authHeader = OpenCodeServerProtocol.buildBasicAuthHeader(password)
         val revisionAtRequest = synchronized(lock) { stateRevision }
         executeAsync {
-            val snapshot = loadSnapshot(serverUrl, authHeader, directory)
+            val snapshot = loadSnapshot(serverUrl, authHeader, directory, wireProtocol())
             if (!seedIdentityIsCurrent(epoch, directory, serverUrl, generation)) return@executeAsync
             var retry = false
             val transition = synchronized(lock) {
@@ -223,7 +226,12 @@ internal data class OpenCodeAgentStatusSnapshot(
     val pendingRequestIds: List<String>?,
 )
 
-private fun loadAgentStatusSnapshot(serverUrl: String, authHeader: String, directory: String): OpenCodeAgentStatusSnapshot {
+private fun loadAgentStatusSnapshot(
+    serverUrl: String,
+    authHeader: String,
+    directory: String,
+    wireProtocol: OpenCodeWireProtocol = OpenCodeWireProtocol.V1_18,
+): OpenCodeAgentStatusSnapshot {
     val permissions = OpenCodeServerProtocol.fetchPendingRequestIds(
         serverUrl, authHeader, OpenCodeServerProtocol.PERMISSION_LIST_PATH, directory,
     )
@@ -231,7 +239,9 @@ private fun loadAgentStatusSnapshot(serverUrl: String, authHeader: String, direc
         serverUrl, authHeader, OpenCodeServerProtocol.QUESTION_LIST_PATH, directory,
     )
     return OpenCodeAgentStatusSnapshot(
-        busySessionIds = OpenCodeServerProtocol.fetchBusySessionIds(serverUrl, authHeader, directory),
+        busySessionIds = OpenCodeServerProtocol.fetchBusySessionIds(
+            serverUrl, authHeader, directory, wireProtocol = wireProtocol,
+        ),
         // The combined pending snapshot is authoritative only when both endpoint reads succeeded.
         pendingRequestIds = if (permissions != null && questions != null) permissions + questions else null,
     )

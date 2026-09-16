@@ -68,6 +68,9 @@ internal object OpenCodeServerProtocol {
         OpenCodeWireProtocol.V2_CLI -> CLI_EVENT_PATH
         OpenCodeWireProtocol.UNKNOWN -> null
     }
+
+    fun usesCliHttpApi(protocol: OpenCodeWireProtocol): Boolean =
+        protocol == OpenCodeWireProtocol.V2_CLI
     const val DISPOSE_PATH = "/global/dispose"
     const val BASIC_AUTH_USERNAME = "opencode"
     const val DEFAULT_EXECUTABLE = "opencode"
@@ -1505,10 +1508,15 @@ internal object OpenCodeServerProtocol {
         sessionID: String,
         connectTimeoutMillis: Int = 3000,
         readTimeoutMillis: Int = 3000,
+        wireProtocol: OpenCodeWireProtocol = OpenCodeWireProtocol.V1_18,
     ): SessionInfo? {
-        if (!isSessionId(sessionID)) return null
-        val url = buildServerRootUrl(serverUrl) + "/session/" + sessionID + "?directory=" +
-            java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
+        if (wireProtocol == OpenCodeWireProtocol.UNKNOWN || !isSessionId(sessionID)) return null
+        val encodedDirectory = java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
+        val url = if (usesCliHttpApi(wireProtocol)) {
+            buildServerRootUrl(serverUrl) + "/api/session/" + sessionID + "?directory=" + encodedDirectory
+        } else {
+            buildServerRootUrl(serverUrl) + "/session/" + sessionID + "?directory=" + encodedDirectory
+        }
         val body = httpGet(url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis) ?: return null
         return parseSessionInfo(body)?.takeIf { it.id == sessionID }
     }
@@ -1524,10 +1532,16 @@ internal object OpenCodeServerProtocol {
         sessionID: String,
         connectTimeoutMillis: Int = 3000,
         readTimeoutMillis: Int = 3000,
+        wireProtocol: OpenCodeWireProtocol = OpenCodeWireProtocol.V1_18,
     ): List<SessionInfo> {
-        if (!isSessionId(sessionID)) return emptyList()
-        val url = buildServerRootUrl(serverUrl) + "/session/" + sessionID + "/children?directory=" +
-            java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
+        if (wireProtocol == OpenCodeWireProtocol.UNKNOWN || !isSessionId(sessionID)) return emptyList()
+        val encodedDirectory = java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
+        val url = if (usesCliHttpApi(wireProtocol)) {
+            buildServerRootUrl(serverUrl) + "/api/session?directory=" + encodedDirectory +
+                "&parentID=" + java.net.URLEncoder.encode(sessionID, StandardCharsets.UTF_8)
+        } else {
+            buildServerRootUrl(serverUrl) + "/session/" + sessionID + "/children?directory=" + encodedDirectory
+        }
         val body = httpGet(url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis) ?: return emptyList()
         return parseSessionChildren(body)
     }
@@ -1583,6 +1597,7 @@ internal object OpenCodeServerProtocol {
         messageID: String? = null,
         connectTimeoutMillis: Int = 5000,
         readTimeoutMillis: Int = 5000,
+        wireProtocol: OpenCodeWireProtocol = OpenCodeWireProtocol.V1_18,
     ): List<SnapshotFileDiff> {
         return when (val result = fetchSessionDiffResult(
             serverUrl,
@@ -1592,6 +1607,7 @@ internal object OpenCodeServerProtocol {
             messageID,
             connectTimeoutMillis,
             readTimeoutMillis,
+            wireProtocol,
         )) {
             is OpenCodeProtocolResult.Success -> result.value
             is OpenCodeProtocolResult.Failure -> emptyList()
@@ -1606,7 +1622,11 @@ internal object OpenCodeServerProtocol {
         messageID: String? = null,
         connectTimeoutMillis: Int = 5000,
         readTimeoutMillis: Int = 5000,
+        wireProtocol: OpenCodeWireProtocol = OpenCodeWireProtocol.V1_18,
     ): OpenCodeProtocolResult<List<SnapshotFileDiff>> {
+        if (wireProtocol == OpenCodeWireProtocol.UNKNOWN) {
+            return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_BODY)
+        }
         if (!isSessionId(sessionID)) {
             return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_IDENTIFIER)
         }
@@ -1614,15 +1634,24 @@ internal object OpenCodeServerProtocol {
         if (normalizedMessageID != null && !isMessageId(normalizedMessageID)) {
             return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_IDENTIFIER)
         }
-        val messageParam = normalizedMessageID
-            ?.let { "&messageID=" + java.net.URLEncoder.encode(it, StandardCharsets.UTF_8) }
-            .orEmpty()
-        val url = buildServerRootUrl(serverUrl) + "/session/" + sessionID + "/diff?directory=" +
-            java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8) + messageParam
+        val encodedDirectory = java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
+        val url = if (usesCliHttpApi(wireProtocol)) {
+            val fromParam = normalizedMessageID
+                ?.let { "&from=" + java.net.URLEncoder.encode(it, StandardCharsets.UTF_8) }
+                .orEmpty()
+            buildServerRootUrl(serverUrl) + "/api/session/" + sessionID + "/diff?directory=" +
+                encodedDirectory + fromParam
+        } else {
+            val messageParam = normalizedMessageID
+                ?.let { "&messageID=" + java.net.URLEncoder.encode(it, StandardCharsets.UTF_8) }
+                .orEmpty()
+            buildServerRootUrl(serverUrl) + "/session/" + sessionID + "/diff?directory=" +
+                encodedDirectory + messageParam
+        }
         return when (val response = httpGetResult(url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)) {
             is OpenCodeProtocolResult.Failure -> response
             is OpenCodeProtocolResult.Success -> {
-                val array = parseJsonArray(response.value)
+                val array = sessionDiffArray(response.value)
                     ?: return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_BODY)
                 OpenCodeProtocolResult.Success(parseSessionDiffArray(array))
             }
@@ -1631,8 +1660,17 @@ internal object OpenCodeServerProtocol {
 
     @TestOnly
     fun parseSessionDiff(json: String): List<SnapshotFileDiff> {
-        val array = parseJsonArray(json) ?: return emptyList()
+        val array = sessionDiffArray(json) ?: return emptyList()
         return parseSessionDiffArray(array)
+    }
+
+    private fun sessionDiffArray(json: String): JsonArray? {
+        val parsed = runCatching { JsonParser.parseString(json) }.getOrNull() ?: return null
+        return when {
+            parsed.isJsonArray -> parsed.asJsonArray
+            parsed.isJsonObject -> parsed.asJsonObject.get("data")?.takeIf { it.isJsonArray }?.asJsonArray
+            else -> null
+        }
     }
 
     private fun parseSessionDiffArray(array: JsonArray): List<SnapshotFileDiff> {
@@ -1675,12 +1713,42 @@ internal object OpenCodeServerProtocol {
         partID: String,
         connectTimeoutMillis: Int = 5000,
         readTimeoutMillis: Int = 5000,
+        wireProtocol: OpenCodeWireProtocol = OpenCodeWireProtocol.V1_18,
     ): OpenCodeProtocolResult<ToolPartChange> {
-        if (!isSessionId(sessionID) || !isPartId(partID) || directory.isBlank()) {
+        if (wireProtocol == OpenCodeWireProtocol.UNKNOWN) {
+            return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_BODY)
+        }
+        val validPart = if (usesCliHttpApi(wireProtocol)) partID.isNotBlank() else isPartId(partID)
+        if (!isSessionId(sessionID) || !validPart || directory.isBlank()) {
             return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_IDENTIFIER)
         }
         val root = buildServerRootUrl(serverUrl)
         val directoryParam = "directory=" + java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
+        if (usesCliHttpApi(wireProtocol)) {
+            var cursor: String? = null
+            repeat(MESSAGE_PAGE_MAX) {
+                val cursorParam = cursor
+                    ?.let { "&cursor=" + java.net.URLEncoder.encode(it, StandardCharsets.UTF_8) }
+                    .orEmpty()
+                val url = "$root/api/session/$sessionID/message?$directoryParam&limit=$MESSAGE_PAGE_LIMIT$cursorParam"
+                when (val page = httpGetResult(url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)) {
+                    is OpenCodeProtocolResult.Failure -> return page
+                    is OpenCodeProtocolResult.Success -> {
+                        val parsed = parseJsonObject(page.value)
+                            ?: return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_BODY)
+                        val array = parsed.get("data")?.takeIf { it.isJsonArray }?.asJsonArray
+                            ?: return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_BODY)
+                        val part = toolPartFromMessages(array, partID)
+                        if (part != null) return OpenCodeProtocolResult.Success(parseToolPartChange(part))
+                        cursor = parsed.objectMember("cursor")?.stringMember("next")?.takeIf { it.isNotBlank() }
+                        if (cursor == null) {
+                            return OpenCodeProtocolResult.Success(ToolPartChange(emptyList()))
+                        }
+                    }
+                }
+            }
+            return OpenCodeProtocolResult.Success(ToolPartChange(emptyList()))
+        }
         var before: String? = null
         repeat(MESSAGE_PAGE_MAX) {
             val beforeParam = before
@@ -1765,6 +1833,7 @@ internal object OpenCodeServerProtocol {
             )
         }
         val writePath = input?.stringMember("filePath")?.takeIf { it.isNotBlank() }
+            ?: input?.stringMember("path")?.takeIf { it.isNotBlank() }
             ?: metadata?.stringMember("filepath")?.takeIf { it.isNotBlank() }
         return ToolPartChange(emptyList(), fileHint = writePath)
     }
@@ -1788,7 +1857,9 @@ internal object OpenCodeServerProtocol {
     private fun toolPartFromMessages(array: JsonArray, partID: String): JsonObject? {
         for (element in array) {
             val message = element.takeIf { it.isJsonObject }?.asJsonObject ?: continue
-            val parts = message.get("parts")?.takeIf { it.isJsonArray }?.asJsonArray ?: continue
+            val parts = message.get("parts")?.takeIf { it.isJsonArray }?.asJsonArray
+                ?: message.get("content")?.takeIf { it.isJsonArray }?.asJsonArray
+                ?: continue
             for (partElement in parts) {
                 val part = partElement.takeIf { it.isJsonObject }?.asJsonObject ?: continue
                 if (part.stringMember("id") == partID) return part
@@ -1856,19 +1927,27 @@ internal object OpenCodeServerProtocol {
         directory: String,
         connectTimeoutMillis: Int = 3000,
         readTimeoutMillis: Int = 3000,
+        wireProtocol: OpenCodeWireProtocol = OpenCodeWireProtocol.V1_18,
     ): Set<String>? {
-        val url = buildServerRootUrl(serverUrl) + "/session/status?directory=" +
-            java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
+        if (wireProtocol == OpenCodeWireProtocol.UNKNOWN) return null
+        val url = if (usesCliHttpApi(wireProtocol)) {
+            buildServerRootUrl(serverUrl) + "/api/session/active"
+        } else {
+            buildServerRootUrl(serverUrl) + "/session/status?directory=" +
+                java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
+        }
         val body = httpGet(url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis) ?: return null
         if (parseJsonObject(body) == null) return null
         return parseBusySessionIds(body)
     }
 
     fun parseBusySessionIds(json: String): Set<String> {
-        val statuses = parseJsonObject(json) ?: return emptySet()
+        val root = parseJsonObject(json) ?: return emptySet()
+        val statuses = root.get("data")?.takeIf { it.isJsonObject }?.asJsonObject ?: root
         return statuses.entrySet().mapNotNullTo(mutableSetOf()) { (sessionID, status) ->
+            if (!sessionID.startsWith("ses_")) return@mapNotNullTo null
             val type = status?.takeIf { it.isJsonObject }?.asJsonObject?.stringMember("type")
-            sessionID.takeIf { type == "busy" || type == "retry" }
+            sessionID.takeIf { type == "busy" || type == "retry" || type == "running" }
         }
     }
 
@@ -2103,6 +2182,7 @@ internal object OpenCodeServerProtocol {
         sessionID: String,
         connectTimeoutMillis: Int = 3000,
         readTimeoutMillis: Int = 3000,
+        wireProtocol: OpenCodeWireProtocol = OpenCodeWireProtocol.V1_18,
     ): String? {
         return when (val result = fetchLastMessageJsonResult(
             serverUrl,
@@ -2111,6 +2191,7 @@ internal object OpenCodeServerProtocol {
             sessionID,
             connectTimeoutMillis,
             readTimeoutMillis,
+            wireProtocol,
         )) {
             is OpenCodeProtocolResult.Success -> result.value
             is OpenCodeProtocolResult.Failure -> null
@@ -2124,31 +2205,38 @@ internal object OpenCodeServerProtocol {
         sessionID: String,
         connectTimeoutMillis: Int = 3000,
         readTimeoutMillis: Int = 3000,
+        wireProtocol: OpenCodeWireProtocol = OpenCodeWireProtocol.V1_18,
     ): OpenCodeProtocolResult<String?> {
+        if (wireProtocol == OpenCodeWireProtocol.UNKNOWN) {
+            return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_BODY)
+        }
         if (!isSessionId(sessionID) || directory.isBlank()) {
             return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_IDENTIFIER)
         }
         val root = buildServerRootUrl(serverUrl)
-        val v1Url = "$root/session/$sessionID/message" +
-            "?directory=" + java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8) +
-            "&limit=1"
-        when (val v1 = httpGetResult(v1Url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)) {
-            is OpenCodeProtocolResult.Success -> {
-                val raw = extractLastMessageRaw(v1.value)
-                if (raw != null) {
-                    val normalized = normalizeLastMessageForClassification(raw)
-                        ?: return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_BODY)
-                    return OpenCodeProtocolResult.Success(normalized)
+        if (!usesCliHttpApi(wireProtocol)) {
+            val v1Url = "$root/session/$sessionID/message" +
+                "?directory=" + java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8) +
+                "&limit=1"
+            when (val v1 = httpGetResult(v1Url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)) {
+                is OpenCodeProtocolResult.Success -> {
+                    val raw = extractLastMessageRaw(v1.value)
+                    if (raw != null) {
+                        val normalized = normalizeLastMessageForClassification(raw)
+                            ?: return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_BODY)
+                        return OpenCodeProtocolResult.Success(normalized)
+                    }
+                    // Empty v1 list → try v2 (session may have been created through the v2 API).
                 }
-                // Empty v1 list → try v2 (session may have been created through the v2 API).
-            }
-            is OpenCodeProtocolResult.Failure -> {
-                // A missing v1 route falls through to v2; transport failures must surface so
-                // recovery can retry rather than pretend "no message".
-                if (v1.statusCode != HttpURLConnection.HTTP_NOT_FOUND) return v1
+                is OpenCodeProtocolResult.Failure -> {
+                    // A missing v1 route falls through to v2; transport failures must surface so
+                    // recovery can retry rather than pretend "no message".
+                    if (v1.statusCode != HttpURLConnection.HTTP_NOT_FOUND) return v1
+                }
             }
         }
-        val v2Url = "$root/api/session/$sessionID/message?order=desc&limit=1"
+        val v2Url = "$root/api/session/$sessionID/message?order=desc&limit=1" +
+            "&directory=" + java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
         return when (val v2 = httpGetResult(v2Url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)) {
             is OpenCodeProtocolResult.Failure -> v2
             is OpenCodeProtocolResult.Success -> {
@@ -2271,6 +2359,7 @@ internal object OpenCodeServerProtocol {
         sessionID: String,
         connectTimeoutMillis: Int = 5000,
         readTimeoutMillis: Int = 5000,
+        wireProtocol: OpenCodeWireProtocol = OpenCodeWireProtocol.V1_18,
     ): Boolean {
         return sendContinuePromptResult(
             serverUrl,
@@ -2278,6 +2367,7 @@ internal object OpenCodeServerProtocol {
             sessionID,
             connectTimeoutMillis,
             readTimeoutMillis,
+            wireProtocol,
         ) is OpenCodeProtocolResult.Success
     }
 
@@ -2287,15 +2377,24 @@ internal object OpenCodeServerProtocol {
         sessionID: String,
         connectTimeoutMillis: Int = 5000,
         readTimeoutMillis: Int = 5000,
+        wireProtocol: OpenCodeWireProtocol = OpenCodeWireProtocol.V1_18,
     ): OpenCodeProtocolResult<Unit> {
+        if (wireProtocol == OpenCodeWireProtocol.UNKNOWN) {
+            return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_BODY)
+        }
         if (!isSessionId(sessionID)) {
             return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_IDENTIFIER)
         }
         val url = buildServerRootUrl(serverUrl) + "/api/session/$sessionID/prompt"
+        val body = if (usesCliHttpApi(wireProtocol)) {
+            """{"text":"Continue","resume":true}"""
+        } else {
+            """{"prompt":{"text":"Continue"},"resume":true}"""
+        }
         return httpPostJsonResult(
             url,
             basicAuthHeader,
-            """{"prompt":{"text":"Continue"},"resume":true}""",
+            body,
             connectTimeoutMillis,
             readTimeoutMillis,
         )

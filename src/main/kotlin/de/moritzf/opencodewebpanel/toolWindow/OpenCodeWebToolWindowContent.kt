@@ -184,6 +184,16 @@ class OpenCodeWebToolWindowContent(
         ::openCodeProjectDirectory,
         serverManager::getServerUrl,
         serverManager::getServerPassword,
+        loadSession = { url, auth, directory, sessionID ->
+            OpenCodeServerProtocol.fetchSessionInfo(
+                url, auth, directory, sessionID, wireProtocol = serverManager.getWireProtocol(),
+            )
+        },
+        loadChildren = { url, auth, directory, sessionID ->
+            OpenCodeServerProtocol.fetchSessionChildren(
+                url, auth, directory, sessionID, wireProtocol = serverManager.getWireProtocol(),
+            )
+        },
         backendId = { serverManager.backendId },
     )
     @Suppress("UnstableApiUsage")
@@ -428,6 +438,7 @@ class OpenCodeWebToolWindowContent(
         serverPassword = serverManager::getServerPassword,
         serverGeneration = serverManager::getServerGeneration,
         backendId = { serverManager.backendId },
+        wireProtocol = { serverManager.getWireProtocol() },
     )
     private var loadedServerRootUrl: String? = null
     private var pendingServerStartRequest = false

@@ -81,6 +81,7 @@ internal class OpenCodeDiffNavigation(
                 directory,
                 sessionID,
                 partID,
+                wireProtocol = serverManager.getWireProtocol(),
             )
             if (partResult is OpenCodeProtocolResult.Failure) return null
             val change = (partResult as OpenCodeProtocolResult.Success).value
@@ -94,6 +95,7 @@ internal class OpenCodeDiffNavigation(
                 directory,
                 sessionID,
                 messageID,
+                wireProtocol = serverManager.getWireProtocol(),
             )
             if (snapshot is OpenCodeProtocolResult.Failure) return null
             return selectDiffs((snapshot as OpenCodeProtocolResult.Success).value, hint)
@@ -104,6 +106,7 @@ internal class OpenCodeDiffNavigation(
             directory,
             sessionID,
             messageID,
+            wireProtocol = serverManager.getWireProtocol(),
         )
         if (snapshot is OpenCodeProtocolResult.Failure) return null
         return selectDiffs((snapshot as OpenCodeProtocolResult.Success).value, filePath)

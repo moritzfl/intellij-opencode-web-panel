@@ -137,6 +137,7 @@ internal class OpenCodeInterruptedSessionRecovery internal constructor(
                 context.authHeader,
                 context.directory,
                 sessionID,
+                wireProtocol = serverManager.getWireProtocol(),
             )
         },
         sendContinuePrompt = { context, sessionID ->
@@ -144,6 +145,7 @@ internal class OpenCodeInterruptedSessionRecovery internal constructor(
                 context.serverUrl,
                 context.authHeader,
                 sessionID,
+                wireProtocol = serverManager.getWireProtocol(),
             )
         },
         executeAsync = { task -> ApplicationManager.getApplication().executeOnPooledThread(task) },

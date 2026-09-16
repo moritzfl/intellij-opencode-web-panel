@@ -110,7 +110,7 @@ class OpenCodeAgentStatusTrackerTest {
             serverUrl = { "http://127.0.0.1:4096" },
             serverPassword = { "pw" },
             serverGeneration = { 1L },
-            loadSnapshot = { _, _, requestedDirectory ->
+            loadSnapshot = { _, _, requestedDirectory, _ ->
                 if (requestedDirectory == "/project-a") {
                     OpenCodeAgentStatusSnapshot(setOf("ses_a"), emptyList())
                 } else {
@@ -143,7 +143,7 @@ class OpenCodeAgentStatusTrackerTest {
             serverUrl = { "http://127.0.0.1:4096" },
             serverPassword = { "pw" },
             serverGeneration = { 1L },
-            loadSnapshot = { _, _, _ -> OpenCodeAgentStatusSnapshot(emptySet(), null) },
+            loadSnapshot = { _, _, _, _ -> OpenCodeAgentStatusSnapshot(emptySet(), null) },
             executeAsync = tasks::add,
         )
         tracker.eventReceived(
@@ -174,7 +174,7 @@ class OpenCodeAgentStatusTrackerTest {
             serverUrl = { "http://127.0.0.1:4096" },
             serverPassword = { "pw" },
             serverGeneration = { 1L },
-            loadSnapshot = { _, _, _ -> OpenCodeAgentStatusSnapshot(setOf("ses_1"), emptyList()) },
+            loadSnapshot = { _, _, _, _ -> OpenCodeAgentStatusSnapshot(setOf("ses_1"), emptyList()) },
             executeAsync = tasks::add,
         )
 
@@ -206,7 +206,7 @@ class OpenCodeAgentStatusTrackerTest {
             serverUrl = { "http://127.0.0.1:4096" },
             serverPassword = { "pw" },
             serverGeneration = { 1L },
-            loadSnapshot = { _, _, _ -> OpenCodeAgentStatusSnapshot(setOf("ses_1"), emptyList()) },
+            loadSnapshot = { _, _, _, _ -> OpenCodeAgentStatusSnapshot(setOf("ses_1"), emptyList()) },
             executeAsync = tasks::add,
         )
         tracker.seed()

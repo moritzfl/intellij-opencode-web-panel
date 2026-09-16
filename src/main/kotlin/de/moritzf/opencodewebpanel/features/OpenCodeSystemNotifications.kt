@@ -345,6 +345,7 @@ internal class OpenCodeSystemNotifications(
                 OpenCodeServerProtocol.buildBasicAuthHeader(password),
                 directory,
                 sessionID,
+                wireProtocol = serverManager.getWireProtocol(),
             )
         }
 

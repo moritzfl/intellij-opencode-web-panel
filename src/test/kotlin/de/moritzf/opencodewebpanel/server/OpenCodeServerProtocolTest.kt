@@ -1567,6 +1567,15 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun parseBusySessionIdsReadsCliActiveRunningMap() {
+        assertEquals(
+            setOf("ses_f547e1692ffelWnvCLl1OK8i4s"),
+            OpenCodeServerProtocol.parseBusySessionIds(wireFixture("v2_cli/session-active-running.json")),
+        )
+        assertTrue(OpenCodeServerProtocol.parseBusySessionIds(wireFixture("v2_cli/session-active-empty.json")).isEmpty())
+    }
+
+    @Test
     fun parseBusySessionIdsToleratesMalformedResponses() {
         assertTrue(OpenCodeServerProtocol.parseBusySessionIds("").isEmpty())
         assertTrue(OpenCodeServerProtocol.parseBusySessionIds("not json").isEmpty())
@@ -3441,6 +3450,58 @@ class OpenCodeServerProtocolTest {
             val body = capturedBody.get(5, TimeUnit.SECONDS)
             assertTrue(body.contains("\"resume\":true"))
             assertTrue(body.contains("\"text\":\"Continue\""))
+            assertTrue(body.contains("\"prompt\""))
+            responseFuture.get(5, TimeUnit.SECONDS)
+        } finally {
+            serverSocket.close()
+            executor.shutdownNow()
+        }
+    }
+
+    @Test
+    fun sendContinuePromptOnCliOmitsPromptWrapper() {
+        val serverSocket = ServerSocket(0)
+        val executor = Executors.newSingleThreadExecutor()
+        val capturedBody = java.util.concurrent.CompletableFuture<String>()
+        val responseFuture = executor.submit {
+            try {
+                serverSocket.accept().use { socket ->
+                    val reader = socket.getInputStream().bufferedReader()
+                    reader.readLine()
+                    val headers = mutableMapOf<String, String>()
+                    while (true) {
+                        val line = reader.readLine()
+                        if (line.isNullOrEmpty()) break
+                        val parts = line.split(": ", limit = 2)
+                        if (parts.size == 2) headers[parts[0]] = parts[1]
+                    }
+                    val contentLength = headers["Content-Length"]?.toIntOrNull() ?: 0
+                    val bodyChars = CharArray(contentLength)
+                    var read = 0
+                    while (read < contentLength) {
+                        val n = reader.read(bodyChars, read, contentLength - read)
+                        if (n < 0) break
+                        read += n
+                    }
+                    capturedBody.complete(String(bodyChars, 0, read))
+                    socket.getOutputStream().write(
+                        "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                            .toByteArray(Charsets.UTF_8),
+                    )
+                    socket.getOutputStream().flush()
+                }
+            } catch (_: SocketException) {}
+        }
+        try {
+            val accepted = OpenCodeServerProtocol.sendContinuePrompt(
+                "http://127.0.0.1:${serverSocket.localPort}",
+                OpenCodeServerProtocol.buildBasicAuthHeader("test"),
+                "ses_abc123",
+                wireProtocol = OpenCodeWireProtocol.V2_CLI,
+            )
+            assertTrue(accepted)
+            val body = capturedBody.get(5, TimeUnit.SECONDS)
+            assertEquals("""{"text":"Continue","resume":true}""", body)
             responseFuture.get(5, TimeUnit.SECONDS)
         } finally {
             serverSocket.close()
@@ -3552,6 +3613,15 @@ class OpenCodeServerProtocolTest {
         assertTrue(OpenCodeServerProtocol.parseSessionDiff("{}").isEmpty())
         assertTrue(OpenCodeServerProtocol.parseSessionDiff("").isEmpty())
         assertTrue(OpenCodeServerProtocol.parseSessionDiff("not json").isEmpty())
+    }
+
+    @Test
+    fun parseSessionDiffUnwrapsCliDataEnvelope() {
+        val json = """{"data":[{"file":"src/Foo.kt","patch":"@@ -1 +1 @@\n-a\n+b","additions":1,"deletions":1,"status":"modified"}]}"""
+        val diffs = OpenCodeServerProtocol.parseSessionDiff(json)
+        assertEquals(1, diffs.size)
+        assertEquals("src/Foo.kt", diffs[0].file)
+        assertTrue(OpenCodeServerProtocol.parseSessionDiff(wireFixture("v2_cli/session-diff-empty.json")).isEmpty())
     }
 
     @Test

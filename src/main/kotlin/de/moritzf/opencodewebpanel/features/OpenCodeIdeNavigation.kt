@@ -115,6 +115,7 @@ internal class OpenCodeIdeNavigation(
             directory,
             sessionID,
             partID,
+            wireProtocol = serverManager.getWireProtocol(),
         )
         val change = (result as? OpenCodeProtocolResult.Success)?.value ?: return null
         val diffs = OpenCodeDiffNavigation.resolvePartDiffs(change.diffs, fileHint)

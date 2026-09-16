@@ -151,6 +151,7 @@ internal object OpenCodeSoundService {
             OpenCodeServerProtocol.buildBasicAuthHeader(password),
             directory,
             sessionID,
+            wireProtocol = serverManager.getWireProtocol(),
         )
     }
 
