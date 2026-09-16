@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Host CLI start recognizes CLI 2.x's `server listening on` banner (previously only `opencode server listening on`, so 2.x start waited 60s then killed the process).
+
 ## [2.0.6] - 2026-09-15
 
 ### Fixed

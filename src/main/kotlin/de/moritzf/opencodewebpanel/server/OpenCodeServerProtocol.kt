@@ -1066,8 +1066,13 @@ internal object OpenCodeServerProtocol {
 
     enum class BasicAuthChallengeReply { CONTINUE, CANCEL, IGNORE }
 
+    private val SERVER_LISTEN_URL = Regex(
+        """(?:opencode\s+)?server\s+listening\s+on\s+(https?://\S+)""",
+        RegexOption.IGNORE_CASE,
+    )
+
     fun parseServerUrl(line: String): String? {
-        val match = Regex("opencode server listening on (https?://\\S+)", RegexOption.IGNORE_CASE).find(line)
+        val match = SERVER_LISTEN_URL.find(line)
         val candidate = match?.groupValues?.get(1)?.trimEnd('/') ?: return null
         return candidate.takeIf { isLoopbackServerUrl(it) }
     }

@@ -286,6 +286,10 @@ class OpenCodeServerProtocolTest {
             "http://localhost:4096",
             OpenCodeServerProtocol.parseServerUrl("opencode server listening on http://localhost:4096"),
         )
+        assertEquals(
+            "http://127.0.0.1:50839",
+            OpenCodeServerProtocol.parseServerUrl("server listening on http://127.0.0.1:50839"),
+        )
         assertNull(OpenCodeServerProtocol.parseServerUrl("starting server"))
     }
 
@@ -296,6 +300,9 @@ class OpenCodeServerProtocolTest {
         )
         assertNull(
             OpenCodeServerProtocol.parseServerUrl("OpenCode server listening on http://example.com:60482"),
+        )
+        assertNull(
+            OpenCodeServerProtocol.parseServerUrl("server listening on http://0.0.0.0:4096"),
         )
         assertFalse(OpenCodeServerProtocol.isLoopbackServerUrl("http://10.0.0.1:4096"))
         assertFalse(OpenCodeServerProtocol.isLoopbackServerUrl("http://0.0.0.0:4096"))

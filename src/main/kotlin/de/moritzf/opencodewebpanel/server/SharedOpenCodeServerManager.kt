@@ -705,7 +705,12 @@ class SharedOpenCodeServerManager(
                 setServerRunningForStart(startId)
                 finishStart(startId, success = true)
             } else {
-                thisLogger().error("Failed to start OpenCode server")
+                val reason = if (url == null) {
+                    "listen URL not found in process output"
+                } else {
+                    "not responding at $url"
+                }
+                thisLogger().error("Failed to start OpenCode server: $reason")
                 destroyCurrentProcess()
                 clearServerStateForStart(startId)
                 finishStart(startId, success = false)
