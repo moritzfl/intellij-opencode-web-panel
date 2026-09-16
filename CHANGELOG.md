@@ -4,23 +4,32 @@
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-09-16
+
 ### Added
 
-- Start and health checks work against OpenCode CLI 2.x (`GET /api/status`) as well as 1.18. Project settings show a `1.18` / `2.x` wire label.
-- The JVM event reader follows CLI 2.x `GET /api/event` (and still 1.18 `/global/event`), mapping execution start/end onto session busy/idle.
-- Session status, messages, continue, and diffs use CLI 2.x `/api/session` routes when that wire is live.
-- Permission list/reply on CLI 2.x uses `/api/permission/request` and `{decision}`. IDE question notifications stay 1.18-only (2.x forms not mapped).
-- Stop no longer POSTs `/global/dispose` against CLI 2.x. Failed chunk recovery also matches `/_assets/`.
+- Dual-stack OpenCode **1.18** and **CLI 2.x**. Start and health checks accept both
+  (`GET /api/health` and `GET /api/status`). The JVM event reader, session status,
+  messages, continue, diffs, and permission list/reply follow whichever wire is
+  live. Project settings show a `1.18` / `2.x` label. IDE question notifications
+  stay 1.18-only (CLI 2.x forms are not mapped). Stop no longer POSTs
+  `/global/dispose` against CLI 2.x. Failed chunk recovery also matches `/_assets/`.
+
+- Panel conveniences on the CLI 2.x SPA: chat file drop, home path hover,
+  open-in-IDE from edit/write/review, and Alt/Ctrl/Cmd+Click diffs (chat tools,
+  last-turn changes, and Git/Branch Changes). On the Files tab, that modifier-click
+  opens the file instead of a diff.
+
+### Changed
+
+- The tool window always boots at Home instead of a restored session URL.
+  Stale OpenCode 2 session tabs from another project's auto-port origin are dropped
+  so the panel does not show "This session cannot be found".
 
 ### Fixed
 
-- Host CLI start recognizes CLI 2.x's `server listening on` banner (previously only `opencode server listening on`, so 2.x start waited 60s then killed the process).
-- CLI 2.x chat file drop targets `composer-editor` as well as 1.18 `prompt-input`. Home path hover matches `home-session-row`. Alt/Ctrl-click diffs fall back to the turn's `data-message-id` when classic tool slots are absent.
-- Tool-window boot always opens Home and drops stale OpenCode 2 session tabs when the worktree marker changes (auto-port reuse otherwise 404s as "This session cannot be found").
-- Open-in-IDE file icons also match CLI 2.x `edit-tool`/`write-tool` wrappers (2.x dropped `edit-trigger`/`write-trigger`; the accordion header reuses `apply-patch-trigger-content`).
-- CLI 2.x chat edit diffs parse `metadata.files[].file` (not 1.18 `filediff.file` / apply-patch `filePath`). Turn Alt/Ctrl-click already used `session.diff?from=`.
-- CLI 2.x Changes tab: Alt/Ctrl/Cmd+Click on Git/Branch files opens `/api/vcs/diff` (`working`/`branch`). Last turn still uses `session.diff`. Files tab modifier-click opens the file (no diff).
-- `check-dom-contract.sh` follows CLI 2.x lazy `/_assets/` chunks and fails on missing 2.x markers instead of `exit 0`. Persist keys accept backtick minify (`layout`, `tabs.panes`, onboarding tips classified as excluded).
+- Host CLI start recognizes CLI 2.x's `server listening on` banner. 2.0.6 only
+  matched `opencode server listening on`, so a 2.x process waited 60s then was killed.
 
 ## [2.0.6] - 2026-09-15
 
