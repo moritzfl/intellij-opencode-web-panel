@@ -1051,7 +1051,13 @@ class SharedOpenCodeServerManager(
         val url = getServerUrl()
         val password = getServerPassword()
         if (url != null && !password.isNullOrBlank()) {
-            globalEventStream.start(url, OpenCodeServerProtocol.buildBasicAuthHeader(password), backendId)
+            globalEventStream.start(
+                url,
+                OpenCodeServerProtocol.buildBasicAuthHeader(password),
+                backendId,
+                getWireProtocol(),
+                canonicalDirectory,
+            )
         }
     }
 }

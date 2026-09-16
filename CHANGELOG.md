@@ -7,6 +7,7 @@
 ### Added
 
 - Start and health checks work against OpenCode CLI 2.x (`GET /api/status`) as well as 1.18. Project settings show a `1.18` / `2.x` wire label.
+- The JVM event reader follows CLI 2.x `GET /api/event` (and still 1.18 `/global/event`), mapping execution start/end onto session busy/idle.
 
 ### Fixed
 

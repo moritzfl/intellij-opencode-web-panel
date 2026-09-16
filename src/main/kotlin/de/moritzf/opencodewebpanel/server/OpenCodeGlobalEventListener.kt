@@ -4,9 +4,10 @@ import com.google.gson.JsonObject
 import com.intellij.util.messages.Topic
 
 /**
- * One parsed event from the OpenCode `/global/event` SSE stream. The wire shape is
- * `{"directory": "...", "payload": {"id": "...", "type": "...", "properties": {...}}}`;
- * events without a directory or payload type are dropped before publication.
+ * One parsed event from the OpenCode SSE stream. 1.18 `/global/event` is
+ * `{"directory": "...", "payload": {"id": "...", "type": "...", "properties": {...}}}`.
+ * CLI 2.x `/api/event` is `{id,type,data,location?}` and is normalized here
+ * (directory from `location` or the backend cwd; execution.* → `session.status`).
  */
 data class OpenCodeGlobalEvent(
     val directory: String,
@@ -17,7 +18,7 @@ data class OpenCodeGlobalEvent(
 )
 
 /**
- * Application-level stream of OpenCode server events, read from `/global/event` on the JVM
+ * Application-level stream of OpenCode server events, read from `/global/event` or `/api/event` on the JVM
  * by [OpenCodeGlobalEventStream] and published on the application message bus. Both callbacks
  * run on the stream's reader thread; implementations must dispatch to the EDT themselves and
  * return quickly, or they stall event delivery to every other subscriber.

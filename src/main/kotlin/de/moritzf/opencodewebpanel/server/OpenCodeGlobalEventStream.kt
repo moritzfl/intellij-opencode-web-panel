@@ -1,5 +1,6 @@
 package de.moritzf.opencodewebpanel.server
 
+import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.thisLogger
@@ -10,7 +11,7 @@ import java.net.URI
 import java.nio.charset.StandardCharsets
 
 /**
- * The plugin's single reader of the OpenCode `/global/event` SSE stream, running on the JVM.
+ * The plugin's single reader of the OpenCode SSE stream (`/global/event` on 1.18, `/api/event` on CLI 2.x), running on the JVM.
  *
  * Consuming the event stream here instead of from injected browser JavaScript keeps the
  * plugin out of Chromium's six-connections-per-host budget (each embedded SPA already holds
@@ -30,10 +31,11 @@ internal class OpenCodeGlobalEventStream(
     private val readTimeoutMillis: Int = READ_TIMEOUT_MILLIS,
 ) {
     companion object {
-        const val EVENT_PATH = "/global/event"
+        const val EVENT_PATH = OpenCodeServerProtocol.GLOBAL_EVENT_PATH
+        const val CLI_EVENT_PATH = OpenCodeServerProtocol.CLI_EVENT_PATH
         private const val RECONNECT_DELAY_MILLIS = 2_000L
         private const val CONNECT_TIMEOUT_MILLIS = 5_000
-        // OpenCode 1.18 emits server.heartbeat every 10 seconds. Three to four missed beats
+        // 1.18 server.heartbeat every 10s; CLI 2.x `: heartbeat` ~15s. Three missed beats
         // indicate a stalled/half-open transport; reconnect so consumers re-seed promptly.
         private const val READ_TIMEOUT_MILLIS = 45_000
         /** Cap one SSE event block so a stream without blank lines cannot grow without bound. */
@@ -52,7 +54,7 @@ internal class OpenCodeGlobalEventStream(
             return data.takeIf { it.isNotEmpty() }
         }
 
-        /** Parses one regular event payload; returns null for malformed or directory-less events. */
+        /** Parses one 1.18 `/global/event` payload; returns null for malformed or directory-less events. */
         fun parseGlobalEvent(json: String): OpenCodeGlobalEvent? {
             val event = runCatching { JsonParser.parseString(json) }.getOrNull()
                 ?.takeIf { it.isJsonObject }?.asJsonObject ?: return null
@@ -62,6 +64,48 @@ internal class OpenCodeGlobalEventStream(
             val recordId = payload.stringMember("id")?.takeIf { it.isNotBlank() } ?: return null
             val properties = payload.objectMember("properties") ?: return null
             return OpenCodeGlobalEvent(directory, type, recordId, properties)
+        }
+
+        /**
+         * Parses one CLI 2.x `/api/event` payload `{id,type,data,location?}`.
+         * Directory-less events (e.g. `server.connected`) use [fallbackDirectory] instead of dropping.
+         */
+        fun parseCliEvent(json: String, fallbackDirectory: String?): OpenCodeGlobalEvent? {
+            val event = runCatching { JsonParser.parseString(json) }.getOrNull()
+                ?.takeIf { it.isJsonObject }?.asJsonObject ?: return null
+            val type = event.stringMember("type")?.takeIf { it.isNotBlank() } ?: return null
+            val recordId = event.stringMember("id")?.takeIf { it.isNotBlank() } ?: return null
+            val data = event.objectMember("data") ?: JsonObject()
+            val directory = event.objectMember("location")?.stringMember("directory")?.takeIf { it.isNotBlank() }
+                ?: data.stringMember("directory")?.takeIf { it.isNotBlank() }
+                ?: data.objectMember("location")?.stringMember("directory")?.takeIf { it.isNotBlank() }
+                ?: fallbackDirectory?.takeIf { it.isNotBlank() }
+                ?: return null
+            return OpenCodeGlobalEvent(directory, mapCliEventType(type), recordId, cliEventProperties(type, data))
+        }
+
+        private fun mapCliEventType(type: String): String = when (type) {
+            "session.execution.started",
+            "session.execution.succeeded",
+            "session.execution.failed",
+            "session.execution.interrupted",
+            -> "session.status"
+            else -> type
+        }
+
+        private fun cliEventProperties(type: String, data: JsonObject): JsonObject {
+            val sessionStatus = when (type) {
+                "session.execution.started" -> "busy"
+                "session.execution.succeeded",
+                "session.execution.failed",
+                "session.execution.interrupted",
+                -> "idle"
+                else -> null
+            } ?: return data
+            val properties = JsonObject()
+            data.get("sessionID")?.let { properties.add("sessionID", it) }
+            properties.add("status", JsonObject().apply { addProperty("type", sessionStatus) })
+            return properties
         }
     }
 
@@ -73,14 +117,20 @@ internal class OpenCodeGlobalEventStream(
         serverUrl: String,
         basicAuthHeader: String,
         backendId: String = OpenCodeServerBackend.NATIVE_ID,
+        wireProtocol: OpenCodeWireProtocol = OpenCodeWireProtocol.V1_18,
+        fallbackDirectory: String? = null,
     ) {
+        val path = OpenCodeServerProtocol.eventPath(wireProtocol) ?: return
         val (previous, myGeneration) = synchronized(lock) {
             val previous = connection
             connection = null
             previous to ++generation
         }
         disconnectInBackground(previous)
-        Thread({ runReadLoop(myGeneration, serverUrl, basicAuthHeader, backendId) }, "OpenCode-Event-Stream").apply {
+        Thread(
+            { runReadLoop(myGeneration, serverUrl, basicAuthHeader, backendId, wireProtocol, path, fallbackDirectory) },
+            "OpenCode-Event-Stream",
+        ).apply {
             isDaemon = true
             start()
         }
@@ -135,10 +185,21 @@ internal class OpenCodeGlobalEventStream(
         serverUrl: String,
         basicAuthHeader: String,
         backendId: String,
+        wireProtocol: OpenCodeWireProtocol,
+        eventPath: String,
+        fallbackDirectory: String?,
     ) {
         while (isCurrent(myGeneration)) {
             try {
-                readStreamOnce(myGeneration, serverUrl, basicAuthHeader, backendId)
+                readStreamOnce(
+                    myGeneration,
+                    serverUrl,
+                    basicAuthHeader,
+                    backendId,
+                    wireProtocol,
+                    eventPath,
+                    fallbackDirectory,
+                )
                 if (isCurrent(myGeneration)) {
                     thisLogger().info("OpenCode event stream ended; reconnecting")
                 }
@@ -162,8 +223,11 @@ internal class OpenCodeGlobalEventStream(
         serverUrl: String,
         basicAuthHeader: String,
         backendId: String,
+        wireProtocol: OpenCodeWireProtocol,
+        eventPath: String,
+        fallbackDirectory: String?,
     ) {
-        val url = OpenCodeServerProtocol.buildServerRootUrl(serverUrl) + EVENT_PATH
+        val url = OpenCodeServerProtocol.buildServerRootUrl(serverUrl) + eventPath
         val newConnection = URI(url).toURL().openConnection() as HttpURLConnection
         newConnection.connectTimeout = CONNECT_TIMEOUT_MILLIS
         newConnection.readTimeout = readTimeoutMillis
@@ -194,7 +258,7 @@ internal class OpenCodeGlobalEventStream(
                 while (isCurrent(myGeneration)) {
                     val line = lineReader.readLine() ?: break
                     if (line.isEmpty()) {
-                        dispatchBlock(myGeneration, block.toString(), backendId)
+                        dispatchBlock(myGeneration, block.toString(), backendId, wireProtocol, fallbackDirectory)
                         block.setLength(0)
                     } else {
                         if (block.isNotEmpty()) block.append('\n')
@@ -224,9 +288,20 @@ internal class OpenCodeGlobalEventStream(
         }
     }
 
-    private fun dispatchBlock(myGeneration: Long, block: String, backendId: String) {
+    private fun dispatchBlock(
+        myGeneration: Long,
+        block: String,
+        backendId: String,
+        wireProtocol: OpenCodeWireProtocol,
+        fallbackDirectory: String?,
+    ) {
         val data = sseBlockData(block) ?: return
-        val event = parseGlobalEvent(data)?.copy(backendId = backendId) ?: return
+        val parsed = if (wireProtocol == OpenCodeWireProtocol.V2_CLI) {
+            parseCliEvent(data, fallbackDirectory)
+        } else {
+            parseGlobalEvent(data)
+        }
+        val event = parsed?.copy(backendId = backendId) ?: return
         if (event.type == "sync") return
         if (!isCurrent(myGeneration)) return
         try {

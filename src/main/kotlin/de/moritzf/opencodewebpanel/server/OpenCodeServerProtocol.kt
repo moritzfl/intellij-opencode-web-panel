@@ -60,6 +60,14 @@ internal object OpenCodeServerProtocol {
     const val HEALTH_PATH = "/api/health"
     const val GLOBAL_HEALTH_PATH = "/global/health"
     const val STATUS_PATH = "/api/status"
+    const val GLOBAL_EVENT_PATH = "/global/event"
+    const val CLI_EVENT_PATH = "/api/event"
+
+    fun eventPath(protocol: OpenCodeWireProtocol): String? = when (protocol) {
+        OpenCodeWireProtocol.V1_18, OpenCodeWireProtocol.V1_18_EMBEDDED_V2 -> GLOBAL_EVENT_PATH
+        OpenCodeWireProtocol.V2_CLI -> CLI_EVENT_PATH
+        OpenCodeWireProtocol.UNKNOWN -> null
+    }
     const val DISPOSE_PATH = "/global/dispose"
     const val BASIC_AUTH_USERNAME = "opencode"
     const val DEFAULT_EXECUTABLE = "opencode"
