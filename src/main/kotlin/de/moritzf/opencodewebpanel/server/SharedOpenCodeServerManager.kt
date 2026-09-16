@@ -69,7 +69,7 @@ class SharedOpenCodeServerManager(
     private var authServerPassword: String? = null
     private var serverVersion: String? = null
     private var unsupportedVersionWarningShownFor: String? = null
-    private var embeddedProtocol = OpenCodeEmbeddedProtocol.UNKNOWN
+    private var wireProtocol = OpenCodeWireProtocol.UNKNOWN
     private var v2ProtocolWarningShown = false
     private var serverGeneration = 0L
     private var serverGenerationStartedAtMillis = 0L
@@ -244,6 +244,8 @@ class SharedOpenCodeServerManager(
 
     override fun getServerVersion(): String? = synchronized(lock) { serverVersion }
 
+    override fun getWireProtocol(): OpenCodeWireProtocol = synchronized(lock) { wireProtocol }
+
     /** Returns an unsupported version once, so several open panels do not show duplicate warnings. */
     override fun consumeUnsupportedServerVersionWarning(): String? = synchronized(lock) {
         val version = serverVersion?.trim()?.takeIf { it.isNotEmpty() } ?: return@synchronized null
@@ -258,7 +260,7 @@ class SharedOpenCodeServerManager(
 
     /** Returns true once when the running server would make the embedded page use permission v2. */
     override fun consumeV2ProtocolWarning(): Boolean = synchronized(lock) {
-        if (v2ProtocolWarningShown || embeddedProtocol != OpenCodeEmbeddedProtocol.V2) {
+        if (v2ProtocolWarningShown || wireProtocol != OpenCodeWireProtocol.V1_18_EMBEDDED_V2) {
             return@synchronized false
         }
         v2ProtocolWarningShown = true
@@ -290,14 +292,14 @@ class SharedOpenCodeServerManager(
         }
         val auth = OpenCodeServerProtocol.buildBasicAuthHeader(target.password)
         val version = OpenCodeServerProtocol.fetchServerVersion(target.url, auth)
-        val protocol = OpenCodeServerProtocol.detectEmbeddedProtocol(target.url, auth)
+        val protocol = OpenCodeServerProtocol.detectWireProtocol(target.url, auth)
         synchronized(lock) {
             if (serverUrl == target.url &&
                 serverPassword == target.password &&
                 serverGeneration == target.generation
             ) {
                 serverVersion = version
-                embeddedProtocol = protocol
+                wireProtocol = protocol
             }
         }
     }
@@ -398,7 +400,7 @@ class SharedOpenCodeServerManager(
         serverUrl = null
         serverPassword = null
         serverVersion = null
-        embeddedProtocol = OpenCodeEmbeddedProtocol.UNKNOWN
+        wireProtocol = OpenCodeWireProtocol.UNKNOWN
         consecutiveStartFailures = 0
         nextStartAllowedAtMillis = 0L
         return resources
@@ -1004,7 +1006,7 @@ class SharedOpenCodeServerManager(
             serverUrl = null
             serverPassword = null
             serverVersion = null
-            embeddedProtocol = OpenCodeEmbeddedProtocol.UNKNOWN
+            wireProtocol = OpenCodeWireProtocol.UNKNOWN
             serverProcessDescendants = emptyList()
         }
     }

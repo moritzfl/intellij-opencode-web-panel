@@ -635,12 +635,21 @@ class OpenCodeServerProtocolTest {
             "http://127.0.0.1:4096",
             "1.18.23",
             OpenCodeServerBackend.nativeBackendId("/tmp/project"),
+            OpenCodeWireProtocol.V1_18,
+        )
+        val runningCli = formatOpenCodeServerStatusDetail(
+            OpenCodeServerLifecycleState.RUNNING,
+            "http://127.0.0.1:4096",
+            "2.0.5",
+            OpenCodeServerBackend.nativeBackendId("/tmp/project"),
+            OpenCodeWireProtocol.V2_CLI,
         )
         val runningSbx = formatOpenCodeServerStatusDetail(
             OpenCodeServerLifecycleState.RUNNING,
             "http://127.0.0.1:49196",
             "1.18.23",
             "sbx:ide-ocwp-deadbeef",
+            OpenCodeWireProtocol.V1_18,
         )
         val stoppedSbx = formatOpenCodeServerStatusDetail(
             OpenCodeServerLifecycleState.STOPPED,
@@ -648,8 +657,9 @@ class OpenCodeServerProtocolTest {
             null,
             "sbx:ide-ocwp-deadbeef",
         )
-        assertEquals(": http://127.0.0.1:4096 (OpenCode 1.18.23, native CLI)", runningNative)
-        assertEquals(": http://127.0.0.1:49196 (OpenCode 1.18.23, sbx)", runningSbx)
+        assertEquals(": http://127.0.0.1:4096 (OpenCode 1.18.23, 1.18, native CLI)", runningNative)
+        assertEquals(": http://127.0.0.1:4096 (OpenCode 2.0.5, 2.x, native CLI)", runningCli)
+        assertEquals(": http://127.0.0.1:49196 (OpenCode 1.18.23, 1.18, sbx)", runningSbx)
         assertEquals(" (sbx)", stoppedSbx)
         assertEquals("native CLI", formatOpenCodeServerRuntimeLabel(OpenCodeServerBackend.NATIVE_ID))
         assertEquals("sbx", formatOpenCodeServerRuntimeLabel("sbx:ide-ocwp-deadbeef"))
@@ -2644,18 +2654,22 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
-    fun classifyEmbeddedProtocolMatchesTheSpaProbe() {
-        val v1 = OpenCodeProtocolResult.Success("""{"healthy":true,"version":"1.18.10"}""")
-        val v2 = OpenCodeProtocolResult.Success("""{"pid":12}""")
+    fun classifyWireProtocolUsesJsonOnlyBodies() {
+        val v1 = OpenCodeProtocolResult.Success("""{"healthy":true,"version":"1.18.31"}""")
+        val cli = OpenCodeProtocolResult.Success("""{"version":"2.0.5","pid":47000,"urls":["http://127.0.0.1:18732"]}""")
+        val embeddedV2 = OpenCodeProtocolResult.Success("""{"pid":12}""")
+        val html = OpenCodeProtocolResult.Success("<!doctype html><html lang=\"en\"></html>")
         val notFound = OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.HTTP, 404)
         val timeout = OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.TIMEOUT)
 
-        assertEquals(OpenCodeEmbeddedProtocol.V1, OpenCodeServerProtocol.classifyEmbeddedProtocolForTest(v1, null))
-        assertEquals(OpenCodeEmbeddedProtocol.V1, OpenCodeServerProtocol.classifyEmbeddedProtocolForTest(notFound, v1))
-        assertEquals(OpenCodeEmbeddedProtocol.V2, OpenCodeServerProtocol.classifyEmbeddedProtocolForTest(notFound, v2))
-        assertEquals(OpenCodeEmbeddedProtocol.V2, OpenCodeServerProtocol.classifyEmbeddedProtocolForTest(notFound, notFound))
-        assertEquals(OpenCodeEmbeddedProtocol.UNKNOWN, OpenCodeServerProtocol.classifyEmbeddedProtocolForTest(timeout, timeout))
-        assertEquals(OpenCodeEmbeddedProtocol.UNKNOWN, OpenCodeServerProtocol.classifyEmbeddedProtocolForTest(timeout, null))
+        assertEquals(OpenCodeWireProtocol.V1_18, OpenCodeServerProtocol.classifyWireProtocolForTest(v1, null, null))
+        assertEquals(OpenCodeWireProtocol.V1_18, OpenCodeServerProtocol.classifyWireProtocolForTest(notFound, null, v1))
+        assertEquals(OpenCodeWireProtocol.V2_CLI, OpenCodeServerProtocol.classifyWireProtocolForTest(html, cli, notFound))
+        assertEquals(OpenCodeWireProtocol.V1_18_EMBEDDED_V2, OpenCodeServerProtocol.classifyWireProtocolForTest(notFound, notFound, embeddedV2))
+        assertEquals(OpenCodeWireProtocol.UNKNOWN, OpenCodeServerProtocol.classifyWireProtocolForTest(html, notFound, notFound))
+        assertEquals(OpenCodeWireProtocol.UNKNOWN, OpenCodeServerProtocol.classifyWireProtocolForTest(timeout, timeout, timeout))
+        assertEquals(OpenCodeWireProtocol.UNKNOWN, OpenCodeServerProtocol.classifyWireProtocolForTest(timeout, null, null))
+        assertEquals(OpenCodeWireProtocol.UNKNOWN, OpenCodeServerProtocol.classifyWireProtocolForTest(html, OpenCodeProtocolResult.Success("""{"pid":1}"""), notFound))
     }
 
     @Test
@@ -2672,6 +2686,60 @@ class OpenCodeServerProtocolTest {
         ) { url ->
             assertNull(OpenCodeServerProtocol.fetchServerVersion(url, null))
         }
+    }
+
+    @Test
+    fun checkServerRespondingAcceptsCliStatusWhenHealthIsMissing() {
+        withCliDualStackHttpServer { url ->
+            assertTrue(
+                OpenCodeServerProtocol.checkServerResponding(
+                    url,
+                    connectTimeoutMillis = 1000,
+                    readTimeoutMillis = 1000,
+                ),
+            )
+        }
+    }
+
+    @Test
+    fun fetchServerVersionReadsCliStatusWhenGlobalHealthIsHtml() {
+        withCliDualStackHttpServer { url ->
+            assertEquals("2.0.5", OpenCodeServerProtocol.fetchServerVersion(url, null))
+        }
+    }
+
+    @Test
+    fun detectWireProtocolClassifiesCliTwoFromLiveStatusJson() {
+        withCliDualStackHttpServer { url ->
+            assertEquals(
+                OpenCodeWireProtocol.V2_CLI,
+                OpenCodeServerProtocol.detectWireProtocol(url, null),
+            )
+        }
+    }
+
+    @Test
+    fun detectWireProtocolStaysUnknownWhenGlobalHealthIsHtmlAndStatusTimesOut() {
+        val html = "<!doctype html><html><title>OpenCode</title></html>"
+        withSingleRequestHttpServer(
+            body = html,
+            expectedRequestLine = "GET ${OpenCodeServerProtocol.GLOBAL_HEALTH_PATH} HTTP/1.1",
+        ) { url ->
+            assertEquals(
+                OpenCodeWireProtocol.UNKNOWN,
+                OpenCodeServerProtocol.detectWireProtocol(url, null, 200, 200),
+            )
+        }
+    }
+
+    @Test
+    fun classifyWireProtocolMatchesCapturedFixtures() {
+        val v1 = OpenCodeProtocolResult.Success(wireFixture("v1_18/global-health.json"))
+        val cli = OpenCodeProtocolResult.Success(wireFixture("v2_cli/api-status.json"))
+        val html = OpenCodeProtocolResult.Success("<!doctype html><html lang=\"en\"></html>")
+        val notFound = OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.HTTP, 404)
+        assertEquals(OpenCodeWireProtocol.V1_18, OpenCodeServerProtocol.classifyWireProtocolForTest(v1, null, null))
+        assertEquals(OpenCodeWireProtocol.V2_CLI, OpenCodeServerProtocol.classifyWireProtocolForTest(html, cli, notFound))
     }
 
     @Test
@@ -2728,6 +2796,38 @@ class OpenCodeServerProtocolTest {
         assertEquals(10_000L, OpenCodeServerProtocol.startFailureBackoffMillis(2))
         assertEquals(20_000L, OpenCodeServerProtocol.startFailureBackoffMillis(3))
         assertEquals(60_000L, OpenCodeServerProtocol.startFailureBackoffMillis(10))
+    }
+
+    private fun wireFixture(name: String): String {
+        return javaClass.getResource("/de/moritzf/opencodewebpanel/server/wire/$name")!!.readText()
+    }
+
+    private fun withCliDualStackHttpServer(block: (String) -> Unit) {
+        val html = "<!doctype html><html lang=\"en\"><title>OpenCode</title></html>"
+        val status = """{"version":"2.0.5","pid":47000,"urls":["http://127.0.0.1:18732"]}"""
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/global/health") { exchange ->
+            val bytes = html.toByteArray()
+            exchange.responseHeaders.add("Content-Type", "text/html")
+            exchange.sendResponseHeaders(200, bytes.size.toLong())
+            exchange.responseBody.use { it.write(bytes) }
+        }
+        server.createContext("/api/health") { exchange ->
+            exchange.sendResponseHeaders(404, -1)
+            exchange.responseBody.close()
+        }
+        server.createContext("/api/status") { exchange ->
+            val bytes = status.toByteArray()
+            exchange.responseHeaders.add("Content-Type", "application/json")
+            exchange.sendResponseHeaders(200, bytes.size.toLong())
+            exchange.responseBody.use { it.write(bytes) }
+        }
+        server.start()
+        try {
+            block("http://127.0.0.1:${server.address.port}")
+        } finally {
+            server.stop(0)
+        }
     }
 
     private fun withSingleRequestHttpServer(

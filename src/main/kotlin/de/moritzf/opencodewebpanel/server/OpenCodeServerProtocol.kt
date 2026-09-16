@@ -21,10 +21,18 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.ln
 import org.jetbrains.annotations.TestOnly
 
-internal enum class OpenCodeEmbeddedProtocol {
-    V1,
-    V2,
+enum class OpenCodeWireProtocol {
+    V1_18,
+    V2_CLI,
+    V1_18_EMBEDDED_V2,
     UNKNOWN,
+    ;
+
+    fun statusLabel(): String? = when (this) {
+        V1_18, V1_18_EMBEDDED_V2 -> "1.18"
+        V2_CLI -> "2.x"
+        UNKNOWN -> null
+    }
 }
 
 internal sealed interface OpenCodeProtocolResult<out T> {
@@ -51,6 +59,7 @@ internal object OpenCodeServerProtocol {
     private const val START_FAILURE_BACKOFF_MAX_MILLIS = 60_000L
     const val HEALTH_PATH = "/api/health"
     const val GLOBAL_HEALTH_PATH = "/global/health"
+    const val STATUS_PATH = "/api/status"
     const val DISPOSE_PATH = "/global/dispose"
     const val BASIC_AUTH_USERNAME = "opencode"
     const val DEFAULT_EXECUTABLE = "opencode"
@@ -1138,13 +1147,16 @@ internal object OpenCodeServerProtocol {
         connectTimeoutMillis: Int = 2000,
         readTimeoutMillis: Int = 2000,
     ): Boolean {
-        val body = httpGet(buildHealthUrl(serverUrl), basicAuthHeader, connectTimeoutMillis, readTimeoutMillis) ?: return false
-        return parseJsonObject(body)?.booleanMember("healthy") == true
+        val root = buildServerRootUrl(serverUrl)
+        val health = httpGetResult(root + HEALTH_PATH, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)
+        if (isHealthyJson(health)) return true
+        if (health is OpenCodeProtocolResult.Success) return false
+        return isCliStatusJson(httpGetResult(root + STATUS_PATH, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis))
     }
 
     /**
-     * Reads the OpenCode version from `/global/health` (`{"healthy":true,"version":"..."}`).
-     * Returns null when the endpoint is unavailable; an unavailable version never blocks startup.
+     * 1.18: `/global/health` `{version}`. CLI 2.x: `/api/status` `{version}`. HTML is ignored.
+     * Returns null when neither JSON body has a string version; that never blocks startup.
      */
     fun fetchServerVersion(
         serverUrl: String,
@@ -1152,64 +1164,81 @@ internal object OpenCodeServerProtocol {
         connectTimeoutMillis: Int = 2000,
         readTimeoutMillis: Int = 2000,
     ): String? {
-        val body = httpGet(buildServerRootUrl(serverUrl) + GLOBAL_HEALTH_PATH, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)
-            ?: return null
-        return parseJsonObject(body)?.stringMember("version")
+        val root = buildServerRootUrl(serverUrl)
+        val global = httpGetResult(root + GLOBAL_HEALTH_PATH, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)
+        jsonObject(global)?.let { return it.stringMember("version") }
+        val status = httpGetResult(root + STATUS_PATH, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)
+        return jsonObject(status)?.stringMember("version")
     }
 
     /**
-     * Mirrors the SPA's `detectServerProtocol`: `/global/health` with `{healthy:true}` is v1;
-     * `/api/health` with a numeric `pid` is v2; `{healthy:true}` on `/api/health` is still v1;
-     * otherwise a reachable server defaults to v2. Unreachable probes stay [OpenCodeEmbeddedProtocol.UNKNOWN] so a
-     * transport blip does not warn that permissions will vanish.
+     * JSON-only wire detect. HTML 200 is not v1 and not CLI 2.x.
+     * 1. `/global/health` `{healthy:true}` → [OpenCodeWireProtocol.V1_18]
+     * 2. `/api/status` numeric `pid` + string `version` → [OpenCodeWireProtocol.V2_CLI]
+     * 3. `/api/health` `{healthy:true}` → [OpenCodeWireProtocol.V1_18]
+     * 4. `/api/health` numeric `pid` without `healthy` → [OpenCodeWireProtocol.V1_18_EMBEDDED_V2]
+     * 5. else [OpenCodeWireProtocol.UNKNOWN]
      */
-    fun detectEmbeddedProtocol(
+    fun detectWireProtocol(
         serverUrl: String,
         basicAuthHeader: String?,
         connectTimeoutMillis: Int = 2000,
         readTimeoutMillis: Int = 2000,
-    ): OpenCodeEmbeddedProtocol {
+    ): OpenCodeWireProtocol {
         val root = buildServerRootUrl(serverUrl)
         val global = httpGetResult(root + GLOBAL_HEALTH_PATH, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)
-        val api = if (isV1HealthResult(global)) {
-            null
-        } else {
-            httpGetResult(root + HEALTH_PATH, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)
-        }
-        return classifyEmbeddedProtocol(global, api)
+        if (isHealthyJson(global)) return OpenCodeWireProtocol.V1_18
+        val status = httpGetResult(root + STATUS_PATH, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)
+        if (isCliStatusJson(status, requireVersion = true)) return OpenCodeWireProtocol.V2_CLI
+        val api = httpGetResult(root + HEALTH_PATH, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)
+        return classifyWireProtocol(global, status, api)
     }
 
     @TestOnly
-    fun classifyEmbeddedProtocolForTest(
+    fun classifyWireProtocolForTest(
         global: OpenCodeProtocolResult<String>?,
+        status: OpenCodeProtocolResult<String>?,
         api: OpenCodeProtocolResult<String>?,
-    ): OpenCodeEmbeddedProtocol = classifyEmbeddedProtocol(global, api)
+    ): OpenCodeWireProtocol = classifyWireProtocol(global, status, api)
 
-    private fun classifyEmbeddedProtocol(
+    private fun classifyWireProtocol(
         global: OpenCodeProtocolResult<String>?,
+        status: OpenCodeProtocolResult<String>?,
         api: OpenCodeProtocolResult<String>?,
-    ): OpenCodeEmbeddedProtocol {
-        if (isV1HealthResult(global)) return OpenCodeEmbeddedProtocol.V1
-        if (isV2HealthResult(api)) return OpenCodeEmbeddedProtocol.V2
-        if (isV1HealthResult(api)) return OpenCodeEmbeddedProtocol.V1
-        if (isHttpAnswer(global) || isHttpAnswer(api)) return OpenCodeEmbeddedProtocol.V2
-        return OpenCodeEmbeddedProtocol.UNKNOWN
+    ): OpenCodeWireProtocol {
+        if (isHealthyJson(global)) return OpenCodeWireProtocol.V1_18
+        if (isCliStatusJson(status, requireVersion = true)) return OpenCodeWireProtocol.V2_CLI
+        if (isHealthyJson(api)) return OpenCodeWireProtocol.V1_18
+        if (isEmbeddedV2HealthJson(api)) return OpenCodeWireProtocol.V1_18_EMBEDDED_V2
+        return OpenCodeWireProtocol.UNKNOWN
     }
 
-    private fun isV1HealthResult(result: OpenCodeProtocolResult<String>?): Boolean {
-        val body = (result as? OpenCodeProtocolResult.Success)?.value ?: return false
-        return parseJsonObject(body)?.booleanMember("healthy") == true
+    private fun jsonObject(result: OpenCodeProtocolResult<String>?): JsonObject? {
+        val body = (result as? OpenCodeProtocolResult.Success)?.value ?: return null
+        return parseJsonObject(body)
     }
 
-    private fun isV2HealthResult(result: OpenCodeProtocolResult<String>?): Boolean {
-        val body = (result as? OpenCodeProtocolResult.Success)?.value ?: return false
-        val pid = parseJsonObject(body)?.get("pid") ?: return false
+    private fun isHealthyJson(result: OpenCodeProtocolResult<String>?): Boolean {
+        return jsonObject(result)?.booleanMember("healthy") == true
+    }
+
+    private fun isCliStatusJson(
+        result: OpenCodeProtocolResult<String>?,
+        requireVersion: Boolean = false,
+    ): Boolean {
+        val obj = jsonObject(result) ?: return false
+        val pid = obj.get("pid") ?: return false
+        if (!pid.isJsonPrimitive || !pid.asJsonPrimitive.isNumber) return false
+        if (obj.has("urls") && !obj.get("urls").isJsonArray) return false
+        if (requireVersion && obj.stringMember("version").isNullOrBlank()) return false
+        return true
+    }
+
+    private fun isEmbeddedV2HealthJson(result: OpenCodeProtocolResult<String>?): Boolean {
+        val obj = jsonObject(result) ?: return false
+        if (obj.booleanMember("healthy") == true) return false
+        val pid = obj.get("pid") ?: return false
         return pid.isJsonPrimitive && pid.asJsonPrimitive.isNumber
-    }
-
-    private fun isHttpAnswer(result: OpenCodeProtocolResult<String>?): Boolean {
-        return result is OpenCodeProtocolResult.Success ||
-            (result is OpenCodeProtocolResult.Failure && result.kind == OpenCodeProtocolResult.Failure.Kind.HTTP)
     }
 
     /**

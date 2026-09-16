@@ -41,6 +41,7 @@ interface OpenCodeServerBackend {
     fun getAuthServerUrl(): String? = getServerUrl()
     fun getAuthPassword(): String? = getServerPassword()
     fun getServerVersion(): String?
+    fun getWireProtocol(): OpenCodeWireProtocol = OpenCodeWireProtocol.UNKNOWN
     fun getLifecycleState(): OpenCodeServerLifecycleState
     fun getServerGeneration(): Long
     fun getServerGenerationStartedAtMillis(): Long

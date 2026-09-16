@@ -545,6 +545,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
             backend.getServerUrl(),
             backend.getServerVersion(),
             backend.backendId,
+            backend.getWireProtocol(),
         )
         serverStatusLabel.text = formatOpenCodeServerLifecycleStatusText(state, detail)
         val sbx = backend as? SbxOpenCodeServerBackend

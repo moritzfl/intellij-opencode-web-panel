@@ -131,11 +131,16 @@ internal fun formatOpenCodeServerStatusDetail(
     serverUrl: String?,
     version: String?,
     backendId: String,
+    wireProtocol: OpenCodeWireProtocol = OpenCodeWireProtocol.UNKNOWN,
 ): String {
     val runtime = formatOpenCodeServerRuntimeLabel(backendId)
     if (state == OpenCodeServerLifecycleState.RUNNING && !serverUrl.isNullOrBlank()) {
-        val versionPrefix = version?.takeIf { it.isNotBlank() }?.let { "OpenCode $it, " }.orEmpty()
-        return ": $serverUrl ($versionPrefix$runtime)"
+        val bits = listOfNotNull(
+            version?.takeIf { it.isNotBlank() }?.let { "OpenCode $it" },
+            wireProtocol.statusLabel(),
+            runtime,
+        )
+        return ": $serverUrl (${bits.joinToString(", ")})"
     }
     return " ($runtime)"
 }

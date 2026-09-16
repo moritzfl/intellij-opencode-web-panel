@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Start and health checks work against OpenCode CLI 2.x (`GET /api/status`) as well as 1.18. Project settings show a `1.18` / `2.x` wire label.
+
 ### Fixed
 
 - Host CLI start recognizes CLI 2.x's `server listening on` banner (previously only `opencode server listening on`, so 2.x start waited 60s then killed the process).

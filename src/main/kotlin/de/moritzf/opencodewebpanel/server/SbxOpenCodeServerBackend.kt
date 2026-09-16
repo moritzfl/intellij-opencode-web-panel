@@ -96,7 +96,7 @@ internal class SbxOpenCodeServerBackend(
     private var authServerPassword: String? = null
     private var serverVersion: String? = null
     private var unsupportedVersionWarningShownFor: String? = null
-    private var embeddedProtocol = OpenCodeEmbeddedProtocol.UNKNOWN
+    private var wireProtocol = OpenCodeWireProtocol.UNKNOWN
     private var v2ProtocolWarningShown = false
     private var serverGeneration = 0L
     private var serverGenerationStartedAtMillis = 0L
@@ -253,6 +253,8 @@ internal class SbxOpenCodeServerBackend(
 
     override fun getServerVersion(): String? = synchronized(lock) { serverVersion }
 
+    override fun getWireProtocol(): OpenCodeWireProtocol = synchronized(lock) { wireProtocol }
+
     override fun consumeUnsupportedServerVersionWarning(): String? = synchronized(lock) {
         val version = serverVersion?.trim()?.takeIf { it.isNotEmpty() } ?: return@synchronized null
         if (!OpenCodeServerProtocol.isOpenCodeVersionUnsupported(version) || unsupportedVersionWarningShownFor == version) {
@@ -263,7 +265,7 @@ internal class SbxOpenCodeServerBackend(
     }
 
     override fun consumeV2ProtocolWarning(): Boolean = synchronized(lock) {
-        if (v2ProtocolWarningShown || embeddedProtocol != OpenCodeEmbeddedProtocol.V2) {
+        if (v2ProtocolWarningShown || wireProtocol != OpenCodeWireProtocol.V1_18_EMBEDDED_V2) {
             return@synchronized false
         }
         v2ProtocolWarningShown = true
@@ -1183,10 +1185,10 @@ internal class SbxOpenCodeServerBackend(
         val password = getServerPassword() ?: return
         val auth = OpenCodeServerProtocol.buildBasicAuthHeader(password)
         val version = OpenCodeServerProtocol.fetchServerVersion(url, auth)
-        val protocol = OpenCodeServerProtocol.detectEmbeddedProtocol(url, auth)
+        val protocol = OpenCodeServerProtocol.detectWireProtocol(url, auth)
         synchronized(lock) {
             serverVersion = version
-            embeddedProtocol = protocol
+            wireProtocol = protocol
         }
     }
 
@@ -1203,7 +1205,7 @@ internal class SbxOpenCodeServerBackend(
             serverUrl = null
             serverPassword = null
             serverVersion = null
-            embeddedProtocol = OpenCodeEmbeddedProtocol.UNKNOWN
+            wireProtocol = OpenCodeWireProtocol.UNKNOWN
         }
         if (!url.isNullOrBlank() && !password.isNullOrBlank()) {
             OpenCodeServerProtocol.disposeServer(url, OpenCodeServerProtocol.buildBasicAuthHeader(password))
