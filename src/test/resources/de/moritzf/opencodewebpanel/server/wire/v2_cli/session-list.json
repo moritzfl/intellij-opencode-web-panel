@@ -1,0 +1,33 @@
+{
+  "data": [
+    {
+      "id": "ses_f547e1692ffelWnvCLl1OK8i4s",
+      "parentID": null,
+      "title": "wire-capture",
+      "time": {
+        "created": 1789583813117,
+        "updated": 1789583856840,
+        "idle": 1789583902618
+      },
+      "location": {
+        "directory": "/Users/moritz/Desktop/git/intellij-opencode-web-ui"
+      }
+    },
+    {
+      "id": "ses_f59a1472effeHX3t8pU1bfARHp",
+      "parentID": null,
+      "title": "Commit review",
+      "time": {
+        "created": 1789497620689,
+        "updated": 1789501827036
+      },
+      "location": {
+        "directory": "/Users/moritz/Desktop/git/intellij-opencode-web-ui"
+      }
+    }
+  ],
+  "cursor": {
+    "previous": "prev",
+    "next": "next"
+  }
+}

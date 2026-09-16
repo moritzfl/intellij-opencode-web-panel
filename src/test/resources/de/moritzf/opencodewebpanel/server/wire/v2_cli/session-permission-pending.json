@@ -1,0 +1,20 @@
+{
+  "data": [
+    {
+      "id": "per_0ab82a936001Ab0k4zIgsRFD7a",
+      "sessionID": "ses_f547e1692ffelWnvCLl1OK8i4s",
+      "action": "external_directory",
+      "resources": [
+        "/tmp/*"
+      ],
+      "save": [
+        "/tmp/*"
+      ],
+      "source": {
+        "type": "tool",
+        "messageID": "msg_0ab829552001HrXjuBMOigjSsY",
+        "id": "call-dce70296-e49c-4a8e-b7cf-738d6d285c26-0"
+      }
+    }
+  ]
+}

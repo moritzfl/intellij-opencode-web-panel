@@ -1,0 +1,14 @@
+{
+  "data": {
+    "id": "msg_0ab81ed04001rZzEooQjXKDbgy",
+    "sessionID": "ses_f547e1692ffelWnvCLl1OK8i4s",
+    "time": {
+      "created": 1789583813908
+    },
+    "type": "user",
+    "payload": {
+      "text": "Reply with the single word OK and nothing else."
+    },
+    "delivery": "steer"
+  }
+}

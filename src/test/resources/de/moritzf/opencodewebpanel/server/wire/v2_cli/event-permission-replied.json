@@ -1,0 +1,13 @@
+{
+  "id": "evt_0ab833edb001vdk0TWOnohpCDl",
+  "created": 1789583900379,
+  "type": "permission.replied",
+  "location": {
+    "directory": "/Users/moritz/Desktop/git/intellij-opencode-web-ui"
+  },
+  "data": {
+    "sessionID": "ses_f547e1692ffelWnvCLl1OK8i4s",
+    "requestID": "per_0ab82a936001Ab0k4zIgsRFD7a",
+    "reply": "once"
+  }
+}

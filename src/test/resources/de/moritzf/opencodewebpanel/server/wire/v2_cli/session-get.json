@@ -1,0 +1,17 @@
+{
+  "data": {
+    "id": "ses_f547e1692ffelWnvCLl1OK8i4s",
+    "projectID": "33e66e89b7e7c38eaab8a8ee90537a6022de32a5",
+    "title": "wire-capture",
+    "parentID": null,
+    "outcome": "succeeded",
+    "time": {
+      "created": 1789583813117,
+      "updated": 1789583856840,
+      "idle": 1789583902618
+    },
+    "location": {
+      "directory": "/Users/moritz/Desktop/git/intellij-opencode-web-ui"
+    }
+  }
+}

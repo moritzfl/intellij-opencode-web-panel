@@ -1,0 +1,21 @@
+{
+  "data": [
+    {
+      "id": "ses_f547f6576ffegDihP6R5ikRLJO",
+      "parentID": "ses_f54864417ffeYVyOKanH9C9do3",
+      "title": "Review OpenCode 2 dual-host (@reviewer subagent)",
+      "time": {
+        "created": 1789583727241,
+        "updated": 1789583929302
+      },
+      "location": {
+        "directory": "/Users/moritz/Desktop/git/intellij-opencode-web-ui"
+      },
+      "directory": null
+    }
+  ],
+  "cursor": {
+    "previous": "prev",
+    "next": "next"
+  }
+}

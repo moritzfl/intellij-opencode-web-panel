@@ -1,0 +1,132 @@
+{
+  "data": [
+    {
+      "id": "msg_0ab83479a002aMfBPOMJwsYB1a",
+      "type": "idle",
+      "time": {
+        "created": 1789583902618
+      },
+      "outcome": "succeeded"
+    },
+    {
+      "id": "msg_0ab833f1f001bd7Vx7AyuNh0UY",
+      "type": "assistant",
+      "time": {
+        "created": 1789583901905,
+        "streamed": 1789583902567,
+        "completed": 1789583902616
+      },
+      "agent": "build",
+      "model": {
+        "id": "grok-4.6",
+        "providerID": "xai"
+      },
+      "finish": "stop",
+      "content": [
+        {
+          "type": "reasoning"
+        },
+        {
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "id": "msg_0ab829552001HrXjuBMOigjSsY",
+      "type": "assistant",
+      "time": {
+        "created": 1789583860225,
+        "streamed": 1789583862366,
+        "completed": 1789583900435
+      },
+      "agent": "build",
+      "model": {
+        "id": "grok-4.6",
+        "providerID": "xai"
+      },
+      "finish": "tool-calls",
+      "content": [
+        {
+          "type": "reasoning"
+        },
+        {
+          "type": "text"
+        },
+        {
+          "type": "tool",
+          "id": "call-dce70296-e49c-4a8e-b7cf-738d6d285c26-0",
+          "name": "write",
+          "state": {
+            "status": "completed",
+            "input": {
+              "path": "/tmp/opencode-wire-capture-test.txt",
+              "content": "hi"
+            },
+            "metadata": {
+              "truncated": false
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "msg_0ab8294bc001E7JW9MToEkRkUy",
+      "type": "user",
+      "time": {
+        "created": 1789583856934
+      },
+      "text": "Use the write tool to create a file at /tmp/opencode-wire-capture-test.txt conta"
+    },
+    {
+      "id": "msg_0ab821a19001x365hXgrf2BiD9",
+      "type": "idle",
+      "time": {
+        "created": 1789583825433
+      },
+      "outcome": "succeeded"
+    },
+    {
+      "id": "msg_0ab820170001mBdoskkv8WsfGC",
+      "type": "assistant",
+      "time": {
+        "created": 1789583821357,
+        "streamed": 1789583825385,
+        "completed": 1789583825430
+      },
+      "agent": "build",
+      "model": {
+        "id": "grok-4.6",
+        "providerID": "xai"
+      },
+      "finish": "stop",
+      "content": [
+        {
+          "type": "reasoning"
+        },
+        {
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "id": "msg_0ab820132001tla09XylGzN7Di",
+      "type": "user",
+      "time": {
+        "created": 1789583819095
+      },
+      "text": "Continue"
+    },
+    {
+      "id": "msg_0ab81fd07001eszZCyMsldAnt1",
+      "type": "idle",
+      "time": {
+        "created": 1789583817991
+      },
+      "outcome": "succeeded"
+    }
+  ],
+  "cursor": {
+    "previous": "eyJpZCI6Im1zZ18wYWI4MzQ3OWEwMDJhTWZCUE9NSndzWUIxYSIsIm9yZGVyIjoiZGVzYyIsImRpcmVjdGlvbiI6InByZXZpb3VzIn0",
+    "next": "eyJpZCI6Im1zZ18wYWI4MWZkMDcwMDFlc3paQ3lNc2xkQW50MSIsIm9yZGVyIjoiZGVzYyIsImRpcmVjdGlvbiI6Im5leHQifQ"
+  }
+}

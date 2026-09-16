@@ -1,0 +1,3 @@
+data: {"id":"evt_v2_connected","type":"server.connected","data":{}}
+
+: heartbeat

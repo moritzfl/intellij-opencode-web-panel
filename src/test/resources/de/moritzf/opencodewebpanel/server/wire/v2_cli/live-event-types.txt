@@ -1,0 +1,29 @@
+server.connected
+session.created
+session.inbox.enqueued
+session.inbox.delivered
+session.execution.started
+session.execution.succeeded
+session.instructions.updated
+session.step.started
+session.step.streamed
+session.step.ended
+session.reasoning.started
+session.reasoning.delta
+session.reasoning.ended
+session.text.started
+session.text.delta
+session.text.ended
+session.usage.updated
+session.tool.input.started
+session.tool.input.ended
+session.tool.called
+session.tool.success
+permission.asked
+permission.replied
+provider.updated
+model.updated
+models-dev.refreshed
+integration.updated
+# SSE comment heartbeat: ": heartbeat" ~15s (also immediately on connect)
+# not observed this capture: session.status, session.idle, session.error, question.*, form.*, session.execution.failed, session.execution.interrupted

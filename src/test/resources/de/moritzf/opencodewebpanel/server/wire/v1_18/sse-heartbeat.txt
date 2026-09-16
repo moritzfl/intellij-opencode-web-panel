@@ -1,0 +1,1 @@
+data: {"payload":{"id":"evt_v1_heartbeat","type":"server.heartbeat","properties":{}}}
