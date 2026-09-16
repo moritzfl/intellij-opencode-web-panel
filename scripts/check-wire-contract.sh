@@ -11,6 +11,62 @@ AUTH="opencode:${PASSWORD}"
 WORKDIR="$(mktemp -d)"
 trap 'rm -rf "$WORKDIR"' EXIT
 
+PROTOCOL="${3:-}"
+if [ -z "$PROTOCOL" ]; then
+  if curl -fsu "$AUTH" "$BASE_URL/api/status" -o "$WORKDIR/status-probe.json" && python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert isinstance(d.get("pid"), int) and isinstance(d.get("version"), str)' "$WORKDIR/status-probe.json" 2>/dev/null; then
+    PROTOCOL=v2
+  else
+    PROTOCOL=v1
+  fi
+fi
+
+if [ "$PROTOCOL" = "v2" ]; then
+  curl -fsu "$AUTH" "$BASE_URL/openapi.json" -o "$WORKDIR/doc.json"
+  curl -fsu "$AUTH" "$BASE_URL/api/status" -o "$WORKDIR/status.json"
+  curl -fsu "$AUTH" "$BASE_URL/api/session/active" -o "$WORKDIR/active.json"
+  curl -fsu "$AUTH" "$BASE_URL/api/permission/request" -o "$WORKDIR/permission.json"
+  curl -fsu "$AUTH" "$BASE_URL/api/form" -o "$WORKDIR/form.json"
+  python3 - "$WORKDIR" <<'PY'
+import json, pathlib, sys
+root = pathlib.Path(sys.argv[1])
+doc = json.loads((root / "doc.json").read_text())
+status = json.loads((root / "status.json").read_text())
+failures = []
+ops = {
+    ("/api/status", "get"): None,
+    ("/api/event", "get"): None,
+    ("/api/session", "get"): None,
+    ("/api/session/active", "get"): None,
+    ("/api/session/{sessionID}", "get"): None,
+    ("/api/session/{sessionID}/message", "get"): None,
+    ("/api/session/{sessionID}/diff", "get"): None,
+    ("/api/session/{sessionID}/prompt", "post"): None,
+    ("/api/permission/request", "get"): None,
+    ("/api/session/{sessionID}/permission/{requestID}/reply", "post"): None,
+}
+for (path, method), _ in ops.items():
+    if not (doc.get("paths") or {}).get(path, {}).get(method):
+        failures.append(f"missing {method.upper()} {path}")
+if not isinstance(status.get("pid"), int) or not isinstance(status.get("version"), str):
+    failures.append("/api/status shape changed")
+active = json.loads((root / "active.json").read_text())
+if not isinstance(active, dict) or not isinstance(active.get("data"), dict):
+    failures.append("/api/session/active envelope changed")
+perm = json.loads((root / "permission.json").read_text())
+if not isinstance(perm, dict) or not isinstance(perm.get("data"), list):
+    failures.append("/api/permission/request envelope changed")
+form = json.loads((root / "form.json").read_text())
+if not isinstance(form, dict) or not isinstance(form.get("data"), list):
+    failures.append("/api/form envelope changed")
+if failures:
+    for f in failures:
+        print(f"FAIL: {f}", file=sys.stderr)
+    raise SystemExit(1)
+print(f"OK: CLI 2.x {len(ops)} operations; OpenCode {status['version']}")
+PY
+  exit 0
+fi
+
 curl -fsu "$AUTH" "$BASE_URL/doc" -o "$WORKDIR/doc.json"
 curl -fsu "$AUTH" "$BASE_URL/global/health" -o "$WORKDIR/health.json"
 ENCODED_DIRECTORY="$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$DIRECTORY")"

@@ -1279,7 +1279,13 @@ internal object OpenCodeServerProtocol {
         basicAuthHeader: String,
         connectTimeoutMillis: Int = 2_000,
         readTimeoutMillis: Int = 5_000,
+        wireProtocol: OpenCodeWireProtocol = OpenCodeWireProtocol.V1_18,
     ): Boolean {
+        if (wireProtocol != OpenCodeWireProtocol.V1_18 &&
+            wireProtocol != OpenCodeWireProtocol.V1_18_EMBEDDED_V2
+        ) {
+            return true
+        }
         return try {
             val connection = URI(buildServerRootUrl(serverUrl) + DISPOSE_PATH).toURL().openConnection() as HttpURLConnection
             try {

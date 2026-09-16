@@ -41,6 +41,7 @@ class SharedOpenCodeServerManager(
         val processDescendants: List<ProcessHandle>,
         val serverUrl: String?,
         val serverPassword: String?,
+        val wireProtocol: OpenCodeWireProtocol = OpenCodeWireProtocol.UNKNOWN,
     )
 
     private data class HealthRestartReservation(
@@ -392,6 +393,7 @@ class SharedOpenCodeServerManager(
             serverProcessDescendants,
             serverUrl,
             serverPassword,
+            wireProtocol,
         )
         checkScheduledFuture = null
         serverProcess = null
@@ -408,7 +410,7 @@ class SharedOpenCodeServerManager(
 
     private fun stopResources(resources: ServerResourcesToStop) {
         resources.future?.cancel(true)
-        disposeServerResources(resources.serverUrl, resources.serverPassword)
+        disposeServerResources(resources.serverUrl, resources.serverPassword, resources.wireProtocol)
         processTerminator.destroy(resources.process, resources.processDescendants)
     }
 
@@ -931,23 +933,31 @@ class SharedOpenCodeServerManager(
                 processDescendants = serverProcessDescendants,
                 serverUrl = serverUrl,
                 serverPassword = serverPassword,
+                wireProtocol = wireProtocol,
             )
             serverProcess = null
             serverProcessDescendants = emptyList()
             serverUrl = null
             serverPassword = null
+            serverVersion = null
+            wireProtocol = OpenCodeWireProtocol.UNKNOWN
             detached
         }
         stopResources(resources)
     }
 
-    private fun disposeServerResources(serverUrl: String?, password: String?) {
+    private fun disposeServerResources(
+        serverUrl: String?,
+        password: String?,
+        wireProtocol: OpenCodeWireProtocol,
+    ) {
         // Dispose via HTTP whenever credentials remain — do not require the launcher process
         // to still be alive (normal steady state on Windows after the launcher exits).
         if (serverUrl.isNullOrBlank() || password.isNullOrBlank()) return
         val disposed = OpenCodeServerProtocol.disposeServer(
             serverUrl,
             OpenCodeServerProtocol.buildBasicAuthHeader(password),
+            wireProtocol = wireProtocol,
         )
         if (disposed) {
             thisLogger().info("Disposed OpenCode server resources before stopping process")

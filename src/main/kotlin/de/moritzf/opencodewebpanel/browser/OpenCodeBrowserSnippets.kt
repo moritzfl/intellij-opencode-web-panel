@@ -1227,8 +1227,8 @@ internal object OpenCodeBrowserSnippets {
                 if (reason && typeof reason.message === 'string') return reason.message;
                 try { return String(reason ?? ''); } catch (_) { return ''; }
               };
-              const isAssetUrl = (value) => /\/assets\/[\w.-]+\.js(?:$|[?#])/i.test(value) ||
-                /\/assets\/[\w.-]+\.js:\d+/i.test(value);
+              const isAssetUrl = (value) => /\/_?assets\/[\w.-]+\.js(?:$|[?#])/i.test(value) ||
+                /\/_?assets\/[\w.-]+\.js:\d+/i.test(value);
               const isChunkFailure = (text) =>
                 /failed to fetch dynamically imported module/i.test(text) ||
                 (/failed to fetch/i.test(text) && isAssetUrl(text));

@@ -1197,10 +1197,12 @@ internal class SbxOpenCodeServerBackend(
         val url: String?
         val password: String?
         val process: Process?
+        val protocol: OpenCodeWireProtocol
         synchronized(lock) {
             url = serverUrl
             password = serverPassword
             process = serverProcess
+            protocol = wireProtocol
             serverProcess = null
             serverUrl = null
             serverPassword = null
@@ -1208,7 +1210,11 @@ internal class SbxOpenCodeServerBackend(
             wireProtocol = OpenCodeWireProtocol.UNKNOWN
         }
         if (!url.isNullOrBlank() && !password.isNullOrBlank()) {
-            OpenCodeServerProtocol.disposeServer(url, OpenCodeServerProtocol.buildBasicAuthHeader(password))
+            OpenCodeServerProtocol.disposeServer(
+                url,
+                OpenCodeServerProtocol.buildBasicAuthHeader(password),
+                wireProtocol = protocol,
+            )
         }
         var ok = true
         try {

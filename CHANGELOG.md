@@ -10,6 +10,7 @@
 - The JVM event reader follows CLI 2.x `GET /api/event` (and still 1.18 `/global/event`), mapping execution start/end onto session busy/idle.
 - Session status, messages, continue, and diffs use CLI 2.x `/api/session` routes when that wire is live.
 - Permission list/reply on CLI 2.x uses `/api/permission/request` and `{decision}`. IDE question notifications stay 1.18-only (2.x forms not mapped).
+- Stop no longer POSTs `/global/dispose` against CLI 2.x. Failed chunk recovery also matches `/_assets/`.
 
 ### Fixed
 

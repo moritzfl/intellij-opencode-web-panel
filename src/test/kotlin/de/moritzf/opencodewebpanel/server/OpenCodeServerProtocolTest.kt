@@ -1211,6 +1211,7 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("visibilitychange"))
         assertFalse(script.contains("requestAnimationFrame"))
         assertTrue(script.contains("assets"))
+        assertTrue(script.contains("_?assets"))
         assertFalse(script.contains("location.reload"))
     }
 
@@ -2812,6 +2813,17 @@ class OpenCodeServerProtocolTest {
                 ),
             )
         }
+    }
+
+    @Test
+    fun disposeServerSkipsCliTwoWithoutHttp() {
+        assertTrue(
+            OpenCodeServerProtocol.disposeServer(
+                "http://127.0.0.1:1",
+                basicAuthHeader = "Basic test-token",
+                wireProtocol = OpenCodeWireProtocol.V2_CLI,
+            ),
+        )
     }
 
     @Test
