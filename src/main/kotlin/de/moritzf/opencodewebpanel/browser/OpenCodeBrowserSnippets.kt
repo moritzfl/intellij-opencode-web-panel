@@ -997,12 +997,13 @@ internal object OpenCodeBrowserSnippets {
      * `[data-component="session-tab-popover-trigger"]`. The clamp applies only to two-argument
      * 2000ms timers scheduled within a short window of such a pointerenter, so unrelated page
      * timers with the same 2000ms delay (copy-state reset, typewriter cursor) are untouched;
-     * the skip-window path uses 0 and is left alone. Project rows
-     * (`[data-component="home-project-row"]`) do not put the worktree in the
-     * DOM; the overlay maps row order onto `opencode.global.dat:server` `projects` and skips when
-     * counts do not match (name matching cannot disambiguate duplicates). The overlay reuses
-     * OpenCode's `session-tab-popover` slots so it picks up the page CSS. Must be removable by
-     * reload (safeguard); the builder returns null when disabled.
+      * the skip-window path uses 0 and is left alone. Home rows (`home-project-row` on 1.18,
+      * `home-session-row` on CLI 2.x) do not put the worktree in the DOM. 1.18 maps row order
+      * onto `opencode.global.dat:server` `projects` and skips when counts do not match. CLI 2.x
+      * session rows expose a project-name span; overlay uses it only when that basename uniquely
+      * matches a stored worktree. The overlay reuses OpenCode's `session-tab-popover` slots so
+      * it picks up the page CSS. Must be removable by reload (safeguard); the builder returns
+      * null when disabled.
      */
     fun buildPathHoverPreviewScript(enabled: Boolean): String? {
         if (!enabled) return null
@@ -1016,7 +1017,7 @@ internal object OpenCodeBrowserSnippets {
               const TAB_DELAY = $tabDelay;
               const PREVIEW_DELAY = $previewDelay;
               const TAB_TRIGGER = '[data-component="session-tab-popover-trigger"]';
-              const PROJECT_ROW = '[data-component="home-project-row"]';
+              const PROJECT_ROW = '[data-component="home-project-row"], [data-component="home-session-row"]';
               const nativeSetTimeout = window.setTimeout.bind(window);
               const nativeClearTimeout = window.clearTimeout.bind(window);
               // Kobalte schedules its hover open-delay synchronously inside the trigger's
@@ -1059,9 +1060,35 @@ internal object OpenCodeBrowserSnippets {
                 return next;
               };
               const projectNameFromRow = (row) => {
+                const title = row.querySelector('[data-component="home-session-title"]');
+                if (title && title.textContent) return title.textContent.trim();
                 const label = row.querySelector('span');
                 const text = ((label && label.textContent) || row.textContent || '').trim();
                 return text;
+              };
+              const storedWorktrees = () => {
+                try {
+                  const parsed = JSON.parse(window.localStorage.getItem('opencode.global.dat:server') || '{}');
+                  const projects = parsed && parsed.projects;
+                  if (!projects || typeof projects !== 'object') return [];
+                  const all = [];
+                  Object.keys(projects).forEach((key) => {
+                    const items = projects[key];
+                    if (!Array.isArray(items)) return;
+                    items.forEach((item) => {
+                      const tree = item && item.worktree;
+                      if (typeof tree === 'string' && tree) all.push(tree);
+                    });
+                  });
+                  return all;
+                } catch (_) {
+                  return [];
+                }
+              };
+              const worktreeBasename = (worktree) => {
+                const norm = String(worktree || '').replace(/\\/g, '/').replace(/\/+$/g, '');
+                const parts = norm.split('/').filter(Boolean);
+                return parts.length ? parts[parts.length - 1] : '';
               };
               const worktreesMatchingRowCount = (rowCount) => {
                 try {
@@ -1090,6 +1117,12 @@ internal object OpenCodeBrowserSnippets {
                 if (encoded) {
                   const decoded = decodeRouteDirectory(encoded);
                   if (decoded) return decoded;
+                }
+                const nameEl = row.querySelector('[data-component="home-session-project-name"]');
+                const projectName = ((nameEl && nameEl.textContent) || '').trim();
+                if (projectName) {
+                  const matches = storedWorktrees().filter((tree) => worktreeBasename(tree) === projectName);
+                  if (matches.length === 1) return matches[0];
                 }
                 const rows = document.querySelectorAll(PROJECT_ROW);
                 const trees = worktreesMatchingRowCount(rows.length);
@@ -1540,7 +1573,9 @@ internal object OpenCodeBrowserSnippets {
                 report(false);
                 return;
               }
-              const target = Array.from(document.querySelectorAll('[data-component="prompt-input"][contenteditable="true"]'))
+              const target = Array.from(document.querySelectorAll(
+                '[data-component="prompt-input"][contenteditable="true"], [data-component="composer-editor"][contenteditable="true"], [data-slot="composer-editor"][contenteditable="true"]',
+              ))
                 .find((element) => {
                   const style = window.getComputedStyle(element);
                   return element.isConnected && style.display !== 'none' && style.visibility !== 'hidden';
@@ -1961,6 +1996,11 @@ internal object OpenCodeBrowserSnippets {
                 if (editBlock) return { messageID: messageIdOf(editBlock), filePath: '', partID: partIdOf(editBlock) };
                 const indicator = start.closest('[data-component="diff-changes"]');
                 if (indicator) return { messageID: messageIdOf(indicator), filePath: '', partID: '' };
+                const turn = start.closest('[data-component="user-message"], [data-component="text-part"]');
+                if (turn) {
+                  const messageID = messageIdOf(turn);
+                  if (messageID) return { messageID: messageID, filePath: '', partID: '' };
+                }
                 return null;
               };
               document.addEventListener('click', (event) => {
