@@ -194,6 +194,18 @@ class OpenCodeWebToolWindowContent(
                 url, auth, directory, sessionID, wireProtocol = serverManager.getWireProtocol(),
             )
         },
+        loadPending = { url, auth, directory ->
+            OpenCodeServerProtocol.fetchPendingRequestsResult(
+                url, auth, OpenCodeServerProtocol.PERMISSION_LIST_PATH, directory,
+                wireProtocol = serverManager.getWireProtocol(),
+            )
+        },
+        reply = { url, auth, directory, sessionID, requestID, response ->
+            OpenCodeServerProtocol.replyToPermission(
+                url, auth, directory, sessionID, requestID, response,
+                wireProtocol = serverManager.getWireProtocol(),
+            )
+        },
         backendId = { serverManager.backendId },
     )
     @Suppress("UnstableApiUsage")

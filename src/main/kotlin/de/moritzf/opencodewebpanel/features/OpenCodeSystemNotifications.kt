@@ -115,6 +115,7 @@ internal class OpenCodeSystemNotifications(
                 openCodeNotification.sessionID,
                 openCodeNotification.requestID,
                 response,
+                wireProtocol = serverManager.getWireProtocol(),
             )
             if (accepted) return@executeOnPooledThread
             ApplicationManager.getApplication().invokeLater {
@@ -358,11 +359,13 @@ internal class OpenCodeSystemNotifications(
             val password = serverManager.getServerPassword()
                 ?: return OpenCodePendingNotificationLoad(emptyList(), false)
             val authHeader = OpenCodeServerProtocol.buildBasicAuthHeader(password)
+            val wireProtocol = serverManager.getWireProtocol()
             val permissions = OpenCodeServerProtocol.fetchPendingRequestsResult(
                 identity.serverUrl,
                 authHeader,
                 OpenCodeServerProtocol.PERMISSION_LIST_PATH,
                 directory,
+                wireProtocol = wireProtocol,
             )
             if (identityForDirectory(directory) != identity) return OpenCodePendingNotificationLoad(emptyList(), false)
             val questions = OpenCodeServerProtocol.fetchPendingRequestsResult(
@@ -370,6 +373,7 @@ internal class OpenCodeSystemNotifications(
                 authHeader,
                 OpenCodeServerProtocol.QUESTION_LIST_PATH,
                 directory,
+                wireProtocol = wireProtocol,
             )
             val permissionValues = (permissions as? OpenCodeProtocolResult.Success)?.value
             val questionValues = (questions as? OpenCodeProtocolResult.Success)?.value

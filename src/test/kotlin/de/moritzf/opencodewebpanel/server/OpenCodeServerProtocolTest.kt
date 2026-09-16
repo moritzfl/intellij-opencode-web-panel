@@ -1641,6 +1641,33 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun parsePendingRequestsReadsCliDataEnvelope() {
+        val pending = OpenCodeServerProtocol.parsePendingRequests(wireFixture("v2_cli/permission-request-pending.json"))
+        assertEquals(
+            listOf(
+                OpenCodeServerProtocol.PendingRequestSummary(
+                    "per_0ab82a936001Ab0k4zIgsRFD7a",
+                    "ses_f547e1692ffelWnvCLl1OK8i4s",
+                ),
+            ),
+            pending,
+        )
+        assertTrue(OpenCodeServerProtocol.parsePendingRequests(wireFixture("v2_cli/permission-request-empty.json")).isEmpty())
+    }
+
+    @Test
+    fun fetchPendingQuestionsOnCliTwoIsSkipped() {
+        val result = OpenCodeServerProtocol.fetchPendingRequestsResult(
+            "http://127.0.0.1:1",
+            OpenCodeServerProtocol.buildBasicAuthHeader("test"),
+            OpenCodeServerProtocol.QUESTION_LIST_PATH,
+            "/tmp/project",
+            wireProtocol = OpenCodeWireProtocol.V2_CLI,
+        )
+        assertEquals(OpenCodeProtocolResult.Success(emptyList<OpenCodeServerProtocol.PendingRequestSummary>()), result)
+    }
+
+    @Test
     fun permissionNotificationRequiresSafeRecordIds() {
         val base = OpenCodeServerProtocol.SystemNotificationPayload(
             id = "id", directory = "/tmp", route = "/r", title = "t", body = "b",
@@ -3579,6 +3606,64 @@ class OpenCodeServerProtocolTest {
             assertFalse(requestLine.contains("/permissions/"))
             val body = capturedBody.get(5, TimeUnit.SECONDS)
             assertEquals("{\"reply\":\"once\"}", body)
+            responseFuture.get(5, TimeUnit.SECONDS)
+        } finally {
+            serverSocket.close()
+            executor.shutdownNow()
+        }
+    }
+
+    @Test
+    fun replyToPermissionOnCliTwoPostsDecision() {
+        val serverSocket = ServerSocket(0)
+        val executor = Executors.newSingleThreadExecutor()
+        val capturedRequestLine = java.util.concurrent.CompletableFuture<String>()
+        val capturedBody = java.util.concurrent.CompletableFuture<String>()
+        val responseFuture = executor.submit {
+            try {
+                serverSocket.accept().use { socket ->
+                    val reader = socket.getInputStream().bufferedReader()
+                    capturedRequestLine.complete(reader.readLine())
+                    val headers = mutableMapOf<String, String>()
+                    while (true) {
+                        val line = reader.readLine()
+                        if (line.isNullOrEmpty()) break
+                        val parts = line.split(": ", limit = 2)
+                        if (parts.size == 2) headers[parts[0]] = parts[1]
+                    }
+                    val contentLength = headers["Content-Length"]?.toIntOrNull() ?: 0
+                    val bodyChars = CharArray(contentLength)
+                    var read = 0
+                    while (read < contentLength) {
+                        val n = reader.read(bodyChars, read, contentLength - read)
+                        if (n < 0) break
+                        read += n
+                    }
+                    capturedBody.complete(String(bodyChars, 0, read))
+                    socket.getOutputStream().write(
+                        "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+                            .toByteArray(Charsets.UTF_8),
+                    )
+                    socket.getOutputStream().flush()
+                }
+            } catch (_: SocketException) {}
+        }
+        try {
+            val accepted = OpenCodeServerProtocol.replyToPermission(
+                "http://127.0.0.1:${serverSocket.localPort}",
+                OpenCodeServerProtocol.buildBasicAuthHeader("test"),
+                "/tmp/project",
+                "ses_abc123",
+                "per_abc123",
+                OpenCodeServerProtocol.PermissionResponse.ONCE,
+                wireProtocol = OpenCodeWireProtocol.V2_CLI,
+            )
+            assertTrue(accepted)
+            assertEquals(
+                "POST /api/session/ses_abc123/permission/per_abc123/reply HTTP/1.1",
+                capturedRequestLine.get(5, TimeUnit.SECONDS),
+            )
+            assertEquals("{\"decision\":\"once\"}", capturedBody.get(5, TimeUnit.SECONDS))
             responseFuture.get(5, TimeUnit.SECONDS)
         } finally {
             serverSocket.close()

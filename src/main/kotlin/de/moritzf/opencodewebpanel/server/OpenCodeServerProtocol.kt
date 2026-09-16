@@ -579,12 +579,19 @@ internal object OpenCodeServerProtocol {
         response: PermissionResponse,
         connectTimeoutMillis: Int = 5000,
         readTimeoutMillis: Int = 5000,
+        wireProtocol: OpenCodeWireProtocol = OpenCodeWireProtocol.V1_18,
     ): Boolean {
+        if (wireProtocol == OpenCodeWireProtocol.UNKNOWN) return false
         if (!isSessionId(sessionID) || !isPermissionId(permissionID)) return false
-        val url = buildServerRootUrl(serverUrl) +
-            "/permission/$permissionID/reply" +
-            "?directory=" + java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
-        return httpPostJson(url, basicAuthHeader, "{\"reply\":\"${response.jsonValue}\"}", connectTimeoutMillis, readTimeoutMillis)
+        val encodedDirectory = java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
+        val (url, body) = if (usesCliHttpApi(wireProtocol)) {
+            buildServerRootUrl(serverUrl) + "/api/session/$sessionID/permission/$permissionID/reply" to
+                "{\"decision\":\"${response.jsonValue}\"}"
+        } else {
+            buildServerRootUrl(serverUrl) + "/permission/$permissionID/reply?directory=" + encodedDirectory to
+                "{\"reply\":\"${response.jsonValue}\"}"
+        }
+        return httpPostJson(url, basicAuthHeader, body, connectTimeoutMillis, readTimeoutMillis)
     }
 
     /** OpenCode record IDs are URL-safe by construction; endpoint-specific helpers validate kind. */
@@ -1914,6 +1921,7 @@ internal object OpenCodeServerProtocol {
 
     const val PERMISSION_LIST_PATH = "/permission"
     const val QUESTION_LIST_PATH = "/question"
+    const val CLI_PERMISSION_LIST_PATH = "/api/permission/request"
 
     /**
      * Fetches the current session statuses for a project directory
@@ -1963,6 +1971,7 @@ internal object OpenCodeServerProtocol {
         directory: String,
         connectTimeoutMillis: Int = 3000,
         readTimeoutMillis: Int = 3000,
+        wireProtocol: OpenCodeWireProtocol = OpenCodeWireProtocol.V1_18,
     ): List<String>? {
         return when (val result = fetchPendingRequestsResult(
             serverUrl,
@@ -1971,6 +1980,7 @@ internal object OpenCodeServerProtocol {
             directory,
             connectTimeoutMillis,
             readTimeoutMillis,
+            wireProtocol,
         )) {
             is OpenCodeProtocolResult.Success -> result.value.map { it.id }
             is OpenCodeProtocolResult.Failure -> null
@@ -1978,8 +1988,12 @@ internal object OpenCodeServerProtocol {
     }
 
     fun parsePendingRequestIds(json: String): List<String> {
-        val requests = runCatching { JsonParser.parseString(json) }.getOrNull()
-            ?.takeIf { it.isJsonArray }?.asJsonArray ?: return emptyList()
+        val parsed = runCatching { JsonParser.parseString(json) }.getOrNull() ?: return emptyList()
+        val requests = when {
+            parsed.isJsonArray -> parsed.asJsonArray
+            parsed.isJsonObject -> parsed.asJsonObject.get("data")?.takeIf { it.isJsonArray }?.asJsonArray
+            else -> null
+        } ?: return emptyList()
         return requests.mapNotNull { request ->
             request.takeIf { it.isJsonObject }?.asJsonObject
                 ?.stringMember("id")
@@ -2000,8 +2014,20 @@ internal object OpenCodeServerProtocol {
         directory: String,
         connectTimeoutMillis: Int = 3000,
         readTimeoutMillis: Int = 3000,
+        wireProtocol: OpenCodeWireProtocol = OpenCodeWireProtocol.V1_18,
     ): OpenCodeProtocolResult<List<PendingRequestSummary>> {
-        val url = buildServerRootUrl(serverUrl) + listPath + "?directory=" +
+        if (wireProtocol == OpenCodeWireProtocol.UNKNOWN) {
+            return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_BODY)
+        }
+        if (usesCliHttpApi(wireProtocol) && listPath == QUESTION_LIST_PATH) {
+            return OpenCodeProtocolResult.Success(emptyList())
+        }
+        val path = if (usesCliHttpApi(wireProtocol) && listPath == PERMISSION_LIST_PATH) {
+            CLI_PERMISSION_LIST_PATH
+        } else {
+            listPath
+        }
+        val url = buildServerRootUrl(serverUrl) + path + "?directory=" +
             java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
         return when (val response = httpGetResult(url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)) {
             is OpenCodeProtocolResult.Failure -> response
@@ -2024,10 +2050,14 @@ internal object OpenCodeServerProtocol {
     }
 
     private fun parsePendingRequestsBody(json: String): ParsedPendingRequests? {
-        val requests = runCatching { JsonParser.parseString(json) }.getOrNull()
-            ?.takeIf { it.isJsonArray }?.asJsonArray ?: return null
+        val parsed = runCatching { JsonParser.parseString(json) }.getOrNull() ?: return null
+        val requests = when {
+            parsed.isJsonArray -> parsed.asJsonArray
+            parsed.isJsonObject -> parsed.asJsonObject.get("data")?.takeIf { it.isJsonArray }?.asJsonArray
+            else -> null
+        } ?: return null
         var malformedEntry = false
-        val parsed = requests.mapNotNull { request ->
+        val summaries = requests.mapNotNull { request ->
             val value = request.takeIf { it.isJsonObject }?.asJsonObject
             val id = value?.stringMember("id")?.takeIf(::isOpenCodeRecordId)
             val sessionID = value?.stringMember("sessionID")?.takeIf(::isSessionId)
@@ -2038,7 +2068,7 @@ internal object OpenCodeServerProtocol {
                 PendingRequestSummary(id, sessionID)
             }
         }.distinctBy { it.id }
-        return ParsedPendingRequests(parsed, malformedEntry)
+        return ParsedPendingRequests(summaries, malformedEntry)
     }
 
     data class SessionSummary(

@@ -234,9 +234,11 @@ private fun loadAgentStatusSnapshot(
 ): OpenCodeAgentStatusSnapshot {
     val permissions = OpenCodeServerProtocol.fetchPendingRequestIds(
         serverUrl, authHeader, OpenCodeServerProtocol.PERMISSION_LIST_PATH, directory,
+        wireProtocol = wireProtocol,
     )
     val questions = OpenCodeServerProtocol.fetchPendingRequestIds(
         serverUrl, authHeader, OpenCodeServerProtocol.QUESTION_LIST_PATH, directory,
+        wireProtocol = wireProtocol,
     )
     return OpenCodeAgentStatusSnapshot(
         busySessionIds = OpenCodeServerProtocol.fetchBusySessionIds(
