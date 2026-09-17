@@ -7,6 +7,10 @@
 #   OPENCODE_SERVER_PASSWORD=testpw123 scripts/check-dom-contract.sh [base-url]
 #
 # Default base-url: http://127.0.0.1:4096
+#
+# 1.18 and CLI 2.x both run this script. CLI 2.x ships session/review/composer slots in lazy
+# `import(\`./chunk.js\`)` files under `/_assets/`; an index-only crawl is not a contract check.
+# Quoted attribute markers (`"data-file"`) also match the backtick form CLI 2.x minifies to.
 
 set -euo pipefail
 
@@ -19,32 +23,73 @@ trap 'rm -rf "$WORKDIR"' EXIT
 
 curl -fsu "$AUTH" "$BASE_URL/" -o "$WORKDIR/index.html"
 
-# Collect every served script chunk referenced by the entry page. (No mapfile: macOS bash 3.2.)
-ASSETS=()
+CLI2X=0
+ASSET_PREFIX="assets"
+if grep -q '/_assets/' "$WORKDIR/index.html"; then
+  CLI2X=1
+  ASSET_PREFIX="_assets"
+fi
+
+mkdir -p "$WORKDIR/js"
+: > "$WORKDIR/queue"
+: > "$WORKDIR/index_names"
 while IFS= read -r asset; do
-  ASSETS+=("$asset")
-done < <(grep -oE '_?assets/[A-Za-z0-9._-]+\.js' "$WORKDIR/index.html" | sort -u)
-if [ "${#ASSETS[@]}" -eq 0 ]; then
+  name="${asset##*/}"
+  echo "$name" >> "$WORKDIR/queue"
+  echo "$name" >> "$WORKDIR/index_names"
+done < <(grep -oE "/?_?assets/[A-Za-z0-9._-]+\.js" "$WORKDIR/index.html" | sort -u)
+if [ ! -s "$WORKDIR/queue" ]; then
   echo "FAIL: no JS assets found in $BASE_URL/ (auth problem or layout change?)" >&2
   exit 1
 fi
-: > "$WORKDIR/bundle.js"
-for asset in "${ASSETS[@]}"; do
-  curl -fsu "$AUTH" "$BASE_URL/$asset" >> "$WORKDIR/bundle.js"
+
+export AUTH BASE_URL ASSET_PREFIX
+JS_DIR="$WORKDIR/js"
+export JS_DIR
+
+skip_chunk() {
+  case "$1" in
+    alert-*|bip-bop-*|nope-*|yup-*|staplebops-*|mermaid-*) return 0 ;;
+  esac
+  return 1
+}
+
+while [ -s "$WORKDIR/queue" ]; do
+  sort -u "$WORKDIR/queue" -o "$WORKDIR/queue.uniq"
+  : > "$WORKDIR/queue"
+  : > "$WORKDIR/this_round"
+  while IFS= read -r name; do
+    [ -n "$name" ] || continue
+    [ -f "$JS_DIR/$name" ] && continue
+    skip_chunk "$name" && continue
+    echo "$name" >> "$WORKDIR/this_round"
+  done < "$WORKDIR/queue.uniq"
+  if [ ! -s "$WORKDIR/this_round" ]; then
+    break
+  fi
+  cat "$WORKDIR/this_round" | xargs -P 8 -I{} sh -c \
+    'curl -fsu "$AUTH" "$BASE_URL/$ASSET_PREFIX/{}" -o "$JS_DIR/{}" || echo "FAIL fetch $ASSET_PREFIX/{}" >&2'
+  while IFS= read -r name; do
+    f="$JS_DIR/$name"
+    [ -f "$f" ] || continue
+    grep -oE 'import\(`\./[A-Za-z0-9._-]+\.js`\)' "$f" 2>/dev/null \
+      | sed -E 's/.*\.\///; s/`\)$//' || true
+    if grep -qxF "$name" "$WORKDIR/index_names"; then
+      grep -oE '_?assets/[A-Za-z0-9._-]+\.js' "$f" 2>/dev/null | sed 's#.*/##' \
+        | grep -E '^(route-|file-|shell-|screen-|session-|command-|dialog-|incompatible-|composer-|panel-|home-|titlebar-|new-session-|server-)' \
+        || true
+    fi
+  done < "$WORKDIR/this_round" | sort -u >> "$WORKDIR/queue"
 done
 
-# Contract markers used by the injected scripts. Keep in sync with
-# OpenCodeBrowserSnippets and the AGENTS.md DOM-contract sections.
-MARKERS=(
-  # diff navigation (buildDiffNavigationScript)
-  # Generic attrs are checked in their compiled quoted-attribute form to avoid substring
-  # false positives (e.g. plain data-file would match data-filename).
+ASSET_COUNT="$(find "$JS_DIR" -type f -name '*.js' | wc -l | tr -d ' ')"
+cat "$JS_DIR"/*.js > "$WORKDIR/bundle.js"
+
+# Shared markers: present on both 1.18 and CLI 2.x after lazy chunks are included.
+# Generic attrs stay in their compiled quoted form so `data-file` does not match `data-filename`.
+MARKERS_COMMON=(
   '"data-message-id"'
   '"data-file"'
-  'session-turn-diff-trigger'
-  'session-turn-diff-directory'
-  'session-turn-diff-filename'
-  'session-turn-diff-meta'
   'apply-patch-trigger-content'
   'apply-patch-directory'
   'apply-patch-filename'
@@ -54,10 +99,8 @@ MARKERS=(
   'diff-changes'
   'tool-part-wrapper'
   '"data-timeline-part-id"'
-  # Markdown provenance / semantic inline-code classification
   'inlineCodeKind'
   'data-component=markdown'
-  # file links, classic + v2 review panels (buildFileLinkHandlerScript)
   '"data-path"'
   'session-review-view-button'
   'session-review-file-info'
@@ -66,24 +109,16 @@ MARKERS=(
   'session-review-v2-file-title'
   'session-review-v2-file-name'
   'session-review-v2-file-path'
-  # project-switch toast suppression (buildProjectSwitchPromptSuppressionScript)
   'toast-icon'
   'toast-v2-icon'
-  'toast-action'
   'toast-v2-actions'
   'toast-close-button'
   'toast-v2-close-button'
-  'opencode-icon-'
   'checklist'
   'bubble-5'
-  # compact layout (buildCompactLayoutScript)
   '(min-width: 768px)'
   '(max-width: 767px)'
-  # IDE theme sync (buildIdeThemeSyncScript)
   'prefers-color-scheme: dark'
-  # chat/file delivery target (buildDispatchDroppedFilesScript)
-  'prompt-input'
-  # IntelliJ Keymap bridge (OpenCodeBrowserShortcutHandler)
   'tab.new'
   'mod+t'
   'mod+n'
@@ -105,69 +140,86 @@ MARKERS=(
   'shift+mod+d'
   'file.attach'
   'mod+u'
-  # open-project seed (buildOpenProjectScript)
   'opencode.global.dat'
   'lastProject'
-  # per-project session pointer the SPA bootstrap redirects to (buildOpenProjectScript)
-  'lastProjectSession'
-  'layout.page'
-  # hide-website button (buildHideWebsiteButtonScript)
   'https://opencode.ai'
-  # path hover preview (buildPathHoverPreviewScript)
   'session-tab-popover-trigger'
   'home-project-row'
 )
 
-CLI2X=0
-if grep -q '_assets/' "$WORKDIR/index.html"; then CLI2X=1; fi
+# 1.18-only. Absent on CLI 2.x (composer-editor, toast-v2 / opencode-v2-icon, window tabs).
+MARKERS_V1=(
+  'session-turn-diff-trigger'
+  'session-turn-diff-directory'
+  'session-turn-diff-filename'
+  'session-turn-diff-meta'
+  'toast-action'
+  'opencode-icon-'
+  'prompt-input'
+  'lastProjectSession'
+  'layout.page'
+)
+
+# CLI 2.x-only. Dual-selector injections already cover these alongside the 1.18 names.
+MARKERS_V2=(
+  'composer-editor'
+  'home-session-row'
+  'home-session-project-name'
+  'opencode-v2-icon'
+)
+
+marker_present() {
+  local marker="$1"
+  if grep -qF -- "$marker" "$WORKDIR/bundle.js"; then
+    return 0
+  fi
+  case "$marker" in
+    \"*\")
+      local inner="${marker#\"}"
+      inner="${inner%\"}"
+      grep -qF -- "\`$inner\`" "$WORKDIR/bundle.js"
+      return
+      ;;
+  esac
+  return 1
+}
+
+check_markers() {
+  local marker
+  for marker in "$@"; do
+    if ! marker_present "$marker"; then
+      echo "MISSING: $marker"
+      MISSING=$((MISSING + 1))
+    fi
+  done
+}
 
 MISSING=0
-for marker in "${MARKERS[@]}"; do
-  if ! grep -qF -- "$marker" "$WORKDIR/bundle.js"; then
-    echo "MISSING: $marker"
-    MISSING=$((MISSING + 1))
-  fi
-done
-
-# Discover the minified Persist namespace from one stable key, then reject newly introduced
-# direct keys until they are explicitly classified as mirrored UI state or intentionally excluded.
-PERSIST_REFERENCES=()
-while IFS= read -r reference; do
-  PERSIST_REFERENCES+=("$reference")
-done < <(grep -oE '[A-Za-z_$][A-Za-z0-9_$]*\.global\("home\.servers"' "$WORKDIR/bundle.js" | sort -u)
-if [ "${#PERSIST_REFERENCES[@]}" -eq 0 ]; then
-  echo "MISSING: Persist.global(home.servers)" >&2
-  MISSING=$((MISSING + 1))
-else
-  PERSIST_FACTORY="${PERSIST_REFERENCES[0]%%.global*}"
-  PERSIST_COUNT=0
-  while IFS= read -r reference; do
-    [ "${reference%%.*}" = "$PERSIST_FACTORY" ] || continue
-    scopedKey="${reference#*.}"
-    scope="${scopedKey%%(*}"
-    key="${scopedKey#*\"}"
-    key="${key%\"}"
-    PERSIST_COUNT=$((PERSIST_COUNT + 1))
-    case "$scope:$key" in
-      global:command.catalog.v1|global:go-upsell|global:home.servers|global:language|global:model|global:open.app|global:prompt-history|global:prompt-history-shell|global:review-panel-v2|global:server|window:tabs|window:tabs.closed|window:tabs.info|window:tabs.recent)
-        ;;
-      *)
-        echo "UNCLASSIFIED PERSIST KEY: $scope:$key"
-        MISSING=$((MISSING + 1))
-        ;;
-    esac
-  done < <(grep -oE '[A-Za-z_$][A-Za-z0-9_$]*\.(global|window|workspace|server)\("[^"]+"' "$WORKDIR/bundle.js" | sort -u)
-fi
-
-TOTAL="${#MARKERS[@]}"
 if [ "$CLI2X" = 1 ]; then
-  echo "INFO: CLI 2.x SPA (_assets). Index-only crawl; missing markers are documented, not blocking."
-  echo "OK: $((TOTAL - MISSING))/$TOTAL 1.18 markers in index assets (${#ASSETS[@]} asset(s))"
-  exit 0
+  check_markers "${MARKERS_COMMON[@]}" "${MARKERS_V2[@]}"
+  TOTAL=$((${#MARKERS_COMMON[@]} + ${#MARKERS_V2[@]}))
+else
+  check_markers "${MARKERS_COMMON[@]}" "${MARKERS_V1[@]}"
+  TOTAL=$((${#MARKERS_COMMON[@]} + ${#MARKERS_V1[@]}))
 fi
+
+# Persist keys: 1.18 minifies to .global("key"); CLI 2.x uses backticks. Classify every
+# direct Persist.global/window/workspace/server key; extras fail until allowlisted.
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+set +e
+python3 "$SCRIPT_DIR/classify-persist-keys.py" "$WORKDIR/bundle.js" "$WORKDIR/persist.count"
+persist_rc=$?
+set -e
+read -r PERSIST_COUNT PERSIST_FAILED < "$WORKDIR/persist.count"
+MISSING=$((MISSING + PERSIST_FAILED))
+
 if [ "$MISSING" -gt 0 ]; then
-  echo "FAIL: $MISSING contract check(s) failed for $BASE_URL bundle ($TOTAL DOM markers checked)" >&2
+  echo "FAIL: $MISSING contract check(s) failed for $BASE_URL bundle ($TOTAL DOM markers checked, $ASSET_COUNT asset(s))" >&2
   exit 1
 fi
-echo "OK: all $TOTAL contract markers present in $BASE_URL bundle (${#ASSETS[@]} asset(s))"
+if [ "$CLI2X" = 1 ]; then
+  echo "OK: all $TOTAL CLI 2.x contract markers present in $BASE_URL bundle ($ASSET_COUNT asset(s))"
+else
+  echo "OK: all $TOTAL contract markers present in $BASE_URL bundle ($ASSET_COUNT asset(s))"
+fi
 echo "OK: all ${PERSIST_COUNT:-0} directly declared Persist keys classified"
