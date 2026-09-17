@@ -29,7 +29,7 @@
 
 <!-- Plugin description -->
 
-OpenCode Web Panel brings the official OpenCode web UI into JetBrains IDEs. It opens OpenCode in a right-side tool window, keeps it focused on the project you are working on, and adds small IDE conveniences on top of the normal OpenCode experience.
+OpenCode Web Panel brings the official OpenCode web UI into JetBrains IDEs. It opens OpenCode in a right-side tool window, keeps it focused on the project you are working on, and adds small IDE conveniences on top of the normal OpenCode experience. Host CLI and Docker Sandbox work with **OpenCode 1.18** and **CLI 2.x**.
 
 > **Note:** This is an unofficial community plugin for OpenCode and is not affiliated with OpenCode.
 
@@ -54,7 +54,7 @@ OpenCode Web Panel brings the official OpenCode web UI into JetBrains IDEs. It o
 ## Requirements
 
 - A JetBrains IDE compatible with this plugin.
-- The OpenCode CLI installed on your machine (Host runtime, the default).
+- The OpenCode CLI installed on your machine (Host runtime, the default): **1.18** or **CLI 2.x**.
 - The `opencode` command available on `PATH`, or configured manually in the plugin settings.
 - Optional: Docker Sandboxes (`sbx`) and a Docker account when **Runtime** is set to Docker Sandbox.
 
