@@ -1834,7 +1834,7 @@ internal object OpenCodeBrowserSnippets {
                 $${openFileAction};
               };
               const toolOpenIconSelector = '[data-slot="opencode-intellij-open-file"]';
-              const toolOpenRootSelector = '[data-component="edit-trigger"], [data-component="write-trigger"], [data-slot="apply-patch-trigger-content"], [data-slot="session-turn-diff-trigger"]';
+              const toolOpenRootSelector = '[data-component="edit-trigger"], [data-component="write-trigger"], [data-component="edit-tool"], [data-component="write-tool"], [data-slot="apply-patch-trigger-content"], [data-slot="session-turn-diff-trigger"]';
               const closestElement = (node, selector) => {
                 let el = node;
                 while (el && el.nodeType !== 1) el = el.parentNode;

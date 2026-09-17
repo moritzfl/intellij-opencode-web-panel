@@ -437,6 +437,11 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("session-turn-diff-filename"))
         assertTrue(script.contains("session-turn-diff-meta"))
         assertTrue(script.contains("write-trigger"))
+        // CLI 2.x edit/write wrap the file accordion in edit-tool/write-tool and reuse
+        // apply-patch-trigger-content for the header (no edit-trigger/write-trigger).
+        assertTrue(script.contains("edit-tool"))
+        assertTrue(script.contains("write-tool"))
+        assertTrue(script.contains("apply-patch-trigger-content"))
         assertTrue(script.contains("insertToolOpenIcons"))
         assertTrue(script.contains("MutationObserver"))
         assertTrue(script.contains("data-href"))
