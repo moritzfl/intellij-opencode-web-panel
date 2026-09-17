@@ -1813,17 +1813,20 @@ internal object OpenCodeServerProtocol {
         if (files != null && files.size() > 0) {
             val diffs = files.mapNotNull { element ->
                 val file = element.takeIf { it.isJsonObject }?.asJsonObject ?: return@mapNotNull null
-                val filePath = file.stringMember("filePath")?.takeIf { it.isNotBlank() }
-                val relativePath = file.stringMember("relativePath")?.takeIf { it.isNotBlank() }
+                val filePath = file.stringMember("relativePath")?.takeIf { it.isNotBlank() }
+                    ?: file.stringMember("file")?.takeIf { it.isNotBlank() }
+                    ?: file.stringMember("filePath")?.takeIf { it.isNotBlank() }
+                    ?: input?.stringMember("path")?.takeIf { it.isNotBlank() }
+                    ?: input?.stringMember("filePath")?.takeIf { it.isNotBlank() }
                 snapshotFileDiff(
-                    file = relativePath ?: filePath,
+                    file = filePath,
                     patch = file.stringMember("patch") ?: file.stringMember("diff"),
                     additions = file.longMember("additions") ?: 0L,
                     deletions = file.longMember("deletions") ?: 0L,
-                    status = when (file.stringMember("type")) {
-                        "add" -> "added"
-                        "delete" -> "deleted"
-                        else -> "modified"
+                    status = when (file.stringMember("type") ?: file.stringMember("status")) {
+                        "add", "added" -> "added"
+                        "delete", "deleted" -> "deleted"
+                        else -> file.stringMember("status") ?: "modified"
                     },
                 )
             }

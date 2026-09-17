@@ -1,0 +1,11 @@
+{
+  "data": [
+    {
+      "file": "src/test/resources/de/moritzf/opencodewebpanel/server/wire/v2_cli/cli2-diff-probe.txt",
+      "patch": "diff --git a/src/test/resources/de/moritzf/opencodewebpanel/server/wire/v2_cli/cli2-diff-probe.txt b/src/test/resources/de/moritzf/opencodewebpanel/server/wire/v2_cli/cli2-diff-probe.txt\nnew file mode 100644\nindex 0000000..f00ff84\n--- /dev/null\n+++ b/src/test/resources/de/moritzf/opencodewebpanel/server/wire/v2_cli/cli2-diff-probe.txt\n@@ -0,0 +1 @@\n+CLI2_DIFF_PROBE_EDITED\n",
+      "additions": 1,
+      "deletions": 0,
+      "status": "added"
+    }
+  ]
+}

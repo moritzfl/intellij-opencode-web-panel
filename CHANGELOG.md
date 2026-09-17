@@ -18,6 +18,7 @@
 - CLI 2.x chat file drop targets `composer-editor` as well as 1.18 `prompt-input`. Home path hover matches `home-session-row`. Alt/Ctrl-click diffs fall back to the turn's `data-message-id` when classic tool slots are absent.
 - Tool-window boot always opens Home and drops stale OpenCode 2 session tabs when the worktree marker changes (auto-port reuse otherwise 404s as "This session cannot be found").
 - Open-in-IDE file icons also match CLI 2.x `edit-tool`/`write-tool` wrappers (2.x dropped `edit-trigger`/`write-trigger`; the accordion header reuses `apply-patch-trigger-content`).
+- CLI 2.x chat edit diffs parse `metadata.files[].file` (not 1.18 `filediff.file` / apply-patch `filePath`). Turn Alt/Ctrl-click already used `session.diff?from=`.
 - `check-dom-contract.sh` follows CLI 2.x lazy `/_assets/` chunks and fails on missing 2.x markers instead of `exit 0`. Persist keys accept backtick minify (`layout`, `tabs.panes`, onboarding tips classified as excluded).
 
 ## [2.0.6] - 2026-09-15

@@ -1,0 +1,25 @@
+{
+  "type": "tool",
+  "id": "call-afc42dbb-7bc2-4018-a499-830db0ce526e-2",
+  "name": "edit",
+  "state": {
+    "status": "completed",
+    "input": {
+      "path": "/Users/moritz/Desktop/git/intellij-opencode-web-ui/src/test/resources/de/moritzf/opencodewebpanel/server/wire/v2_cli/cli2-diff-probe.txt",
+      "oldString": "CLI2_DIFF_PROBE",
+      "newString": "CLI2_DIFF_PROBE_EDITED"
+    },
+    "metadata": {
+      "files": [
+        {
+          "file": "src/test/resources/de/moritzf/opencodewebpanel/server/wire/v2_cli/cli2-diff-probe.txt",
+          "patch": "Index: src/test/resources/de/moritzf/opencodewebpanel/server/wire/v2_cli/cli2-diff-probe.txt\n===================================================================\n--- src/test/resources/de/moritzf/opencodewebpanel/server/wire/v2_cli/cli2-diff-probe.txt\n+++ src/test/resources/de/moritzf/opencodewebpanel/server/wire/v2_cli/cli2-diff-probe.txt\n@@ -1,1 +1,1 @@\n-CLI2_DIFF_PROBE\n+CLI2_DIFF_PROBE_EDITED\n",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        }
+      ],
+      "truncated": false
+    }
+  }
+}

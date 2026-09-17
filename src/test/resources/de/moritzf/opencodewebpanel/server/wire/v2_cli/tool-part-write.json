@@ -1,0 +1,15 @@
+{
+  "type": "tool",
+  "id": "call-4a27dd88-5d5e-4d4b-b9c0-d69f30c39bfb-0",
+  "name": "write",
+  "state": {
+    "status": "completed",
+    "input": {
+      "path": "/Users/moritz/Desktop/git/intellij-opencode-web-ui/src/test/resources/de/moritzf/opencodewebpanel/server/wire/v2_cli/cli2-diff-probe.txt",
+      "content": "CLI2_DIFF_PROBE\n"
+    },
+    "metadata": {
+      "truncated": false
+    }
+  }
+}

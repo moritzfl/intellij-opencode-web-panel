@@ -3735,6 +3735,15 @@ class OpenCodeServerProtocolTest {
         assertEquals(1, diffs.size)
         assertEquals("src/Foo.kt", diffs[0].file)
         assertTrue(OpenCodeServerProtocol.parseSessionDiff(wireFixture("v2_cli/session-diff-empty.json")).isEmpty())
+        val live = OpenCodeServerProtocol.parseSessionDiff(wireFixture("v2_cli/session-diff-added.json"))
+        assertEquals(1, live.size)
+        assertEquals(
+            "src/test/resources/de/moritzf/opencodewebpanel/server/wire/v2_cli/cli2-diff-probe.txt",
+            live[0].file,
+        )
+        assertEquals("added", live[0].status)
+        assertEquals(1L, live[0].additions)
+        assertTrue(live[0].patch!!.contains("CLI2_DIFF_PROBE_EDITED"))
     }
 
     @Test
@@ -3763,6 +3772,42 @@ class OpenCodeServerProtocolTest {
         assertEquals(listOf("src/A.kt", "src/B.kt"), change.diffs.map { it.file })
         assertEquals("added", change.diffs[1].status)
         assertNull(change.fileHint)
+    }
+
+    @Test
+    fun parseToolPartChangeReadsCliEditFilesField() {
+        val change = OpenCodeServerProtocol.parseToolPartChange(wireFixture("v2_cli/tool-part-edit.json"))
+        assertEquals(1, change.diffs.size)
+        assertEquals(
+            "src/test/resources/de/moritzf/opencodewebpanel/server/wire/v2_cli/cli2-diff-probe.txt",
+            change.diffs[0].file,
+        )
+        assertEquals("modified", change.diffs[0].status)
+        assertEquals(1L, change.diffs[0].additions)
+        assertEquals(1L, change.diffs[0].deletions)
+        assertTrue(change.diffs[0].patch!!.contains("-CLI2_DIFF_PROBE"))
+        assertNull(change.fileHint)
+    }
+
+    @Test
+    fun parseToolPartChangeCliWriteYieldsPathHint() {
+        val change = OpenCodeServerProtocol.parseToolPartChange(wireFixture("v2_cli/tool-part-write.json"))
+        assertTrue(change.diffs.isEmpty())
+        assertTrue(change.fileHint!!.endsWith("cli2-diff-probe.txt"))
+    }
+
+    @Test
+    fun findToolPartInMessagesFindsCliCallIdInContent() {
+        val json = """
+            [{"id":"msg_asst","type":"assistant","content":[
+              {"id":"call-abc-0","type":"tool","name":"edit","state":{"status":"completed",
+               "metadata":{"files":[{"file":"src/A.kt","patch":"p","additions":1,"deletions":0,"status":"modified"}]}}}
+            ]}]
+        """.trimIndent()
+        val found = OpenCodeServerProtocol.findToolPartInMessages(json, "call-abc-0")
+        assertNotNull(found)
+        assertTrue(found!!.contains("call-abc-0"))
+        assertNull(OpenCodeServerProtocol.findToolPartInMessages(json, "prt_edit"))
     }
 
     @Test
