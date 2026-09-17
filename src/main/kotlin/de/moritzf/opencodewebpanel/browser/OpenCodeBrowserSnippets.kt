@@ -170,6 +170,11 @@ internal object OpenCodeBrowserSnippets {
      *
      * Inject from `onLoadStart` so `lastProject` is set before the SPA bundle reads
      * localStorage. Session choice is left to OpenCode (tabs / lastProjectSession).
+     *
+     * Auto-port loopback origins are reused across IDE projects. OpenCode 2 persists
+     * session tabs by origin (`opencode.window.browser.dat:tabs`), so a previous
+     * occupant's `ses_` ids reopen as "This session cannot be found". Drop those
+     * tabs when this origin's project worktree changes.
      */
     fun buildOpenProjectScript(
         projectBasePath: String?,
@@ -200,6 +205,21 @@ internal object OpenCodeBrowserSnippets {
                 };
                 return norm(left) === norm(right);
               };
+              const markerKey = 'opencode-intellij-project';
+              try {
+                const previous = window.localStorage.getItem(markerKey);
+                if (!previous || !sameWorktree(previous, directory)) {
+                  const staleKeys = [
+                    'opencode.window.browser.dat:tabs',
+                    'opencode.window.browser.dat:tabs.recent',
+                    'opencode.window.browser.dat:tabs.info',
+                    'opencode.window.browser.dat:tabs.closed',
+                    'opencode.window.browser.dat:tabs.panes',
+                  ];
+                  for (const key of staleKeys) window.localStorage.removeItem(key);
+                }
+                if (previous !== directory) window.localStorage.setItem(markerKey, directory);
+              } catch (_) {}
               try {
                 const storageKey = 'opencode.global.dat:server';
                 const raw = window.localStorage.getItem(storageKey);

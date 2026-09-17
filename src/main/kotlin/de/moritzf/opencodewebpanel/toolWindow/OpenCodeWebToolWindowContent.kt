@@ -1328,8 +1328,8 @@ class OpenCodeWebToolWindowContent(
     private fun loadProjectPage() {
         if (isContentDisposed()) return
         val serverUrl = serverManager.getServerUrl() ?: return
-        // Restore only a known session from this backend; otherwise open Home. The id-less
-        // /server/<key>/session route mounts the SPA chrome but leaves its main view empty.
+        // Home, never a restored ses_ — OpenCode 2 404s missing ids as "cannot be found".
+        // The id-less /server/<key>/session shell mounts chrome but leaves <main> empty.
         thisLogger().info("Loading OpenCode project page")
         thisLogger().info(
             "jcef loadProjectPage backend=${serverManager.backendId} server=$serverUrl current=${safeBrowserUrl()} created=$cefBrowserCreated queries=${allJsQueries().count { it.isAvailable }}/${allJsQueries().size}",
@@ -1346,10 +1346,8 @@ class OpenCodeWebToolWindowContent(
         // Events that fired before this panel started caring never reached the tracker.
         agentStatusTracker.seed()
 
-        val restoreExisting = restoreExistingOpenCodeSession
         restoreExistingOpenCodeSession = false
-        val restoredSessionId = sessionIdToRestore.takeIf { restoreExisting }
-        loadProjectPageAt(serverUrl, sessionId = restoredSessionId)
+        loadProjectPageAt(serverUrl, sessionId = null)
     }
 
     private fun loadProjectPageAt(serverUrl: String, sessionId: String?) {
