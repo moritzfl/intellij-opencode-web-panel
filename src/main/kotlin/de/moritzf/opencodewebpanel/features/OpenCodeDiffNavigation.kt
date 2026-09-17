@@ -39,14 +39,21 @@ internal class OpenCodeDiffNavigation(
         val messageID = parts.getOrNull(0)?.trim()?.ifBlank { null }
         val filePath = parts.getOrNull(1)?.trim()?.ifBlank { null }
         val partID = parts.getOrNull(2)?.trim()?.ifBlank { null }
+        val vcsMode = parts.getOrNull(3)?.trim()?.ifBlank { null }
         val serverUrl = serverManager.getServerUrl() ?: return
         val password = serverManager.getServerPassword() ?: return
-        val sessionID = OpenCodeServerProtocol.sessionIdFromUrl(browser.cefBrowser.url) ?: return
         val directory = projectDirectory()?.takeIf { it.isNotBlank() } ?: return
+        val sessionID = if (vcsMode != null) {
+            null
+        } else {
+            OpenCodeServerProtocol.sessionIdFromUrl(browser.cefBrowser.url) ?: return
+        }
         val auth = OpenCodeServerProtocol.buildBasicAuthHeader(password)
 
         ApplicationManager.getApplication().executeOnPooledThread {
-            val diffs = loadDiffs(serverUrl, auth, directory, sessionID, messageID, filePath, partID)
+            val diffs = loadDiffs(
+                serverUrl, auth, directory, sessionID, messageID, filePath, partID, vcsMode,
+            )
                 ?: run {
                     ApplicationManager.getApplication().invokeLater {
                         if (!project.isDisposed) notifyDiffLoadFailed()
@@ -69,11 +76,25 @@ internal class OpenCodeDiffNavigation(
         serverUrl: String,
         auth: String,
         directory: String,
-        sessionID: String,
+        sessionID: String?,
         messageID: String?,
         filePath: String?,
         partID: String?,
+        vcsMode: String?,
     ): List<OpenCodeServerProtocol.SnapshotFileDiff>? {
+        if (vcsMode != null) {
+            if (filePath == null) return emptyList()
+            val result = OpenCodeServerProtocol.fetchVcsDiffResult(
+                serverUrl,
+                auth,
+                directory,
+                vcsMode,
+                wireProtocol = serverManager.getWireProtocol(),
+            )
+            if (result is OpenCodeProtocolResult.Failure) return null
+            return selectDiffs((result as OpenCodeProtocolResult.Success).value, filePath)
+        }
+        if (sessionID == null) return emptyList()
         if (partID != null) {
             val partResult = OpenCodeServerProtocol.fetchToolPartChange(
                 serverUrl,

@@ -1671,6 +1671,42 @@ internal object OpenCodeServerProtocol {
         }
     }
 
+    /**
+     * CLI 2.x `GET /api/vcs/diff?mode=working|branch`. Same `FileDiff.Info` envelope as session
+     * diff (`{data:[]}`). 1.18 has no this route — fail closed.
+     */
+    fun fetchVcsDiffResult(
+        serverUrl: String,
+        basicAuthHeader: String,
+        directory: String,
+        mode: String,
+        connectTimeoutMillis: Int = 5000,
+        readTimeoutMillis: Int = 5000,
+        wireProtocol: OpenCodeWireProtocol = OpenCodeWireProtocol.V1_18,
+    ): OpenCodeProtocolResult<List<SnapshotFileDiff>> {
+        if (!usesCliHttpApi(wireProtocol)) {
+            return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_BODY)
+        }
+        val normalizedMode = when (mode) {
+            "working", "branch" -> mode
+            else -> return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_IDENTIFIER)
+        }
+        if (directory.isBlank()) {
+            return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_IDENTIFIER)
+        }
+        val encodedDirectory = java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
+        val url = buildServerRootUrl(serverUrl) + "/api/vcs/diff?mode=" + normalizedMode +
+            "&directory=" + encodedDirectory
+        return when (val response = httpGetResult(url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)) {
+            is OpenCodeProtocolResult.Failure -> response
+            is OpenCodeProtocolResult.Success -> {
+                val array = sessionDiffArray(response.value)
+                    ?: return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_BODY)
+                OpenCodeProtocolResult.Success(parseSessionDiffArray(array))
+            }
+        }
+    }
+
     @TestOnly
     fun parseSessionDiff(json: String): List<SnapshotFileDiff> {
         val array = sessionDiffArray(json) ?: return emptyList()

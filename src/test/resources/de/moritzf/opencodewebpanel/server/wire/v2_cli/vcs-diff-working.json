@@ -1,0 +1,14 @@
+{
+  "location": {
+    "directory": "/proj"
+  },
+  "data": [
+    {
+      "file": "fragility.md",
+      "patch": "diff --git a/fragility.md b/fragility.md\nnew file mode 100644\n--- /dev/null\n+++ b/fragility.md\n@@ -0,0 +1 @@\n+probe\n",
+      "additions": 1,
+      "deletions": 0,
+      "status": "added"
+    }
+  ]
+}

@@ -3744,6 +3744,67 @@ class OpenCodeServerProtocolTest {
         assertEquals("added", live[0].status)
         assertEquals(1L, live[0].additions)
         assertTrue(live[0].patch!!.contains("CLI2_DIFF_PROBE_EDITED"))
+        val vcs = OpenCodeServerProtocol.parseSessionDiff(wireFixture("v2_cli/vcs-diff-working.json"))
+        assertEquals("fragility.md", vcs.single().file)
+        assertEquals("added", vcs.single().status)
+    }
+
+    @Test
+    fun fetchVcsDiffResultRequestsWorkingModeOnCli() {
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        val seen = java.util.Collections.synchronizedList(mutableListOf<String>())
+        server.createContext("/api/vcs/diff") { exchange ->
+            seen.add(exchange.requestURI.rawQuery.orEmpty())
+            val body = wireFixture("v2_cli/vcs-diff-working.json").toByteArray()
+            exchange.sendResponseHeaders(200, body.size.toLong())
+            exchange.responseBody.use { it.write(body) }
+        }
+        server.start()
+        try {
+            val result = OpenCodeServerProtocol.fetchVcsDiffResult(
+                "http://127.0.0.1:${server.address.port}",
+                OpenCodeServerProtocol.buildBasicAuthHeader("test"),
+                "/proj",
+                "working",
+                wireProtocol = OpenCodeWireProtocol.V2_CLI,
+            )
+            assertTrue(result is OpenCodeProtocolResult.Success)
+            assertEquals("fragility.md", (result as OpenCodeProtocolResult.Success).value.single().file)
+            assertTrue(seen.single().contains("mode=working"))
+            assertTrue(seen.single().contains("directory="))
+        } finally {
+            server.stop(0)
+        }
+    }
+
+    @Test
+    fun fetchVcsDiffResultSkippedOnV1() {
+        val result = OpenCodeServerProtocol.fetchVcsDiffResult(
+            "http://127.0.0.1:1",
+            OpenCodeServerProtocol.buildBasicAuthHeader("test"),
+            "/proj",
+            "working",
+            wireProtocol = OpenCodeWireProtocol.V1_18,
+        )
+        assertEquals(
+            OpenCodeProtocolResult.Failure.Kind.INVALID_BODY,
+            (result as OpenCodeProtocolResult.Failure).kind,
+        )
+    }
+
+    @Test
+    fun fetchVcsDiffResultRejectsUnknownMode() {
+        val result = OpenCodeServerProtocol.fetchVcsDiffResult(
+            "http://127.0.0.1:1",
+            OpenCodeServerProtocol.buildBasicAuthHeader("test"),
+            "/proj",
+            "committed",
+            wireProtocol = OpenCodeWireProtocol.V2_CLI,
+        )
+        assertEquals(
+            OpenCodeProtocolResult.Failure.Kind.INVALID_IDENTIFIER,
+            (result as OpenCodeProtocolResult.Failure).kind,
+        )
     }
 
     @Test
@@ -4071,6 +4132,12 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("messageIdOf(turnRow)"))
         assertTrue(script.contains("user-message"))
         assertTrue(script.contains("text-part"))
+        assertTrue(script.contains("file-tree-v2-row"))
+        assertTrue(script.contains("session-review-v2-sidebar"))
+        assertTrue(script.contains("select-v2"))
+        assertTrue(script.contains("vcsMode: 'working'"))
+        assertTrue(script.contains("vcsMode: 'branch'"))
+        assertTrue(script.contains("filesBrowserRow"))
         assertTrue(script.contains("window.__openDiff(messageID, filePath, partID)"))
         assertTrue(script.contains("}, true)"))
     }
@@ -4081,5 +4148,8 @@ class OpenCodeServerProtocolTest {
         assertTrue(script.contains("event.altKey"))
         assertTrue(script.contains("event.metaKey"))
         assertTrue(script.contains("event.ctrlKey"))
+        assertTrue(script.contains("filesBrowserRow"))
+        assertTrue(script.contains("file-tree-v2-row"))
+        assertTrue(script.contains("if (!filesBrowserRow(event.target)) return"))
     }
 }

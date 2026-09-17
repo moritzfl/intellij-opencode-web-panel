@@ -390,7 +390,7 @@ class OpenCodeWebToolWindowContent(
         buildScript = {
             OpenCodeBrowserSnippets.buildDiffNavigationScript(
                 enabled = true,
-                openDiffCallback = openDiffQuery.inject("messageID + '\\n' + filePath + '\\n' + partID"),
+                openDiffCallback = openDiffQuery.inject("messageID + '\\n' + filePath + '\\n' + partID + '\\n' + (typeof vcsMode === 'string' ? vcsMode : '')"),
             )
         },
     )

@@ -1860,10 +1860,23 @@ internal object OpenCodeBrowserSnippets {
                 const root = closestElement(icon, toolOpenRootSelector);
                 return pathFromToolRoot(root);
               };
+              const filesBrowserRow = (node) => {
+                const row = closestElement(node, '[data-slot="file-tree-v2-row"]');
+                if (!row) return null;
+                const path = row.getAttribute('data-path') || '';
+                if (!path) return null;
+                const sidebar = row.closest('[data-slot="session-review-v2-sidebar"]');
+                if (!sidebar || sidebar.querySelector('[data-component="select-v2"]')) return null;
+                return row;
+              };
               const resolveFileOpenTarget = (target, changedButtonOnly) => {
                 const iconHref = toolOpenIconLink(target);
                 if (iconHref) {
                   return { element: closestElement(target, toolOpenIconSelector), href: iconHref };
+                }
+                if (!changedButtonOnly) {
+                  const filesRow = filesBrowserRow(target);
+                  if (filesRow) return { element: filesRow, href: filesRow.getAttribute('data-path') || '' };
                 }
                 const changedFileHref = changedFileButtonLink(target);
                 const reviewV2Href = changedFileHref ? '' : reviewV2FileLink(target);
@@ -1943,8 +1956,10 @@ internal object OpenCodeBrowserSnippets {
                 }
                 if (event.defaultPrevented) return;
                 // Alt and Ctrl/Cmd+Click are reserved for the IDE diff gesture
-                // (buildDiffNavigationScript); a plain click still opens markdown/review files.
-                if (event.altKey || (/Mac|iPhone|iPod|iPad/.test(navigator.platform) ? event.metaKey : event.ctrlKey)) return;
+                // (buildDiffNavigationScript), except Files-tab tree rows (open the file).
+                if (event.altKey || (/Mac|iPhone|iPod|iPad/.test(navigator.platform) ? event.metaKey : event.ctrlKey)) {
+                  if (!filesBrowserRow(event.target)) return;
+                }
                 const resolved = resolveFileOpenTarget(event.target, changedButtonOnly);
                 if (!resolved) return;
                 event.preventDefault();
@@ -1971,7 +1986,8 @@ internal object OpenCodeBrowserSnippets {
      * (`prt_…`) so the JVM can load that part's `filediff`/`files`; multi-file patch rows also
      * send the reconstructed relative path to pick the row. Review/turn-summary rows and the
      * whole-turn indicator still send the user `messageID` (+ optional file path) for
-     * `session.diff`. Forwards `messageID + "\n" + filePath + "\n" + partID` (each may be empty)
+     * `session.diff`. CLI 2.x Changes Git/Branch adds a fourth `vcsMode` line (`working`/`branch`).
+     * Forwards `messageID + "\n" + filePath + "\n" + partID + "\n" + vcsMode` (each may be empty)
      * to the JVM via [openDiffCallback]. Returns null when disabled or without a callback.
      */
     fun buildDiffNavigationScript(enabled: Boolean, openDiffCallback: String? = null): String? {
@@ -2000,12 +2016,73 @@ internal object OpenCodeBrowserSnippets {
               };
               const isMac = /Mac|iPhone|iPod|iPad/.test(navigator.platform);
               const isDiffGesture = (event) => event.altKey || (isMac ? event.metaKey : event.ctrlKey);
+              const REVIEW_MODE_ATTR = 'data-opencode-intellij-review-mode';
+              const syncReviewMode = () => {
+                const items = document.querySelectorAll('[data-slot="select-v2-listbox"] [data-key]');
+                let selectedKey = '';
+                items.forEach((el) => {
+                  if (el.hasAttribute('data-selected') || el.getAttribute('aria-selected') === 'true') {
+                    selectedKey = el.getAttribute('data-key') || '';
+                  }
+                });
+                if (selectedKey !== 'git' && selectedKey !== 'branch' && selectedKey !== 'turn') return;
+                document.querySelectorAll('[data-slot="session-review-v2-sidebar-header"] [data-component="select-v2"]').forEach((el) => {
+                  el.setAttribute(REVIEW_MODE_ATTR, selectedKey);
+                });
+              };
+              document.addEventListener('click', syncReviewMode, true);
+              new MutationObserver(syncReviewMode).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-selected', 'aria-selected'] });
+              const changesSidebarOf = (node) => {
+                if (!node || !node.closest) return null;
+                const sidebar = node.closest('[data-slot="session-review-v2-sidebar"]');
+                if (!sidebar || !sidebar.querySelector('[data-component="select-v2"]')) return null;
+                return sidebar;
+              };
+              const filesBrowserRow = (node) => {
+                if (!node || !node.closest) return null;
+                const row = node.closest('[data-slot="file-tree-v2-row"]');
+                if (!row) return null;
+                const path = row.getAttribute('data-path') || '';
+                if (!path) return null;
+                const sidebar = row.closest('[data-slot="session-review-v2-sidebar"]');
+                if (!sidebar || sidebar.querySelector('[data-component="select-v2"]')) return null;
+                return row;
+              };
+              const reviewModeOf = (sidebar) => {
+                const trigger = sidebar.querySelector('[data-component="select-v2"]');
+                const key = trigger ? (trigger.getAttribute(REVIEW_MODE_ATTR) || trigger.getAttribute('data-key') || '') : '';
+                if (key === 'git' || key === 'branch' || key === 'turn') return key;
+                return 'git';
+              };
+              const reviewFilePath = (start) => {
+                const row = start.closest('[data-slot="file-tree-v2-row"]');
+                if (row) return row.getAttribute('data-path') || '';
+                const header = start.closest('[data-slot="session-review-v2-file-title"], [data-slot="session-review-v2-file-name"], [data-slot="session-review-v2-file-path"]');
+                if (!header) return '';
+                const root = (header.closest && header.closest('[data-slot="session-review-v2-file-header"]')) || header;
+                const name = clean(root.querySelector ? root.querySelector('[data-slot="session-review-v2-file-name"]')?.textContent : '');
+                const dir = clean(root.querySelector ? root.querySelector('[data-slot="session-review-v2-file-path"]')?.textContent : '');
+                if (!name) return '';
+                return dir ? dir.replace(/[\\\\/]?$/, '/') + name : name;
+              };
               // Review/turn-summary/indicator: session.diff is keyed by the turn's *user*
               // message id. Chat edit/write/patch: the tool part id (prt_…) is the stable key;
               // there is no GET-by-part, so the JVM pages session.messages to find it.
+              // CLI 2.x Changes tab: Git/Branch → /api/vcs/diff; Last turn → session.diff.
+              // Files tab file-tree rows are not diffs — file-link opens them.
               const resolveDiffTarget = (start) => {
                 if (!start || !start.closest) return null;
                 if (start.closest('[data-slot="opencode-intellij-open-file"]')) return null;
+                if (filesBrowserRow(start)) return null;
+                const changesSidebar = changesSidebarOf(start);
+                if (changesSidebar) {
+                  const path = reviewFilePath(start);
+                  if (!path) return null;
+                  const mode = reviewModeOf(changesSidebar);
+                  if (mode === 'git') return { messageID: '', filePath: path, partID: '', vcsMode: 'working' };
+                  if (mode === 'branch') return { messageID: '', filePath: path, partID: '', vcsMode: 'branch' };
+                  return { messageID: '', filePath: path, partID: '', vcsMode: '' };
+                }
                 const fileItem = start.closest('[data-file]');
                 if (fileItem) return { messageID: messageIdOf(fileItem), filePath: fileItem.getAttribute('data-file') || '', partID: '' };
                 const turnRow = start.closest('[data-slot="session-turn-diff-trigger"]');
@@ -2032,6 +2109,7 @@ internal object OpenCodeBrowserSnippets {
                 const messageID = target.messageID || '';
                 const filePath = target.filePath || '';
                 const partID = target.partID || '';
+                const vcsMode = target.vcsMode || '';
                 try {
                   $${openDiffCallback};
                 } catch (error) {

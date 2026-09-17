@@ -76,7 +76,7 @@ while [ -s "$WORKDIR/queue" ]; do
       | sed -E 's/.*\.\///; s/`\)$//' || true
     if grep -qxF "$name" "$WORKDIR/index_names"; then
       grep -oE '_?assets/[A-Za-z0-9._-]+\.js' "$f" 2>/dev/null | sed 's#.*/##' \
-        | grep -E '^(route-|file-|shell-|screen-|session-|command-|dialog-|incompatible-|composer-|panel-|home-|titlebar-|new-session-|server-)' \
+        | grep -E '^(route-|file-|shell-|screen-|session-|command-|dialog-|incompatible-|composer-|panel-|home-|titlebar-|new-session-|server-|select-|loader-)' \
         || true
     fi
   done < "$WORKDIR/this_round" | sort -u >> "$WORKDIR/queue"
@@ -166,6 +166,8 @@ MARKERS_V2=(
   'home-session-row'
   'home-session-project-name'
   'opencode-v2-icon'
+  'file-tree-v2-row'
+  'select-v2'
 )
 
 marker_present() {

@@ -19,6 +19,7 @@
 - Tool-window boot always opens Home and drops stale OpenCode 2 session tabs when the worktree marker changes (auto-port reuse otherwise 404s as "This session cannot be found").
 - Open-in-IDE file icons also match CLI 2.x `edit-tool`/`write-tool` wrappers (2.x dropped `edit-trigger`/`write-trigger`; the accordion header reuses `apply-patch-trigger-content`).
 - CLI 2.x chat edit diffs parse `metadata.files[].file` (not 1.18 `filediff.file` / apply-patch `filePath`). Turn Alt/Ctrl-click already used `session.diff?from=`.
+- CLI 2.x Changes tab: Alt/Ctrl/Cmd+Click on Git/Branch files opens `/api/vcs/diff` (`working`/`branch`). Last turn still uses `session.diff`. Files tab modifier-click opens the file (no diff).
 - `check-dom-contract.sh` follows CLI 2.x lazy `/_assets/` chunks and fails on missing 2.x markers instead of `exit 0`. Persist keys accept backtick minify (`layout`, `tabs.panes`, onboarding tips classified as excluded).
 
 ## [2.0.6] - 2026-09-15
