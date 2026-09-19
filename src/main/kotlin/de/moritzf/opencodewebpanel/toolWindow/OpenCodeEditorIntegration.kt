@@ -44,15 +44,23 @@ internal object OpenCodeEditorManager {
     fun open(project: Project, sessionId: String?) {
         if (project.isDisposed) return
         installToolWindowListener(project)
-        val file = synchronized(files) {
-            files.getOrPut(project) { OpenCodeEditorVirtualFile(project, sessionId) }
-                .also { it.sessionId = sessionId }
-        }
+        val file = fileFor(project, sessionId)
         val editorManager = FileEditorManager.getInstance(project)
         editorManager.openFile(file, true)
         editorManager.getEditors(file)
             .filterIsInstance<OpenCodeEditorFileEditor>()
             .forEach { it.openSession(sessionId) }
+    }
+
+    internal fun fileFor(project: Project, sessionId: String?): OpenCodeEditorVirtualFile {
+        return synchronized(files) {
+            files.getOrPut(project) { OpenCodeEditorVirtualFile(project, sessionId) }
+                .also { it.sessionId = sessionId }
+        }
+    }
+
+    internal fun trackedFile(project: Project): OpenCodeEditorVirtualFile? = synchronized(files) {
+        files[project]
     }
 
     private fun installToolWindowListener(project: Project) {
@@ -64,7 +72,7 @@ internal object OpenCodeEditorManager {
                 object : ToolWindowManagerListener {
                     override fun toolWindowShown(toolWindow: ToolWindow) {
                         if (project.isDisposed) return
-                        val trackedFile = synchronized(files) { files[project] }
+                        val trackedFile = trackedFile(project)
                         val file = editorFileToCloseOnToolWindowShown(
                             toolWindow.id,
                             toolWindow.project,

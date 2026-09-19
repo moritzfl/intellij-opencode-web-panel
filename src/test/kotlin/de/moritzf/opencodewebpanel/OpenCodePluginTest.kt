@@ -15,6 +15,7 @@ import de.moritzf.opencodewebpanel.toolWindow.OPEN_CODE_ZOOM_OUT_ACTION_ID
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodeBrowserCommand
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodeEditorFileEditor
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodeEditorFileEditorProvider
+import de.moritzf.opencodewebpanel.toolWindow.OpenCodeEditorManager
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodeEditorVirtualFile
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodeOpenInEditorAction
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodeWebToolWindowFactoryImpl
@@ -159,6 +160,32 @@ class OpenCodePluginTest : BasePlatformTestCase() {
         assertNull(file.sessionId)
     }
 
+    fun testEditorManagerReusesProjectFileAndUpdatesItsSessionTarget() {
+        val first = OpenCodeEditorManager.fileFor(project, "ses_first")
+
+        try {
+            val reused = OpenCodeEditorManager.fileFor(project, "ses_second")
+
+            assertSame(first, reused)
+            assertEquals("ses_second", reused.sessionId)
+        } finally {
+            OpenCodeEditorManager.forget(first)
+        }
+    }
+
+    fun testDisposingEditorForgetsItsProjectFile() {
+        val file = OpenCodeEditorManager.fileFor(project, "ses_test")
+        val editor = OpenCodeEditorFileEditor(project, file, initializePanel = false)
+
+        editor.openSession(null)
+        assertNull(file.sessionId)
+        assertSame(file, OpenCodeEditorManager.trackedFile(project))
+
+        editor.dispose()
+
+        assertNull(OpenCodeEditorManager.trackedFile(project))
+    }
+
     fun testOpenInEditorCollapsesToolWindowAfterOpeningEditor() {
         val events = mutableListOf<String>()
 
@@ -170,6 +197,25 @@ class OpenCodePluginTest : BasePlatformTestCase() {
         )
 
         assertEquals(listOf("open", "collapse"), events)
+    }
+
+    fun testOpenInEditorPassesHomeAndSessionTargets() {
+        val targets = mutableListOf<String?>()
+
+        openCodeInEditorAndCollapse(
+            project,
+            null,
+            openEditor = { _, sessionId -> targets += sessionId },
+            collapseToolWindow = {},
+        )
+        openCodeInEditorAndCollapse(
+            project,
+            "ses_current",
+            openEditor = { _, sessionId -> targets += sessionId },
+            collapseToolWindow = {},
+        )
+
+        assertEquals(listOf(null, "ses_current"), targets)
     }
 
     fun testToolWindowActivationSelectsOnlyTheMatchingTrackedEditor() {
