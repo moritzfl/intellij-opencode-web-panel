@@ -22,7 +22,6 @@ import de.moritzf.opencodewebpanel.features.OPEN_CODE_TOOL_WINDOW_ID
 import java.beans.PropertyChangeListener
 import java.beans.PropertyChangeSupport
 import javax.swing.JComponent
-import javax.swing.JPanel
 
 private val OpenCodeEditorFileType = PlainTextFileType.INSTANCE
 
@@ -155,8 +154,14 @@ internal class OpenCodeEditorFileEditor(
     private val root = BorderLayoutPanel()
     private val coordinator = panelCoordinator ?: OpenCodePanelCoordinator.getInstance(project)
     private val placementId = "editor:${System.identityHashCode(this)}"
-    private val placeholder = JPanel()
     private val host = OpenCodeEditorHost(this, coordinator)
+    private val placeholder = OpenCodePanelPlaceholder(
+        title = "OpenCode is open elsewhere",
+        message = "Use this editor split for the shared panel.",
+        actionText = "Show OpenCode Here",
+    ) {
+        host.activate(root) { coordinator.place(placementId) }
+    }.component
     private var disposed = false
 
     init {

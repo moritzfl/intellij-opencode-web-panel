@@ -56,7 +56,8 @@ internal class OpenCodePanelCoordinator private constructor(
     private var activePlacement: String? = null
     private var generation = 0L
     private var disposed = false
-    private var replacementPending = false
+    private var pendingReplacement: OpenCodePanelHandle? = null
+    private var lastAgentStatus: Pair<String, com.intellij.ui.BadgeIconSupplier>? = null
 
     companion object {
         private val INSTANCE_KEY = Key.create<OpenCodePanelCoordinator>("opencode.panel.coordinator")
@@ -144,6 +145,7 @@ internal class OpenCodePanelCoordinator private constructor(
         panel = created
         panelComponent = created.component
         failureComponent = null
+        render()
         return created as? OpenCodeWebToolWindowContent
     }
 
@@ -186,7 +188,10 @@ internal class OpenCodePanelCoordinator private constructor(
         val moved = activePlacement != id
         activePlacement = id
         render()
-        if (moved) panel?.onPlacementTransferred()
+        if (moved) {
+            panel?.onPlacementTransferred()
+            reapplyHostState()
+        }
         return true
     }
 
@@ -202,7 +207,7 @@ internal class OpenCodePanelCoordinator private constructor(
     /** Recreates the shared browser, keeping the old browser until its successor is ready. */
     fun replacePanel() {
         requireEdt()
-        if (disposed || replacementPending || (project == null && panelFactory == null)) return
+        if (disposed || pendingReplacement != null || (project == null && panelFactory == null)) return
         val previous = panel
         if (currentHost() == null && placements.values.none { it.host != null }) return
         val liveBackendId = project?.let {
@@ -218,42 +223,42 @@ internal class OpenCodePanelCoordinator private constructor(
             return
         }
 
-        replacementPending = true
+        pendingReplacement = replacement
         val readiness = runCatching { replacement.prepareBrowserForReplacement() }
             .getOrElse { CompletableFuture.failedFuture(it) }
         readiness.whenComplete { _, error ->
             ApplicationManager.getApplication().invokeLater {
-                replacementPending = false
+                val ownedReplacement = takePendingReplacement(replacement) ?: return@invokeLater
                 if (disposed) {
-                    Disposer.dispose(replacement)
+                    Disposer.dispose(ownedReplacement)
                     return@invokeLater
                 }
                 if (error != null) {
-                    Disposer.dispose(replacement)
+                    Disposer.dispose(ownedReplacement)
                     return@invokeLater
                 }
                 if (project != null &&
                     OpenCodeServerBackendRegistry.getInstance().backendFor(project).backendId != liveBackendId
                 ) {
-                    Disposer.dispose(replacement)
+                    Disposer.dispose(ownedReplacement)
                     replacePanel()
                     return@invokeLater
                 }
-                panel = replacement
-                panelComponent = replacement.component
+                panel = ownedReplacement
+                panelComponent = ownedReplacement.component
                 failureComponent = null
                 // Render only now: activePlacement may have changed while JCEF created the successor.
                 render()
-                replacement.onPlacementTransferred()
+                ownedReplacement.onPlacementTransferred()
                 Disposer.dispose(previous)
-                replacement.openSession(null)
+                ownedReplacement.openSession(null)
             }
         }
     }
 
     fun showFailure() {
         requireEdt()
-        if (disposed || replacementPending) return
+        if (disposed || pendingReplacement != null) return
         panel?.let(Disposer::dispose)
         panel = null
         panelComponent = null
@@ -268,6 +273,10 @@ internal class OpenCodePanelCoordinator private constructor(
         requireEdt()
         if (disposed) return
         disposed = true
+        pendingReplacement?.let { replacement ->
+            pendingReplacement = null
+            Disposer.dispose(replacement)
+        }
         panel?.let(Disposer::dispose)
         panel = null
     }
@@ -307,6 +316,12 @@ internal class OpenCodePanelCoordinator private constructor(
                 .warn("Could not create the shared OpenCode panel", e)
             null
         }
+    }
+
+    private fun takePendingReplacement(replacement: OpenCodePanelHandle): OpenCodePanelHandle? {
+        if (pendingReplacement !== replacement) return null
+        pendingReplacement = null
+        return replacement
     }
 
     private class PanelCoordinatorHost(
@@ -353,7 +368,15 @@ internal class OpenCodePanelCoordinator private constructor(
     }
 
     internal fun updateAgentStatus(state: String, icons: com.intellij.ui.BadgeIconSupplier) {
+        lastAgentStatus = state to icons
         currentHost()?.updateAgentStatus(state, icons)
+    }
+
+    private fun reapplyHostState() {
+        currentHost()?.updateHeading()
+        lastAgentStatus?.let { (state, icons) ->
+            currentHost()?.updateAgentStatus(state, icons)
+        }
     }
 
     private fun requireEdt() {

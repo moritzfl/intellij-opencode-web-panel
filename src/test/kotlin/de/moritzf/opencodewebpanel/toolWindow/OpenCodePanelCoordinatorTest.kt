@@ -11,6 +11,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import javax.swing.JPanel
 import javax.swing.SwingUtilities
+import javax.swing.JButton
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
@@ -162,7 +163,7 @@ class OpenCodePanelCoordinatorTest {
             assertEquals(1, firstHost.activeCalls)
             assertEquals(1, firstHost.inViewCalls)
             assertEquals(1, firstHost.activateCalls)
-            assertEquals(1, firstHost.headingCalls)
+            assertEquals(2, firstHost.headingCalls)
             assertEquals(1, firstHost.statusCalls)
             assertEquals(0, secondHost.totalCalls())
 
@@ -173,12 +174,12 @@ class OpenCodePanelCoordinatorTest {
             coordinator.updateHeading()
             coordinator.updateAgentStatus("idle", icons)
 
-            assertEquals(5, firstHost.totalCalls())
+            assertEquals(6, firstHost.totalCalls())
             assertEquals(1, secondHost.activeCalls)
             assertEquals(1, secondHost.inViewCalls)
             assertEquals(1, secondHost.activateCalls)
-            assertEquals(1, secondHost.headingCalls)
-            assertEquals(1, secondHost.statusCalls)
+            assertEquals(2, secondHost.headingCalls)
+            assertEquals(2, secondHost.statusCalls)
         }
     }
 
@@ -208,6 +209,31 @@ class OpenCodePanelCoordinatorTest {
     }
 
     @Test
+    fun returningToToolWindowReappliesHeadingAndAgentStatus() {
+        onEdt {
+            val panel = TestPanel()
+            val editorHost = TrackingHost()
+            val toolWindowHost = TrackingHost()
+            val editor = TestPlacement("editor")
+            val toolWindow = TestPlacement("tool-window")
+            val coordinator = coordinator(panel)
+            val icons = BadgeIconSupplier(
+                IconLoader.getIcon("/icons/opencode.svg", OpenCodeWebToolWindowContent::class.java),
+            )
+            coordinator.registerPlacement(editor.id, editor.container, editor.placeholder, editorHost)
+            coordinator.registerPlacement(toolWindow.id, toolWindow.container, toolWindow.placeholder, toolWindowHost)
+
+            coordinator.place(editor.id)
+            coordinator.updateHeading()
+            coordinator.updateAgentStatus("busy", icons)
+            coordinator.place(toolWindow.id)
+
+            assertEquals(1, toolWindowHost.headingCalls)
+            assertEquals(1, toolWindowHost.statusCalls)
+        }
+    }
+
+    @Test
     fun failureCardStaysInTheActivePlacement() {
         onEdt {
             val panel = TestPanel()
@@ -226,6 +252,24 @@ class OpenCodePanelCoordinatorTest {
 
             assertSame(first.placeholder, first.container.singleChild())
             assertFalse(second.container.singleChild() === second.placeholder)
+        }
+    }
+
+    @Test
+    fun newlyCreatedPanelIsRenderedIntoTheActivePlacement() {
+        onEdt {
+            val previous = ReplacementPanel()
+            val created = ReplacementPanel()
+            val placement = TestPlacement("tool-window")
+            val coordinator = OpenCodePanelCoordinator(previous, JPanel()) { created }
+            coordinator.registerPlacement(placement.id, placement.container, placement.placeholder, testHost())
+            coordinator.place(placement.id)
+            coordinator.showFailure()
+
+            coordinator.panelForActivePlacement(placement.id, sessionId = null)
+
+            assertSame(created.component, placement.container.singleChild())
+            coordinator.dispose()
         }
     }
 
@@ -340,6 +384,29 @@ class OpenCodePanelCoordinatorTest {
             assertFalse(previous.disposed)
             assertTrue(successor.disposed)
         }
+    }
+
+    @Test
+    fun disposingCoordinatorDisposesPendingSuccessorExactlyOnce() {
+        val readiness = CompletableFuture<Unit>()
+        val previous = ReplacementPanel()
+        val successor = ReplacementPanel(readiness)
+        lateinit var coordinator: OpenCodePanelCoordinator
+
+        onEdt {
+            coordinator = OpenCodePanelCoordinator(previous, JPanel()) { successor }
+            val placement = TestPlacement("tool-window")
+            coordinator.registerPlacement(placement.id, placement.container, placement.placeholder, testHost())
+            coordinator.place(placement.id)
+            coordinator.replacePanel()
+            coordinator.dispose()
+        }
+
+        assertEquals(1, successor.disposeCount)
+        readiness.complete(Unit)
+        ApplicationManager.getApplication().invokeAndWait { }
+        assertEquals(1, successor.disposeCount)
+        assertEquals(1, previous.disposeCount)
     }
 
     @Test
@@ -516,6 +583,22 @@ class OpenCodePanelCoordinatorTest {
     }
 
     @Test
+    fun panelPlaceholderIsVisibleAndCanRequestTheSharedPanel() {
+        var requests = 0
+        val placeholder = OpenCodePanelPlaceholder(
+            title = "Inactive",
+            message = "The panel is hosted elsewhere.",
+            actionText = "Show OpenCode Here",
+        ) { requests++ }
+
+        assertTrue(placeholder.component.isVisible)
+        val button = placeholder.component.findButton("Show OpenCode Here")
+        assertTrue(button.isVisible)
+        button.doClick()
+        assertEquals(1, requests)
+    }
+
+    @Test
     fun toolWindowShellActivatesParkedPanelAndDisposalOnlyUnregistersIt() {
         onEdt {
             val panel = TestPanel()
@@ -614,6 +697,7 @@ class OpenCodePanelCoordinatorTest {
     ) : OpenCodePanelHandle {
         override val component = JPanel()
         var disposed = false
+        var disposeCount = 0
         var placementTransfers = 0
         val openedSessions = mutableListOf<String?>()
 
@@ -641,6 +725,7 @@ class OpenCodePanelCoordinatorTest {
         override fun dispose() {
             if (disposed) return
             disposed = true
+            disposeCount++
             events?.add("$name-dispose")
             chatService?.setDispatcher(this, null)
             onDisposed()
@@ -737,6 +822,18 @@ class OpenCodePanelCoordinatorTest {
     private fun JPanel.singleChild(): Component {
         assertEquals(1, componentCount)
         return getComponent(0)
+    }
+
+    private fun JPanel.findButton(text: String): JButton {
+        return components.asSequence()
+            .flatMap { child ->
+                when (child) {
+                    is JButton -> sequenceOf(child)
+                    is JPanel -> child.components.asSequence().filterIsInstance<JButton>()
+                    else -> emptySequence()
+                }
+            }
+            .first { it.text == text }
     }
 
     private fun onEdt(block: () -> Unit) {
