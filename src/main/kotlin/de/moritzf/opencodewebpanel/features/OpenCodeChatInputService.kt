@@ -1,5 +1,6 @@
 package de.moritzf.opencodewebpanel.features
 
+import com.intellij.openapi.Disposable
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.project.Project
 
@@ -9,7 +10,7 @@ import com.intellij.openapi.project.Project
  * not ready are queued and flushed by the content once the OpenCode project page has loaded.
  */
 @Service(Service.Level.PROJECT)
-class OpenCodeChatInputService {
+class OpenCodeChatInputService : Disposable {
     internal data class Batch(val id: String, val text: String)
     internal data class Delivery(val attemptID: String, val batch: Batch)
 
@@ -112,6 +113,15 @@ class OpenCodeChatInputService {
     /** Drops queued and in-flight batches so a later re-enable cannot flush stale IDE-to-chat text. */
     internal fun discardPending() {
         synchronized(lock) {
+            pending.clear()
+            inFlight = null
+            inFlightOwner = null
+        }
+    }
+
+    override fun dispose() {
+        synchronized(lock) {
+            dispatchers.clear()
             pending.clear()
             inFlight = null
             inFlightOwner = null

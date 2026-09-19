@@ -4,6 +4,7 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.util.IconLoader
 import com.intellij.testFramework.ApplicationRule
 import com.intellij.ui.BadgeIconSupplier
+import de.moritzf.opencodewebpanel.features.OpenCodeChatInputService
 import java.awt.Component
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CountDownLatch
@@ -69,6 +70,37 @@ class OpenCodePanelCoordinatorTest {
             assertTrue(toolWindow.revalidateCount > previousToolWindowRevalidations)
             assertTrue(editor.repaintCount > previousEditorRepaints)
             assertTrue(editor.revalidateCount > previousEditorRevalidations)
+        }
+    }
+
+    @Test
+    fun movingSharedPanelBetweenHostsDoesNotRequeueItsInFlightChatBatch() {
+        onEdt {
+            val service = OpenCodeChatInputService()
+            val panelOwner = Any()
+            val submitted = mutableListOf<OpenCodeChatInputService.Delivery>()
+            service.setDispatcher(panelOwner, { delivery -> submitted += delivery; true })
+            val panel = TestPanel()
+            val toolWindow = TestPlacement("tool-window")
+            val editor = TestPlacement("editor")
+            val coordinator = coordinator(panel)
+            coordinator.registerPlacement(toolWindow.id, toolWindow.container, toolWindow.placeholder)
+            coordinator.registerPlacement(editor.id, editor.container, editor.placeholder)
+
+            try {
+                assertTrue(service.send(listOf("text")))
+                val delivery = submitted.single()
+
+                coordinator.place(toolWindow.id)
+                coordinator.place(editor.id)
+
+                assertEquals(listOf("text"), submitted.map { it.batch.text })
+                assertTrue(service.acknowledge(delivery.attemptID, accepted = true))
+                assertEquals(0, service.queuedCount())
+            } finally {
+                service.setDispatcher(panelOwner, null)
+                coordinator.dispose()
+            }
         }
     }
 

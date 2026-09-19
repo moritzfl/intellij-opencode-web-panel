@@ -128,4 +128,60 @@ class OpenCodeChatInputServiceTest {
         assertTrue(service.acknowledge(second.attemptID, accepted = true))
         assertEquals(0, service.queuedCount())
     }
+
+    @Test
+    fun hostTransferKeepsAnInFlightBatchWithTheSharedPanel() {
+        val service = OpenCodeChatInputService()
+        val panel = Any()
+        val submitted = mutableListOf<OpenCodeChatInputService.Delivery>()
+        service.setDispatcher(panel, { delivery -> submitted += delivery; true })
+
+        assertTrue(service.send(listOf("text")))
+        val delivery = submitted.single()
+
+        // A placement change does not remove or replace the panel dispatcher.
+        assertEquals(1, service.queuedCount())
+        assertTrue(service.acknowledge(delivery.attemptID, accepted = true))
+        assertEquals(listOf("text"), submitted.map { it.batch.text })
+        assertEquals(0, service.queuedCount())
+    }
+
+    @Test
+    fun staleAcknowledgementAfterBrowserReplacementCannotCompleteSuccessorAttempt() {
+        val service = OpenCodeChatInputService()
+        val previousBrowser = Any()
+        val successorBrowser = Any()
+        val submitted = mutableListOf<OpenCodeChatInputService.Delivery>()
+        service.setDispatcher(previousBrowser, { delivery -> submitted += delivery; true })
+
+        assertTrue(service.send(listOf("text")))
+        val previousAttempt = submitted.single()
+        service.setDispatcher(successorBrowser, { delivery -> submitted += delivery; true })
+        service.setDispatcher(previousBrowser, null)
+
+        val successorAttempt = submitted.last()
+        assertEquals(previousAttempt.batch.id, successorAttempt.batch.id)
+        assertFalse(previousAttempt.attemptID == successorAttempt.attemptID)
+        assertFalse(service.acknowledge(previousAttempt.attemptID, accepted = true))
+        assertEquals(1, service.queuedCount())
+        assertTrue(service.acknowledge(successorAttempt.attemptID, accepted = true))
+        assertEquals(0, service.queuedCount())
+    }
+
+    @Test
+    fun projectDisposalClearsQueuedAndInFlightChat() {
+        val service = OpenCodeChatInputService()
+        val submitted = mutableListOf<OpenCodeChatInputService.Delivery>()
+        service.setDispatcher { delivery -> submitted += delivery; true }
+
+        assertTrue(service.send(listOf("first", "second")))
+        val first = submitted.single()
+
+        service.dispose()
+
+        assertEquals(0, service.queuedCount())
+        assertFalse(service.acknowledge(first.attemptID, accepted = true))
+        assertFalse(service.send(listOf("after disposal")))
+        assertEquals(listOf("first"), submitted.map { it.batch.text })
+    }
 }
