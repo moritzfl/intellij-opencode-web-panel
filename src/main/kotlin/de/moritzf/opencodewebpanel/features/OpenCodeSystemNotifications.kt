@@ -12,7 +12,6 @@ import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.wm.IdeFrame
-import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.openapi.wm.WindowManager
 import com.intellij.openapi.wm.ex.ToolWindowManagerListener
@@ -49,13 +48,17 @@ internal fun notificationText(value: String, maxLength: Int = 1000): String {
  */
 internal class OpenCodeSystemNotifications(
     private val project: Project,
-    private val toolWindow: ToolWindow,
     private val browser: JBCefBrowser,
     private val serverManager: OpenCodeServerBackend,
     private val projectDirectory: () -> String?,
     private val navigate: (String) -> Unit,
+    private val panelIsInView: () -> Boolean,
+    private val activatePanel: (action: () -> Unit) -> Unit,
     parentDisposable: Disposable,
 ) {
+    @Volatile
+    private var disposed = false
+
     init {
         synchronized(targets) {
             targets.add(this)
@@ -140,6 +143,7 @@ internal class OpenCodeSystemNotifications(
     }
 
     fun dispose() {
+        disposed = true
         synchronized(targets) {
             targets.remove(this)
         }
@@ -148,7 +152,7 @@ internal class OpenCodeSystemNotifications(
     // Deliberately independent of the browser's page state: with events read on the JVM,
     // notifications matter most exactly while the page is blank, loading, or crashed.
     private fun isProjectOpen(): Boolean {
-        return !project.isDisposed && ProjectManager.getInstance().openProjects.contains(project)
+        return !disposed && !project.isDisposed && ProjectManager.getInstance().openProjects.contains(project)
     }
 
     /**
@@ -157,8 +161,7 @@ internal class OpenCodeSystemNotifications(
      * Must run on the EDT.
      */
     private fun isPanelInView(): Boolean {
-        if (!toolWindow.isVisible) return false
-        return WindowManager.getInstance().getFrame(project)?.isActive == true
+        return !disposed && panelIsInView()
     }
 
     /** True when the tool window is visible, the IDE frame is active, and the browser URL is [sessionID]. */
@@ -198,16 +201,17 @@ internal class OpenCodeSystemNotifications(
             serverUrl,
             sessionID.takeIf(OpenCodeServerProtocol::isSessionId),
         )
-        toolWindow.activate({
-            if (project.isDisposed) return@activate
-            if (!OpenCodeServerProtocol.isOpenCodeRouteAlreadyOpen(serverUrl, browser.cefBrowser.url, targetUrl)) {
-                navigate(targetUrl)
+        activatePanel {
+            if (!project.isDisposed) {
+                if (!OpenCodeServerProtocol.isOpenCodeRouteAlreadyOpen(serverUrl, browser.cefBrowser.url, targetUrl)) {
+                    navigate(targetUrl)
+                }
+                browser.component.requestFocusInWindow()
+                // The user is now looking at the notified session; its other notifications
+                // (e.g. an earlier "response ready") are obsolete too.
+                sessionID.takeIf(OpenCodeServerProtocol::isSessionId)?.let { dismissByKey("session:$it") }
             }
-            browser.component.requestFocusInWindow()
-            // The user is now looking at the notified session; its other notifications
-            // (e.g. an earlier "response ready") are obsolete too.
-            sessionID.takeIf(OpenCodeServerProtocol::isSessionId)?.let { dismissByKey("session:$it") }
-        }, true)
+        }
     }
 
     companion object {
@@ -465,7 +469,8 @@ internal class OpenCodeSystemNotifications(
             ideNotification.addAction(object : NotificationAction("Show in OpenCode") {
                 override fun actionPerformed(e: AnActionEvent, notification: Notification) {
                     notification.expire()
-                    target.openSession(openCodeNotification.sessionID)
+                    targetFor(openCodeNotification.directory, openCodeNotification.sessionID)
+                        ?.openSession(openCodeNotification.sessionID)
                 }
             })
             OpenCodeServerProtocol.notificationDismissKeys(openCodeNotification).forEach { key ->
@@ -482,15 +487,20 @@ internal class OpenCodeSystemNotifications(
             activeNotifications.register(key, notification)
         }
 
-        private fun targetFor(directory: String): OpenCodeSystemNotifications? {
+        private fun targetFor(directory: String, sessionID: String? = null): OpenCodeSystemNotifications? {
             if (directory.isBlank()) return null
             val openProjects = ProjectManager.getInstance().openProjects.toSet()
             return synchronized(targets) {
-                targets.firstOrNull { target ->
+                val matching = targets.filter { target ->
                     !target.project.isDisposed &&
                             openProjects.contains(target.project) &&
                             OpenCodeServerProtocol.isSameFilesystemPath(target.projectDirectory(), directory)
                 }
+                matching.firstOrNull { target ->
+                    sessionID != null && runCatching { target.isViewingSession(sessionID) }.getOrDefault(false)
+                } ?: matching.firstOrNull { target ->
+                    runCatching { target.isPanelInView() }.getOrDefault(false)
+                } ?: matching.lastOrNull()
             }
         }
 

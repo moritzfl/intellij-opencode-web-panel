@@ -23,6 +23,7 @@
         <applicationService serviceImplementation="de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry"/>
         <notificationGroup id="OpenCode Web Panel" displayType="BALLOON"/>
         <toolWindow factoryClass="de.moritzf.opencodewebpanel.toolWindow.OpenCodeWebToolWindowFactoryImpl" id="OpenCode" anchor="right" icon="/icons/opencode.svg"/>
+        <fileEditorProvider implementation="de.moritzf.opencodewebpanel.toolWindow.OpenCodeEditorFileEditorProvider"/>
     </extensions>
 
     <actions>

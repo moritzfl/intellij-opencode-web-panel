@@ -13,7 +13,11 @@ import de.moritzf.opencodewebpanel.toolWindow.OPEN_CODE_RESET_ZOOM_ACTION_ID
 import de.moritzf.opencodewebpanel.toolWindow.OPEN_CODE_ZOOM_IN_ACTION_ID
 import de.moritzf.opencodewebpanel.toolWindow.OPEN_CODE_ZOOM_OUT_ACTION_ID
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodeBrowserCommand
+import de.moritzf.opencodewebpanel.toolWindow.OpenCodeEditorFileEditorProvider
+import de.moritzf.opencodewebpanel.toolWindow.OpenCodeEditorVirtualFile
+import de.moritzf.opencodewebpanel.toolWindow.OpenCodeOpenInEditorAction
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodeWebToolWindowFactoryImpl
+import de.moritzf.opencodewebpanel.toolWindow.openCodeInEditorAndCollapse
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.KeyboardShortcut
 import com.intellij.openapi.application.ApplicationManager
@@ -96,6 +100,7 @@ class OpenCodePluginTest : BasePlatformTestCase() {
         assertTrue(pluginXml.contains("anchor=\"right\""))
         assertTrue(pluginXml.contains("icon=\"/icons/opencode.svg\""))
         assertTrue(pluginXml.contains("factoryClass=\"de.moritzf.opencodewebpanel.toolWindow.OpenCodeWebToolWindowFactoryImpl\""))
+        assertTrue(pluginXml.contains("fileEditorProvider implementation=\"de.moritzf.opencodewebpanel.toolWindow.OpenCodeEditorFileEditorProvider\""))
         assertTrue(pluginXml.contains("applicationService"))
         assertFalse(pluginXml.contains("serviceImplementation=\"de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager\""))
         assertTrue(pluginXml.contains("serviceImplementation=\"de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry\""))
@@ -106,6 +111,28 @@ class OpenCodePluginTest : BasePlatformTestCase() {
         assertTrue(pluginXml.contains("notificationGroup"))
         assertTrue(pluginXml.contains("displayType=\"BALLOON\""))
         assertFalse(pluginXml.contains("postStartupActivity"))
+    }
+
+    fun testOpenCodeEditorProviderAcceptsOnlyItsVirtualFile() {
+        val provider = OpenCodeEditorFileEditorProvider()
+        val file = OpenCodeEditorVirtualFile(project, "ses_test")
+
+        assertTrue(provider.accept(project, file))
+        assertEquals("opencode.editor", provider.editorTypeId)
+        assertEquals("Open in Editor", OpenCodeOpenInEditorAction().templatePresentation.text)
+    }
+
+    fun testOpenInEditorCollapsesToolWindowAfterOpeningEditor() {
+        val events = mutableListOf<String>()
+
+        openCodeInEditorAndCollapse(
+            project,
+            "ses_test",
+            openEditor = { _, _ -> events += "open" },
+            collapseToolWindow = { events += "collapse" },
+        )
+
+        assertEquals(listOf("open", "collapse"), events)
     }
 
     fun testSettingsConfigurableIsRegistered() {

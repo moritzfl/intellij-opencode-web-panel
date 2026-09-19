@@ -15,6 +15,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.MessageDialogBuilder
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.vfs.LocalFileSystem
+import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowManager
 import de.moritzf.opencodewebpanel.features.OPEN_CODE_TOOL_WINDOW_ID
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
@@ -222,6 +223,30 @@ internal class OpenCodeReloadPageAction : DumbAwareAction(
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 }
 
+internal class OpenCodeOpenInEditorAction : DumbAwareAction(
+    "Open in Editor",
+    "Open the current OpenCode view in an editor tab.",
+    AllIcons.Actions.Show,
+) {
+    override fun actionPerformed(e: AnActionEvent) {
+        val project = e.project ?: return
+        val toolWindow = openCodeToolWindow(e) ?: return
+        val content = openCodePanelContent(e) ?: return
+        openCodeInEditorAndCollapse(
+            project,
+            content.displayedSessionID(),
+            OpenCodeEditorManager::open,
+        ) { toolWindow.hide(null) }
+    }
+
+    override fun update(e: AnActionEvent) {
+        e.presentation.isEnabled = openCodePanelContent(e) != null
+        e.presentation.description = "Open the current OpenCode view in an editor tab."
+    }
+
+    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+}
+
 /**
  * Gear-menu bridge for OpenCode's broken web auto-accept. Scoped to the displayed conversation
  * and its subagents; state is in-memory only.
@@ -258,12 +283,26 @@ internal class OpenCodeAutoAcceptPermissionsAction : ToggleAction(
  * panel the user clicked instead of every project's panel. Prefers the tool window carried by the
  * action event (title-bar invocation) and falls back to a lookup by ID (gear menu).
  */
-private fun openCodePanelContent(e: AnActionEvent): OpenCodeWebToolWindowContent? {
-    val toolWindow = e.getData(PlatformDataKeys.TOOL_WINDOW)
+private fun openCodeToolWindow(e: AnActionEvent) = e.getData(PlatformDataKeys.TOOL_WINDOW)
         ?: e.project?.let { ToolWindowManager.getInstance(it).getToolWindow(OPEN_CODE_TOOL_WINDOW_ID) }
-        ?: return null
+
+private fun openCodePanelContent(e: AnActionEvent): OpenCodeWebToolWindowContent? {
+    return openCodeToolWindow(e)?.let(::openCodePanelContent)
+}
+
+private fun openCodePanelContent(toolWindow: ToolWindow): OpenCodeWebToolWindowContent? {
     return toolWindow.contentManager.contents
         .firstNotNullOfOrNull { it.disposer as? OpenCodeWebToolWindowContent }
+}
+
+internal fun openCodeInEditorAndCollapse(
+    project: Project,
+    sessionId: String?,
+    openEditor: (Project, String?) -> Unit,
+    collapseToolWindow: () -> Unit,
+) {
+    openEditor(project, sessionId)
+    collapseToolWindow()
 }
 
 internal fun requestOpenCodeServerRestart(project: Project?) {

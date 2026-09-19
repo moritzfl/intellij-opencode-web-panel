@@ -14,16 +14,34 @@ class OpenCodeChatInputService {
     internal data class Delivery(val attemptID: String, val batch: Batch)
 
     private val lock = Any()
-    private var dispatcher: ((Delivery) -> Boolean)? = null
+    private data class Dispatcher(
+        val dispatch: (Delivery) -> Boolean,
+        val isActive: () -> Boolean,
+    )
+
+    private val dispatchers = linkedMapOf<Any, Dispatcher>()
     private val pending = ArrayDeque<Batch>()
     private var inFlight: Delivery? = null
+    private var inFlightOwner: Any? = null
     private var nextBatchID = 0L
     private var nextAttemptID = 0L
 
     internal fun setDispatcher(dispatcher: ((Delivery) -> Boolean)?) {
+        setDispatcher(DEFAULT_OWNER, dispatcher)
+    }
+
+    internal fun setDispatcher(
+        owner: Any,
+        dispatcher: ((Delivery) -> Boolean)?,
+        isActive: () -> Boolean = { true },
+    ) {
         synchronized(lock) {
-            if (dispatcher == null) requeueInFlightLocked()
-            this.dispatcher = dispatcher
+            if (dispatcher == null) {
+                dispatchers.remove(owner)
+                if (inFlightOwner === owner) requeueInFlightLocked()
+            } else {
+                dispatchers[owner] = Dispatcher(dispatcher, isActive)
+            }
         }
     }
 
@@ -41,11 +59,14 @@ class OpenCodeChatInputService {
     internal fun dispatchPending(): Boolean {
         val claim = synchronized(lock) {
             if (inFlight != null) return true
-            val currentDispatcher = dispatcher ?: return false
+            val currentDispatcher = dispatchers.entries.lastOrNull { it.value.isActive() }
+                ?: dispatchers.entries.lastOrNull()
+                ?: return false
             val batch = pending.removeFirstOrNull() ?: return true
             val delivery = Delivery("chat-attempt-${++nextAttemptID}", batch)
             inFlight = delivery
-            currentDispatcher to delivery
+            inFlightOwner = currentDispatcher.key
+            currentDispatcher.value.dispatch to delivery
         }
         val submitted = runCatching { claim.first(claim.second) }.getOrDefault(false)
         if (!submitted) {
@@ -61,6 +82,7 @@ class OpenCodeChatInputService {
         val matched = synchronized(lock) {
             val delivery = inFlight?.takeIf { it.attemptID == attemptID } ?: return false
             inFlight = null
+            inFlightOwner = null
             if (!accepted) pending.addFirst(delivery.batch)
             true
         }
@@ -74,8 +96,10 @@ class OpenCodeChatInputService {
         true
     }
 
-    internal fun requeueInFlight() {
-        synchronized(lock) { requeueInFlightLocked() }
+    internal fun requeueInFlight(owner: Any? = null) {
+        synchronized(lock) {
+            if (owner == null || inFlightOwner === owner) requeueInFlightLocked()
+        }
     }
 
     internal fun queuedCount(): Int = synchronized(lock) { pending.size + if (inFlight != null) 1 else 0 }
@@ -85,15 +109,19 @@ class OpenCodeChatInputService {
         synchronized(lock) {
             pending.clear()
             inFlight = null
+            inFlightOwner = null
         }
     }
 
     private fun requeueInFlightLocked() {
         inFlight?.batch?.let(pending::addFirst)
         inFlight = null
+        inFlightOwner = null
     }
 
     companion object {
+        private val DEFAULT_OWNER = Any()
+
         fun getInstance(project: Project): OpenCodeChatInputService {
             return project.getService(OpenCodeChatInputService::class.java)
         }

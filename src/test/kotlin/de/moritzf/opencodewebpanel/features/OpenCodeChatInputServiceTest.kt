@@ -91,4 +91,17 @@ class OpenCodeChatInputServiceTest {
         assertEquals(1, service.queuedCount())
         assertFalse(service.dispatchPending())
     }
+
+    @Test
+    fun activeDispatcherWinsWhenMultiplePanelsShareAProject() {
+        val service = OpenCodeChatInputService()
+        val submitted = mutableListOf<String>()
+        val toolWindow = Any()
+        val editor = Any()
+        service.setDispatcher(toolWindow, { submitted += "tool"; true }, isActive = { false })
+        service.setDispatcher(editor, { submitted += "editor"; true }, isActive = { true })
+
+        assertTrue(service.send(listOf("text")))
+        assertEquals(listOf("editor"), submitted)
+    }
 }

@@ -16,7 +16,6 @@ import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.IconLoader
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.openapi.wm.IdeFrame
-import com.intellij.openapi.wm.ToolWindow
 import com.intellij.ui.BadgeIconSupplier
 import com.intellij.ui.jcef.JBCefBrowser
 import com.intellij.ui.jcef.JBCefBrowserBase
@@ -86,8 +85,8 @@ import java.util.concurrent.atomic.AtomicLong
 import javax.swing.JComponent
 import javax.swing.JPanel
 
-class OpenCodeWebToolWindowContent(
-    private val toolWindow: ToolWindow,
+internal class OpenCodeWebToolWindowContent(
+    private val host: OpenCodePanelHost,
     sessionIdToRestoreOnLoad: String? = null,
 ) : Disposable {
 
@@ -125,7 +124,7 @@ class OpenCodeWebToolWindowContent(
         private var devToolsCredentialsNotified = false
     }
 
-    private val project = toolWindow.project
+    private val project = host.project
     private val browser = JBCefBrowser()
     private val lifecycleStatusPanel = OpenCodeLifecycleStatusPanel(
         onRetry = ::restartOpenCodeServer,
@@ -171,11 +170,12 @@ class OpenCodeWebToolWindowContent(
     )
     private val systemNotifications = OpenCodeSystemNotifications(
         project,
-        toolWindow,
         browser,
         serverManager,
         ::openCodeProjectDirectory,
         ::navigateFromNotification,
+        panelIsInView = { host.isPanelInView(browser.component) },
+        activatePanel = { action -> host.activate(browser.component, action) },
         this,
     )
     private val requestHandler = OpenCodeBrowserRequestHandler(serverManager, ideNavigation, ::recoverFromRendererCrash)
@@ -228,6 +228,7 @@ class OpenCodeWebToolWindowContent(
     private var openProjectScriptScheduled = false
     private var restoreExistingOpenCodeSession = sessionIdToRestoreOnLoad != null
     private var sessionIdToRestore: String? = sessionIdToRestoreOnLoad
+    private var requestedSessionId: String? = sessionIdToRestoreOnLoad
     private var panelReplacementScheduled = false
     private val documentStartInjector = OpenCodeDocumentStartInjector(browser)
     @Volatile
@@ -457,7 +458,7 @@ class OpenCodeWebToolWindowContent(
     private var lastBrowserRecoveryAttemptAtMillis = 0L
     private val rendererWatchdog = OpenCodeRendererWatchdog(
         parentDisposable = this,
-        isActiveContent = { !isContentDisposed() && !toolWindow.isDisposed && browser.component.isShowing },
+        isActiveContent = { host.isActive(browser.component) && !isContentDisposed() },
         isAgentBusy = { agentStatusTracker.isBusy() },
         isEnabledInSettings = { OpenCodeSettingsState.getInstance().recoverStalledRenderer },
         isPageReady = {
@@ -471,16 +472,16 @@ class OpenCodeWebToolWindowContent(
         onReloadPage = { reloadStalledOpenCodePage() },
         onRecreatePanel = {
             ApplicationManager.getApplication().invokeLater {
-                if (isContentDisposed() || toolWindow.isDisposed || toolWindow.project.isDisposed) return@invokeLater
+                if (isContentDisposed() || host.isDisposed()) return@invokeLater
                 // Share the browser-recovery throttle with renderer-crash recovery so the two
                 // paths cannot interleave into a recreate storm.
                 if (!markBrowserRecoveryAttempt()) return@invokeLater
-                replaceOpenCodeToolWindowContent(toolWindow)
+                host.replacePanel()
             }
         },
         onGiveUp = {
             ApplicationManager.getApplication().invokeLater {
-                if (isContentDisposed() || toolWindow.isDisposed || toolWindow.project.isDisposed) return@invokeLater
+                if (isContentDisposed() || host.isDisposed()) return@invokeLater
                 showRendererGiveUpCard()
             }
         },
@@ -506,7 +507,7 @@ class OpenCodeWebToolWindowContent(
                 // Move the stall clock so an in-flight navigation is not recovered; keep the
                 // recreate budget (process-wide) and this panel's stall count.
                 rendererWatchdog.noteDocumentLoadStarted()
-                OpenCodeChatInputService.getInstance(project).requeueInFlight()
+                OpenCodeChatInputService.getInstance(project).requeueInFlight(this@OpenCodeWebToolWindowContent)
                 injectedFeatures.forEach { it.scheduled = false }
                 earlyInjectedFeatures.forEach { it.scheduled = false }
                 val serverUrl = serverManager.getServerUrl()
@@ -631,7 +632,11 @@ class OpenCodeWebToolWindowContent(
         )
         OpenCodeCefFileDialogHandler(project, browser, this)
         OpenCodeBrowserShortcutHandler(browser, serverManager, this).install()
-        OpenCodeChatInputService.getInstance(project).setDispatcher(::dispatchChatBatch)
+        OpenCodeChatInputService.getInstance(project).setDispatcher(
+            this,
+            ::dispatchChatBatch,
+            isActive = { host.isPanelInView(browser.component) },
+        )
         ApplicationManager.getApplication().messageBus.connect(this).subscribe(
             AppLifecycleListener.TOPIC,
             object : AppLifecycleListener {
@@ -927,10 +932,9 @@ class OpenCodeWebToolWindowContent(
         }
         lastCallbackRecoveryAtMillis = now
         thisLogger().warn("OpenCode panel callbacks could not be created; recreating the panel")
-        val window = toolWindow
         addAlarmRequest(panelRecoveryAlarm, OpenCodePanelRecoveryPolicy.RETRY_DELAY_MILLIS) {
-            if (window.isDisposed || window.project.isDisposed) return@addAlarmRequest
-            replaceOpenCodeToolWindowContent(window)
+            if (host.isDisposed()) return@addAlarmRequest
+            host.replacePanel()
         }
     }
 
@@ -1251,7 +1255,7 @@ class OpenCodeWebToolWindowContent(
             if (isContentDisposed()) return@invokeLater
             if (!markBrowserRecoveryAttempt()) return@invokeLater
             thisLogger().warn("OpenCode panel renderer process terminated; recreating panel")
-            replaceOpenCodeToolWindowContent(toolWindow)
+            host.replacePanel()
         }
     }
 
@@ -1262,14 +1266,13 @@ class OpenCodeWebToolWindowContent(
     private fun schedulePanelReplacement() {
         if (isContentDisposed() || panelReplacementScheduled) return
         panelReplacementScheduled = true
-        val window = toolWindow
         // Restart is the hammer: a spent auto-recreate budget must not make the new panel
         // give up on its first stall.
         OpenCodeRendererWatchdog.resetProcessRecreatesAfterStall()
         ApplicationManager.getApplication().invokeLater {
             try {
-                if (window.isDisposed || window.project.isDisposed) return@invokeLater
-                replaceOpenCodeToolWindowContent(window)
+                if (host.isDisposed()) return@invokeLater
+                host.replacePanel()
             } finally {
                 panelReplacementScheduled = false
             }
@@ -1315,7 +1318,7 @@ class OpenCodeWebToolWindowContent(
      * frozen; make the failure card the way out so the user has a Retry instead of a dead view.
      */
     private fun showRendererGiveUpCard() {
-        installOpenCodePanelFailureCard(toolWindow)
+        host.showFailure()
     }
 
     private fun markBrowserRecoveryAttempt(): Boolean {
@@ -1347,7 +1350,8 @@ class OpenCodeWebToolWindowContent(
         agentStatusTracker.seed()
 
         restoreExistingOpenCodeSession = false
-        loadProjectPageAt(serverUrl, sessionId = null)
+        val sessionId = requestedSessionId.also { requestedSessionId = null }
+        loadProjectPageAt(serverUrl, sessionId)
     }
 
     private fun loadProjectPageAt(serverUrl: String, sessionId: String?) {
@@ -1370,6 +1374,19 @@ class OpenCodeWebToolWindowContent(
             thisLogger().info("jcef navigate issued current=${safeBrowserUrl()}")
             armPageLoadWatchdog(serverUrl)
         }
+    }
+
+    internal fun openSession(sessionId: String?) {
+        if (isContentDisposed()) return
+        requestedSessionId = sessionId
+        val serverUrl = serverManager.getServerUrl()
+        if (serverUrl == null) {
+            checkAndLoadContent()
+            return
+        }
+        if (sessionId == displayedSessionID() && isBrowserOnOpenCodeServerPage(serverUrl)) return
+        requestedSessionId = null
+        loadProjectPageAt(serverUrl, sessionId)
     }
 
     private fun installDocumentStartScripts(serverUrl: String): CompletableFuture<Boolean> {
@@ -1743,13 +1760,7 @@ class OpenCodeWebToolWindowContent(
     }
 
     private fun applyAgentStatusBadgeIcon(state: String) {
-        toolWindow.setIcon(
-            when (state) {
-                OpenCodeAgentStatusState.ATTENTION -> toolWindowIconSupplier.warningIcon
-                OpenCodeAgentStatusState.BUSY -> toolWindowIconSupplier.liveIndicatorIcon
-                else -> toolWindowIconSupplier.originalIcon
-            },
-        )
+        host.updateAgentStatus(state, toolWindowIconSupplier)
     }
 
     /** Server stopped or the directory changed — tracked state no longer applies to this panel. */
@@ -1820,7 +1831,7 @@ class OpenCodeWebToolWindowContent(
             schedulePanelReplacement()
             return
         }
-        updateOpenCodeToolWindowHeading(toolWindow)
+        host.updateHeading()
         restoreExistingOpenCodeSession = false
         sessionIdToRestore = null
         openProjectScriptScheduled = false
@@ -2029,12 +2040,12 @@ class OpenCodeWebToolWindowContent(
         OpenCodeBrowserShortcutHandler.dispatch(browser, serverManager, command)
     }
 
-    internal fun currentPageUrl(): String? = browser.cefBrowser.url
+    internal fun currentPageUrl(): String? = runCatching { browser.cefBrowser.url }.getOrNull()
 
     internal fun openCodeServerUrl(): String? = serverManager.getServerUrl()
 
     internal fun displayedSessionID(): String? {
-        return OpenCodeServerProtocol.sessionIdFromUrl(browser.cefBrowser.url)
+        return runCatching { OpenCodeServerProtocol.sessionIdFromUrl(browser.cefBrowser.url) }.getOrNull()
     }
 
     internal fun backendId(): String = serverManager.backendId
@@ -2078,7 +2089,7 @@ class OpenCodeWebToolWindowContent(
     }
 
     private fun isContentDisposed(): Boolean {
-        return disposed || project.isDisposed
+        return disposed || project.isDisposed || host.isDisposed()
     }
 
     private fun addAlarmRequest(alarm: Alarm, delayMillis: Int, request: () -> Unit) {
@@ -2096,7 +2107,7 @@ class OpenCodeWebToolWindowContent(
         pendingBrowserLoadGeneration++
         permissionAutoResponder.dispose()
         if (!project.isDisposed) {
-            OpenCodeChatInputService.getInstance(project).setDispatcher(null)
+            OpenCodeChatInputService.getInstance(project).setDispatcher(this, null)
         }
         openProjectAlarm.cancelAllRequests()
         pageLoadWatchdogAlarm.cancelAllRequests()

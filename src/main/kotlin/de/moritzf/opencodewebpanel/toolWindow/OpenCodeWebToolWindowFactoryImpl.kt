@@ -56,6 +56,7 @@ class OpenCodeWebToolWindowFactoryImpl : ToolWindowFactory, DumbAware {
                 OpenCodeZoomOutAction(),
                 OpenCodeZoomInAction(),
                 OpenCodeReloadPageAction(),
+                OpenCodeOpenInEditorAction(),
                 OpenCodeRestartServerAction(),
             ),
         )
@@ -70,6 +71,7 @@ class OpenCodeWebToolWindowFactoryImpl : ToolWindowFactory, DumbAware {
                 add(OpenCodeAutoAcceptPermissionsAction())
                 addSeparator()
                 add(OpenCodeReloadPageAction())
+                add(OpenCodeOpenInEditorAction())
                 add(OpenCodeRestartServerAction())
                 add(OpenCodeStopServerAction())
                 addSeparator()
@@ -172,7 +174,7 @@ private fun createOpenCodeToolWindowContent(
     sessionIdToRestore: String?,
 ): OpenCodeWebToolWindowContent? {
     return try {
-        OpenCodeWebToolWindowContent(toolWindow, sessionIdToRestore)
+        OpenCodeWebToolWindowContent(OpenCodeToolWindowHost(toolWindow), sessionIdToRestore)
     } catch (e: ProcessCanceledException) {
         throw e
     } catch (e: Throwable) {
