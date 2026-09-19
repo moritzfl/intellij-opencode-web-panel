@@ -13,11 +13,16 @@ import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
+import com.intellij.openapi.util.Key
 import com.intellij.openapi.util.UserDataHolderBase
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.WindowManager
+import com.intellij.openapi.wm.ex.ToolWindowManagerListener
 import com.intellij.testFramework.LightVirtualFile
+import com.intellij.util.messages.MessageBusConnection
 import com.intellij.util.ui.components.BorderLayoutPanel
+import de.moritzf.opencodewebpanel.features.OPEN_CODE_TOOL_WINDOW_ID
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
 import java.beans.PropertyChangeListener
 import java.beans.PropertyChangeSupport
@@ -34,9 +39,11 @@ internal class OpenCodeEditorVirtualFile(
 
 internal object OpenCodeEditorManager {
     private val files = mutableMapOf<Project, OpenCodeEditorVirtualFile>()
+    private val toolWindowListenerKey = Key.create<MessageBusConnection>("opencode.editor.tool.window.listener")
 
     fun open(project: Project, sessionId: String?) {
         if (project.isDisposed) return
+        installToolWindowListener(project)
         val file = synchronized(files) {
             files.getOrPut(project) { OpenCodeEditorVirtualFile(project, sessionId) }
                 .also { it.sessionId = sessionId }
@@ -48,11 +55,34 @@ internal object OpenCodeEditorManager {
             .forEach { it.openSession(sessionId) }
     }
 
+    private fun installToolWindowListener(project: Project) {
+        synchronized(files) {
+            if (project.getUserData(toolWindowListenerKey) != null) return
+            val connection = project.messageBus.connect(project)
+            connection.subscribe(
+                ToolWindowManagerListener.TOPIC,
+                object : ToolWindowManagerListener {
+                    override fun toolWindowShown(toolWindow: ToolWindow) {
+                        if (project.isDisposed || toolWindow.project != project) return
+                        if (!shouldCloseOpenCodeEditorOnToolWindowShown(toolWindow.id)) return
+                        val file = synchronized(files) { files[project] } ?: return
+                        FileEditorManager.getInstance(project).closeFile(file)
+                    }
+                },
+            )
+            project.putUserData(toolWindowListenerKey, connection)
+        }
+    }
+
     internal fun forget(file: OpenCodeEditorVirtualFile) {
         synchronized(files) {
             if (files[file.owner] === file) files.remove(file.owner)
         }
     }
+}
+
+internal fun shouldCloseOpenCodeEditorOnToolWindowShown(toolWindowId: String): Boolean {
+    return toolWindowId == OPEN_CODE_TOOL_WINDOW_ID
 }
 
 internal class OpenCodeEditorFileEditorProvider : FileEditorProvider, DumbAware {

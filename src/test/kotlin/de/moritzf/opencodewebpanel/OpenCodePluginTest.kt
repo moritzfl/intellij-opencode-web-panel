@@ -20,6 +20,7 @@ import de.moritzf.opencodewebpanel.toolWindow.OpenCodeOpenInEditorAction
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodeWebToolWindowFactoryImpl
 import de.moritzf.opencodewebpanel.toolWindow.editorReplacementSessionId
 import de.moritzf.opencodewebpanel.toolWindow.openCodeInEditorAndCollapse
+import de.moritzf.opencodewebpanel.toolWindow.shouldCloseOpenCodeEditorOnToolWindowShown
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.KeyboardShortcut
 import com.intellij.openapi.application.ApplicationManager
@@ -168,6 +169,11 @@ class OpenCodePluginTest : BasePlatformTestCase() {
         )
 
         assertEquals(listOf("open", "collapse"), events)
+    }
+
+    fun testOnlyOpenCodeToolWindowActivationClosesTheEditor() {
+        assertTrue(shouldCloseOpenCodeEditorOnToolWindowShown("OpenCode"))
+        assertFalse(shouldCloseOpenCodeEditorOnToolWindowShown("Project"))
     }
 
     fun testSettingsConfigurableIsRegistered() {
