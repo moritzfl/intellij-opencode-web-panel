@@ -63,9 +63,13 @@ internal object OpenCodeEditorManager {
                 ToolWindowManagerListener.TOPIC,
                 object : ToolWindowManagerListener {
                     override fun toolWindowShown(toolWindow: ToolWindow) {
-                        if (project.isDisposed || toolWindow.project != project) return
-                        if (!shouldCloseOpenCodeEditorOnToolWindowShown(toolWindow.id)) return
-                        val file = synchronized(files) { files[project] } ?: return
+                        if (project.isDisposed) return
+                        val trackedFile = synchronized(files) { files[project] }
+                        val file = editorFileToCloseOnToolWindowShown(
+                            toolWindow.id,
+                            toolWindow.project,
+                            trackedFile,
+                        ) ?: return
                         FileEditorManager.getInstance(project).closeFile(file)
                     }
                 },
@@ -81,8 +85,14 @@ internal object OpenCodeEditorManager {
     }
 }
 
-internal fun shouldCloseOpenCodeEditorOnToolWindowShown(toolWindowId: String): Boolean {
-    return toolWindowId == OPEN_CODE_TOOL_WINDOW_ID
+internal fun editorFileToCloseOnToolWindowShown(
+    toolWindowId: String,
+    toolWindowProject: Project,
+    trackedFile: OpenCodeEditorVirtualFile?,
+): OpenCodeEditorVirtualFile? {
+    return trackedFile?.takeIf {
+        toolWindowId == OPEN_CODE_TOOL_WINDOW_ID && it.owner === toolWindowProject
+    }
 }
 
 internal class OpenCodeEditorFileEditorProvider : FileEditorProvider, DumbAware {

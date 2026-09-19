@@ -18,13 +18,14 @@ import de.moritzf.opencodewebpanel.toolWindow.OpenCodeEditorFileEditorProvider
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodeEditorVirtualFile
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodeOpenInEditorAction
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodeWebToolWindowFactoryImpl
+import de.moritzf.opencodewebpanel.toolWindow.editorFileToCloseOnToolWindowShown
 import de.moritzf.opencodewebpanel.toolWindow.editorReplacementSessionId
 import de.moritzf.opencodewebpanel.toolWindow.openCodeInEditorAndCollapse
-import de.moritzf.opencodewebpanel.toolWindow.shouldCloseOpenCodeEditorOnToolWindowShown
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.KeyboardShortcut
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.fileEditor.FileEditorPolicy
+import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.testFramework.LightVirtualFile
@@ -171,9 +172,16 @@ class OpenCodePluginTest : BasePlatformTestCase() {
         assertEquals(listOf("open", "collapse"), events)
     }
 
-    fun testOnlyOpenCodeToolWindowActivationClosesTheEditor() {
-        assertTrue(shouldCloseOpenCodeEditorOnToolWindowShown("OpenCode"))
-        assertFalse(shouldCloseOpenCodeEditorOnToolWindowShown("Project"))
+    fun testToolWindowActivationSelectsOnlyTheMatchingTrackedEditor() {
+        val trackedFile = OpenCodeEditorVirtualFile(project, "ses_test")
+        val otherProject = ProjectManager.getInstance().defaultProject
+
+        assertSame(
+            trackedFile,
+            editorFileToCloseOnToolWindowShown("OpenCode", project, trackedFile),
+        )
+        assertNull(editorFileToCloseOnToolWindowShown("Project", project, trackedFile))
+        assertNull(editorFileToCloseOnToolWindowShown("OpenCode", otherProject, trackedFile))
     }
 
     fun testSettingsConfigurableIsRegistered() {
