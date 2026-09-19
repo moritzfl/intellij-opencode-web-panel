@@ -244,6 +244,7 @@ internal class OpenCodePanelCoordinator private constructor(
                 failureComponent = null
                 // Render only now: activePlacement may have changed while JCEF created the successor.
                 render()
+                replacement.onPlacementTransferred()
                 Disposer.dispose(previous)
                 replacement.openSession(null)
             }

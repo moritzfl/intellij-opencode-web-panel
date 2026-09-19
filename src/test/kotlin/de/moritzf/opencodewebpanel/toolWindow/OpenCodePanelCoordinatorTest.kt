@@ -1,9 +1,13 @@
 package de.moritzf.opencodewebpanel.toolWindow
 
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.util.IconLoader
+import com.intellij.testFramework.ApplicationRule
 import com.intellij.ui.BadgeIconSupplier
 import java.awt.Component
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import javax.swing.JPanel
 import javax.swing.SwingUtilities
 import org.junit.Assert.assertEquals
@@ -11,9 +15,16 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertThrows
+import org.junit.ClassRule
 import org.junit.Test
 
 class OpenCodePanelCoordinatorTest {
+    companion object {
+        @ClassRule
+        @JvmField
+        val application = ApplicationRule()
+    }
+
     @Test
     fun keepsOneLiveComponentInTheActivePlacement() {
         onEdt {
@@ -184,7 +195,8 @@ class OpenCodePanelCoordinatorTest {
     fun replacementUsesThePlacementThatIsActiveWhenTheSuccessorIsReady() {
         val readiness = CompletableFuture<Unit>()
         val previous = ReplacementPanel()
-        val successor = ReplacementPanel(readiness)
+        val installed = CountDownLatch(1)
+        val successor = ReplacementPanel(readiness, onOpened = installed::countDown)
         lateinit var coordinator: OpenCodePanelCoordinator
         val first = TestPlacement("first")
         val second = TestPlacement("second")
@@ -199,11 +211,14 @@ class OpenCodePanelCoordinatorTest {
         }
 
         readiness.complete(Unit)
+        ApplicationManager.getApplication().invokeAndWait { }
+        assertTrue("successor completion timed out", installed.await(5, TimeUnit.SECONDS))
         onEdt {
             assertSame(successor.component, second.container.singleChild())
             assertSame(first.placeholder, first.container.singleChild())
             assertTrue(previous.disposed)
             assertEquals(listOf<String?>(null), successor.openedSessions)
+            assertEquals(1, successor.placementTransfers)
         }
     }
 
@@ -211,7 +226,8 @@ class OpenCodePanelCoordinatorTest {
     fun failedSuccessorLeavesThePredecessorAttachedAndUsable() {
         val readiness = CompletableFuture<Unit>()
         val previous = ReplacementPanel()
-        val successor = ReplacementPanel(readiness)
+        val cleanedUp = CountDownLatch(1)
+        val successor = ReplacementPanel(readiness, onDisposed = cleanedUp::countDown)
         val first = TestPlacement("first")
         lateinit var coordinator: OpenCodePanelCoordinator
 
@@ -223,6 +239,8 @@ class OpenCodePanelCoordinatorTest {
         }
 
         readiness.completeExceptionally(IllegalStateException("renderer did not start"))
+        ApplicationManager.getApplication().invokeAndWait { }
+        assertTrue("failed successor cleanup timed out", cleanedUp.await(5, TimeUnit.SECONDS))
         onEdt {
             assertSame(previous.component, first.container.singleChild())
             assertFalse(previous.disposed)
@@ -492,21 +510,28 @@ class OpenCodePanelCoordinatorTest {
 
     private class ReplacementPanel(
         private val readiness: CompletableFuture<Unit> = CompletableFuture.completedFuture(Unit),
+        private val onOpened: () -> Unit = {},
+        private val onDisposed: () -> Unit = {},
     ) : OpenCodePanelHandle {
         override val component = JPanel()
         var disposed = false
+        var placementTransfers = 0
         val openedSessions = mutableListOf<String?>()
 
         override fun prepareBrowserForReplacement(): CompletableFuture<Unit> = readiness
 
         override fun openSession(sessionId: String?) {
             openedSessions += sessionId
+            onOpened()
         }
 
-        override fun onPlacementTransferred() = Unit
+        override fun onPlacementTransferred() {
+            placementTransfers++
+        }
 
         override fun dispose() {
             disposed = true
+            onDisposed()
         }
     }
 
