@@ -182,6 +182,7 @@ class OpenCodeChatInputServiceTest {
         assertEquals(0, service.queuedCount())
         assertFalse(service.acknowledge(first.attemptID, accepted = true))
         assertFalse(service.send(listOf("after disposal")))
+        assertEquals(0, service.queuedCount())
         assertEquals(listOf("first"), submitted.map { it.batch.text })
     }
 }

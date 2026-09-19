@@ -77,13 +77,19 @@ class OpenCodePanelCoordinatorTest {
     fun movingSharedPanelBetweenHostsDoesNotRequeueItsInFlightChatBatch() {
         onEdt {
             val service = OpenCodeChatInputService()
-            val panelOwner = Any()
             val submitted = mutableListOf<OpenCodeChatInputService.Delivery>()
-            service.setDispatcher(panelOwner, { delivery -> submitted += delivery; true })
             val panel = TestPanel()
+            service.setDispatcher(panel, { delivery -> submitted += delivery; true })
             val toolWindow = TestPlacement("tool-window")
             val editor = TestPlacement("editor")
-            val coordinator = coordinator(panel)
+            val coordinator = OpenCodePanelCoordinator(
+                panelComponent = panel.component,
+                disposePanel = {
+                    service.setDispatcher(panel, null)
+                    panel.dispose()
+                },
+                parkingContainer = JPanel(),
+            )
             coordinator.registerPlacement(toolWindow.id, toolWindow.container, toolWindow.placeholder)
             coordinator.registerPlacement(editor.id, editor.container, editor.placeholder)
 
@@ -98,7 +104,7 @@ class OpenCodePanelCoordinatorTest {
                 assertTrue(service.acknowledge(delivery.attemptID, accepted = true))
                 assertEquals(0, service.queuedCount())
             } finally {
-                service.setDispatcher(panelOwner, null)
+                service.setDispatcher(panel, null)
                 coordinator.dispose()
             }
         }
@@ -252,6 +258,62 @@ class OpenCodePanelCoordinatorTest {
             assertEquals(listOf<String?>(null), successor.openedSessions)
             assertEquals(1, successor.placementTransfers)
         }
+    }
+
+    @Test
+    fun replacementHandsChatToReadySuccessorAfterRetainingPredecessor() {
+        val service = OpenCodeChatInputService()
+        val readiness = CompletableFuture<Unit>()
+        val events = mutableListOf<String>()
+        val submitted = mutableListOf<OpenCodeChatInputService.Delivery>()
+        val previous = ReplacementPanel(
+            name = "previous",
+            chatService = service,
+            submitted = submitted,
+            events = events,
+            isActive = { true },
+        )
+        val successor = ReplacementPanel(
+            name = "successor",
+            readiness = readiness,
+            chatService = service,
+            submitted = submitted,
+            events = events,
+            isActive = { false },
+        )
+        val first = TestPlacement("first")
+        lateinit var coordinator: OpenCodePanelCoordinator
+
+        onEdt {
+            coordinator = OpenCodePanelCoordinator(previous, JPanel()) { successor }
+            coordinator.registerPlacement(first.id, first.container, first.placeholder, testHost())
+            coordinator.place(first.id)
+            assertTrue(service.send(listOf("text")))
+            events.clear()
+        }
+        val previousAttempt = submitted.single()
+
+        onEdt {
+            coordinator.replacePanel()
+            assertFalse(previous.disposed)
+            assertSame(previous.component, first.container.singleChild())
+        }
+
+        readiness.complete(Unit)
+        ApplicationManager.getApplication().invokeAndWait { }
+
+        onEdt {
+            assertTrue(previous.disposed)
+            assertSame(successor.component, first.container.singleChild())
+            assertEquals(listOf("successor-transfer", "previous-dispose", "successor-open"), events)
+        }
+
+        val successorAttempt = submitted.last()
+        assertFalse(previousAttempt.attemptID == successorAttempt.attemptID)
+        assertFalse(service.acknowledge(previousAttempt.attemptID, accepted = true))
+        assertTrue(service.acknowledge(successorAttempt.attemptID, accepted = true))
+        assertEquals(0, service.queuedCount())
+        onEdt { coordinator.dispose() }
     }
 
     @Test
@@ -544,25 +606,43 @@ class OpenCodePanelCoordinatorTest {
         private val readiness: CompletableFuture<Unit> = CompletableFuture.completedFuture(Unit),
         private val onOpened: () -> Unit = {},
         private val onDisposed: () -> Unit = {},
+        private val name: String = "panel",
+        private val chatService: OpenCodeChatInputService? = null,
+        private val submitted: MutableList<OpenCodeChatInputService.Delivery>? = null,
+        private val events: MutableList<String>? = null,
+        private val isActive: () -> Boolean = { true },
     ) : OpenCodePanelHandle {
         override val component = JPanel()
         var disposed = false
         var placementTransfers = 0
         val openedSessions = mutableListOf<String?>()
 
+        init {
+            chatService?.setDispatcher(
+                this,
+                { delivery -> submitted?.add(delivery); true },
+                isActive = isActive,
+            )
+        }
+
         override fun prepareBrowserForReplacement(): CompletableFuture<Unit> = readiness
 
         override fun openSession(sessionId: String?) {
             openedSessions += sessionId
+            events?.add("$name-open")
             onOpened()
         }
 
         override fun onPlacementTransferred() {
             placementTransfers++
+            events?.add("$name-transfer")
         }
 
         override fun dispose() {
+            if (disposed) return
             disposed = true
+            events?.add("$name-dispose")
+            chatService?.setDispatcher(this, null)
             onDisposed()
         }
     }

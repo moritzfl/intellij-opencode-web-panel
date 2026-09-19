@@ -26,6 +26,7 @@ class OpenCodeChatInputService : Disposable {
     private var inFlightOwner: Any? = null
     private var nextBatchID = 0L
     private var nextAttemptID = 0L
+    private var disposed = false
 
     internal fun setDispatcher(dispatcher: ((Delivery) -> Boolean)?) {
         setDispatcher(DEFAULT_OWNER, dispatcher)
@@ -38,14 +39,16 @@ class OpenCodeChatInputService : Disposable {
     ) {
         var shouldDispatch = false
         synchronized(lock) {
-            if (dispatcher == null) {
-                dispatchers.remove(owner)
-                if (inFlightOwner === owner) {
-                    requeueInFlightLocked()
-                    shouldDispatch = true
+            if (!disposed) {
+                if (dispatcher == null) {
+                    dispatchers.remove(owner)
+                    if (inFlightOwner === owner) {
+                        requeueInFlightLocked()
+                        shouldDispatch = true
+                    }
+                } else {
+                    dispatchers[owner] = Dispatcher(dispatcher, isActive)
                 }
-            } else {
-                dispatchers[owner] = Dispatcher(dispatcher, isActive)
             }
         }
         if (shouldDispatch) dispatchPending()
@@ -54,6 +57,7 @@ class OpenCodeChatInputService : Disposable {
     /** Queues each text as an independently acknowledged delivery, preserving caller order. */
     fun send(texts: List<String>): Boolean {
         synchronized(lock) {
+            if (disposed) return false
             texts.filter { it.isNotBlank() }.forEach { text ->
                 pending.addLast(Batch("chat-${++nextBatchID}", text))
             }
@@ -64,6 +68,7 @@ class OpenCodeChatInputService : Disposable {
     /** Submits at most one batch; the next stays queued until this one is acknowledged. */
     internal fun dispatchPending(): Boolean {
         val claim = synchronized(lock) {
+            if (disposed) return false
             if (inFlight != null) return true
             val currentDispatcher = dispatchers.entries.lastOrNull { it.value.isActive() }
                 ?: dispatchers.entries.lastOrNull()
@@ -86,6 +91,7 @@ class OpenCodeChatInputService : Disposable {
     /** Completes an accepted batch, or requeues a rejected one for a later page-ready retry. */
     internal fun acknowledge(attemptID: String, accepted: Boolean): Boolean {
         val matched = synchronized(lock) {
+            if (disposed) return false
             val delivery = inFlight?.takeIf { it.attemptID == attemptID } ?: return false
             inFlight = null
             inFlightOwner = null
@@ -97,6 +103,7 @@ class OpenCodeChatInputService : Disposable {
     }
 
     internal fun retryInFlight(attemptID: String): Boolean = synchronized(lock) {
+        if (disposed) return false
         if (inFlight?.attemptID != attemptID) return false
         requeueInFlightLocked()
         true
@@ -104,6 +111,7 @@ class OpenCodeChatInputService : Disposable {
 
     internal fun requeueInFlight(owner: Any? = null) {
         synchronized(lock) {
+            if (disposed) return
             if (owner == null || inFlightOwner === owner) requeueInFlightLocked()
         }
     }
@@ -121,6 +129,7 @@ class OpenCodeChatInputService : Disposable {
 
     override fun dispose() {
         synchronized(lock) {
+            disposed = true
             dispatchers.clear()
             pending.clear()
             inFlight = null
