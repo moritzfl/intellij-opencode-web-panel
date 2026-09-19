@@ -88,7 +88,7 @@ import javax.swing.JPanel
 internal class OpenCodeWebToolWindowContent(
     private val host: OpenCodePanelHost,
     initialSessionId: String? = null,
-) : Disposable {
+) : OpenCodePanelHandle {
 
     private companion object {
         private const val BROWSER_CARD = "browser"
@@ -971,7 +971,10 @@ internal class OpenCodeWebToolWindowContent(
     }
 
     /** Reconciles the OSR browser after the shared component changes Swing parents. */
-    internal fun onPlacementTransferred() {
+    override val component: Component
+        get() = contentPanel
+
+    override fun onPlacementTransferred() {
         if (isContentDisposed()) return
         browser.component.revalidate()
         browser.component.repaint()
@@ -1382,7 +1385,7 @@ internal class OpenCodeWebToolWindowContent(
         }
     }
 
-    internal fun openSession(sessionId: String?) {
+    override fun openSession(sessionId: String?) {
         if (isContentDisposed()) return
         requestedSessionId = sessionId
         val serverUrl = serverManager.getServerUrl()
@@ -1476,7 +1479,7 @@ internal class OpenCodeWebToolWindowContent(
         }
     }
 
-    internal fun prepareBrowserForReplacement(): CompletableFuture<Unit> {
+    override fun prepareBrowserForReplacement(): CompletableFuture<Unit> {
         cefBrowserCreated = true
         thisLogger().info(
             "jcef prepare replacement queries=${allJsQueries().count { it.isAvailable }}/${allJsQueries().size}",

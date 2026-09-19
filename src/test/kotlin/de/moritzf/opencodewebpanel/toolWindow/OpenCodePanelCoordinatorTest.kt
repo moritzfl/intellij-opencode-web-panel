@@ -3,6 +3,7 @@ package de.moritzf.opencodewebpanel.toolWindow
 import com.intellij.openapi.util.IconLoader
 import com.intellij.ui.BadgeIconSupplier
 import java.awt.Component
+import java.util.concurrent.CompletableFuture
 import javax.swing.JPanel
 import javax.swing.SwingUtilities
 import org.junit.Assert.assertEquals
@@ -176,6 +177,56 @@ class OpenCodePanelCoordinatorTest {
 
             assertSame(first.placeholder, first.container.singleChild())
             assertFalse(second.container.singleChild() === second.placeholder)
+        }
+    }
+
+    @Test
+    fun replacementUsesThePlacementThatIsActiveWhenTheSuccessorIsReady() {
+        val readiness = CompletableFuture<Unit>()
+        val previous = ReplacementPanel()
+        val successor = ReplacementPanel(readiness)
+        lateinit var coordinator: OpenCodePanelCoordinator
+        val first = TestPlacement("first")
+        val second = TestPlacement("second")
+
+        onEdt {
+            coordinator = OpenCodePanelCoordinator(previous, JPanel()) { successor }
+            coordinator.registerPlacement(first.id, first.container, first.placeholder, testHost())
+            coordinator.registerPlacement(second.id, second.container, second.placeholder, testHost())
+            coordinator.place(first.id)
+            coordinator.replacePanel()
+            coordinator.place(second.id)
+        }
+
+        readiness.complete(Unit)
+        onEdt {
+            assertSame(successor.component, second.container.singleChild())
+            assertSame(first.placeholder, first.container.singleChild())
+            assertTrue(previous.disposed)
+            assertEquals(listOf<String?>(null), successor.openedSessions)
+        }
+    }
+
+    @Test
+    fun failedSuccessorLeavesThePredecessorAttachedAndUsable() {
+        val readiness = CompletableFuture<Unit>()
+        val previous = ReplacementPanel()
+        val successor = ReplacementPanel(readiness)
+        val first = TestPlacement("first")
+        lateinit var coordinator: OpenCodePanelCoordinator
+
+        onEdt {
+            coordinator = OpenCodePanelCoordinator(previous, JPanel()) { successor }
+            coordinator.registerPlacement(first.id, first.container, first.placeholder, testHost())
+            coordinator.place(first.id)
+            coordinator.replacePanel()
+        }
+
+        readiness.completeExceptionally(IllegalStateException("renderer did not start"))
+        onEdt {
+            assertSame(previous.component, first.container.singleChild())
+            assertFalse(previous.disposed)
+            assertTrue(successor.disposed)
         }
     }
 
@@ -436,6 +487,26 @@ class OpenCodePanelCoordinatorTest {
 
         fun dispose() {
             disposeCount++
+        }
+    }
+
+    private class ReplacementPanel(
+        private val readiness: CompletableFuture<Unit> = CompletableFuture.completedFuture(Unit),
+    ) : OpenCodePanelHandle {
+        override val component = JPanel()
+        var disposed = false
+        val openedSessions = mutableListOf<String?>()
+
+        override fun prepareBrowserForReplacement(): CompletableFuture<Unit> = readiness
+
+        override fun openSession(sessionId: String?) {
+            openedSessions += sessionId
+        }
+
+        override fun onPlacementTransferred() = Unit
+
+        override fun dispose() {
+            disposed = true
         }
     }
 

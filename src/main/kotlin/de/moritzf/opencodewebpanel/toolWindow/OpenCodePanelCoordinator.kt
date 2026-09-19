@@ -10,21 +10,38 @@ import com.intellij.openapi.util.Key
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
 import java.awt.Component
 import java.awt.Container
+import java.util.concurrent.CompletableFuture
 import javax.swing.JPanel
 import javax.swing.SwingUtilities
+
+internal interface OpenCodePanelHandle : Disposable {
+    val component: Component
+
+    fun prepareBrowserForReplacement(): CompletableFuture<Unit>
+
+    fun openSession(sessionId: String?)
+
+    fun onPlacementTransferred()
+}
 
 /** Keeps one project panel attached while hosts come and go. All methods are EDT-only. */
 internal class OpenCodePanelCoordinator private constructor(
     private val project: Project?,
-    initialPanelComponent: Component?,
-    private val disposeInitialPanel: (() -> Unit)?,
+    initialPanel: OpenCodePanelHandle?,
     private val parkingContainer: Container,
+    private val panelFactory: ((String?) -> OpenCodePanelHandle?)?,
 ) : Disposable {
     constructor(
         panelComponent: Component,
         disposePanel: () -> Unit,
         parkingContainer: Container,
-    ) : this(null, panelComponent, disposePanel, parkingContainer)
+    ) : this(null, ComponentPanelHandle(panelComponent, disposePanel), parkingContainer, null)
+
+    internal constructor(
+        initialPanel: OpenCodePanelHandle,
+        parkingContainer: Container,
+        panelFactory: (String?) -> OpenCodePanelHandle?,
+    ) : this(null, initialPanel, parkingContainer, panelFactory)
 
     private data class Placement(
         val container: Container,
@@ -33,8 +50,8 @@ internal class OpenCodePanelCoordinator private constructor(
     )
 
     private val placements = linkedMapOf<String, Placement>()
-    private var panelComponent: Component? = initialPanelComponent
-    private var panel: OpenCodeWebToolWindowContent? = null
+    private var panelComponent: Component? = initialPanel?.component
+    private var panel: OpenCodePanelHandle? = initialPanel
     private var failureComponent: Component? = null
     private var activePlacement: String? = null
     private var generation = 0L
@@ -55,7 +72,7 @@ internal class OpenCodePanelCoordinator private constructor(
         }
 
         private fun createForProject(project: Project): OpenCodePanelCoordinator {
-            return OpenCodePanelCoordinator(project, null, null, JPanel())
+            return OpenCodePanelCoordinator(project, null, JPanel(), null)
         }
     }
 
@@ -116,18 +133,18 @@ internal class OpenCodePanelCoordinator private constructor(
 
     fun hasPanelComponent(): Boolean = panelComponent != null || failureComponent != null
 
-    fun panel(): OpenCodeWebToolWindowContent? = panel
+    fun panel(): OpenCodeWebToolWindowContent? = panel as? OpenCodeWebToolWindowContent
 
     fun panelFor(sessionId: String?): OpenCodeWebToolWindowContent? {
         requireEdt()
         check(!disposed) { "OpenCodePanelCoordinator is disposed" }
-        panel?.let { return it }
-        if (project == null) return null
+        panel?.let { return it as? OpenCodeWebToolWindowContent }
+        if (project == null && panelFactory == null) return null
         val created = createPanel(sessionId) ?: return null
         panel = created
-        panelComponent = created.getContent()
+        panelComponent = created.component
         failureComponent = null
-        return created
+        return created as? OpenCodeWebToolWindowContent
     }
 
     fun panelForActivePlacement(
@@ -137,7 +154,7 @@ internal class OpenCodePanelCoordinator private constructor(
         requireEdt()
         check(!disposed) { "OpenCodePanelCoordinator is disposed" }
         check(placements.containsKey(placementId)) { "Unknown placement: $placementId" }
-        if (activePlacement != placementId) return panel
+        if (activePlacement != placementId) return panel()
         return panelFor(sessionId)
     }
 
@@ -185,14 +202,16 @@ internal class OpenCodePanelCoordinator private constructor(
     /** Recreates the shared browser, keeping the old browser until its successor is ready. */
     fun replacePanel() {
         requireEdt()
-        if (disposed || replacementPending || project == null) return
+        if (disposed || replacementPending || (project == null && panelFactory == null)) return
         val previous = panel
         if (currentHost() == null && placements.values.none { it.host != null }) return
-        val liveBackendId = OpenCodeServerBackendRegistry.getInstance().backendFor(project).backendId
+        val liveBackendId = project?.let {
+            OpenCodeServerBackendRegistry.getInstance().backendFor(it).backendId
+        }
         val replacement = createPanel(sessionId = null) ?: return
         if (previous == null) {
             panel = replacement
-            panelComponent = replacement.getContent()
+            panelComponent = replacement.component
             failureComponent = null
             render()
             replacement.openSession(null)
@@ -200,7 +219,9 @@ internal class OpenCodePanelCoordinator private constructor(
         }
 
         replacementPending = true
-        replacement.prepareBrowserForReplacement().whenComplete { _, error ->
+        val readiness = runCatching { replacement.prepareBrowserForReplacement() }
+            .getOrElse { CompletableFuture.failedFuture(it) }
+        readiness.whenComplete { _, error ->
             ApplicationManager.getApplication().invokeLater {
                 replacementPending = false
                 if (disposed) {
@@ -211,14 +232,17 @@ internal class OpenCodePanelCoordinator private constructor(
                     Disposer.dispose(replacement)
                     return@invokeLater
                 }
-                if (OpenCodeServerBackendRegistry.getInstance().backendFor(project).backendId != liveBackendId) {
+                if (project != null &&
+                    OpenCodeServerBackendRegistry.getInstance().backendFor(project).backendId != liveBackendId
+                ) {
                     Disposer.dispose(replacement)
                     replacePanel()
                     return@invokeLater
                 }
                 panel = replacement
-                panelComponent = replacement.getContent()
+                panelComponent = replacement.component
                 failureComponent = null
+                // Render only now: activePlacement may have changed while JCEF created the successor.
                 render()
                 Disposer.dispose(previous)
                 replacement.openSession(null)
@@ -245,7 +269,6 @@ internal class OpenCodePanelCoordinator private constructor(
         disposed = true
         panel?.let(Disposer::dispose)
         panel = null
-        disposeInitialPanel?.invoke()
     }
 
     private fun render() {
@@ -271,7 +294,9 @@ internal class OpenCodePanelCoordinator private constructor(
         }
     }
 
-    private fun createPanel(sessionId: String?): OpenCodeWebToolWindowContent? {
+    private fun createPanel(sessionId: String?): OpenCodePanelHandle? {
+        if (panelFactory != null) return panelFactory(sessionId)
+        if (project == null) return null
         return try {
             OpenCodeWebToolWindowContent(PanelCoordinatorHost(this), sessionId)
         } catch (e: ProcessCanceledException) {
@@ -334,5 +359,19 @@ internal class OpenCodePanelCoordinator private constructor(
         check(SwingUtilities.isEventDispatchThread()) {
             "OpenCodePanelCoordinator must be used on the EDT"
         }
+    }
+
+    private class ComponentPanelHandle(
+        override val component: Component,
+        private val disposeAction: () -> Unit,
+    ) : OpenCodePanelHandle {
+        override fun prepareBrowserForReplacement(): CompletableFuture<Unit> =
+            CompletableFuture.failedFuture(UnsupportedOperationException())
+
+        override fun openSession(sessionId: String?) = Unit
+
+        override fun onPlacementTransferred() = Unit
+
+        override fun dispose() = disposeAction()
     }
 }
