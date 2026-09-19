@@ -13,8 +13,8 @@ import de.moritzf.opencodewebpanel.toolWindow.OPEN_CODE_RESET_ZOOM_ACTION_ID
 import de.moritzf.opencodewebpanel.toolWindow.OPEN_CODE_ZOOM_IN_ACTION_ID
 import de.moritzf.opencodewebpanel.toolWindow.OPEN_CODE_ZOOM_OUT_ACTION_ID
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodeBrowserCommand
-import de.moritzf.opencodewebpanel.toolWindow.OpenCodeEditorFileEditorProvider
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodeEditorFileEditor
+import de.moritzf.opencodewebpanel.toolWindow.OpenCodeEditorFileEditorProvider
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodeEditorVirtualFile
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodeOpenInEditorAction
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodeWebToolWindowFactoryImpl
@@ -26,7 +26,6 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.fileEditor.FileEditorPolicy
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.util.SystemInfo
-import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.testFramework.LightVirtualFile
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import java.awt.event.InputEvent
@@ -131,10 +130,14 @@ class OpenCodePluginTest : BasePlatformTestCase() {
     }
 
     fun testOpenCodeEditorExplicitlyImplementsTheFileEditorFileContract() {
-        val getFile = OpenCodeEditorFileEditor::class.java.getDeclaredMethod("getFile")
+        val file = OpenCodeEditorVirtualFile(project, "ses_test")
+        val editor = OpenCodeEditorFileEditor(project, file, initializePanel = false)
 
-        assertEquals(VirtualFile::class.java, getFile.returnType)
-        assertEquals(OpenCodeEditorFileEditor::class.java, getFile.declaringClass)
+        try {
+            assertSame(file, editor.getFile())
+        } finally {
+            editor.dispose()
+        }
     }
 
     fun testEditorReplacementSessionRequiresTheLiveBackend() {

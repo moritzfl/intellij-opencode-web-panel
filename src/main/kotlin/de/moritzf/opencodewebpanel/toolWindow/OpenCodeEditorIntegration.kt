@@ -100,6 +100,7 @@ private class OpenCodeEditorHost(
 internal class OpenCodeEditorFileEditor(
     val project: Project,
     private val file: OpenCodeEditorVirtualFile,
+    private val initializePanel: Boolean = true,
 ) : UserDataHolderBase(), FileEditor {
     private val propertyChangeSupport = PropertyChangeSupport(this)
     private val root = BorderLayoutPanel()
@@ -109,7 +110,7 @@ internal class OpenCodeEditorFileEditor(
     private var replacementPending = false
 
     init {
-        createPanel(file.sessionId)
+        if (initializePanel) createPanel(file.sessionId)
     }
 
     private fun createPanel(sessionId: String?) {
