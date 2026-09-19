@@ -208,6 +208,8 @@ internal class OpenCodeEditorFileEditor(
 
     override fun getComponent(): JComponent = root
 
+    override fun getFile(): VirtualFile = file
+
     override fun getPreferredFocusedComponent(): JComponent = panel?.getContent() ?: root
 
     override fun getName(): String = "OpenCode"
