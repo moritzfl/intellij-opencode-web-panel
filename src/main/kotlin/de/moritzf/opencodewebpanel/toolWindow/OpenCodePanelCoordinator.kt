@@ -111,6 +111,18 @@ internal class OpenCodePanelCoordinator private constructor(
         return created
     }
 
+    fun panelForActivePlacement(
+        placementId: String,
+        host: OpenCodePanelHost,
+        sessionId: String?,
+    ): OpenCodeWebToolWindowContent? {
+        requireEdt()
+        check(!disposed) { "OpenCodePanelCoordinator is disposed" }
+        check(placements.containsKey(placementId)) { "Unknown placement: $placementId" }
+        if (activePlacement != placementId) return panel
+        return panelFor(host, sessionId)
+    }
+
     fun place(id: String) {
         requireEdt()
         val placementGeneration = beginPlacement(id)

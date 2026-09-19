@@ -148,6 +148,7 @@ class OpenCodePanelCoordinatorTest {
             val shell = OpenCodeToolWindowShell(coordinator, "tool-window", toolWindowHost)
 
             assertFalse(shell.activateIfUnoccupied())
+            coordinator.panelForActivePlacement("tool-window", toolWindowHost, sessionId = null)
             coordinator.activate(JPanel()) {}
             assertTrue(editorActivated)
             assertFalse(toolWindowActivated)

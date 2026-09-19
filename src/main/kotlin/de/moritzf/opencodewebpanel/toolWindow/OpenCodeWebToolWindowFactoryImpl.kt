@@ -98,11 +98,7 @@ internal fun installOpenCodeToolWindowContent(
     val shell = OpenCodeToolWindowShell(coordinator, placementId, host)
     val panelAlreadyExists = coordinator.panel() != null
     val shellActivated = shell.activateIfUnoccupied()
-    val panel = if (shellActivated) {
-        coordinator.panelFor(host, sessionId = null)
-    } else {
-        coordinator.panel()
-    }
+    val panel = coordinator.panelForActivePlacement(placementId, host, sessionId = null)
     addOpenCodeToolWindowContent(toolWindow, shell)
     if (shellActivated && panel == null) coordinator.showFailure()
     return panel?.takeUnless { panelAlreadyExists || !shellActivated }
