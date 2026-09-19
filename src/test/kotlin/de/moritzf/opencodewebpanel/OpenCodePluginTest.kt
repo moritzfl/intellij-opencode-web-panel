@@ -163,7 +163,7 @@ class OpenCodePluginTest : BasePlatformTestCase() {
     fun testEditorManagerReusesProjectFileAndUpdatesItsSessionTarget() {
         val first = OpenCodeEditorManager.fileFor(project, "ses_first")
         val otherProject = ProjectManager.getInstance().defaultProject
-        val other = OpenCodeEditorManager.fileFor(otherProject, "ses_other")
+        val other = OpenCodeEditorManager.fileFor(otherProject, "ses_first")
 
         try {
             val reused = OpenCodeEditorManager.fileFor(project, "ses_second")
