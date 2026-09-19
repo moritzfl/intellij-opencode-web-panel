@@ -285,7 +285,7 @@ internal class OpenCodePanelCoordinator private constructor(
     private fun isPanelInView(component: javax.swing.JComponent): Boolean =
         activeHost?.isPanelInView(component) == true
 
-    private fun activate(component: javax.swing.JComponent, action: () -> Unit) {
+    internal fun activate(component: javax.swing.JComponent, action: () -> Unit) {
         activeHost?.activate(component, action) ?: action()
     }
 

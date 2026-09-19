@@ -132,6 +132,30 @@ class OpenCodePanelCoordinatorTest {
     }
 
     @Test
+    fun inactiveToolWindowShellKeepsEditorHostOwnership() {
+        onEdt {
+            val panel = TestPanel()
+            var editorActivated = false
+            var toolWindowActivated = false
+            val editor = TestPlacement("editor")
+            val parking = JPanel()
+            val coordinator = coordinator(panel, parking)
+            val editorHost = testHost { editorActivated = true }
+            val toolWindowHost = testHost { toolWindowActivated = true }
+            coordinator.registerPlacement(editor.id, editor.container, editor.placeholder, editorHost)
+            coordinator.place(editor.id)
+
+            val shell = OpenCodeToolWindowShell(coordinator, "tool-window", toolWindowHost)
+
+            assertFalse(shell.activateIfUnoccupied())
+            coordinator.activate(JPanel()) {}
+            assertTrue(editorActivated)
+            assertFalse(toolWindowActivated)
+            shell.dispose()
+        }
+    }
+
+    @Test
     fun toolWindowShellActivatesParkedPanelAndDisposalOnlyUnregistersIt() {
         onEdt {
             val panel = TestPanel()
@@ -223,11 +247,16 @@ class OpenCodePanelCoordinatorTest {
         val placeholder = JPanel()
     }
 
-    private fun testHost() = object : OpenCodePanelHost {
+    private fun testHost(onActivate: () -> Unit = {}) = object : OpenCodePanelHost {
         override val project: com.intellij.openapi.project.Project
             get() = error("Test host project is not used")
 
         override fun isDisposed(): Boolean = false
+
+        override fun activate(component: javax.swing.JComponent, action: () -> Unit) {
+            onActivate()
+            action()
+        }
 
         override fun replacePanel() = Unit
 
