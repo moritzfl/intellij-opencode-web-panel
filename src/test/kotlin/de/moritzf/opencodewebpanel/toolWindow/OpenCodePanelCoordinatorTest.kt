@@ -133,6 +133,31 @@ class OpenCodePanelCoordinatorTest {
     }
 
     @Test
+    fun notificationActivationFollowsTheActivePlacement() {
+        onEdt {
+            val panel = TestPanel()
+            val firstHost = TrackingHost()
+            val secondHost = TrackingHost()
+            val first = TestPlacement("first")
+            val second = TestPlacement("second")
+            val coordinator = coordinator(panel)
+            coordinator.registerPlacement(first.id, first.container, first.placeholder, firstHost)
+            coordinator.registerPlacement(second.id, second.container, second.placeholder, secondHost)
+            val activated = mutableListOf<String>()
+            val activatePanel: ((() -> Unit) -> Unit) = { action -> coordinator.activate(panel.component, action) }
+
+            coordinator.place(first.id)
+            activatePanel { activated += first.id }
+            coordinator.place(second.id)
+            activatePanel { activated += second.id }
+
+            assertEquals(listOf("first", "second"), activated)
+            assertEquals(1, firstHost.activateCalls)
+            assertEquals(1, secondHost.activateCalls)
+        }
+    }
+
+    @Test
     fun failureCardStaysInTheActivePlacement() {
         onEdt {
             val panel = TestPanel()
