@@ -482,7 +482,7 @@ class OpenCodePanelCoordinatorTest {
     }
 
     @Test
-    fun inactiveToolWindowShellKeepsEditorHostOwnership() {
+    fun inactiveToolWindowShellKeepsTheEditorPlacementActive() {
         onEdt {
             val panel = TestPanel()
             var editorActivated = false
