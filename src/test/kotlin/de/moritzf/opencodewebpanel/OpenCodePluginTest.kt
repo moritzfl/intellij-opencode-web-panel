@@ -20,9 +20,9 @@ import de.moritzf.opencodewebpanel.toolWindow.OpenCodeEditorVirtualFile
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodeOpenInEditorAction
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodePanelCoordinator
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodeWebToolWindowFactoryImpl
+import de.moritzf.opencodewebpanel.toolWindow.closeTrackedEditorOnToolWindowShown
 import de.moritzf.opencodewebpanel.toolWindow.editorFileToCloseOnToolWindowShown
 import de.moritzf.opencodewebpanel.toolWindow.toolWindowPlacementId
-import de.moritzf.opencodewebpanel.toolWindow.transferPanelToToolWindowBeforeEditorClose
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.KeyboardShortcut
 import com.intellij.openapi.application.ApplicationManager
@@ -288,28 +288,31 @@ class OpenCodePluginTest : BasePlatformTestCase() {
         coordinator.registerPlacement(toolWindowPlacementId(project), toolWindowContainer, JPanel())
         coordinator.place("editor")
         val trackedFile = OpenCodeEditorVirtualFile(project, "ses_test")
+        val closedFiles = mutableListOf<OpenCodeEditorVirtualFile>()
 
         try {
-            assertSame(
-                trackedFile,
-                transferPanelToToolWindowBeforeEditorClose(
+            assertTrue(
+                closeTrackedEditorOnToolWindowShown(
                     "OpenCode",
                     project,
                     trackedFile,
                     coordinator,
-                ),
+                ) { closedFiles += it },
             )
+            assertEquals(listOf(trackedFile), closedFiles)
             assertSame(sharedComponent, toolWindowContainer.getComponent(0))
             assertFalse(editorContainer.getComponent(0) === sharedComponent)
 
-            assertNull(
-                transferPanelToToolWindowBeforeEditorClose(
+            val foreignFile = OpenCodeEditorVirtualFile(ProjectManager.getInstance().defaultProject, "ses_foreign")
+            assertFalse(
+                closeTrackedEditorOnToolWindowShown(
                     "OpenCode",
-                    ProjectManager.getInstance().defaultProject,
-                    trackedFile,
+                    foreignFile.owner,
+                    foreignFile,
                     coordinator,
-                ),
+                ) { closedFiles += it },
             )
+            assertEquals(listOf(trackedFile), closedFiles)
             assertSame(sharedComponent, toolWindowContainer.getComponent(0))
         } finally {
             coordinator.dispose()

@@ -94,7 +94,11 @@ internal class OpenCodePanelCoordinator private constructor(
         if (activePlacement == null) parkPanel()
     }
 
-    fun releaseEditorPlacement(editorPlacementId: String, toolWindowPlacementId: String) {
+    fun releaseEditorPlacement(
+        editorPlacementId: String,
+        toolWindowPlacementId: String,
+        onTransferComplete: () -> Unit = {},
+    ) {
         requireEdt()
         if (disposed) return
         if (activePlacement == editorPlacementId) {
@@ -103,6 +107,7 @@ internal class OpenCodePanelCoordinator private constructor(
             } else {
                 park()
             }
+            onTransferComplete()
         }
         unregisterPlacement(editorPlacementId)
     }

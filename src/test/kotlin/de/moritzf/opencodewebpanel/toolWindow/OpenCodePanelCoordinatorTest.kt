@@ -124,11 +124,18 @@ class OpenCodePanelCoordinatorTest {
             }
 
             coordinator.place(activeEditor.id)
-            coordinator.releaseEditorPlacement(activeEditor.id, toolWindow.id)
+            val events = mutableListOf<String>()
+            coordinator.releaseEditorPlacement(activeEditor.id, toolWindow.id) {
+                events += "transfer-complete"
+                assertTrue(coordinator.isPlacementRegistered(activeEditor.id))
+                assertSame(panel.component, toolWindow.container.singleChild())
+            }
+            events += "release-returned"
 
             assertSame(panel.component, toolWindow.container.singleChild())
             assertSame(firstEditor.placeholder, firstEditor.container.singleChild())
             assertFalse(coordinator.isPlacementRegistered(activeEditor.id))
+            assertEquals(listOf("transfer-complete", "release-returned"), events)
         }
     }
 
@@ -142,10 +149,17 @@ class OpenCodePanelCoordinatorTest {
             coordinator.registerPlacement(editor.id, editor.container, editor.placeholder)
             coordinator.place(editor.id)
 
-            coordinator.releaseEditorPlacement(editor.id, "tool-window")
+            val events = mutableListOf<String>()
+            coordinator.releaseEditorPlacement(editor.id, "tool-window") {
+                events += "park-complete"
+                assertTrue(coordinator.isPlacementRegistered(editor.id))
+                assertSame(panel.component, parking.singleChild())
+            }
+            events += "release-returned"
 
             assertSame(panel.component, parking.singleChild())
             assertFalse(coordinator.isPlacementRegistered(editor.id))
+            assertEquals(listOf("park-complete", "release-returned"), events)
         }
     }
 

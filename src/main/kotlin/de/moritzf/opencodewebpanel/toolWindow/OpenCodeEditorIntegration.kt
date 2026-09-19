@@ -70,13 +70,14 @@ internal object OpenCodeEditorManager {
                     override fun toolWindowShown(toolWindow: ToolWindow) {
                         if (project.isDisposed) return
                         val trackedFile = trackedFile(project)
-                        val file = transferPanelToToolWindowBeforeEditorClose(
+                        closeTrackedEditorOnToolWindowShown(
                             toolWindow.id,
                             toolWindow.project,
                             trackedFile,
                             OpenCodePanelCoordinator.getInstance(project),
-                        ) ?: return
-                        FileEditorManager.getInstance(project).closeFile(file)
+                        ) { file ->
+                            FileEditorManager.getInstance(project).closeFile(file)
+                        }
                     }
                 },
             )
@@ -249,4 +250,21 @@ internal fun transferPanelToToolWindowBeforeEditorClose(
     if (!coordinator.isPlacementRegistered(placementId)) return null
     coordinator.place(placementId)
     return file
+}
+
+internal fun closeTrackedEditorOnToolWindowShown(
+    toolWindowId: String,
+    toolWindowProject: Project,
+    trackedFile: OpenCodeEditorVirtualFile?,
+    coordinator: OpenCodePanelCoordinator,
+    closeFile: (OpenCodeEditorVirtualFile) -> Unit,
+): Boolean {
+    val file = transferPanelToToolWindowBeforeEditorClose(
+        toolWindowId,
+        toolWindowProject,
+        trackedFile,
+        coordinator,
+    ) ?: return false
+    closeFile(file)
+    return true
 }
