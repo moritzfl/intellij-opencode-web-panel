@@ -82,6 +82,7 @@ internal class OpenCodePanelCoordinator private constructor(
 
     fun unregisterPlacement(id: String) {
         requireEdt()
+        if (disposed) return
         val wasActive = activePlacement == id
         placements.remove(id) ?: return
         if (wasActive) {
@@ -114,6 +115,15 @@ internal class OpenCodePanelCoordinator private constructor(
         requireEdt()
         val placementGeneration = beginPlacement(id)
         completePlacement(id, placementGeneration)
+    }
+
+    fun placeIfUnoccupied(id: String): Boolean {
+        requireEdt()
+        check(!disposed) { "OpenCodePanelCoordinator is disposed" }
+        check(placements.containsKey(id)) { "Unknown placement: $id" }
+        if (activePlacement != null) return false
+        place(id)
+        return true
     }
 
     fun beginPlacement(id: String): Long {

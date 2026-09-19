@@ -112,6 +112,43 @@ class OpenCodePanelCoordinatorTest {
     }
 
     @Test
+    fun toolWindowShellLeavesEditorPanelMountedWhenAlreadyOccupied() {
+        onEdt {
+            val panel = TestPanel()
+            val editor = TestPlacement("editor")
+            val parking = JPanel()
+            val coordinator = coordinator(panel, parking)
+            coordinator.registerPlacement(editor.id, editor.container, editor.placeholder)
+            coordinator.place(editor.id)
+
+            val shell = OpenCodeToolWindowShell(coordinator, "tool-window", testHost())
+
+            assertFalse(shell.activateIfUnoccupied())
+            assertSame(panel.component, editor.container.singleChild())
+            assertFalse(shell.component.getComponent(0) === panel.component)
+            shell.dispose()
+            assertFalse(panel.disposed)
+        }
+    }
+
+    @Test
+    fun toolWindowShellActivatesParkedPanelAndDisposalOnlyUnregistersIt() {
+        onEdt {
+            val panel = TestPanel()
+            val parking = JPanel()
+            val coordinator = coordinator(panel, parking)
+            coordinator.park()
+            val shell = OpenCodeToolWindowShell(coordinator, "tool-window", testHost())
+
+            assertTrue(shell.activateIfUnoccupied())
+            assertSame(panel.component, shell.component.singleChild())
+            shell.dispose()
+            assertSame(panel.component, parking.singleChild())
+            assertFalse(panel.disposed)
+        }
+    }
+
+    @Test
     fun parkingInvalidatesPendingPlacement() {
         onEdt {
             val panel = TestPanel()
@@ -184,6 +221,17 @@ class OpenCodePanelCoordinatorTest {
     private class TestPlacement(val id: String) {
         val container = JPanel()
         val placeholder = JPanel()
+    }
+
+    private fun testHost() = object : OpenCodePanelHost {
+        override val project: com.intellij.openapi.project.Project
+            get() = error("Test host project is not used")
+
+        override fun isDisposed(): Boolean = false
+
+        override fun replacePanel() = Unit
+
+        override fun showFailure() = Unit
     }
 
     private fun JPanel.singleChild(): Component {

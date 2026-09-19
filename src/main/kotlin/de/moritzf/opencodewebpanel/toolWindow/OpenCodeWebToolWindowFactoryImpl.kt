@@ -10,8 +10,6 @@ import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
 import com.intellij.ui.content.Content
 import com.intellij.ui.content.ContentFactory
-import com.intellij.util.ui.components.BorderLayoutPanel
-import javax.swing.JPanel
 import kotlin.jvm.JvmDefaultWithoutCompatibility
 
 internal fun openCodeToolWindowHeading(project: Project?): String {
@@ -96,14 +94,14 @@ internal fun installOpenCodeToolWindowContent(
 ): OpenCodeWebToolWindowContent? {
     val coordinator = OpenCodePanelCoordinator.getInstance(toolWindow.project)
     val host = OpenCodeToolWindowHost(toolWindow, coordinator)
-    val shell = BorderLayoutPanel()
     val placementId = toolWindowPlacementId(toolWindow.project)
-    coordinator.registerPlacement(placementId, shell, JPanel(), host)
+    val shell = OpenCodeToolWindowShell(coordinator, placementId, host)
+    val panelAlreadyExists = coordinator.panel() != null
     val panel = coordinator.panelFor(host, sessionId = null)
-    coordinator.place(placementId)
+    val shellActivated = shell.activateIfUnoccupied()
     addOpenCodeToolWindowContent(toolWindow, shell)
     if (panel == null) coordinator.showFailure()
-    return panel
+    return panel?.takeUnless { panelAlreadyExists || !shellActivated }
 }
 
 /**
@@ -130,9 +128,10 @@ internal fun installOpenCodePanelFailureCard(toolWindow: ToolWindow) {
 
 private fun addOpenCodeToolWindowContent(
     toolWindow: ToolWindow,
-    component: JPanel,
+    shell: OpenCodeToolWindowShell,
 ): Content {
-    val content = ContentFactory.getInstance().createContent(component, null, false)
+    val content = ContentFactory.getInstance().createContent(shell.component, null, false)
+    content.setDisposer(shell)
     toolWindow.contentManager.addContent(content)
     updateOpenCodeToolWindowHeading(toolWindow)
     return content
