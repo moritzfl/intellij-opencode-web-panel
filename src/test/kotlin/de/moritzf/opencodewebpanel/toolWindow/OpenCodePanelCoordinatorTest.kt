@@ -35,20 +35,26 @@ class OpenCodePanelCoordinatorTest {
     fun inactivePlacementsShowPlaceholdersWhenTheActivePlacementChanges() {
         onEdt {
             val panel = TestPanel()
-            val toolWindow = TestPlacement("tool-window")
-            val firstEditor = TestPlacement("editor-1")
-            val secondEditor = TestPlacement("editor-2")
+            val toolWindow = TrackingPlacement("tool-window")
+            val firstEditor = TrackingPlacement("editor-1")
+            val secondEditor = TrackingPlacement("editor-2")
             val coordinator = coordinator(panel)
             listOf(toolWindow, firstEditor, secondEditor).forEach {
                 coordinator.registerPlacement(it.id, it.container, it.placeholder)
             }
 
             coordinator.place(firstEditor.id)
+            val previousRepaints = listOf(toolWindow, firstEditor, secondEditor).map { it.repaintCount }
+            val previousRevalidations = listOf(toolWindow, firstEditor, secondEditor).map { it.revalidateCount }
             coordinator.place(secondEditor.id)
 
             assertSame(toolWindow.placeholder, toolWindow.container.singleChild())
             assertSame(firstEditor.placeholder, firstEditor.container.singleChild())
             assertSame(panel.component, secondEditor.container.singleChild())
+            listOf(toolWindow, firstEditor, secondEditor).forEachIndexed { index, placement ->
+                assertTrue(placement.repaintCount > previousRepaints[index])
+                assertTrue(placement.revalidateCount > previousRevalidations[index])
+            }
         }
     }
 
@@ -116,14 +122,18 @@ class OpenCodePanelCoordinatorTest {
         onEdt {
             val panel = TestPanel()
             val firstEditor = TestPlacement("editor-1")
-            val activeEditor = TestPlacement("editor-2")
-            val toolWindow = TestPlacement("tool-window")
+            val activeEditor = TrackingPlacement("editor-2")
+            val toolWindow = TrackingPlacement("tool-window")
             val coordinator = coordinator(panel)
             listOf(firstEditor, activeEditor, toolWindow).forEach {
                 coordinator.registerPlacement(it.id, it.container, it.placeholder)
             }
 
             coordinator.place(activeEditor.id)
+            val previousEditorRepaints = activeEditor.repaintCount
+            val previousEditorRevalidations = activeEditor.revalidateCount
+            val previousRepaints = toolWindow.repaintCount
+            val previousRevalidations = toolWindow.revalidateCount
             val events = mutableListOf<String>()
             coordinator.releaseEditorPlacement(activeEditor.id, toolWindow.id) {
                 events += "transfer-complete"
@@ -136,6 +146,10 @@ class OpenCodePanelCoordinatorTest {
             assertSame(firstEditor.placeholder, firstEditor.container.singleChild())
             assertFalse(coordinator.isPlacementRegistered(activeEditor.id))
             assertEquals(listOf("transfer-complete", "release-returned"), events)
+            assertTrue(activeEditor.repaintCount > previousEditorRepaints)
+            assertTrue(activeEditor.revalidateCount > previousEditorRevalidations)
+            assertTrue(toolWindow.repaintCount > previousRepaints)
+            assertTrue(toolWindow.revalidateCount > previousRevalidations)
         }
     }
 
@@ -304,9 +318,33 @@ class OpenCodePanelCoordinatorTest {
         }
     }
 
-    private class TestPlacement(val id: String) {
-        val container = JPanel()
+    private open class TestPlacement(val id: String) {
+        open val container = JPanel()
         val placeholder = JPanel()
+    }
+
+    private class TrackingPlacement(id: String) : TestPlacement(id) {
+        private val trackingContainer = TrackingPanel()
+        override val container: JPanel = trackingContainer
+        val repaintCount: Int
+            get() = trackingContainer.repaintCount
+        val revalidateCount: Int
+            get() = trackingContainer.revalidateCount
+    }
+
+    private class TrackingPanel : JPanel() {
+        var repaintCount = 0
+        var revalidateCount = 0
+
+        override fun repaint() {
+            repaintCount++
+            super.repaint()
+        }
+
+        override fun revalidate() {
+            revalidateCount++
+            super.revalidate()
+        }
     }
 
     private fun testHost(onActivate: () -> Unit = {}) = object : OpenCodePanelHost {

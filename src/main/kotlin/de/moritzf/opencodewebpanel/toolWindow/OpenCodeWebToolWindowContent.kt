@@ -970,6 +970,15 @@ internal class OpenCodeWebToolWindowContent(
         )
     }
 
+    /** Reconciles the OSR browser after the shared component changes Swing parents. */
+    internal fun onPlacementTransferred() {
+        if (isContentDisposed()) return
+        browser.component.revalidate()
+        browser.component.repaint()
+        browser.cefBrowser.notifyScreenInfoChanged()
+        browserFocusSync.reassertIfFocused()
+    }
+
     private fun stillOnSamePage(expectedUrl: String?): Boolean {
         if (expectedUrl.isNullOrBlank()) return false
         return expectedUrl == browser.cefBrowser.url

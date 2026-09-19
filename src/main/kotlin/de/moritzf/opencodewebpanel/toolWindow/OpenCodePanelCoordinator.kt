@@ -170,9 +170,11 @@ internal class OpenCodePanelCoordinator private constructor(
     fun completePlacement(id: String, placementGeneration: Long): Boolean {
         requireEdt()
         if (disposed || generation != placementGeneration || !placements.containsKey(id)) return false
+        val moved = activePlacement != id
         activePlacement = id
         activeHost = placements[id]?.host ?: activeHost
         render()
+        if (moved) panel?.onPlacementTransferred()
         return true
     }
 
