@@ -20,8 +20,6 @@ import de.moritzf.opencodewebpanel.toolWindow.OpenCodeEditorVirtualFile
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodeOpenInEditorAction
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodeWebToolWindowFactoryImpl
 import de.moritzf.opencodewebpanel.toolWindow.editorFileToCloseOnToolWindowShown
-import de.moritzf.opencodewebpanel.toolWindow.editorReplacementSessionId
-import de.moritzf.opencodewebpanel.toolWindow.openCodeInEditorAndCollapse
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.KeyboardShortcut
 import com.intellij.openapi.application.ApplicationManager
@@ -143,11 +141,6 @@ class OpenCodePluginTest : BasePlatformTestCase() {
         }
     }
 
-    fun testEditorReplacementSessionRequiresTheLiveBackend() {
-        assertEquals("ses_test", editorReplacementSessionId("backend-a", "backend-a", "ses_test"))
-        assertNull(editorReplacementSessionId("backend-a", "backend-b", "ses_test"))
-    }
-
     fun testEditorVirtualFileKeepsProjectScopedSessionState() {
         val file = OpenCodeEditorVirtualFile(project, "ses_test")
 
@@ -165,63 +158,44 @@ class OpenCodePluginTest : BasePlatformTestCase() {
         val otherProject = ProjectManager.getInstance().defaultProject
         val other = OpenCodeEditorManager.fileFor(otherProject, "ses_first")
 
-        try {
-            val reused = OpenCodeEditorManager.fileFor(project, "ses_second")
+        val reused = OpenCodeEditorManager.fileFor(project, "ses_second")
 
-            assertSame(first, reused)
-            assertEquals("ses_second", reused.sessionId)
-            assertNotSame(project, otherProject)
-            assertNotSame(first, other)
-            assertSame(otherProject, other.owner)
-        } finally {
-            OpenCodeEditorManager.forget(first)
-            OpenCodeEditorManager.forget(other)
-        }
+        assertSame(first, reused)
+        assertEquals("ses_second", reused.sessionId)
+        assertNotSame(project, otherProject)
+        assertNotSame(first, other)
+        assertSame(otherProject, other.owner)
     }
 
-    fun testDisposingEditorForgetsItsProjectFile() {
+    fun testDisposingOneEditorKeepsProjectFileForOtherEditors() {
         val file = OpenCodeEditorManager.fileFor(project, "ses_test")
-        val editor = OpenCodeEditorFileEditor(project, file, initializePanel = false)
+        val first = OpenCodeEditorFileEditor(project, file, initializePanel = false)
+        val second = OpenCodeEditorFileEditor(project, file, initializePanel = false)
 
-        editor.openSession(null)
+        first.openSession(null)
         assertNull(file.sessionId)
         assertSame(file, OpenCodeEditorManager.trackedFile(project))
 
-        editor.dispose()
+        first.dispose()
+        assertSame(file, OpenCodeEditorManager.trackedFile(project))
 
-        assertNull(OpenCodeEditorManager.trackedFile(project))
+        second.dispose()
+        assertSame(file, OpenCodeEditorManager.trackedFile(project))
+        assertSame(file, OpenCodeEditorManager.fileFor(project, "ses_reopened"))
     }
 
-    fun testOpenInEditorCollapsesToolWindowAfterOpeningEditor() {
-        val events = mutableListOf<String>()
+    fun testEditorProviderRejectsAFileOwnedByAnotherProject() {
+        val provider = OpenCodeEditorFileEditorProvider()
+        val file = OpenCodeEditorVirtualFile(project, "ses_test")
+        val otherProject = ProjectManager.getInstance().defaultProject
 
-        openCodeInEditorAndCollapse(
-            project,
-            "ses_test",
-            openEditor = { _, _ -> events += "open" },
-            collapseToolWindow = { events += "collapse" },
-        )
-
-        assertEquals(listOf("open", "collapse"), events)
-    }
-
-    fun testOpenInEditorPassesHomeAndSessionTargets() {
-        val targets = mutableListOf<String?>()
-
-        openCodeInEditorAndCollapse(
-            project,
-            null,
-            openEditor = { _, sessionId -> targets += sessionId },
-            collapseToolWindow = {},
-        )
-        openCodeInEditorAndCollapse(
-            project,
-            "ses_current",
-            openEditor = { _, sessionId -> targets += sessionId },
-            collapseToolWindow = {},
-        )
-
-        assertEquals(listOf(null, "ses_current"), targets)
+        assertFalse(provider.accept(otherProject, file))
+        try {
+            provider.createEditor(otherProject, file)
+            fail("A provider must not create an editor for another project's file")
+        } catch (_: IllegalArgumentException) {
+            // Expected ownership guard.
+        }
     }
 
     fun testToolWindowActivationSelectsOnlyTheMatchingTrackedEditor() {

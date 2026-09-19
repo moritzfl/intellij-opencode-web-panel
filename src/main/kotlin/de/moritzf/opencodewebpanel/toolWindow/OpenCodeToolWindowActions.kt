@@ -232,11 +232,8 @@ internal class OpenCodeOpenInEditorAction : DumbAwareAction(
         val project = e.project ?: return
         val toolWindow = openCodeToolWindow(e) ?: return
         val content = openCodePanelContent(e) ?: return
-        openCodeInEditorAndCollapse(
-            project,
-            content.displayedSessionID(),
-            OpenCodeEditorManager::open,
-        ) { toolWindow.hide(null) }
+        OpenCodeEditorManager.open(project, content.displayedSessionID())
+        toolWindow.hide(null)
     }
 
     override fun update(e: AnActionEvent) {
@@ -244,7 +241,7 @@ internal class OpenCodeOpenInEditorAction : DumbAwareAction(
         e.presentation.description = "Open the current OpenCode view in an editor tab."
     }
 
-    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
 }
 
 /**
@@ -293,16 +290,6 @@ private fun openCodePanelContent(e: AnActionEvent): OpenCodeWebToolWindowContent
 private fun openCodePanelContent(toolWindow: ToolWindow): OpenCodeWebToolWindowContent? {
     return toolWindow.contentManager.contents
         .firstNotNullOfOrNull { it.disposer as? OpenCodeWebToolWindowContent }
-}
-
-internal fun openCodeInEditorAndCollapse(
-    project: Project,
-    sessionId: String?,
-    openEditor: (Project, String?) -> Unit,
-    collapseToolWindow: () -> Unit,
-) {
-    openEditor(project, sessionId)
-    collapseToolWindow()
 }
 
 internal fun requestOpenCodeServerRestart(project: Project?) {

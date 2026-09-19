@@ -148,6 +148,20 @@ class OpenCodeJcefLiveRuntimeSwitchTest {
     }
 
     @Test
+    fun genericRecoveryReturnsFromSessionToHome() {
+        val browser = open(origins[0], OpenCodeServerProtocol.buildServerSessionUrl(origins[0], nativeSession))
+        OpenCodeJcefTestHelper.awaitCondition("known session before generic recovery", 30) {
+            evaluate(browser, "!!document.querySelector('main [contenteditable=true]')") == "true"
+        }
+
+        browser.loadURL(OpenCodeServerProtocol.buildServerSessionUrl(origins[0]))
+        OpenCodeJcefTestHelper.awaitCondition("home after generic recovery", 30) {
+            evaluate(browser, "!!document.querySelector('main [role=region]')") == "true"
+        }
+        assertEquals(origins[0] + "/", browser.cefBrowser.url)
+    }
+
+    @Test
     fun firstDocumentDeliversRendererHeartbeatsWithoutReload() {
         val origin = origins[0]
         var previous: Disposable? = null

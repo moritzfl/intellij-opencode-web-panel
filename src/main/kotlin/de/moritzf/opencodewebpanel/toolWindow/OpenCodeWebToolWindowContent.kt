@@ -87,7 +87,7 @@ import javax.swing.JPanel
 
 internal class OpenCodeWebToolWindowContent(
     private val host: OpenCodePanelHost,
-    sessionIdToRestoreOnLoad: String? = null,
+    initialSessionId: String? = null,
 ) : Disposable {
 
     private companion object {
@@ -226,9 +226,7 @@ internal class OpenCodeWebToolWindowContent(
         setBrowserFocus = { browser.cefBrowser.setFocus(it) },
     )
     private var openProjectScriptScheduled = false
-    private var restoreExistingOpenCodeSession = sessionIdToRestoreOnLoad != null
-    private var sessionIdToRestore: String? = sessionIdToRestoreOnLoad
-    private var requestedSessionId: String? = sessionIdToRestoreOnLoad
+    private var requestedSessionId: String? = initialSessionId
     private var panelReplacementScheduled = false
     private val documentStartInjector = OpenCodeDocumentStartInjector(browser)
     @Volatile
@@ -1349,7 +1347,6 @@ internal class OpenCodeWebToolWindowContent(
         // Events that fired before this panel started caring never reached the tracker.
         agentStatusTracker.seed()
 
-        restoreExistingOpenCodeSession = false
         val sessionId = requestedSessionId.also { requestedSessionId = null }
         loadProjectPageAt(serverUrl, sessionId)
     }
@@ -1384,9 +1381,9 @@ internal class OpenCodeWebToolWindowContent(
             checkAndLoadContent()
             return
         }
-        if (sessionId == displayedSessionID() && isBrowserOnOpenCodeServerPage(serverUrl)) return
-        requestedSessionId = null
-        loadProjectPageAt(serverUrl, sessionId)
+        val requested = requestedSessionId.also { requestedSessionId = null }
+        if (requested == displayedSessionID() && isBrowserOnOpenCodeServerPage(serverUrl)) return
+        loadProjectPageAt(serverUrl, requested)
     }
 
     private fun installDocumentStartScripts(serverUrl: String): CompletableFuture<Boolean> {
@@ -1578,7 +1575,6 @@ internal class OpenCodeWebToolWindowContent(
         ) {
             return
         }
-        rememberOpenCodeSessionForRestore()
         loadedServerRootUrl = null
         pendingBrowserLoadGeneration++
         pageLoadWatchdogGeneration++
@@ -1595,11 +1591,6 @@ internal class OpenCodeWebToolWindowContent(
             idleCard.show(state)
             showCenterCard(IDLE_CARD)
         }
-    }
-
-    private fun rememberOpenCodeSessionForRestore() {
-        sessionIdToRestore = OpenCodeServerProtocol.sessionIdFromUrl(browser.cefBrowser.url) ?: sessionIdToRestore
-        restoreExistingOpenCodeSession = true
     }
 
     private fun applyBrowserZoom(zoomPercent: Int = OpenCodeSettingsState.getInstance().uiZoomPercent) {
@@ -1832,8 +1823,6 @@ internal class OpenCodeWebToolWindowContent(
             return
         }
         host.updateHeading()
-        restoreExistingOpenCodeSession = false
-        sessionIdToRestore = null
         openProjectScriptScheduled = false
         openProjectSeedFeature.scheduled = false
         fileLinkFeature.scheduled = false

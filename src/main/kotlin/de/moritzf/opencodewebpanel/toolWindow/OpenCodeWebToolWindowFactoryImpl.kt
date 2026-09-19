@@ -97,9 +97,8 @@ class OpenCodeWebToolWindowFactoryImpl : ToolWindowFactory, DumbAware {
  */
 internal fun installOpenCodeToolWindowContent(
     toolWindow: ToolWindow,
-    sessionIdToRestore: String? = null,
 ): OpenCodeWebToolWindowContent? {
-    val toolWindowContent = createOpenCodeToolWindowContent(toolWindow, sessionIdToRestore)
+    val toolWindowContent = createOpenCodeToolWindowContent(toolWindow)
     if (toolWindowContent == null) {
         installOpenCodePanelFailureCard(toolWindow)
         return null
@@ -110,7 +109,8 @@ internal fun installOpenCodeToolWindowContent(
 
 /**
  * Recovery hammer for a stuck or crashed JCEF panel: install a fresh browser and dispose the
- * current one. Keeps the session id from the previous URL when it is still readable.
+ * current one. Generic replacement starts at OpenCode Home so session selection remains owned by
+ * the web application.
  * Stop→Start must not use this — that path keeps the existing document (Windows).
  *
  * The replacement's remote browser is created *before* the current content is dropped. Disposing first tears the
@@ -127,12 +127,9 @@ internal fun replaceOpenCodeToolWindowContent(toolWindow: ToolWindow) {
     val manager = toolWindow.contentManager
     val previous = manager.contents.firstNotNullOfOrNull { it.disposer as? OpenCodeWebToolWindowContent }
     val liveBackendId = OpenCodeServerBackendRegistry.getInstance().backendFor(toolWindow.project).backendId
-    val sessionId = previous
-        ?.takeIf { it.backendId() == liveBackendId }
-        ?.let { runCatching { it.displayedSessionID() }.getOrNull() }
     Logger.getInstance(OpenCodeWebToolWindowContent::class.java)
         .info("jcef replace previous=${previous != null} backend=$liveBackendId")
-    val replacement = createOpenCodeToolWindowContent(toolWindow, sessionId)
+    val replacement = createOpenCodeToolWindowContent(toolWindow)
     if (replacement == null) {
         Logger.getInstance(OpenCodeWebToolWindowContent::class.java)
             .warn("jcef replace constructor failed")
@@ -171,10 +168,9 @@ internal fun replaceOpenCodeToolWindowContent(toolWindow: ToolWindow) {
 
 private fun createOpenCodeToolWindowContent(
     toolWindow: ToolWindow,
-    sessionIdToRestore: String?,
 ): OpenCodeWebToolWindowContent? {
     return try {
-        OpenCodeWebToolWindowContent(OpenCodeToolWindowHost(toolWindow), sessionIdToRestore)
+        OpenCodeWebToolWindowContent(OpenCodeToolWindowHost(toolWindow))
     } catch (e: ProcessCanceledException) {
         throw e
     } catch (e: Throwable) {

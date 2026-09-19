@@ -38,7 +38,7 @@ internal class OpenCodeEditorVirtualFile(
 }
 
 internal object OpenCodeEditorManager {
-    private val files = mutableMapOf<Project, OpenCodeEditorVirtualFile>()
+    private val fileKey = Key.create<OpenCodeEditorVirtualFile>("opencode.editor.file")
     private val toolWindowListenerKey = Key.create<MessageBusConnection>("opencode.editor.tool.window.listener")
 
     fun open(project: Project, sessionId: String?) {
@@ -53,18 +53,19 @@ internal object OpenCodeEditorManager {
     }
 
     internal fun fileFor(project: Project, sessionId: String?): OpenCodeEditorVirtualFile {
-        return synchronized(files) {
-            files.getOrPut(project) { OpenCodeEditorVirtualFile(project, sessionId) }
-                .also { it.sessionId = sessionId }
+        return synchronized(project) {
+            val file = project.getUserData(fileKey) ?: OpenCodeEditorVirtualFile(project, sessionId).also {
+                project.putUserData(fileKey, it)
+            }
+            file.sessionId = sessionId
+            file
         }
     }
 
-    internal fun trackedFile(project: Project): OpenCodeEditorVirtualFile? = synchronized(files) {
-        files[project]
-    }
+    internal fun trackedFile(project: Project): OpenCodeEditorVirtualFile? = project.getUserData(fileKey)
 
     private fun installToolWindowListener(project: Project) {
-        synchronized(files) {
+        synchronized(project) {
             if (project.getUserData(toolWindowListenerKey) != null) return
             val connection = project.messageBus.connect(project)
             connection.subscribe(
@@ -85,12 +86,6 @@ internal object OpenCodeEditorManager {
             project.putUserData(toolWindowListenerKey, connection)
         }
     }
-
-    internal fun forget(file: OpenCodeEditorVirtualFile) {
-        synchronized(files) {
-            if (files[file.owner] === file) files.remove(file.owner)
-        }
-    }
 }
 
 internal fun editorFileToCloseOnToolWindowShown(
@@ -104,10 +99,14 @@ internal fun editorFileToCloseOnToolWindowShown(
 }
 
 internal class OpenCodeEditorFileEditorProvider : FileEditorProvider, DumbAware {
-    override fun accept(project: Project, file: VirtualFile): Boolean = file is OpenCodeEditorVirtualFile
+    override fun accept(project: Project, file: VirtualFile): Boolean =
+        file is OpenCodeEditorVirtualFile && file.owner === project
 
     override fun createEditor(project: Project, file: VirtualFile): FileEditor {
-        return OpenCodeEditorFileEditor(project, file as OpenCodeEditorVirtualFile)
+        require(file is OpenCodeEditorVirtualFile && file.owner === project) {
+            "OpenCode editor file belongs to another project"
+        }
+        return OpenCodeEditorFileEditor(project, file)
     }
 
     override fun disposeEditor(editor: FileEditor) {
@@ -172,6 +171,7 @@ internal class OpenCodeEditorFileEditor(
         root.addToCenter(created.getContent())
         root.revalidate()
         root.repaint()
+        created.checkAndLoadContent()
     }
 
     internal fun openSession(sessionId: String?) {
@@ -194,11 +194,9 @@ internal class OpenCodeEditorFileEditor(
             return
         }
         val liveBackendId = OpenCodeServerBackendRegistry.getInstance().backendFor(project).backendId
-        val sessionId = editorReplacementSessionId(
-            previous.backendId(),
-            liveBackendId,
-            runCatching { previous.displayedSessionID() }.getOrNull(),
-        )
+        val sessionId = runCatching { previous.displayedSessionID() }
+            .getOrNull()
+            .takeIf { previous.backendId() == liveBackendId }
         file.sessionId = sessionId
         replacementPending = true
         val replacement = createPanelContent(sessionId)
@@ -284,15 +282,8 @@ internal class OpenCodeEditorFileEditor(
         disposed = true
         panel?.let(Disposer::dispose)
         panel = null
-        OpenCodeEditorManager.forget(file)
     }
 
     internal val isDisposed: Boolean
         get() = disposed || project.isDisposed
 }
-
-internal fun editorReplacementSessionId(
-    previousBackendId: String,
-    liveBackendId: String,
-    previousSessionId: String?,
-): String? = previousSessionId.takeIf { previousBackendId == liveBackendId }

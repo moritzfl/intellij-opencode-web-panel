@@ -35,14 +35,19 @@ class OpenCodeChatInputService {
         dispatcher: ((Delivery) -> Boolean)?,
         isActive: () -> Boolean = { true },
     ) {
+        var shouldDispatch = false
         synchronized(lock) {
             if (dispatcher == null) {
                 dispatchers.remove(owner)
-                if (inFlightOwner === owner) requeueInFlightLocked()
+                if (inFlightOwner === owner) {
+                    requeueInFlightLocked()
+                    shouldDispatch = true
+                }
             } else {
                 dispatchers[owner] = Dispatcher(dispatcher, isActive)
             }
         }
+        if (shouldDispatch) dispatchPending()
     }
 
     /** Queues each text as an independently acknowledged delivery, preserving caller order. */

@@ -104,4 +104,28 @@ class OpenCodeChatInputServiceTest {
         assertTrue(service.send(listOf("text")))
         assertEquals(listOf("editor"), submitted)
     }
+
+    @Test
+    fun removingInFlightOwnerImmediatelyHandsBatchToAnotherPanel() {
+        val service = OpenCodeChatInputService()
+        val toolWindow = Any()
+        val editor = Any()
+        val submitted = mutableListOf<OpenCodeChatInputService.Delivery>()
+
+        service.setDispatcher(toolWindow, { delivery -> submitted += delivery; true }, isActive = { false })
+        service.setDispatcher(editor, { delivery -> submitted += delivery; true }, isActive = { true })
+
+        assertTrue(service.send(listOf("text")))
+        val first = submitted.single()
+
+        service.setDispatcher(editor, null)
+
+        assertEquals(listOf("text", "text"), submitted.map { it.batch.text })
+        val second = submitted.last()
+        assertEquals(first.batch.id, second.batch.id)
+        assertFalse(first.attemptID == second.attemptID)
+        assertFalse(service.acknowledge(first.attemptID, accepted = true))
+        assertTrue(service.acknowledge(second.attemptID, accepted = true))
+        assertEquals(0, service.queuedCount())
+    }
 }
