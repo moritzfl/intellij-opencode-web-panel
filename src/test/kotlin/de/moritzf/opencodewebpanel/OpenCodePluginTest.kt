@@ -162,14 +162,20 @@ class OpenCodePluginTest : BasePlatformTestCase() {
 
     fun testEditorManagerReusesProjectFileAndUpdatesItsSessionTarget() {
         val first = OpenCodeEditorManager.fileFor(project, "ses_first")
+        val otherProject = ProjectManager.getInstance().defaultProject
+        val other = OpenCodeEditorManager.fileFor(otherProject, "ses_other")
 
         try {
             val reused = OpenCodeEditorManager.fileFor(project, "ses_second")
 
             assertSame(first, reused)
             assertEquals("ses_second", reused.sessionId)
+            assertNotSame(project, otherProject)
+            assertNotSame(first, other)
+            assertSame(otherProject, other.owner)
         } finally {
             OpenCodeEditorManager.forget(first)
+            OpenCodeEditorManager.forget(other)
         }
     }
 
