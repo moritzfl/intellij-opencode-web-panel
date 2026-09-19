@@ -120,6 +120,7 @@ class OpenCodePluginTest : BasePlatformTestCase() {
         val provider = OpenCodeEditorFileEditorProvider()
         val file = OpenCodeEditorVirtualFile(project, "ses_test")
 
+        assertTrue(DumbAware::class.java.isAssignableFrom(provider.javaClass))
         assertTrue(provider.accept(project, file))
         assertFalse(provider.accept(project, LightVirtualFile("other")))
         assertEquals("opencode.editor", provider.editorTypeId)

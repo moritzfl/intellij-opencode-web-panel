@@ -10,6 +10,7 @@ import com.intellij.openapi.fileEditor.FileEditorLocation
 import com.intellij.openapi.fileTypes.PlainTextFileType
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.progress.ProcessCanceledException
+import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.UserDataHolderBase
@@ -54,7 +55,7 @@ internal object OpenCodeEditorManager {
     }
 }
 
-internal class OpenCodeEditorFileEditorProvider : FileEditorProvider {
+internal class OpenCodeEditorFileEditorProvider : FileEditorProvider, DumbAware {
     override fun accept(project: Project, file: VirtualFile): Boolean = file is OpenCodeEditorVirtualFile
 
     override fun createEditor(project: Project, file: VirtualFile): FileEditor {
