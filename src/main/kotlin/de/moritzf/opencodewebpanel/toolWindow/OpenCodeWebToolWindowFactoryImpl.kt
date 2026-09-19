@@ -98,11 +98,21 @@ internal fun installOpenCodeToolWindowContent(
     val shell = OpenCodeToolWindowShell(coordinator, placementId, host)
     val panelAlreadyExists = coordinator.panel() != null
     val shellActivated = shell.activateIfUnoccupied()
-    val panel = coordinator.panelForActivePlacement(placementId, host, sessionId = null)
+    val panel = selectOpenCodeToolWindowPanel(
+        shellActivated = shellActivated,
+        existingPanel = coordinator::panel,
+        createPanel = { coordinator.panelForActivePlacement(placementId, host, sessionId = null) },
+    )
     addOpenCodeToolWindowContent(toolWindow, shell)
     if (shellActivated && panel == null) coordinator.showFailure()
     return panel?.takeUnless { panelAlreadyExists || !shellActivated }
 }
+
+internal fun <T> selectOpenCodeToolWindowPanel(
+    shellActivated: Boolean,
+    existingPanel: () -> T?,
+    createPanel: () -> T?,
+): T? = if (shellActivated) createPanel() else existingPanel()
 
 /**
  * Recovery hammer for a stuck or crashed JCEF panel: install a fresh browser and dispose the
