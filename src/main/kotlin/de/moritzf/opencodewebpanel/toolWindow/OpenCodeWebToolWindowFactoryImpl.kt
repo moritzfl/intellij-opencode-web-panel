@@ -147,4 +147,4 @@ private fun addOpenCodeToolWindowContent(
     return content
 }
 
-private fun toolWindowPlacementId(project: Project): String = "tool-window:${System.identityHashCode(project)}"
+internal fun toolWindowPlacementId(project: Project): String = "tool-window:${System.identityHashCode(project)}"

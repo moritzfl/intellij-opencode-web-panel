@@ -21,6 +21,8 @@ import de.moritzf.opencodewebpanel.toolWindow.OpenCodeOpenInEditorAction
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodePanelCoordinator
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodeWebToolWindowFactoryImpl
 import de.moritzf.opencodewebpanel.toolWindow.editorFileToCloseOnToolWindowShown
+import de.moritzf.opencodewebpanel.toolWindow.toolWindowPlacementId
+import de.moritzf.opencodewebpanel.toolWindow.transferPanelToToolWindowBeforeEditorClose
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.KeyboardShortcut
 import com.intellij.openapi.application.ApplicationManager
@@ -174,6 +176,36 @@ class OpenCodePluginTest : BasePlatformTestCase() {
         }
     }
 
+    fun testDisposingTheActiveEditorTransfersThePanelBeforeItsPlacementIsRemoved() {
+        val sharedComponent = JPanel()
+        val toolWindowContainer = JPanel()
+        val coordinator = OpenCodePanelCoordinator(
+            panelComponent = sharedComponent,
+            disposePanel = {},
+            parkingContainer = JPanel(),
+        )
+        val file = OpenCodeEditorVirtualFile(project, "ses_test")
+        val provider = OpenCodeEditorFileEditorProvider { coordinator }
+        val first = provider.createEditor(project, file) as OpenCodeEditorFileEditor
+        val active = provider.createEditor(project, file) as OpenCodeEditorFileEditor
+        coordinator.registerPlacement(
+            toolWindowPlacementId(project),
+            toolWindowContainer,
+            JPanel(),
+        )
+
+        try {
+            active.selectNotify()
+            provider.disposeEditor(active)
+
+            assertSame(sharedComponent, toolWindowContainer.getComponent(0))
+            assertFalse(first.component.getComponent(0) === sharedComponent)
+        } finally {
+            provider.disposeEditor(first)
+            coordinator.dispose()
+        }
+    }
+
     fun testEditorVirtualFileKeepsProjectScopedSessionState() {
         val file = OpenCodeEditorVirtualFile(project, "ses_test")
 
@@ -241,6 +273,47 @@ class OpenCodePluginTest : BasePlatformTestCase() {
         )
         assertNull(editorFileToCloseOnToolWindowShown("Project", project, trackedFile))
         assertNull(editorFileToCloseOnToolWindowShown("OpenCode", otherProject, trackedFile))
+    }
+
+    fun testMatchingToolWindowTransfersThePanelBeforeClosingItsTrackedEditor() {
+        val sharedComponent = JPanel()
+        val editorContainer = JPanel()
+        val toolWindowContainer = JPanel()
+        val coordinator = OpenCodePanelCoordinator(
+            panelComponent = sharedComponent,
+            disposePanel = {},
+            parkingContainer = JPanel(),
+        )
+        coordinator.registerPlacement("editor", editorContainer, JPanel())
+        coordinator.registerPlacement(toolWindowPlacementId(project), toolWindowContainer, JPanel())
+        coordinator.place("editor")
+        val trackedFile = OpenCodeEditorVirtualFile(project, "ses_test")
+
+        try {
+            assertSame(
+                trackedFile,
+                transferPanelToToolWindowBeforeEditorClose(
+                    "OpenCode",
+                    project,
+                    trackedFile,
+                    coordinator,
+                ),
+            )
+            assertSame(sharedComponent, toolWindowContainer.getComponent(0))
+            assertFalse(editorContainer.getComponent(0) === sharedComponent)
+
+            assertNull(
+                transferPanelToToolWindowBeforeEditorClose(
+                    "OpenCode",
+                    ProjectManager.getInstance().defaultProject,
+                    trackedFile,
+                    coordinator,
+                ),
+            )
+            assertSame(sharedComponent, toolWindowContainer.getComponent(0))
+        } finally {
+            coordinator.dispose()
+        }
     }
 
     fun testSettingsConfigurableIsRegistered() {

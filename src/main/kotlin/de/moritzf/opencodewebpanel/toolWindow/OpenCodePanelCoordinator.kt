@@ -86,12 +86,25 @@ internal class OpenCodePanelCoordinator private constructor(
         val wasActive = activePlacement == id
         placements.remove(id) ?: return
         if (wasActive) {
-            activePlacement = placements.keys.firstOrNull()
-            activeHost = activePlacement?.let { placements[it]?.host }
+            activePlacement = null
+            activeHost = null
             generation++
         }
         render()
         if (activePlacement == null) parkPanel()
+    }
+
+    fun releaseEditorPlacement(editorPlacementId: String, toolWindowPlacementId: String) {
+        requireEdt()
+        if (disposed) return
+        if (activePlacement == editorPlacementId) {
+            if (placements.containsKey(toolWindowPlacementId)) {
+                place(toolWindowPlacementId)
+            } else {
+                park()
+            }
+        }
+        unregisterPlacement(editorPlacementId)
     }
 
     fun isPlacementRegistered(id: String): Boolean = placements.containsKey(id)

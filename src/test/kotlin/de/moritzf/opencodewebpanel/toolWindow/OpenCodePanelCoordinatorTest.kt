@@ -112,6 +112,44 @@ class OpenCodePanelCoordinatorTest {
     }
 
     @Test
+    fun releasingAnActiveEditorTransfersToTheToolWindowBeforeUnregisteringIt() {
+        onEdt {
+            val panel = TestPanel()
+            val firstEditor = TestPlacement("editor-1")
+            val activeEditor = TestPlacement("editor-2")
+            val toolWindow = TestPlacement("tool-window")
+            val coordinator = coordinator(panel)
+            listOf(firstEditor, activeEditor, toolWindow).forEach {
+                coordinator.registerPlacement(it.id, it.container, it.placeholder)
+            }
+
+            coordinator.place(activeEditor.id)
+            coordinator.releaseEditorPlacement(activeEditor.id, toolWindow.id)
+
+            assertSame(panel.component, toolWindow.container.singleChild())
+            assertSame(firstEditor.placeholder, firstEditor.container.singleChild())
+            assertFalse(coordinator.isPlacementRegistered(activeEditor.id))
+        }
+    }
+
+    @Test
+    fun releasingAnActiveEditorParksWhenTheToolWindowIsUnavailable() {
+        onEdt {
+            val panel = TestPanel()
+            val editor = TestPlacement("editor")
+            val parking = JPanel()
+            val coordinator = coordinator(panel, parking)
+            coordinator.registerPlacement(editor.id, editor.container, editor.placeholder)
+            coordinator.place(editor.id)
+
+            coordinator.releaseEditorPlacement(editor.id, "tool-window")
+
+            assertSame(panel.component, parking.singleChild())
+            assertFalse(coordinator.isPlacementRegistered(editor.id))
+        }
+    }
+
+    @Test
     fun toolWindowShellLeavesEditorPanelMountedWhenAlreadyOccupied() {
         onEdt {
             val panel = TestPanel()
