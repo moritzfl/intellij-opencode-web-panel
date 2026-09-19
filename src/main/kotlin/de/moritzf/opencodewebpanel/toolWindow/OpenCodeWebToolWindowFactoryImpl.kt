@@ -1,22 +1,17 @@
 package de.moritzf.opencodewebpanel.toolWindow
 
-import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.diagnostic.Logger
-import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.util.Key
-import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
 import com.intellij.ui.content.Content
 import com.intellij.ui.content.ContentFactory
-import com.intellij.ui.content.ContentManager
-import javax.swing.JComponent
+import com.intellij.util.ui.components.BorderLayoutPanel
+import javax.swing.JPanel
 import kotlin.jvm.JvmDefaultWithoutCompatibility
 
 internal fun openCodeToolWindowHeading(project: Project?): String {
@@ -98,13 +93,16 @@ class OpenCodeWebToolWindowFactoryImpl : ToolWindowFactory, DumbAware {
 internal fun installOpenCodeToolWindowContent(
     toolWindow: ToolWindow,
 ): OpenCodeWebToolWindowContent? {
-    val toolWindowContent = createOpenCodeToolWindowContent(toolWindow)
-    if (toolWindowContent == null) {
-        installOpenCodePanelFailureCard(toolWindow)
-        return null
-    }
-    addOpenCodeToolWindowContent(toolWindow, toolWindowContent.getContent(), toolWindowContent)
-    return toolWindowContent
+    val coordinator = OpenCodePanelCoordinator.getInstance(toolWindow.project)
+    val host = OpenCodeToolWindowHost(toolWindow, coordinator)
+    val shell = BorderLayoutPanel()
+    val placementId = toolWindowPlacementId(toolWindow.project)
+    coordinator.registerPlacement(placementId, shell, JPanel(), host)
+    val panel = coordinator.panelFor(host, sessionId = null)
+    coordinator.place(placementId)
+    addOpenCodeToolWindowContent(toolWindow, shell)
+    if (panel == null) coordinator.showFailure()
+    return panel
 }
 
 /**
@@ -121,94 +119,22 @@ internal fun installOpenCodeToolWindowContent(
  */
 internal fun replaceOpenCodeToolWindowContent(toolWindow: ToolWindow) {
     if (toolWindow.isDisposed || toolWindow.project.isDisposed) return
-    val application = ApplicationManager.getApplication()
-    if (application == null || application.isDisposed) return
-    if (toolWindow.component.getClientProperty(OPEN_CODE_REPLACEMENT_PENDING_KEY) == true) return
-    val manager = toolWindow.contentManager
-    val previous = manager.contents.firstNotNullOfOrNull { it.disposer as? OpenCodeWebToolWindowContent }
-    val liveBackendId = OpenCodeServerBackendRegistry.getInstance().backendFor(toolWindow.project).backendId
-    Logger.getInstance(OpenCodeWebToolWindowContent::class.java)
-        .info("jcef replace previous=${previous != null} backend=$liveBackendId")
-    val replacement = createOpenCodeToolWindowContent(toolWindow)
-    if (replacement == null) {
-        Logger.getInstance(OpenCodeWebToolWindowContent::class.java)
-            .warn("jcef replace constructor failed")
-        // Keep whatever is on screen: a working panel is better than a failure card, and a
-        // failure card that is already installed still offers Retry.
-        val hasPanel = manager.contents.any { it.disposer is OpenCodeWebToolWindowContent }
-        if (!hasPanel && !hasOpenCodePanelFailureCard(manager)) installOpenCodePanelFailureCard(toolWindow)
-        return
-    }
-    // Keep the old remote browser alive until Chromium acknowledges its successor.
-    toolWindow.component.putClientProperty(OPEN_CODE_REPLACEMENT_PENDING_KEY, true)
-    replacement.prepareBrowserForReplacement().whenComplete { _, error ->
-        application.invokeLater {
-            toolWindow.component.putClientProperty(OPEN_CODE_REPLACEMENT_PENDING_KEY, null)
-            if (toolWindow.isDisposed || toolWindow.project.isDisposed) {
-                Disposer.dispose(replacement)
-                return@invokeLater
-            }
-            if (error != null) {
-                Logger.getInstance(OpenCodeWebToolWindowContent::class.java)
-                    .warn("jcef replace renderer wait failed; keeping current panel", error)
-                Disposer.dispose(replacement)
-                return@invokeLater
-            }
-            if (OpenCodeServerBackendRegistry.getInstance().backendFor(toolWindow.project).backendId != liveBackendId) {
-                Disposer.dispose(replacement)
-                replaceOpenCodeToolWindowContent(toolWindow)
-                return@invokeLater
-            }
-            manager.removeAllContents(true)
-            addOpenCodeToolWindowContent(toolWindow, replacement.getContent(), replacement)
-            replacement.checkAndLoadContent()
-        }
-    }
-}
-
-private fun createOpenCodeToolWindowContent(
-    toolWindow: ToolWindow,
-): OpenCodeWebToolWindowContent? {
-    return try {
-        OpenCodeWebToolWindowContent(OpenCodeToolWindowHost(toolWindow))
-    } catch (e: ProcessCanceledException) {
-        throw e
-    } catch (e: Throwable) {
-        // Logged as a warning on purpose: JCEF failures here are recoverable through the card's
-        // Retry, and reporting them as IDE errors only hides the recovery behind a crash dialog.
-        Logger.getInstance(OpenCodeWebToolWindowContent::class.java)
-            .warn("Could not create the OpenCode panel; showing the recovery card", e)
-        null
-    }
+    OpenCodePanelCoordinator.getInstance(toolWindow.project).replacePanel()
 }
 
 internal fun installOpenCodePanelFailureCard(toolWindow: ToolWindow) {
     if (toolWindow.isDisposed || toolWindow.project.isDisposed) return
-    val manager = toolWindow.contentManager
-    manager.removeAllContents(true)
-    val card = OpenCodePanelFailureCard {
-        OpenCodeRendererWatchdog.resetProcessRecreatesAfterStall()
-        replaceOpenCodeToolWindowContent(toolWindow)
-    }
-    val content = addOpenCodeToolWindowContent(toolWindow, card.component, disposer = null)
-    content.putUserData(OPEN_CODE_PANEL_FAILURE_CARD_KEY, true)
-}
-
-private fun hasOpenCodePanelFailureCard(manager: ContentManager): Boolean {
-    return manager.contents.any { it.getUserData(OPEN_CODE_PANEL_FAILURE_CARD_KEY) == true }
+    OpenCodePanelCoordinator.getInstance(toolWindow.project).showFailure()
 }
 
 private fun addOpenCodeToolWindowContent(
     toolWindow: ToolWindow,
-    component: JComponent,
-    disposer: Disposable?,
+    component: JPanel,
 ): Content {
     val content = ContentFactory.getInstance().createContent(component, null, false)
-    disposer?.let(content::setDisposer)
     toolWindow.contentManager.addContent(content)
     updateOpenCodeToolWindowHeading(toolWindow)
     return content
 }
 
-private val OPEN_CODE_PANEL_FAILURE_CARD_KEY = Key.create<Boolean>("opencode.panel.failure.card")
-private val OPEN_CODE_REPLACEMENT_PENDING_KEY = Key.create<Boolean>("opencode.panel.replacement.pending")
+private fun toolWindowPlacementId(project: Project): String = "tool-window:${System.identityHashCode(project)}"

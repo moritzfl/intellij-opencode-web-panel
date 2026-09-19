@@ -8,6 +8,7 @@ import javax.swing.JComponent
 
 internal class OpenCodeToolWindowHost(
     private val toolWindow: ToolWindow,
+    private val coordinator: OpenCodePanelCoordinator,
 ) : OpenCodePanelHost {
     override val project = toolWindow.project
 
@@ -25,11 +26,11 @@ internal class OpenCodeToolWindowHost(
     }
 
     override fun replacePanel() {
-        replaceOpenCodeToolWindowContent(toolWindow)
+        coordinator.replacePanel()
     }
 
     override fun showFailure() {
-        installOpenCodePanelFailureCard(toolWindow)
+        coordinator.showFailure()
     }
 
     override fun updateHeading() {

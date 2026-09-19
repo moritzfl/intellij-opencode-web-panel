@@ -1,6 +1,5 @@
 package de.moritzf.opencodewebpanel.toolWindow
 
-import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.fileEditor.FileEditor
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.FileEditorPolicy
@@ -8,11 +7,8 @@ import com.intellij.openapi.fileEditor.FileEditorProvider
 import com.intellij.openapi.fileEditor.FileEditorState
 import com.intellij.openapi.fileEditor.FileEditorLocation
 import com.intellij.openapi.fileTypes.PlainTextFileType
-import com.intellij.openapi.diagnostic.Logger
-import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.Key
 import com.intellij.openapi.util.UserDataHolderBase
 import com.intellij.openapi.vfs.VirtualFile
@@ -23,10 +19,10 @@ import com.intellij.testFramework.LightVirtualFile
 import com.intellij.util.messages.MessageBusConnection
 import com.intellij.util.ui.components.BorderLayoutPanel
 import de.moritzf.opencodewebpanel.features.OPEN_CODE_TOOL_WINDOW_ID
-import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
 import java.beans.PropertyChangeListener
 import java.beans.PropertyChangeSupport
 import javax.swing.JComponent
+import javax.swing.JPanel
 
 private val OpenCodeEditorFileType = PlainTextFileType.INSTANCE
 
@@ -120,6 +116,7 @@ internal class OpenCodeEditorFileEditorProvider : FileEditorProvider, DumbAware 
 
 private class OpenCodeEditorHost(
     private val editor: OpenCodeEditorFileEditor,
+    private val coordinator: OpenCodePanelCoordinator,
 ) : OpenCodePanelHost {
     override val project: Project
         get() = editor.project
@@ -136,11 +133,11 @@ private class OpenCodeEditorHost(
     }
 
     override fun replacePanel() {
-        editor.replacePanel()
+        coordinator.replacePanel()
     }
 
     override fun showFailure() {
-        editor.showFailure()
+        coordinator.showFailure()
     }
 }
 
@@ -151,33 +148,30 @@ internal class OpenCodeEditorFileEditor(
 ) : UserDataHolderBase(), FileEditor {
     private val propertyChangeSupport = PropertyChangeSupport(this)
     private val root = BorderLayoutPanel()
-    private val host = OpenCodeEditorHost(this)
-    private var panel: OpenCodeWebToolWindowContent? = null
+    private val coordinator = OpenCodePanelCoordinator.getInstance(project)
+    private val placementId = "editor:${System.identityHashCode(this)}"
+    private val placeholder = JPanel()
+    private val host = OpenCodeEditorHost(this, coordinator)
     private var disposed = false
-    private var replacementPending = false
 
     init {
         if (initializePanel) createPanel(file.sessionId)
     }
 
     private fun createPanel(sessionId: String?) {
-        val created = createPanelContent(sessionId)
-        panel = created
-        if (created == null) {
-            showFailure()
-            return
-        }
-        root.removeAll()
-        root.addToCenter(created.getContent())
-        root.revalidate()
-        root.repaint()
-        created.checkAndLoadContent()
+        coordinator.registerPlacement(placementId, root, placeholder, host)
+        val created = coordinator.panelFor(host, sessionId)
+        coordinator.place(placementId)
+        if (created == null) coordinator.showFailure() else created.openSession(sessionId)
     }
 
     internal fun openSession(sessionId: String?) {
         if (disposed) return
         file.sessionId = sessionId
-        panel?.openSession(sessionId)
+        if (coordinator.isPlacementRegistered(placementId)) {
+            coordinator.place(placementId)
+            coordinator.panel()?.openSession(sessionId)
+        }
     }
 
     internal fun activate(action: () -> Unit) {
@@ -187,77 +181,20 @@ internal class OpenCodeEditorFileEditor(
     }
 
     internal fun replacePanel() {
-        if (disposed || replacementPending) return
-        val previous = panel ?: run {
-            createPanel(file.sessionId)
-            panel?.openSession(file.sessionId)
-            return
-        }
-        val liveBackendId = OpenCodeServerBackendRegistry.getInstance().backendFor(project).backendId
-        val sessionId = runCatching { previous.displayedSessionID() }
-            .getOrNull()
-            .takeIf { previous.backendId() == liveBackendId }
-        file.sessionId = sessionId
-        replacementPending = true
-        val replacement = createPanelContent(sessionId)
-        if (replacement == null) {
-            replacementPending = false
-            return
-        }
-        replacement.prepareBrowserForReplacement().whenComplete { _, error ->
-            ApplicationManager.getApplication().invokeLater {
-                replacementPending = false
-                if (disposed) {
-                    Disposer.dispose(replacement)
-                    return@invokeLater
-                }
-                if (error != null) {
-                    Disposer.dispose(replacement)
-                    return@invokeLater
-                }
-                if (OpenCodeServerBackendRegistry.getInstance().backendFor(project).backendId != liveBackendId) {
-                    Disposer.dispose(replacement)
-                    replacePanel()
-                    return@invokeLater
-                }
-                panel = replacement
-                root.removeAll()
-                root.addToCenter(replacement.getContent())
-                root.revalidate()
-                root.repaint()
-                Disposer.dispose(previous)
-                replacement.openSession(file.sessionId)
-            }
-        }
-    }
-
-    private fun createPanelContent(sessionId: String?): OpenCodeWebToolWindowContent? {
-        return try {
-            OpenCodeWebToolWindowContent(host, sessionId)
-        } catch (e: ProcessCanceledException) {
-            throw e
-        } catch (e: Throwable) {
-            Logger.getInstance(OpenCodeEditorFileEditor::class.java)
-                .warn("Could not create the OpenCode editor panel; showing the recovery card", e)
-            null
-        }
+        if (disposed) return
+        coordinator.replacePanel()
     }
 
     internal fun showFailure() {
         if (disposed) return
-        panel?.let(Disposer::dispose)
-        panel = null
-        root.removeAll()
-        root.addToCenter(OpenCodePanelFailureCard(::replacePanel).component)
-        root.revalidate()
-        root.repaint()
+        coordinator.showFailure()
     }
 
     override fun getComponent(): JComponent = root
 
     override fun getFile(): VirtualFile = file
 
-    override fun getPreferredFocusedComponent(): JComponent = panel?.getContent() ?: root
+    override fun getPreferredFocusedComponent(): JComponent = coordinator.panel()?.getContent() ?: root
 
     override fun getName(): String = "OpenCode"
 
@@ -280,8 +217,9 @@ internal class OpenCodeEditorFileEditor(
     override fun dispose() {
         if (disposed) return
         disposed = true
-        panel?.let(Disposer::dispose)
-        panel = null
+        if (coordinator.isPlacementRegistered(placementId)) {
+            coordinator.unregisterPlacement(placementId)
+        }
     }
 
     internal val isDisposed: Boolean

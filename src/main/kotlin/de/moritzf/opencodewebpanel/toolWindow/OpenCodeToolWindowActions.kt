@@ -288,8 +288,7 @@ private fun openCodePanelContent(e: AnActionEvent): OpenCodeWebToolWindowContent
 }
 
 private fun openCodePanelContent(toolWindow: ToolWindow): OpenCodeWebToolWindowContent? {
-    return toolWindow.contentManager.contents
-        .firstNotNullOfOrNull { it.disposer as? OpenCodeWebToolWindowContent }
+    return OpenCodePanelCoordinator.getInstance(toolWindow.project).panel()
 }
 
 internal fun requestOpenCodeServerRestart(project: Project?) {
