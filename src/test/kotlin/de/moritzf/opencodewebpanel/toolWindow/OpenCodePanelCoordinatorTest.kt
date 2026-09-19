@@ -2,6 +2,7 @@ package de.moritzf.opencodewebpanel.toolWindow
 
 import java.awt.Component
 import javax.swing.JPanel
+import javax.swing.SwingUtilities
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
@@ -11,84 +12,98 @@ import org.junit.Test
 class OpenCodePanelCoordinatorTest {
     @Test
     fun keepsOneLiveComponentInTheActivePlacement() {
-        val panel = TestPanel()
-        val toolWindow = TestPlacement("tool-window")
-        val editor = TestPlacement("editor")
-        val coordinator = coordinator(panel)
-        coordinator.registerPlacement(toolWindow.id, toolWindow.container, toolWindow.placeholder)
-        coordinator.registerPlacement(editor.id, editor.container, editor.placeholder)
+        onEdt {
+            val panel = TestPanel()
+            val toolWindow = TestPlacement("tool-window")
+            val editor = TestPlacement("editor")
+            val coordinator = coordinator(panel)
+            coordinator.registerPlacement(toolWindow.id, toolWindow.container, toolWindow.placeholder)
+            coordinator.registerPlacement(editor.id, editor.container, editor.placeholder)
 
-        coordinator.place(toolWindow.id)
+            coordinator.place(toolWindow.id)
 
-        assertSame(panel.component, toolWindow.container.singleChild())
-        assertSame(editor.placeholder, editor.container.singleChild())
-        assertEquals(1, listOf(toolWindow, editor).count { host ->
-            host.container.components.any { child -> child === panel.component }
-        })
+            assertSame(panel.component, toolWindow.container.singleChild())
+            assertSame(editor.placeholder, editor.container.singleChild())
+            assertEquals(1, listOf(toolWindow, editor).count { host ->
+                host.container.components.any { child -> child === panel.component }
+            })
+        }
     }
 
     @Test
     fun inactivePlacementsShowPlaceholdersWhenTheActivePlacementChanges() {
-        val panel = TestPanel()
-        val toolWindow = TestPlacement("tool-window")
-        val firstEditor = TestPlacement("editor-1")
-        val secondEditor = TestPlacement("editor-2")
-        val coordinator = coordinator(panel)
-        listOf(toolWindow, firstEditor, secondEditor).forEach {
-            coordinator.registerPlacement(it.id, it.container, it.placeholder)
+        onEdt {
+            val panel = TestPanel()
+            val toolWindow = TestPlacement("tool-window")
+            val firstEditor = TestPlacement("editor-1")
+            val secondEditor = TestPlacement("editor-2")
+            val coordinator = coordinator(panel)
+            listOf(toolWindow, firstEditor, secondEditor).forEach {
+                coordinator.registerPlacement(it.id, it.container, it.placeholder)
+            }
+
+            coordinator.place(firstEditor.id)
+            coordinator.place(secondEditor.id)
+
+            assertSame(toolWindow.placeholder, toolWindow.container.singleChild())
+            assertSame(firstEditor.placeholder, firstEditor.container.singleChild())
+            assertSame(panel.component, secondEditor.container.singleChild())
         }
-
-        coordinator.place(firstEditor.id)
-        coordinator.place(secondEditor.id)
-
-        assertSame(toolWindow.placeholder, toolWindow.container.singleChild())
-        assertSame(firstEditor.placeholder, firstEditor.container.singleChild())
-        assertSame(panel.component, secondEditor.container.singleChild())
     }
 
     @Test
     fun stalePlacementGenerationCannotStealTheComponentBack() {
-        val panel = TestPanel()
-        val toolWindow = TestPlacement("tool-window")
-        val editor = TestPlacement("editor")
-        val coordinator = coordinator(panel)
-        coordinator.registerPlacement(toolWindow.id, toolWindow.container, toolWindow.placeholder)
-        coordinator.registerPlacement(editor.id, editor.container, editor.placeholder)
+        onEdt {
+            val panel = TestPanel()
+            val toolWindow = TestPlacement("tool-window")
+            val editor = TestPlacement("editor")
+            val coordinator = coordinator(panel)
+            coordinator.registerPlacement(toolWindow.id, toolWindow.container, toolWindow.placeholder)
+            coordinator.registerPlacement(editor.id, editor.container, editor.placeholder)
 
-        val staleGeneration = coordinator.beginPlacement(editor.id)
-        val currentGeneration = coordinator.beginPlacement(toolWindow.id)
+            coordinator.place(toolWindow.id)
+            assertSame(panel.component, toolWindow.container.singleChild())
 
-        assertFalse(coordinator.completePlacement(editor.id, staleGeneration))
-        assertSame(editor.placeholder, editor.container.singleChild())
-        assertTrue(coordinator.completePlacement(toolWindow.id, currentGeneration))
-        assertSame(panel.component, toolWindow.container.singleChild())
+            val staleGeneration = coordinator.beginPlacement(editor.id)
+            val currentGeneration = coordinator.beginPlacement(toolWindow.id)
+
+            assertFalse(coordinator.completePlacement(editor.id, staleGeneration))
+            assertSame(panel.component, toolWindow.container.singleChild())
+            assertSame(editor.placeholder, editor.container.singleChild())
+            assertTrue(coordinator.completePlacement(toolWindow.id, currentGeneration))
+            assertSame(panel.component, toolWindow.container.singleChild())
+        }
     }
 
     @Test
     fun parkingKeepsThePanelAliveWithoutAnActiveHost() {
-        val panel = TestPanel()
-        val toolWindow = TestPlacement("tool-window")
-        val parking = JPanel()
-        val coordinator = coordinator(panel, parking)
-        coordinator.registerPlacement(toolWindow.id, toolWindow.container, toolWindow.placeholder)
-        coordinator.place(toolWindow.id)
+        onEdt {
+            val panel = TestPanel()
+            val toolWindow = TestPlacement("tool-window")
+            val parking = JPanel()
+            val coordinator = coordinator(panel, parking)
+            coordinator.registerPlacement(toolWindow.id, toolWindow.container, toolWindow.placeholder)
+            coordinator.place(toolWindow.id)
 
-        coordinator.park()
+            coordinator.park()
 
-        assertSame(panel.component, parking.singleChild())
-        assertSame(toolWindow.placeholder, toolWindow.container.singleChild())
-        assertFalse(panel.disposed)
+            assertSame(panel.component, parking.singleChild())
+            assertSame(toolWindow.placeholder, toolWindow.container.singleChild())
+            assertFalse(panel.disposed)
+        }
     }
 
     @Test
     fun projectDisposalDisposesTheSharedPanelExactlyOnce() {
-        val panel = TestPanel()
-        val coordinator = coordinator(panel)
+        onEdt {
+            val panel = TestPanel()
+            val coordinator = coordinator(panel)
 
-        coordinator.dispose()
-        coordinator.dispose()
+            coordinator.dispose()
+            coordinator.dispose()
 
-        assertEquals(1, panel.disposeCount)
+            assertEquals(1, panel.disposeCount)
+        }
     }
 
     private fun coordinator(panel: TestPanel, parking: JPanel = JPanel()) = OpenCodePanelCoordinator(
@@ -117,5 +132,13 @@ class OpenCodePanelCoordinatorTest {
     private fun JPanel.singleChild(): Component {
         assertEquals(1, componentCount)
         return getComponent(0)
+    }
+
+    private fun onEdt(block: () -> Unit) {
+        if (SwingUtilities.isEventDispatchThread()) {
+            block()
+        } else {
+            SwingUtilities.invokeAndWait { block() }
+        }
     }
 }
