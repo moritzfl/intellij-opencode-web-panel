@@ -32,6 +32,33 @@ class OpenCodePanelCoordinatorTest {
     }
 
     @Test
+    fun transfersFromToolWindowToEditorAndRefreshesBothContainers() {
+        onEdt {
+            val panel = TestPanel()
+            val toolWindow = TrackingPlacement("tool-window")
+            val editor = TrackingPlacement("editor")
+            val coordinator = coordinator(panel)
+            coordinator.registerPlacement(toolWindow.id, toolWindow.container, toolWindow.placeholder)
+            coordinator.registerPlacement(editor.id, editor.container, editor.placeholder)
+
+            coordinator.place(toolWindow.id)
+            val previousToolWindowRepaints = toolWindow.repaintCount
+            val previousToolWindowRevalidations = toolWindow.revalidateCount
+            val previousEditorRepaints = editor.repaintCount
+            val previousEditorRevalidations = editor.revalidateCount
+
+            coordinator.place(editor.id)
+
+            assertSame(panel.component, editor.container.singleChild())
+            assertSame(toolWindow.placeholder, toolWindow.container.singleChild())
+            assertTrue(toolWindow.repaintCount > previousToolWindowRepaints)
+            assertTrue(toolWindow.revalidateCount > previousToolWindowRevalidations)
+            assertTrue(editor.repaintCount > previousEditorRepaints)
+            assertTrue(editor.revalidateCount > previousEditorRevalidations)
+        }
+    }
+
+    @Test
     fun inactivePlacementsShowPlaceholdersWhenTheActivePlacementChanges() {
         onEdt {
             val panel = TestPanel()
