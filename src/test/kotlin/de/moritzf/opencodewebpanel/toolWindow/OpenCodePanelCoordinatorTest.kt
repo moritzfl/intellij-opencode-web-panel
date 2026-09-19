@@ -95,6 +95,23 @@ class OpenCodePanelCoordinatorTest {
     }
 
     @Test
+    fun unregisteringAHostParksButDoesNotDisposeTheSharedPanel() {
+        onEdt {
+            val panel = TestPanel()
+            val toolWindow = TestPlacement("tool-window")
+            val parking = JPanel()
+            val coordinator = coordinator(panel, parking)
+            coordinator.registerPlacement(toolWindow.id, toolWindow.container, toolWindow.placeholder)
+            coordinator.place(toolWindow.id)
+
+            coordinator.unregisterPlacement(toolWindow.id)
+
+            assertSame(panel.component, parking.singleChild())
+            assertFalse(panel.disposed)
+        }
+    }
+
+    @Test
     fun parkingInvalidatesPendingPlacement() {
         onEdt {
             val panel = TestPanel()

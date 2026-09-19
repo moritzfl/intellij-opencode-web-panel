@@ -149,16 +149,13 @@ internal class OpenCodePanelCoordinator private constructor(
         val previous = panel
         if (activeHost == null && placements.values.none { it.host != null }) return
         val liveBackendId = OpenCodeServerBackendRegistry.getInstance().backendFor(project).backendId
-        val sessionId = previous
-            ?.let { current -> runCatching { current.displayedSessionID() }.getOrNull() }
-            ?.takeIf { previous.backendId() == liveBackendId }
-        val replacement = createPanel(sessionId) ?: return
+        val replacement = createPanel(sessionId = null) ?: return
         if (previous == null) {
             panel = replacement
             panelComponent = replacement.getContent()
             failureComponent = null
             render()
-            replacement.openSession(sessionId)
+            replacement.openSession(null)
             return
         }
 
@@ -184,14 +181,14 @@ internal class OpenCodePanelCoordinator private constructor(
                 failureComponent = null
                 render()
                 Disposer.dispose(previous)
-                replacement.openSession(sessionId)
+                replacement.openSession(null)
             }
         }
     }
 
     fun showFailure() {
         requireEdt()
-        if (disposed) return
+        if (disposed || replacementPending) return
         panel?.let(Disposer::dispose)
         panel = null
         panelComponent = null

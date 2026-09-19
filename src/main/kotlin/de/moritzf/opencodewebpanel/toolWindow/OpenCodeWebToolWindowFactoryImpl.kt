@@ -29,12 +29,13 @@ internal fun updateOpenCodeToolWindowHeading(toolWindow: ToolWindow) {
 @JvmDefaultWithoutCompatibility
 class OpenCodeWebToolWindowFactoryImpl : ToolWindowFactory, DumbAware {
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
-        // Build content + disposer on this call (typically EDT) so a fast project close cannot
-        // orphan JCEF before an invokeLater runs. Only the initial server/page load is deferred.
+        // Build the host shell on this call (typically EDT) so a fast project close cannot orphan
+        // the shared panel before an invokeLater runs. Only the initial server/page load is deferred.
+        val panelAlreadyExists = OpenCodePanelCoordinator.getInstance(project).panel() != null
         val toolWindowContent = installOpenCodeToolWindowContent(toolWindow)
         updateOpenCodeToolWindowHeading(toolWindow)
         installTitleActions(toolWindow)
-        if (toolWindowContent == null) return
+        if (toolWindowContent == null || panelAlreadyExists) return
         ApplicationManager.getApplication().invokeLater {
             if (project.isDisposed || toolWindow.isDisposed || project != toolWindow.project) {
                 return@invokeLater
