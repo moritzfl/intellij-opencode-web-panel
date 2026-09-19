@@ -82,6 +82,7 @@ class OpenCodeJcefPanelTransferTest {
                     panelCoordinator.place("first")
                 }
 
+                val route = server.origin + "/server/transfer/session/ses_transfer"
                 val mainFrameLoads = AtomicInteger()
                 browser.jbCefClient.addLoadHandler(
                     object : CefLoadHandlerAdapter() {
@@ -90,7 +91,7 @@ class OpenCodeJcefPanelTransferTest {
                             frame: CefFrame?,
                             transitionType: CefRequest.TransitionType?,
                         ) {
-                            if (frame?.isMain == true && frame.url.startsWith(server.origin)) {
+                            if (frame?.isMain == true && frame.url == route) {
                                 mainFrameLoads.incrementAndGet()
                             }
                         }
@@ -102,7 +103,6 @@ class OpenCodeJcefPanelTransferTest {
                     browser.cefBrowser,
                 )
 
-                val route = server.origin + "/server/transfer/session/ses_transfer"
                 OpenCodeJcefTestHelper.invokeAndWaitForLoad(browser, route) {
                     browser.loadURL(route)
                 }
@@ -128,6 +128,7 @@ class OpenCodeJcefPanelTransferTest {
                     })()
                     """.trimIndent(),
                 )
+                assertEquals("321", OpenCodeJcefTestHelper.evaluateString(browser, "String(window.scrollY)"))
                 val urlBeforeTransfer = browser.cefBrowser.url
 
                 SwingUtilities.invokeAndWait {
@@ -135,6 +136,13 @@ class OpenCodeJcefPanelTransferTest {
                 }
 
                 assertSame(browser.component, secondContainer.getComponent(0))
+                val callbackScript = checkNotNull(query.inject("'transfer-survived'"))
+                browser.cefBrowser.executeJavaScript(callbackScript, browser.cefBrowser.url, 0)
+                assertTrue(callback.await(OpenCodeJcefTestHelper.WAIT_BROWSER_SECONDS, TimeUnit.SECONDS))
+                val settleDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2)
+                OpenCodeJcefTestHelper.awaitCondition("waiting for late transfer load callbacks") {
+                    System.nanoTime() >= settleDeadline
+                }
                 assertEquals(urlBeforeTransfer, browser.cefBrowser.url)
                 assertEquals(route, browser.cefBrowser.url)
                 assertEquals(1, mainFrameLoads.get())
@@ -145,10 +153,6 @@ class OpenCodeJcefPanelTransferTest {
                         "JSON.stringify({marker: document.body.dataset.transferMarker, draft: document.getElementById('transfer-draft').value, scroll: window.scrollY})",
                     ),
                 )
-
-                val callbackScript = checkNotNull(query.inject("'transfer-survived'"))
-                browser.cefBrowser.executeJavaScript(callbackScript, browser.cefBrowser.url, 0)
-                assertTrue(callback.await(OpenCodeJcefTestHelper.WAIT_BROWSER_SECONDS, TimeUnit.SECONDS))
                 assertEquals("transfer-survived", callbackPayload.get())
             } finally {
                 SwingUtilities.invokeAndWait {
