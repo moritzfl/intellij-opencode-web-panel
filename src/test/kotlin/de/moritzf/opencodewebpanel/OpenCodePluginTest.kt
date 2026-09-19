@@ -17,12 +17,15 @@ import de.moritzf.opencodewebpanel.toolWindow.OpenCodeEditorFileEditorProvider
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodeEditorVirtualFile
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodeOpenInEditorAction
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodeWebToolWindowFactoryImpl
+import de.moritzf.opencodewebpanel.toolWindow.editorReplacementSessionId
 import de.moritzf.opencodewebpanel.toolWindow.openCodeInEditorAndCollapse
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.KeyboardShortcut
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.fileEditor.FileEditorPolicy
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.util.SystemInfo
+import com.intellij.testFramework.LightVirtualFile
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import java.awt.event.InputEvent
 import java.awt.event.KeyEvent
@@ -118,8 +121,27 @@ class OpenCodePluginTest : BasePlatformTestCase() {
         val file = OpenCodeEditorVirtualFile(project, "ses_test")
 
         assertTrue(provider.accept(project, file))
+        assertFalse(provider.accept(project, LightVirtualFile("other")))
         assertEquals("opencode.editor", provider.editorTypeId)
+        assertEquals(FileEditorPolicy.HIDE_DEFAULT_EDITOR, provider.policy)
         assertEquals("Open in Editor", OpenCodeOpenInEditorAction().templatePresentation.text)
+    }
+
+    fun testEditorReplacementSessionRequiresTheLiveBackend() {
+        assertEquals("ses_test", editorReplacementSessionId("backend-a", "backend-a", "ses_test"))
+        assertNull(editorReplacementSessionId("backend-a", "backend-b", "ses_test"))
+    }
+
+    fun testEditorVirtualFileKeepsProjectScopedSessionState() {
+        val file = OpenCodeEditorVirtualFile(project, "ses_test")
+
+        assertSame(project, file.owner)
+        assertEquals("ses_test", file.sessionId)
+        assertTrue(file.isValid)
+
+        file.sessionId = null
+
+        assertNull(file.sessionId)
     }
 
     fun testOpenInEditorCollapsesToolWindowAfterOpeningEditor() {

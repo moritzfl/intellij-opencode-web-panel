@@ -8,6 +8,8 @@ import com.intellij.openapi.fileEditor.FileEditorProvider
 import com.intellij.openapi.fileEditor.FileEditorState
 import com.intellij.openapi.fileEditor.FileEditorLocation
 import com.intellij.openapi.fileTypes.PlainTextFileType
+import com.intellij.openapi.diagnostic.Logger
+import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.UserDataHolderBase
@@ -15,7 +17,7 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.wm.WindowManager
 import com.intellij.testFramework.LightVirtualFile
 import com.intellij.util.ui.components.BorderLayoutPanel
-import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
+import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
 import java.beans.PropertyChangeListener
 import java.beans.PropertyChangeSupport
 import javax.swing.JComponent
@@ -110,7 +112,7 @@ internal class OpenCodeEditorFileEditor(
     }
 
     private fun createPanel(sessionId: String?) {
-        val created = runCatching { OpenCodeWebToolWindowContent(host, sessionId) }.getOrNull()
+        val created = createPanelContent(sessionId)
         panel = created
         if (created == null) {
             showFailure()
@@ -141,14 +143,15 @@ internal class OpenCodeEditorFileEditor(
             panel?.openSession(file.sessionId)
             return
         }
-        val currentUrl = previous.currentPageUrl()
-        val onOpenCodePage = previous.openCodeServerUrl()?.let { serverUrl ->
-            OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, currentUrl)
-        } == true
-        val sessionId = if (onOpenCodePage) previous.displayedSessionID() else file.sessionId
+        val liveBackendId = OpenCodeServerBackendRegistry.getInstance().backendFor(project).backendId
+        val sessionId = editorReplacementSessionId(
+            previous.backendId(),
+            liveBackendId,
+            runCatching { previous.displayedSessionID() }.getOrNull(),
+        )
         file.sessionId = sessionId
         replacementPending = true
-        val replacement = runCatching { OpenCodeWebToolWindowContent(host, sessionId) }.getOrNull()
+        val replacement = createPanelContent(sessionId)
         if (replacement == null) {
             replacementPending = false
             return
@@ -164,6 +167,11 @@ internal class OpenCodeEditorFileEditor(
                     Disposer.dispose(replacement)
                     return@invokeLater
                 }
+                if (OpenCodeServerBackendRegistry.getInstance().backendFor(project).backendId != liveBackendId) {
+                    Disposer.dispose(replacement)
+                    replacePanel()
+                    return@invokeLater
+                }
                 panel = replacement
                 root.removeAll()
                 root.addToCenter(replacement.getContent())
@@ -172,6 +180,18 @@ internal class OpenCodeEditorFileEditor(
                 Disposer.dispose(previous)
                 replacement.openSession(file.sessionId)
             }
+        }
+    }
+
+    private fun createPanelContent(sessionId: String?): OpenCodeWebToolWindowContent? {
+        return try {
+            OpenCodeWebToolWindowContent(host, sessionId)
+        } catch (e: ProcessCanceledException) {
+            throw e
+        } catch (e: Throwable) {
+            Logger.getInstance(OpenCodeEditorFileEditor::class.java)
+                .warn("Could not create the OpenCode editor panel; showing the recovery card", e)
+            null
         }
     }
 
@@ -218,3 +238,9 @@ internal class OpenCodeEditorFileEditor(
     internal val isDisposed: Boolean
         get() = disposed || project.isDisposed
 }
+
+internal fun editorReplacementSessionId(
+    previousBackendId: String,
+    liveBackendId: String,
+    previousSessionId: String?,
+): String? = previousSessionId.takeIf { previousBackendId == liveBackendId }
