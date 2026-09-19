@@ -18,6 +18,7 @@ import de.moritzf.opencodewebpanel.toolWindow.OpenCodeEditorFileEditorProvider
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodeEditorManager
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodeEditorVirtualFile
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodeOpenInEditorAction
+import de.moritzf.opencodewebpanel.toolWindow.OpenCodePanelCoordinator
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodeWebToolWindowFactoryImpl
 import de.moritzf.opencodewebpanel.toolWindow.editorFileToCloseOnToolWindowShown
 import com.intellij.openapi.actionSystem.ActionManager
@@ -39,6 +40,7 @@ import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import javax.swing.JPanel
 
 class OpenCodePluginTest : BasePlatformTestCase() {
 
@@ -138,6 +140,43 @@ class OpenCodePluginTest : BasePlatformTestCase() {
             assertSame(file, editor.getFile())
         } finally {
             editor.dispose()
+        }
+    }
+
+    fun testEditorShellsShareOneComponentAndInactiveEditorsShowPlaceholders() {
+        val sharedComponent = JPanel()
+        val coordinator = OpenCodePanelCoordinator(
+            panelComponent = sharedComponent,
+            disposePanel = {},
+            parkingContainer = JPanel(),
+        )
+        val file = OpenCodeEditorVirtualFile(project, "ses_test")
+
+        val first = OpenCodeEditorFileEditor(
+            project,
+            file,
+            initializePanel = false,
+            panelCoordinator = coordinator,
+        )
+        val second = OpenCodeEditorFileEditor(
+            project,
+            file,
+            initializePanel = false,
+            panelCoordinator = coordinator,
+        )
+
+        try {
+            first.selectNotify()
+            assertSame(sharedComponent, first.component.getComponent(0))
+            assertFalse(second.component.getComponent(0) === sharedComponent)
+
+            second.selectNotify()
+            assertSame(sharedComponent, second.component.getComponent(0))
+            assertFalse(first.component.getComponent(0) === sharedComponent)
+        } finally {
+            first.dispose()
+            second.dispose()
+            coordinator.dispose()
         }
     }
 

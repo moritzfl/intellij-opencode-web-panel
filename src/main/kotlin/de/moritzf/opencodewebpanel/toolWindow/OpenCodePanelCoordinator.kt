@@ -96,6 +96,10 @@ internal class OpenCodePanelCoordinator private constructor(
 
     fun isPlacementRegistered(id: String): Boolean = placements.containsKey(id)
 
+    fun isPlacementActive(id: String): Boolean = activePlacement == id
+
+    fun hasPanelComponent(): Boolean = panelComponent != null || failureComponent != null
+
     fun panel(): OpenCodeWebToolWindowContent? = panel
 
     fun panelFor(host: OpenCodePanelHost, sessionId: String?): OpenCodeWebToolWindowContent? {

@@ -145,32 +145,43 @@ internal class OpenCodeEditorFileEditor(
     val project: Project,
     private val file: OpenCodeEditorVirtualFile,
     private val initializePanel: Boolean = true,
+    panelCoordinator: OpenCodePanelCoordinator? = null,
 ) : UserDataHolderBase(), FileEditor {
     private val propertyChangeSupport = PropertyChangeSupport(this)
     private val root = BorderLayoutPanel()
-    private val coordinator = OpenCodePanelCoordinator.getInstance(project)
+    private val coordinator = panelCoordinator ?: OpenCodePanelCoordinator.getInstance(project)
     private val placementId = "editor:${System.identityHashCode(this)}"
     private val placeholder = JPanel()
     private val host = OpenCodeEditorHost(this, coordinator)
     private var disposed = false
 
     init {
-        if (initializePanel) createPanel(file.sessionId)
+        coordinator.registerPlacement(placementId, root, placeholder, host)
+        if (initializePanel && coordinator.placeIfUnoccupied(placementId)) {
+            requestPanel(file.sessionId, openSession = true)
+        }
     }
 
-    private fun createPanel(sessionId: String?) {
-        coordinator.registerPlacement(placementId, root, placeholder, host)
-        val created = coordinator.panelFor(host, sessionId)
+    private fun requestPanel(sessionId: String?, openSession: Boolean) {
+        val panel = coordinator.panelForActivePlacement(placementId, host, sessionId)
+        if (panel == null && !coordinator.hasPanelComponent()) {
+            coordinator.showFailure()
+        } else if (openSession) {
+            panel?.openSession(sessionId)
+        }
+    }
+
+    override fun selectNotify() {
+        if (disposed) return
         coordinator.place(placementId)
-        if (created == null) coordinator.showFailure() else created.openSession(sessionId)
+        requestPanel(file.sessionId, openSession = false)
     }
 
     internal fun openSession(sessionId: String?) {
         if (disposed) return
         file.sessionId = sessionId
-        if (coordinator.isPlacementRegistered(placementId)) {
-            coordinator.place(placementId)
-            coordinator.panel()?.openSession(sessionId)
+        if (coordinator.isPlacementRegistered(placementId) && coordinator.isPlacementActive(placementId)) {
+            requestPanel(sessionId, openSession = true)
         }
     }
 
