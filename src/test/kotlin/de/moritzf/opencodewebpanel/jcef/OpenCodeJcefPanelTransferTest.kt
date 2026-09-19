@@ -5,14 +5,14 @@ import com.intellij.testFramework.DisposableRule
 import com.intellij.ui.jcef.JBCefBrowser
 import de.moritzf.opencodewebpanel.browser.OpenCodeJsQuery
 import de.moritzf.opencodewebpanel.browser.createOpenCodeBrowserBeforeReplacement
+import de.moritzf.opencodewebpanel.toolWindow.OpenCodeEditorFileEditor
+import de.moritzf.opencodewebpanel.toolWindow.OpenCodeEditorVirtualFile
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodePanelHandle
-import de.moritzf.opencodewebpanel.toolWindow.OpenCodePanelHost
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodePanelCoordinator
 import org.cef.browser.CefBrowser
 import org.cef.browser.CefFrame
 import org.cef.handler.CefLoadHandlerAdapter
 import org.cef.network.CefRequest
-import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.util.Disposer
 import org.junit.Assert.assertEquals
@@ -24,6 +24,7 @@ import org.junit.Rule
 import org.junit.Test
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import javax.swing.JFrame
@@ -64,6 +65,9 @@ class OpenCodeJcefPanelTransferTest {
             )
             val callbackPayload = AtomicReference<String>()
             val callback = CountDownLatch(1)
+            val transferBarrier = CountDownLatch(1)
+            val transferLoadAttempts = AtomicInteger()
+            val transferStarted = AtomicBoolean()
 
             try {
                 SwingUtilities.invokeAndWait {
@@ -72,7 +76,10 @@ class OpenCodeJcefPanelTransferTest {
                     assertTrue("JCEF callback channel creation", query.isAvailable)
                     query.addHandler {
                         callbackPayload.set(it)
-                        callback.countDown()
+                        when (it) {
+                            "transfer-barrier" -> transferBarrier.countDown()
+                            "transfer-survived" -> callback.countDown()
+                        }
                         null
                     }
 
@@ -111,6 +118,7 @@ class OpenCodeJcefPanelTransferTest {
                         ) {
                             if (frame?.isMain == true && frame.url == route) {
                                 mainFrameLoads.incrementAndGet()
+                                if (transferStarted.get()) transferLoadAttempts.incrementAndGet()
                             }
                         }
                     },
@@ -151,35 +159,45 @@ class OpenCodeJcefPanelTransferTest {
                 assertEquals("321", OpenCodeJcefTestHelper.evaluateString(browser, "String(window.scrollY)"))
                 assertEquals("transfer-draft", OpenCodeJcefTestHelper.evaluateString(browser, "document.activeElement.id"))
                 val urlBeforeTransfer = browser.cefBrowser.url
+                val containers = linkedMapOf(
+                    "tool-window" to toolWindowContainer,
+                    "editor-one" to firstEditorContainer,
+                    "editor-two" to secondEditorContainer,
+                )
+                fun assertPlacementState(activeId: String) {
+                    assertEquals(
+                        1,
+                        containers.values.count { it.componentCount == 1 && it.getComponent(0) === browser.component },
+                    )
+                    containers.forEach { (id, container) ->
+                        assertEquals("$id should have exactly one child", 1, container.componentCount)
+                        if (id == activeId) {
+                            assertSame(browser.component, container.getComponent(0))
+                        } else {
+                            assertSame(placeholders.getValue(id), container.getComponent(0))
+                        }
+                    }
+                }
+                assertPlacementState("tool-window")
+                transferStarted.set(true)
 
                 listOf("editor-one", "tool-window", "editor-two", "editor-one", "tool-window").forEach { target ->
                     SwingUtilities.invokeAndWait {
                         coordinator!!.place(target)
-                        val liveContainer = when (target) {
-                            "tool-window" -> toolWindowContainer
-                            "editor-one" -> firstEditorContainer
-                            else -> secondEditorContainer
-                        }
-                        assertSame(browser.component, liveContainer.getComponent(0))
-                        placeholders.filterKeys { it != target }.forEach { (id, placeholder) ->
-                            val container = when (id) {
-                                "tool-window" -> toolWindowContainer
-                                "editor-one" -> firstEditorContainer
-                                else -> secondEditorContainer
-                            }
-                            assertSame(placeholder, container.getComponent(0))
-                        }
+                        assertPlacementState(target)
                     }
                     assertEquals("transfer-draft", OpenCodeJcefTestHelper.evaluateString(browser, "document.activeElement.id"))
                 }
 
+                val barrierScript = checkNotNull(query.inject("'transfer-barrier'"))
+                browser.cefBrowser.executeJavaScript(barrierScript, browser.cefBrowser.url, 0)
+                assertTrue(transferBarrier.await(OpenCodeJcefTestHelper.WAIT_BROWSER_SECONDS, TimeUnit.SECONDS))
+                assertEquals(0, transferLoadAttempts.get())
+                assertEquals(1, mainFrameLoads.get())
+
                 val callbackScript = checkNotNull(query.inject("'transfer-survived'"))
                 browser.cefBrowser.executeJavaScript(callbackScript, browser.cefBrowser.url, 0)
                 assertTrue(callback.await(OpenCodeJcefTestHelper.WAIT_BROWSER_SECONDS, TimeUnit.SECONDS))
-                val settleDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2)
-                OpenCodeJcefTestHelper.awaitCondition("waiting for late transfer load callbacks") {
-                    System.nanoTime() >= settleDeadline
-                }
                 assertEquals(urlBeforeTransfer, browser.cefBrowser.url)
                 assertEquals(route, browser.cefBrowser.url)
                 assertEquals(1, mainFrameLoads.get())
@@ -207,16 +225,7 @@ class OpenCodeJcefPanelTransferTest {
     fun replacementAfterTransferAttachesTheReadyBrowserToTheCurrentHost() {
         OpenCodeJcefTestServer().use { server ->
             val route = server.origin + "/server/transfer/session/ses_replacement"
-            val host = object : OpenCodePanelHost {
-                override val project: Project
-                    get() = ProjectManager.getInstance().defaultProject
-
-                override fun isDisposed(): Boolean = false
-
-                override fun replacePanel() = Unit
-
-                override fun showFailure() = Unit
-            }
+            val project = ProjectManager.getInstance().defaultProject
             lateinit var initial: BrowserPanel
             lateinit var successor: BrowserPanel
             val successorTransferred = CountDownLatch(1)
@@ -224,10 +233,9 @@ class OpenCodeJcefPanelTransferTest {
             lateinit var firstFrame: JFrame
             lateinit var secondFrame: JFrame
             var framesCreated = false
-            val toolWindowContainer = JPanel()
-            val editorContainer = JPanel()
-            val toolWindowPlaceholder = JPanel()
-            val editorPlaceholder = JPanel()
+            var firstEditor: OpenCodeEditorFileEditor? = null
+            var secondEditor: OpenCodeEditorFileEditor? = null
+            lateinit var targetPlaceholder: java.awt.Component
 
             fun newPanel(onTransferred: () -> Unit = {}): BrowserPanel {
                 val panelBrowser = OpenCodeJcefTestHelper.createBrowser(disposableRule.disposable)
@@ -246,8 +254,6 @@ class OpenCodeJcefPanelTransferTest {
                     framesCreated = true
                     firstFrame.setSize(640, 480)
                     secondFrame.setSize(640, 480)
-                    firstFrame.add(toolWindowContainer)
-                    secondFrame.add(editorContainer)
                     firstFrame.setLocation(0, 0)
                     secondFrame.setLocation(660, 0)
                     firstFrame.isVisible = true
@@ -260,31 +266,49 @@ class OpenCodeJcefPanelTransferTest {
                         newPanel { successorTransferred.countDown() }.also { successor = it }
                     }
                     coordinator = panelCoordinator
-                    panelCoordinator.registerPlacement("tool-window", toolWindowContainer, toolWindowPlaceholder, host)
-                    panelCoordinator.registerPlacement("editor", editorContainer, editorPlaceholder, host)
-                    panelCoordinator.place("tool-window")
+                    val file = OpenCodeEditorVirtualFile(project, "ses_replacement")
+                    val source = OpenCodeEditorFileEditor(
+                        project,
+                        file,
+                        initializePanel = false,
+                        panelCoordinator = panelCoordinator,
+                    )
+                    val target = OpenCodeEditorFileEditor(
+                        project,
+                        file,
+                        initializePanel = false,
+                        panelCoordinator = panelCoordinator,
+                    )
+                    firstEditor = source
+                    secondEditor = target
+                    targetPlaceholder = target.component.getComponent(0)
+                    firstFrame.add(source.component)
+                    secondFrame.add(target.component)
+                    source.selectNotify()
                 }
 
                 OpenCodeJcefTestHelper.invokeAndWaitForLoad(initial.browser, route) {
                     initial.browser.loadURL(route)
                 }
                 val activeCoordinator = checkNotNull(coordinator)
+                val sourceEditor = checkNotNull(firstEditor)
+                val targetEditor = checkNotNull(secondEditor)
                 SwingUtilities.invokeAndWait {
-                    activeCoordinator.place("editor")
-                    assertSame(initial.component, editorContainer.getComponent(0))
+                    targetEditor.selectNotify()
+                    assertSame(initial.component, targetEditor.component.getComponent(0))
                     activeCoordinator.replacePanel()
-                    activeCoordinator.place("tool-window")
-                    assertSame(initial.component, toolWindowContainer.getComponent(0))
-                    assertSame(editorPlaceholder, editorContainer.getComponent(0))
+                    sourceEditor.selectNotify()
+                    assertSame(initial.component, sourceEditor.component.getComponent(0))
                 }
 
                 OpenCodeJcefTestHelper.await(successorTransferred, "waiting for replacement transfer")
                 OpenCodeJcefTestHelper.await(successor.loaded, "waiting for replacement page load")
                 SwingUtilities.invokeAndWait {
-                    assertSame(successor.component, toolWindowContainer.getComponent(0))
-                    assertSame(editorPlaceholder, editorContainer.getComponent(0))
+                    assertSame(successor.component, sourceEditor.component.getComponent(0))
+                    assertEquals(1, targetEditor.component.componentCount)
+                    assertSame(targetPlaceholder, targetEditor.component.getComponent(0))
                     assertTrue(initial.disposed)
-                    assertTrue(activeCoordinator.isPlacementActive("tool-window"))
+                    assertTrue(activeCoordinator.isPlacementActive("editor:${System.identityHashCode(sourceEditor)}"))
                 }
                 assertEquals(1, initial.loadCount.get())
                 assertEquals(1, successor.loadCount.get())
@@ -292,6 +316,8 @@ class OpenCodeJcefPanelTransferTest {
             } finally {
                 SwingUtilities.invokeAndWait {
                     coordinator?.dispose()
+                    firstEditor?.dispose()
+                    secondEditor?.dispose()
                     if (framesCreated) {
                         firstFrame.dispose()
                         secondFrame.dispose()
