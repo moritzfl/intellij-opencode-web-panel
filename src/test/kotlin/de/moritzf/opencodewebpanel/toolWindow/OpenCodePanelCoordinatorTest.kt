@@ -1,5 +1,7 @@
 package de.moritzf.opencodewebpanel.toolWindow
 
+import com.intellij.openapi.util.IconLoader
+import com.intellij.ui.BadgeIconSupplier
 import java.awt.Component
 import javax.swing.JPanel
 import javax.swing.SwingUtilities
@@ -82,6 +84,73 @@ class OpenCodePanelCoordinatorTest {
                 assertTrue(placement.repaintCount > previousRepaints[index])
                 assertTrue(placement.revalidateCount > previousRevalidations[index])
             }
+        }
+    }
+
+    @Test
+    fun hostOperationsFollowTheActivePlacement() {
+        onEdt {
+            val panel = TestPanel()
+            val firstHost = TrackingHost()
+            val secondHost = TrackingHost()
+            val first = TestPlacement("first")
+            val second = TestPlacement("second")
+            val coordinator = coordinator(panel)
+            coordinator.registerPlacement(first.id, first.container, first.placeholder, firstHost)
+            coordinator.registerPlacement(second.id, second.container, second.placeholder, secondHost)
+            val icons = BadgeIconSupplier(
+                IconLoader.getIcon("/icons/opencode.svg", OpenCodeWebToolWindowContent::class.java),
+            )
+
+            coordinator.place(first.id)
+            coordinator.isActive(panel.component)
+            coordinator.isPanelInView(panel.component)
+            coordinator.activate(panel.component) {}
+            coordinator.updateHeading()
+            coordinator.updateAgentStatus("busy", icons)
+
+            assertEquals(1, firstHost.activeCalls)
+            assertEquals(1, firstHost.inViewCalls)
+            assertEquals(1, firstHost.activateCalls)
+            assertEquals(1, firstHost.headingCalls)
+            assertEquals(1, firstHost.statusCalls)
+            assertEquals(0, secondHost.totalCalls())
+
+            coordinator.place(second.id)
+            coordinator.isActive(panel.component)
+            coordinator.isPanelInView(panel.component)
+            coordinator.activate(panel.component) {}
+            coordinator.updateHeading()
+            coordinator.updateAgentStatus("idle", icons)
+
+            assertEquals(5, firstHost.totalCalls())
+            assertEquals(1, secondHost.activeCalls)
+            assertEquals(1, secondHost.inViewCalls)
+            assertEquals(1, secondHost.activateCalls)
+            assertEquals(1, secondHost.headingCalls)
+            assertEquals(1, secondHost.statusCalls)
+        }
+    }
+
+    @Test
+    fun failureCardStaysInTheActivePlacement() {
+        onEdt {
+            val panel = TestPanel()
+            val first = TestPlacement("first")
+            val second = TestPlacement("second")
+            val coordinator = coordinator(panel)
+            coordinator.registerPlacement(first.id, first.container, first.placeholder, TrackingHost())
+            coordinator.registerPlacement(second.id, second.container, second.placeholder, TrackingHost())
+
+            coordinator.place(first.id)
+            coordinator.showFailure()
+            assertFalse(first.container.singleChild() === first.placeholder)
+            assertSame(second.placeholder, second.container.singleChild())
+
+            coordinator.place(second.id)
+
+            assertSame(first.placeholder, first.container.singleChild())
+            assertFalse(second.container.singleChild() === second.placeholder)
         }
     }
 
@@ -247,7 +316,7 @@ class OpenCodePanelCoordinatorTest {
                 existingPanel = coordinator::panel,
                 createPanel = {
                     panelForCalled = true
-                    coordinator.panelForActivePlacement("tool-window", toolWindowHost, sessionId = null)
+                    coordinator.panelForActivePlacement("tool-window", sessionId = null)
                 },
             )
             assertFalse(panelForCalled)
@@ -388,6 +457,48 @@ class OpenCodePanelCoordinatorTest {
         override fun replacePanel() = Unit
 
         override fun showFailure() = Unit
+    }
+
+    private class TrackingHost : OpenCodePanelHost {
+        override val project: com.intellij.openapi.project.Project
+            get() = error("Test host project is not used")
+
+        var activeCalls = 0
+        var inViewCalls = 0
+        var activateCalls = 0
+        var headingCalls = 0
+        var statusCalls = 0
+
+        override fun isDisposed(): Boolean = false
+
+        override fun isActive(component: javax.swing.JComponent): Boolean {
+            activeCalls++
+            return true
+        }
+
+        override fun isPanelInView(component: javax.swing.JComponent): Boolean {
+            inViewCalls++
+            return true
+        }
+
+        override fun activate(component: javax.swing.JComponent, action: () -> Unit) {
+            activateCalls++
+            action()
+        }
+
+        override fun replacePanel() = Unit
+
+        override fun showFailure() = Unit
+
+        override fun updateHeading() {
+            headingCalls++
+        }
+
+        override fun updateAgentStatus(state: String, icons: BadgeIconSupplier) {
+            statusCalls++
+        }
+
+        fun totalCalls(): Int = activeCalls + inViewCalls + activateCalls + headingCalls + statusCalls
     }
 
     private fun JPanel.singleChild(): Component {

@@ -35,7 +35,6 @@ internal class OpenCodePanelCoordinator private constructor(
     private val placements = linkedMapOf<String, Placement>()
     private var panelComponent: Component? = initialPanelComponent
     private var panel: OpenCodeWebToolWindowContent? = null
-    private var activeHost: OpenCodePanelHost? = null
     private var failureComponent: Component? = null
     private var activePlacement: String? = null
     private var generation = 0L
@@ -87,7 +86,6 @@ internal class OpenCodePanelCoordinator private constructor(
         placements.remove(id) ?: return
         if (wasActive) {
             activePlacement = null
-            activeHost = null
             generation++
         }
         render()
@@ -120,7 +118,7 @@ internal class OpenCodePanelCoordinator private constructor(
 
     fun panel(): OpenCodeWebToolWindowContent? = panel
 
-    fun panelFor(host: OpenCodePanelHost, sessionId: String?): OpenCodeWebToolWindowContent? {
+    fun panelFor(sessionId: String?): OpenCodeWebToolWindowContent? {
         requireEdt()
         check(!disposed) { "OpenCodePanelCoordinator is disposed" }
         panel?.let { return it }
@@ -129,20 +127,18 @@ internal class OpenCodePanelCoordinator private constructor(
         panel = created
         panelComponent = created.getContent()
         failureComponent = null
-        activeHost = host
         return created
     }
 
     fun panelForActivePlacement(
         placementId: String,
-        host: OpenCodePanelHost,
         sessionId: String?,
     ): OpenCodeWebToolWindowContent? {
         requireEdt()
         check(!disposed) { "OpenCodePanelCoordinator is disposed" }
         check(placements.containsKey(placementId)) { "Unknown placement: $placementId" }
         if (activePlacement != placementId) return panel
-        return panelFor(host, sessionId)
+        return panelFor(sessionId)
     }
 
     fun place(id: String) {
@@ -172,7 +168,6 @@ internal class OpenCodePanelCoordinator private constructor(
         if (disposed || generation != placementGeneration || !placements.containsKey(id)) return false
         val moved = activePlacement != id
         activePlacement = id
-        activeHost = placements[id]?.host ?: activeHost
         render()
         if (moved) panel?.onPlacementTransferred()
         return true
@@ -183,7 +178,6 @@ internal class OpenCodePanelCoordinator private constructor(
         check(!disposed) { "OpenCodePanelCoordinator is disposed" }
         generation++
         activePlacement = null
-        activeHost = null
         render()
         parkPanel()
     }
@@ -193,7 +187,7 @@ internal class OpenCodePanelCoordinator private constructor(
         requireEdt()
         if (disposed || replacementPending || project == null) return
         val previous = panel
-        if (activeHost == null && placements.values.none { it.host != null }) return
+        if (currentHost() == null && placements.values.none { it.host != null }) return
         val liveBackendId = OpenCodeServerBackendRegistry.getInstance().backendFor(project).backendId
         val replacement = createPanel(sessionId = null) ?: return
         if (previous == null) {
@@ -315,22 +309,25 @@ internal class OpenCodePanelCoordinator private constructor(
 
     private fun isDisposed(): Boolean = disposed || project?.isDisposed == true
 
-    private fun isActive(component: javax.swing.JComponent): Boolean =
-        activeHost?.isActive(component) == true
+    private fun currentHost(): OpenCodePanelHost? =
+        activePlacement?.let { placements[it]?.host }
 
-    private fun isPanelInView(component: javax.swing.JComponent): Boolean =
-        activeHost?.isPanelInView(component) == true
+    internal fun isActive(component: javax.swing.JComponent): Boolean =
+        currentHost()?.isActive(component) == true
+
+    internal fun isPanelInView(component: javax.swing.JComponent): Boolean =
+        currentHost()?.isPanelInView(component) == true
 
     internal fun activate(component: javax.swing.JComponent, action: () -> Unit) {
-        activeHost?.activate(component, action) ?: action()
+        currentHost()?.activate(component, action) ?: action()
     }
 
-    private fun updateHeading() {
-        activeHost?.updateHeading()
+    internal fun updateHeading() {
+        currentHost()?.updateHeading()
     }
 
-    private fun updateAgentStatus(state: String, icons: com.intellij.ui.BadgeIconSupplier) {
-        activeHost?.updateAgentStatus(state, icons)
+    internal fun updateAgentStatus(state: String, icons: com.intellij.ui.BadgeIconSupplier) {
+        currentHost()?.updateAgentStatus(state, icons)
     }
 
     private fun requireEdt() {

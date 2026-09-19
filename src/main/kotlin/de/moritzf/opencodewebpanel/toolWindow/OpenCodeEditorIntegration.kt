@@ -167,7 +167,7 @@ internal class OpenCodeEditorFileEditor(
     }
 
     private fun requestPanel(sessionId: String?, openSession: Boolean) {
-        val panel = coordinator.panelForActivePlacement(placementId, host, sessionId)
+        val panel = coordinator.panelForActivePlacement(placementId, sessionId)
         if (panel == null && !coordinator.hasPanelComponent()) {
             coordinator.showFailure()
         } else if (openSession) {

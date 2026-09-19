@@ -222,7 +222,7 @@ internal class OpenCodeWebToolWindowContent(
     private val repaintScheduler = OpenCodeBrowserScriptScheduler(project, browser, repaintAlarm)
     private val browserFocusSync = OpenCodeBrowserFocusSync(
         component = { browser.component },
-        isActive = { !isContentDisposed() },
+        isActive = { host.isActive(browser.component) && !isContentDisposed() },
         setBrowserFocus = { browser.cefBrowser.setFocus(it) },
     )
     private var openProjectScriptScheduled = false
