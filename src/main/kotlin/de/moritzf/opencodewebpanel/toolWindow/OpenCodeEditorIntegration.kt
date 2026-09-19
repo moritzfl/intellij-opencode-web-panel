@@ -94,7 +94,9 @@ internal fun editorFileToCloseOnToolWindowShown(
     }
 }
 
-internal class OpenCodeEditorFileEditorProvider : FileEditorProvider, DumbAware {
+internal class OpenCodeEditorFileEditorProvider(
+    private val coordinatorForProject: (Project) -> OpenCodePanelCoordinator = { OpenCodePanelCoordinator.getInstance(it) },
+) : FileEditorProvider, DumbAware {
     override fun accept(project: Project, file: VirtualFile): Boolean =
         file is OpenCodeEditorVirtualFile && file.owner === project
 
@@ -102,7 +104,7 @@ internal class OpenCodeEditorFileEditorProvider : FileEditorProvider, DumbAware 
         require(file is OpenCodeEditorVirtualFile && file.owner === project) {
             "OpenCode editor file belongs to another project"
         }
-        return OpenCodeEditorFileEditor(project, file)
+        return OpenCodeEditorFileEditor(project, file, panelCoordinator = coordinatorForProject(project))
     }
 
     override fun disposeEditor(editor: FileEditor) {

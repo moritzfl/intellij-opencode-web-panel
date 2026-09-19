@@ -151,31 +151,25 @@ class OpenCodePluginTest : BasePlatformTestCase() {
             parkingContainer = JPanel(),
         )
         val file = OpenCodeEditorVirtualFile(project, "ses_test")
+        val provider = OpenCodeEditorFileEditorProvider { coordinator }
 
-        val first = OpenCodeEditorFileEditor(
-            project,
-            file,
-            initializePanel = false,
-            panelCoordinator = coordinator,
-        )
-        val second = OpenCodeEditorFileEditor(
-            project,
-            file,
-            initializePanel = false,
-            panelCoordinator = coordinator,
-        )
+        val first = provider.createEditor(project, file) as OpenCodeEditorFileEditor
+        val second = provider.createEditor(project, file) as OpenCodeEditorFileEditor
 
         try {
-            first.selectNotify()
+            first.openSession("ses_first")
+            assertEquals("ses_first", file.sessionId)
             assertSame(sharedComponent, first.component.getComponent(0))
             assertFalse(second.component.getComponent(0) === sharedComponent)
 
             second.selectNotify()
+            second.openSession("ses_second")
+            assertEquals("ses_second", file.sessionId)
             assertSame(sharedComponent, second.component.getComponent(0))
             assertFalse(first.component.getComponent(0) === sharedComponent)
         } finally {
-            first.dispose()
-            second.dispose()
+            provider.disposeEditor(first)
+            provider.disposeEditor(second)
             coordinator.dispose()
         }
     }
