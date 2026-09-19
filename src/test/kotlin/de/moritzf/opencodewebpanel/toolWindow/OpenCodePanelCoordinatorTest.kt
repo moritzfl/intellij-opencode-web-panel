@@ -7,6 +7,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class OpenCodePanelCoordinatorTest {
@@ -90,6 +91,45 @@ class OpenCodePanelCoordinatorTest {
             assertSame(panel.component, parking.singleChild())
             assertSame(toolWindow.placeholder, toolWindow.container.singleChild())
             assertFalse(panel.disposed)
+        }
+    }
+
+    @Test
+    fun parkingInvalidatesPendingPlacement() {
+        onEdt {
+            val panel = TestPanel()
+            val toolWindow = TestPlacement("tool-window")
+            val parking = JPanel()
+            val coordinator = coordinator(panel, parking)
+            coordinator.registerPlacement(toolWindow.id, toolWindow.container, toolWindow.placeholder)
+
+            val pendingGeneration = coordinator.beginPlacement(toolWindow.id)
+            coordinator.park()
+
+            assertFalse(coordinator.completePlacement(toolWindow.id, pendingGeneration))
+            assertSame(panel.component, parking.singleChild())
+            assertSame(toolWindow.placeholder, toolWindow.container.singleChild())
+        }
+    }
+
+    @Test
+    fun rejectsDuplicatePlacementIdsAndContainers() {
+        onEdt {
+            val panel = TestPanel()
+            val first = TestPlacement("first")
+            val second = TestPlacement("second")
+            val coordinator = coordinator(panel)
+            coordinator.registerPlacement(first.id, first.container, first.placeholder)
+
+            assertThrows(IllegalArgumentException::class.java) {
+                coordinator.registerPlacement(first.id, second.container, second.placeholder)
+            }
+            assertThrows(IllegalArgumentException::class.java) {
+                coordinator.registerPlacement(second.id, first.container, second.placeholder)
+            }
+
+            coordinator.place(first.id)
+            assertSame(panel.component, first.container.singleChild())
         }
     }
 

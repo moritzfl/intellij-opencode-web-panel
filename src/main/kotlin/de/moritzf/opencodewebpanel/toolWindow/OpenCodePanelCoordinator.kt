@@ -23,6 +23,10 @@ internal class OpenCodePanelCoordinator(
     fun registerPlacement(id: String, container: Container, placeholder: Component) {
         requireEdt()
         check(!disposed) { "OpenCodePanelCoordinator is disposed" }
+        require(id !in placements) { "Placement already registered: $id" }
+        require(placements.values.none { it.container === container }) {
+            "Container already registered"
+        }
         placements[id] = Placement(container, placeholder)
         render()
     }
@@ -51,6 +55,7 @@ internal class OpenCodePanelCoordinator(
     fun park() {
         requireEdt()
         check(!disposed) { "OpenCodePanelCoordinator is disposed" }
+        generation++
         activePlacement = null
         render()
         parkingContainer.removeAll()
