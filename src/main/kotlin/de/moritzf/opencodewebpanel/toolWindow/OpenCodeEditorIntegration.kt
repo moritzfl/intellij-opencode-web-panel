@@ -15,6 +15,7 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.WindowManager
 import com.intellij.openapi.wm.ex.ToolWindowManagerListener
+import com.intellij.serviceContainer.NonInjectable
 import com.intellij.testFramework.LightVirtualFile
 import com.intellij.util.messages.MessageBusConnection
 import com.intellij.util.ui.components.BorderLayoutPanel
@@ -95,9 +96,16 @@ internal fun editorFileToCloseOnToolWindowShown(
     }
 }
 
-internal class OpenCodeEditorFileEditorProvider(
-    private val coordinatorForProject: (Project) -> OpenCodePanelCoordinator = { OpenCodePanelCoordinator.getInstance(it) },
-) : FileEditorProvider, DumbAware {
+internal class OpenCodeEditorFileEditorProvider : FileEditorProvider, DumbAware {
+    private val coordinatorForProject: (Project) -> OpenCodePanelCoordinator
+
+    constructor() : this({ OpenCodePanelCoordinator.getInstance(it) })
+
+    @NonInjectable
+    internal constructor(coordinatorForProject: (Project) -> OpenCodePanelCoordinator) {
+        this.coordinatorForProject = coordinatorForProject
+    }
+
     override fun accept(project: Project, file: VirtualFile): Boolean =
         file is OpenCodeEditorVirtualFile && file.owner === project
 

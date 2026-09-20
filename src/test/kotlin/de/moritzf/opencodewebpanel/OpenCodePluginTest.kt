@@ -26,6 +26,7 @@ import de.moritzf.opencodewebpanel.toolWindow.toolWindowPlacementId
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.KeyboardShortcut
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.fileEditor.FileEditorProvider
 import com.intellij.openapi.fileEditor.FileEditorPolicy
 import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.project.DumbAware
@@ -132,6 +133,14 @@ class OpenCodePluginTest : BasePlatformTestCase() {
         assertEquals("opencode.editor", provider.editorTypeId)
         assertEquals(FileEditorPolicy.HIDE_DEFAULT_EDITOR, provider.policy)
         assertEquals("Open in Editor", OpenCodeOpenInEditorAction().templatePresentation.text)
+    }
+
+    fun testOpenCodeEditorProviderIsResolvedThroughTheFileEditorExtensionPoint() {
+        val provider = FileEditorProvider.EP_FILE_EDITOR_PROVIDER.findExtensionOrFail(
+            OpenCodeEditorFileEditorProvider::class.java,
+        )
+
+        assertTrue(provider.accept(project, OpenCodeEditorVirtualFile(project, "ses_test")))
     }
 
     fun testOpenCodeEditorExplicitlyImplementsTheFileEditorFileContract() {
