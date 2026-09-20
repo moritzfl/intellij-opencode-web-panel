@@ -6,9 +6,10 @@ import com.intellij.openapi.fileEditor.FileEditorPolicy
 import com.intellij.openapi.fileEditor.FileEditorProvider
 import com.intellij.openapi.fileEditor.FileEditorState
 import com.intellij.openapi.fileEditor.FileEditorLocation
-import com.intellij.openapi.fileTypes.PlainTextFileType
+import com.intellij.openapi.fileTypes.FileType
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.IconLoader
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.Key
 import com.intellij.openapi.util.UserDataHolderBase
@@ -25,7 +26,21 @@ import java.beans.PropertyChangeListener
 import java.beans.PropertyChangeSupport
 import javax.swing.JComponent
 
-private val OpenCodeEditorFileType = PlainTextFileType.INSTANCE
+private val OpenCodeEditorFileType = object : FileType {
+    override fun getName(): String = "OpenCode"
+
+    override fun getDescription(): String = "OpenCode session"
+
+    override fun getDefaultExtension(): String = ""
+
+    override fun getIcon() = IconLoader.getIcon("/icons/opencode.svg", OpenCodeEditorVirtualFile::class.java)
+
+    override fun isBinary(): Boolean = false
+
+    override fun isReadOnly(): Boolean = true
+
+    override fun getCharset(file: VirtualFile, content: ByteArray): String = "UTF-8"
+}
 
 internal class OpenCodeEditorVirtualFile(
     val owner: Project,
