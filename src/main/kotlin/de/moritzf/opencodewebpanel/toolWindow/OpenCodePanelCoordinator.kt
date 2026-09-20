@@ -22,6 +22,8 @@ internal interface OpenCodePanelHandle : Disposable {
     fun openSession(sessionId: String?)
 
     fun onPlacementTransferred()
+
+    fun onPlacementSelected() {}
 }
 
 /** Keeps one project panel attached while hosts come and go. All methods are EDT-only. */
@@ -131,6 +133,11 @@ internal class OpenCodePanelCoordinator private constructor(
     fun isPlacementRegistered(id: String): Boolean = placements.containsKey(id)
 
     fun isPlacementActive(id: String): Boolean = activePlacement == id
+
+    fun notifyPlacementSelected(id: String) {
+        requireEdt()
+        if (!disposed && activePlacement == id) panel?.onPlacementSelected()
+    }
 
     fun hasPanelComponent(): Boolean = panelComponent != null || failureComponent != null
 

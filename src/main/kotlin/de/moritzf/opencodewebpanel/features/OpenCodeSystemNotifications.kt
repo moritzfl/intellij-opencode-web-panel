@@ -184,6 +184,10 @@ internal class OpenCodeSystemNotifications(
         dismissNotificationsForViewedSession()
     }
 
+    fun placementBecameVisible() {
+        dismissNotificationsForViewedSession()
+    }
+
     private fun openSession(sessionID: String) {
         val serverUrl = serverManager.getServerUrl() ?: return
         if (!isProjectOpen()) return

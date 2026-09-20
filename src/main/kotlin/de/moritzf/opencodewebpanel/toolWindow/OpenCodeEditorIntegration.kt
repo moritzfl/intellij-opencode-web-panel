@@ -9,6 +9,7 @@ import com.intellij.openapi.fileEditor.FileEditorLocation
 import com.intellij.openapi.fileTypes.PlainTextFileType
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.Key
 import com.intellij.openapi.util.UserDataHolderBase
 import com.intellij.openapi.vfs.VirtualFile
@@ -117,7 +118,7 @@ internal class OpenCodeEditorFileEditorProvider : FileEditorProvider, DumbAware 
     }
 
     override fun disposeEditor(editor: FileEditor) {
-        editor.dispose()
+        Disposer.dispose(editor)
     }
 
     override fun getEditorTypeId(): String = "opencode.editor"
@@ -180,11 +181,13 @@ internal class OpenCodeEditorFileEditor(
     }
 
     private fun requestPanel(sessionId: String?, openSession: Boolean) {
+        val panelWasMissing = coordinator.panel() == null
         val panel = coordinator.panelForActivePlacement(placementId, sessionId)
         if (panel == null && !coordinator.hasPanelComponent()) {
             coordinator.showFailure()
-        } else if (openSession) {
-            panel?.openSession(sessionId)
+        } else if (panel != null) {
+            if (panelWasMissing && !openSession) panel.checkAndLoadContent()
+            if (openSession) panel.openSession(sessionId)
         }
     }
 
@@ -192,6 +195,7 @@ internal class OpenCodeEditorFileEditor(
         if (disposed) return
         coordinator.place(placementId)
         requestPanel(file.sessionId, openSession = false)
+        coordinator.notifyPlacementSelected(placementId)
     }
 
     internal fun openSession(sessionId: String?) {
@@ -222,7 +226,12 @@ internal class OpenCodeEditorFileEditor(
 
     override fun getFile(): VirtualFile = file
 
-    override fun getPreferredFocusedComponent(): JComponent = coordinator.panel()?.getContent() ?: root
+    override fun getPreferredFocusedComponent(): JComponent {
+        return coordinator.panel()
+            ?.getContent()
+            ?.takeIf { coordinator.isPlacementActive(placementId) }
+            ?: root
+    }
 
     override fun getName(): String = "OpenCode"
 

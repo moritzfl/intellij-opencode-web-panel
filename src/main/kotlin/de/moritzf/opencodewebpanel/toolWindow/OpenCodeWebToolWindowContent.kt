@@ -980,6 +980,11 @@ internal class OpenCodeWebToolWindowContent(
         browser.component.repaint()
         browser.cefBrowser.notifyScreenInfoChanged()
         browserFocusSync.reassertIfFocused()
+        systemNotifications.placementBecameVisible()
+    }
+
+    override fun onPlacementSelected() {
+        if (!isContentDisposed()) systemNotifications.placementBecameVisible()
     }
 
     private fun stillOnSamePage(expectedUrl: String?): Boolean {

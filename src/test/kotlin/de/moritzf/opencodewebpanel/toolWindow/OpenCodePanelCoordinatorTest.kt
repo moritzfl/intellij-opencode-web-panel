@@ -209,6 +209,22 @@ class OpenCodePanelCoordinatorTest {
     }
 
     @Test
+    fun selectingTheActivePlacementNotifiesThePanel() {
+        onEdt {
+            val panel = ReplacementPanel()
+            val placement = TestPlacement("editor")
+            val coordinator = OpenCodePanelCoordinator(panel, JPanel()) { panel }
+            coordinator.registerPlacement(placement.id, placement.container, placement.placeholder, testHost())
+            coordinator.place(placement.id)
+
+            coordinator.notifyPlacementSelected(placement.id)
+
+            assertEquals(1, panel.placementSelections)
+            coordinator.dispose()
+        }
+    }
+
+    @Test
     fun returningToToolWindowReappliesHeadingAndAgentStatus() {
         onEdt {
             val panel = TestPanel()
@@ -699,6 +715,7 @@ class OpenCodePanelCoordinatorTest {
         var disposed = false
         var disposeCount = 0
         var placementTransfers = 0
+        var placementSelections = 0
         val openedSessions = mutableListOf<String?>()
 
         init {
@@ -720,6 +737,10 @@ class OpenCodePanelCoordinatorTest {
         override fun onPlacementTransferred() {
             placementTransfers++
             events?.add("$name-transfer")
+        }
+
+        override fun onPlacementSelected() {
+            placementSelections++
         }
 
         override fun dispose() {
