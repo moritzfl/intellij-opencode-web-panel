@@ -46,6 +46,7 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
     var recoverStalledEventStream: Boolean = true
     var recoverFailedChunkLoads: Boolean = true
     var recoverStalledRenderer: Boolean = true
+    var notifyOpenCodeUpdates: Boolean = true
     var enableSystemNotifications: Boolean = true
     var enablePermissionNotificationActions: Boolean = true
     var showAgentStatusBadge: Boolean = true
@@ -88,6 +89,7 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
         recoverStalledEventStream = state.recoverStalledEventStream
         recoverFailedChunkLoads = state.recoverFailedChunkLoads
         recoverStalledRenderer = state.recoverStalledRenderer
+        notifyOpenCodeUpdates = state.notifyOpenCodeUpdates
         enableSystemNotifications = state.enableSystemNotifications
         enablePermissionNotificationActions = state.enablePermissionNotificationActions
         showAgentStatusBadge = state.showAgentStatusBadge

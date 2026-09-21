@@ -53,6 +53,7 @@ class OpenCodeWebToolWindowFactoryImpl : ToolWindowFactory, DumbAware {
         // so the gear menu below duplicates everything.
         toolWindow.setTitleActions(
             listOf(
+                OpenCodeUpdateAvailableAction(),
                 OpenCodeZoomOutAction(),
                 OpenCodeZoomInAction(),
                 OpenCodeReloadPageAction(),
@@ -61,6 +62,7 @@ class OpenCodeWebToolWindowFactoryImpl : ToolWindowFactory, DumbAware {
         )
         toolWindow.setAdditionalGearActions(
             DefaultActionGroup().apply {
+                add(OpenCodeUpdateAvailableAction())
                 add(OpenCodeNewSessionAction())
                 addSeparator()
                 add(OpenCodeZoomOutAction())

@@ -109,6 +109,7 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
     private val recoverStalledEventStreamCheckBox = JBCheckBox("Reconnect the panel after a stalled connection")
     private val recoverFailedChunkLoadsCheckBox = JBCheckBox("Reload the panel after a failed page chunk")
     private val recoverStalledRendererCheckBox = JBCheckBox("Reload the panel when its renderer goes silent")
+    private val notifyOpenCodeUpdatesCheckBox = JBCheckBox("Show an update indicator when a newer matching OpenCode release is available")
     private val enableSystemNotificationsCheckBox = JBCheckBox("Forward OpenCode system notifications to the IDE")
     private val enablePermissionNotificationActionsCheckBox = JBCheckBox("Offer Allow/Deny actions on permission notifications")
     private val showAgentStatusBadgeCheckBox = JBCheckBox("Show agent status on the tool window icon")
@@ -158,6 +159,7 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
         CheckBoxSettingBinding(recoverStalledRendererCheckBox, { recoverStalledRenderer }, { value -> recoverStalledRenderer = value }, OpenCodeUiSetting.RENDERER_WATCHDOG),
         // System notifications need no page interaction: the Kotlin-side event consumer
         // re-checks the setting on every event.
+        CheckBoxSettingBinding(notifyOpenCodeUpdatesCheckBox, { notifyOpenCodeUpdates }, { value -> notifyOpenCodeUpdates = value }),
         CheckBoxSettingBinding(enableSystemNotificationsCheckBox, { enableSystemNotifications }, { value -> enableSystemNotifications = value }),
         CheckBoxSettingBinding(enablePermissionNotificationActionsCheckBox, { enablePermissionNotificationActions }, { value -> enablePermissionNotificationActions = value }),
         CheckBoxSettingBinding(showAgentStatusBadgeCheckBox, { showAgentStatusBadge }, { value -> showAgentStatusBadge = value }, OpenCodeUiSetting.AGENT_STATUS_BADGE),
@@ -352,6 +354,10 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
                 }
             }
             group("OpenCode Event Handling") {
+                row {
+                    cell(notifyOpenCodeUpdatesCheckBox)
+                        .comment("Shows a lightning bolt on the OpenCode tool-window title bar. Hover for the version; click to upgrade a sandbox or copy the Host CLI command. 1.x checks npm opencode-ai; 2.x checks @opencode/cli. Does not suggest switching major versions.")
+                }
                 row {
                     cell(enableSystemNotificationsCheckBox)
                         .comment("Show OpenCode browser notifications as IntelliJ notifications and route notification clicks back to OpenCode.")

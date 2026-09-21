@@ -194,6 +194,18 @@ class OpenCodeSettingsStateTest {
     }
 
     @Test
+    fun notifyOpenCodeUpdatesDefaultsOnAndLoads() {
+        assertTrue(OpenCodeSettingsState().notifyOpenCodeUpdates)
+        val settings = OpenCodeSettingsState()
+        settings.loadState(
+            OpenCodeSettingsState().apply {
+                notifyOpenCodeUpdates = false
+            },
+        )
+        assertFalse(settings.notifyOpenCodeUpdates)
+    }
+
+    @Test
     fun fasterPathHoverPreviewIsEnabledByDefault() {
         assertEquals(true, OpenCodeSettingsState().fasterPathHoverPreview)
     }

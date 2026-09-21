@@ -38,6 +38,7 @@ import de.moritzf.opencodewebpanel.features.OpenCodeIdeNavigation
 import de.moritzf.opencodewebpanel.features.OpenCodeInterruptedSessionRecovery
 import de.moritzf.opencodewebpanel.features.OpenCodeLocalStorageBridge
 import de.moritzf.opencodewebpanel.features.OpenCodePermissionAutoResponder
+import de.moritzf.opencodewebpanel.features.OpenCodeReleaseUpdates
 import de.moritzf.opencodewebpanel.features.OpenCodeSystemNotifications
 import de.moritzf.opencodewebpanel.features.OpenCodeWorkspaceRefreshCoordinator
 import de.moritzf.opencodewebpanel.server.OpenCodeGlobalEvent
@@ -1073,6 +1074,11 @@ class OpenCodeWebToolWindowContent(
 
     private fun warnIfOpenCodeVersionIsUnsupported() {
         if (project.isDisposed) return
+        OpenCodeReleaseUpdates.checkAndIndicate(project, serverManager.getServerVersion()) {
+            if (!project.isDisposed && !toolWindow.isDisposed) {
+                updateOpenCodeToolWindowHeading(toolWindow)
+            }
+        }
         warnIfSandboxCreateIsStale()
         val group = NotificationGroupManager.getInstance()
             .getNotificationGroup(OpenCodeServerProtocol.NOTIFICATION_GROUP_ID)

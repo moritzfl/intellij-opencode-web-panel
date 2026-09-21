@@ -8,15 +8,34 @@ import com.intellij.openapi.actionSystem.ToggleAction
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
+import com.intellij.openapi.ide.CopyPasteManager
 import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.ui.DialogWrapper
 import com.intellij.openapi.ui.MessageDialogBuilder
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.wm.ToolWindowManager
+import com.intellij.ui.ColorUtil
+import com.intellij.ui.JBColor
+import com.intellij.ui.components.JBLabel
+import com.intellij.ui.components.JBTextField
+import com.intellij.ui.components.panels.BackgroundRoundedPanel
+import com.intellij.util.ui.JBFont
+import com.intellij.util.ui.JBUI
+import com.intellij.util.ui.UIUtil
+import java.awt.BorderLayout
+import java.awt.Font
+import java.awt.GridLayout
+import java.awt.datatransfer.StringSelection
+import javax.swing.Action
+import javax.swing.JButton
+import javax.swing.JComponent
+import javax.swing.JPanel
 import de.moritzf.opencodewebpanel.features.OPEN_CODE_TOOL_WINDOW_ID
+import de.moritzf.opencodewebpanel.features.OpenCodeReleaseUpdates
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState
@@ -31,6 +50,113 @@ import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsListener
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsListener
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
+
+/**
+ * Lightning on the tool-window title when a same-major OpenCode release is newer.
+ * Hover shows the version. Click upgrades the sandbox (confirm) or shows Host CLI steps.
+ */
+internal class OpenCodeUpdateAvailableAction : DumbAwareAction(
+    "OpenCode Update",
+    "A newer OpenCode release is available",
+    AllIcons.Actions.Lightning,
+) {
+    override fun actionPerformed(e: AnActionEvent) {
+        val project = e.project ?: return
+        val notice = OpenCodeReleaseUpdates.pendingNotice(project, openCodeBackend(project).getServerVersion()) ?: return
+        offerOpenCodeUpdate(project, notice)
+    }
+
+    override fun update(e: AnActionEvent) {
+        val project = e.project
+        val backend = project?.let { openCodeBackend(it) }
+        val notice = project?.let { OpenCodeReleaseUpdates.pendingNotice(it, backend?.getServerVersion()) }
+        val sandbox = backend != null && !OpenCodeServerBackend.isNative(backend.backendId)
+        e.presentation.isEnabledAndVisible = notice != null
+        e.presentation.description = notice?.let { OpenCodeReleaseUpdates.tooltip(it, sandbox) }
+            ?: "A newer OpenCode release is available"
+    }
+
+    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+}
+
+internal fun offerOpenCodeUpdate(project: Project, notice: OpenCodeReleaseUpdates.Notice) {
+    val backend = openCodeBackend(project)
+    if (OpenCodeServerBackend.isNative(backend.backendId)) {
+        OpenCodeHostUpgradeDialog(project, notice).show()
+        return
+    }
+    val sandbox = backend as? SbxOpenCodeServerBackend ?: return
+    val state = sandbox.getLifecycleState()
+    if (state == OpenCodeServerLifecycleState.STARTING || state == OpenCodeServerLifecycleState.RESTARTING) {
+        return
+    }
+    if (ownedSandboxRecord(project) == null) {
+        Messages.showErrorDialog(
+            project,
+            "No owned sandbox for this project. Create or start the sandbox first.",
+            "OpenCode update",
+        )
+        return
+    }
+    if (!confirmOpenCodeSandboxBinaryUpgrade(project)) return
+    sandbox.upgradeOpenCodeBinary(project)
+}
+
+private class OpenCodeHostUpgradeDialog(
+    project: Project,
+    private val notice: OpenCodeReleaseUpdates.Notice,
+) : DialogWrapper(project) {
+    init {
+        title = "OpenCode update available"
+        isModal = true
+        init()
+    }
+
+    override fun createActions(): Array<Action> = arrayOf(okAction)
+
+    override fun createCenterPanel(): JComponent = JPanel(BorderLayout(0, JBUI.scale(16))).apply {
+        val introduction = JPanel(GridLayout(0, 1, 0, JBUI.scale(12))).apply {
+            add(JBLabel(OpenCodeReleaseUpdates.hostUpgradeIntro(notice)))
+            add(JBLabel("This plugin does not upgrade Host CLI. In a terminal run:"))
+        }
+        // Keep the block's outer edge aligned with the prose, independent of form-field visual padding.
+        add(introduction, BorderLayout.NORTH)
+        add(copyableCommandBlock(OpenCodeReleaseUpdates.HOST_UPGRADE_COMMAND), BorderLayout.CENTER)
+        add(JBLabel("Then Restart OpenCode Server in this panel."), BorderLayout.SOUTH)
+    }
+}
+
+private fun copyableCommandBlock(command: String): JComponent {
+    val commandField = JBTextField(command).apply {
+        isEditable = false
+        isOpaque = false
+        border = JBUI.Borders.empty()
+        font = Font(Font.MONOSPACED, Font.PLAIN, JBFont.label().size)
+        foreground = UIUtil.getLabelForeground()
+        caret.isVisible = false
+    }
+    val copyButton = JButton(AllIcons.Actions.Copy).apply {
+        toolTipText = "Copy command"
+        accessibleContext.accessibleName = "Copy command"
+        putClientProperty("JButton.buttonType", "toolBarButton")
+        border = JBUI.Borders.empty(4)
+        isBorderPainted = false
+        isContentAreaFilled = false
+        isOpaque = false
+        isFocusable = false
+        preferredSize = JBUI.size(28, 28)
+        addActionListener {
+            CopyPasteManager.getInstance().setContents(StringSelection(command))
+        }
+    }
+    return BackgroundRoundedPanel(JBUI.scale(8), BorderLayout(JBUI.scale(16), 0)).apply {
+        // Shade relative to the current theme so the block stays distinct in light and dark modes.
+        background = JBColor.lazy { ColorUtil.mix(UIUtil.getPanelBackground(), UIUtil.getLabelForeground(), 0.06) }
+        border = JBUI.Borders.empty(16)
+        add(commandField, BorderLayout.CENTER)
+        add(copyButton, BorderLayout.EAST)
+    }
+}
 
 /**
  * Tool-window title-bar and gear-menu actions. Title actions must stay few and icon-only:
