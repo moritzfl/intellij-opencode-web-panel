@@ -13,6 +13,29 @@ internal sealed class SbxLaunchSpecInspection {
     data class Invalid(val path: Path, val reason: String) : SbxLaunchSpecInspection()
 }
 
+internal enum class SbxOpenCodeVersion {
+    V1,
+    V2,
+    ;
+
+    fun yamlValue(): String = if (this == V2) "2.x" else "1.x"
+
+    fun prefersGuestV2(): Boolean = this == V2
+
+    companion object {
+        fun parse(value: String?): SbxOpenCodeVersion? = when (value?.trim()?.lowercase(Locale.ROOT)) {
+            "2", "2.x", "v2" -> V2
+            "1", "1.x", "v1" -> V1
+            else -> null
+        }
+
+        fun fromYaml(values: Map<String, String>): SbxOpenCodeVersion {
+            parse(values["openCodeVersion"])?.let { return it }
+            return if (values["installOpenCodeV2"]?.toBooleanStrictOrNull() == true) V2 else V1
+        }
+    }
+}
+
 internal data class SbxLaunchSpec(
     val schemaVersion: Int = SCHEMA_VERSION,
     val canonicalDirectory: String,
@@ -22,6 +45,7 @@ internal data class SbxLaunchSpec(
     val kits: List<String>,
     val extraMounts: List<SbxExtraMount>,
     val shareHostOpencodeConfig: Boolean,
+    val openCodeVersion: SbxOpenCodeVersion = SbxOpenCodeVersion.V1,
     val enableIntellijMcp: Boolean,
     val useSandbox: Boolean = true,
     val hostPort: Int? = null,
@@ -47,6 +71,7 @@ internal data class SbxLaunchSpec(
             }
         }
         out.append("shareHostOpencodeConfig: ").append(shareHostOpencodeConfig).append('\n')
+        out.append("openCodeVersion: ").append(openCodeVersion.yamlValue()).append('\n')
         out.append("enableIntellijMcp: ").append(enableIntellijMcp).append('\n')
         out.append("protectSandboxFiles: ").append(protectSandboxFiles).append('\n')
         out.append("persistSandboxSessions: ").append(persistSandboxSessions).append('\n')
@@ -86,6 +111,7 @@ internal data class SbxLaunchSpec(
                 extraMounts = SbxCli.parseExtraMountRows(settings.sbxExtraWorkspaces)
                     .map { SbxExtraMount(it.first, it.second) },
                 shareHostOpencodeConfig = settings.sbxShareHostOpencodeConfig,
+                openCodeVersion = SbxOpenCodeVersion.V1,
                 enableIntellijMcp = settings.sbxEnableIntellijMcp,
                 useSandbox = settings.runtimeModeValue() ==
                     de.moritzf.opencodewebpanel.settings.OpenCodeRuntimeMode.DOCKER_SANDBOX,
@@ -166,6 +192,7 @@ internal data class SbxLaunchSpec(
                 kits = lists["kits"].orEmpty(),
                 extraMounts = mounts,
                 shareHostOpencodeConfig = values["shareHostOpencodeConfig"]?.toBooleanStrictOrNull() ?: false,
+                openCodeVersion = SbxOpenCodeVersion.fromYaml(values),
                 enableIntellijMcp = values["enableIntellijMcp"]?.toBooleanStrictOrNull() ?: true,
                 useSandbox = values["useSandbox"]?.toBooleanStrictOrNull() ?: true,
                 hostPort = values["hostPort"]?.toIntOrNull()?.takeIf { it in 1..65535 },
@@ -441,10 +468,14 @@ internal data class SbxLaunchSpec(
             Files.createDirectories(directory)
             copyResource("opencode-sbx.sh", directory.resolve(PROJECT_LAUNCHER_UNIX), executable = true)
             Files.deleteIfExists(directory.resolve(PROJECT_LAUNCHER_WINDOWS))
+            // Older releases shipped these guest scripts beside the launcher.
+            Files.deleteIfExists(directory.resolve("opencode-sbx-install-v2.sh"))
+            Files.deleteIfExists(directory.resolve("opencode-sbx-version-v2.sh"))
+            Files.deleteIfExists(directory.resolve("opencode-sbx-config-v2.json"))
         }
 
         private fun copyResource(name: String, target: Path, executable: Boolean) {
-            val stream = SbxLaunchSpec::class.java.getResourceAsStream(name) ?: return
+            val stream = checkNotNull(SbxLaunchSpec::class.java.getResourceAsStream(name)) { "Missing sandbox script: $name" }
             stream.use { input ->
                 Files.copy(input, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
             }

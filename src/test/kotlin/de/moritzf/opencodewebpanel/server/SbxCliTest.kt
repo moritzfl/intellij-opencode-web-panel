@@ -276,6 +276,17 @@ class SbxCliTest {
         )
         assertFalse(SbxCli.persistMountIsAttached(emptyList(), mount))
         assertTrue(SbxCli.persistMountIsAttached(listOf(mount.hostPath), mount))
+        val v2 = SbxCli.guestOpenCodeMount("ide-ocwp-abc") { }
+        assertEquals("/home/agent/.opencode", v2.sandboxPath)
+        assertTrue(v2.hostPath.contains("opencode-web-panel/sbx-opencode/ide-ocwp-abc"))
+        assertFalse(v2.hostPath.contains("/.opencode/"))
+        assertTrue(SbxCli.needsSandboxLink(v2))
+        val data = SbxCli.persistDataDir(userHome = root.toString(), xdgDataHome = null, osName = "Linux", override = null)
+        val cached = java.nio.file.Path.of(SbxCli.guestOpenCodeDataHome("ide-ocwp-abc", data))
+        java.nio.file.Files.createDirectories(cached.resolve("bin"))
+        java.nio.file.Files.writeString(cached.resolve("bin/opencode"), "x")
+        SbxCli.deleteGuestOpenCode("ide-ocwp-abc", data)
+        assertFalse(java.nio.file.Files.exists(cached))
     }
 
     @Test
@@ -372,6 +383,7 @@ class SbxCliTest {
             name = "ide-ocwp-abc",
             workspace = "/tmp/project",
             extraEnvKeys = listOf("OPENCODE_CONFIG_CONTENT", "OPENCODE_AUTH_CONTENT"),
+            preferGuestV2 = true,
         )
         assertEquals(
             listOf(
@@ -386,6 +398,9 @@ class SbxCliTest {
                 "-w",
                 "/tmp/project",
                 "ide-ocwp-abc",
+                "sh",
+                "-c",
+                SbxCli.GUEST_OPENCODE_DISPATCH,
                 "opencode",
                 "serve",
                 "--hostname",
@@ -397,6 +412,25 @@ class SbxCliTest {
             command,
         )
         assertFalse(SbxCli.commandContainsBoundEnvAssignment(command))
+        assertEquals(
+            listOf(
+                "sbx",
+                "exec",
+                "-e",
+                "OPENCODE_SERVER_PASSWORD",
+                "-w",
+                "/tmp/project",
+                "ide-ocwp-abc",
+                "opencode",
+                "serve",
+                "--hostname",
+                "0.0.0.0",
+                "--port",
+                "4096",
+                "--print-logs",
+            ),
+            SbxCli.buildExecServeCommand(name = "ide-ocwp-abc", workspace = "/tmp/project"),
+        )
     }
 
     @Test
@@ -411,17 +445,78 @@ class SbxCliTest {
         assertTrue(yaml.contains("NOT a local-only restriction"))
         assertTrue(yaml.contains("# - localhost"))
         assertTrue(yaml.contains("# - api.openai.com  # OpenAI"))
+        assertTrue(yaml.contains("# - registry.npmjs.org  # npm registry"))
         assertFalse(yaml.contains("\n      - api.openai.com"))
         assertFalse(yaml.contains("\n      - \"*\""))
         assertEquals("./opencode-sbx/opencode-network-kit", SbxCli.networkKitRef())
     }
 
     @Test
-    fun execUpgradeRunsOpencodeUpgrade() {
+    fun execUpgradePrefersGuestOpenCodeBin() {
+        assertEquals(
+            listOf(
+                "sbx",
+                "exec",
+                "ide-ocwp-abc",
+                "sh",
+                "-c",
+                SbxCli.GUEST_OPENCODE_DISPATCH,
+                "opencode",
+                "upgrade",
+                "--print-logs",
+            ),
+            SbxCli.buildExecUpgradeCommand(name = "ide-ocwp-abc", preferGuestV2 = true),
+        )
         assertEquals(
             listOf("sbx", "exec", "ide-ocwp-abc", "opencode", "upgrade", "--print-logs"),
             SbxCli.buildExecUpgradeCommand(name = "ide-ocwp-abc"),
         )
+    }
+
+    @Test
+    fun execInstallV2DownloadsOfficialInstaller() {
+        val command = SbxCli.buildExecInstallV2Command(name = "ide-ocwp-abc")
+        assertEquals(
+            listOf("sbx", "exec", "ide-ocwp-abc", "sh", "-c", SbxCli.V2_INSTALL_SCRIPT),
+            command,
+        )
+        assertTrue(SbxCli.V2_INSTALL_SCRIPT.contains(SbxCli.V2_INSTALL_URL))
+        assertTrue(SbxCli.V2_INSTALL_SCRIPT.contains("--no-modify-path"))
+        assertTrue(SbxCli.V2_INSTALL_SCRIPT.contains("--version"))
+        assertTrue(SbxCli.V2_INSTALL_SCRIPT.contains("registry.npmjs.org"))
+        assertTrue(SbxCli.GUEST_OPENCODE_DISPATCH.contains("\$HOME/.opencode/bin/opencode"))
+        assertFalse(SbxCli.commandContainsBoundEnvAssignment(command))
+        assertEquals(
+            listOf("sbx", "exec", "ide-ocwp-abc", "sh", "-c", SbxCli.GUEST_V2_VERSION_SCRIPT),
+            SbxCli.buildExecGuestV2VersionCommand(name = "ide-ocwp-abc"),
+        )
+    }
+
+    @Test
+    fun failedPinnedInstallCannotReportSuccessFromAnOldBinary() {
+        org.junit.Assume.assumeTrue(java.nio.file.Files.isExecutable(java.nio.file.Path.of("/bin/sh")))
+        val root = java.nio.file.Files.createTempDirectory("ocwp-install-failure")
+        try {
+            val bin = java.nio.file.Files.createDirectories(root.resolve("bin"))
+            fun executable(path: java.nio.file.Path, script: String) {
+                java.nio.file.Files.writeString(path, "#!/bin/sh\n$script\n")
+                assertTrue(path.toFile().setExecutable(true))
+            }
+            executable(bin.resolve("bash"), "exit 23")
+            executable(bin.resolve("sleep"), "exit 0")
+            executable(bin.resolve("curl"), """case "$*" in *registry.npmjs.org*) printf '%s' '{"version":"2.0.11"}' ;; esac""")
+            val installed = java.nio.file.Files.createDirectories(root.resolve(".opencode/bin")).resolve("opencode")
+            executable(installed, "exit 0")
+            val process = ProcessBuilder("/bin/sh", "-c", SbxCli.V2_INSTALL_SCRIPT).apply {
+                environment().clear()
+                environment()["HOME"] = root.toString()
+                environment()["PATH"] = "$bin:/usr/bin:/bin"
+            }.start()
+            assertTrue(process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS))
+            assertEquals("Failed installer must not be masked by an existing executable", 23, process.exitValue())
+        } finally {
+            root.toFile().deleteRecursively()
+        }
     }
 
     @Test

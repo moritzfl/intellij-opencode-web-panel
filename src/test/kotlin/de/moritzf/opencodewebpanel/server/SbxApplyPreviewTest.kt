@@ -51,6 +51,23 @@ class SbxApplyPreviewTest {
     }
 
     @Test
+    fun changingOpenCodeVersionRestartsInBothDirections() {
+        val on = SbxApplyPreview.build("/tmp/p", base, base.copy(openCodeVersion = SbxOpenCodeVersion.V2), false, false, "")
+        assertEquals(SbxApplyEffect.RESTART, on.effect)
+        assertTrue(on.message().contains("OpenCode version 2.x"))
+        val off = SbxApplyPreview.build(
+            "/tmp/p",
+            base.copy(openCodeVersion = SbxOpenCodeVersion.V2),
+            base,
+            false,
+            false,
+            "",
+        )
+        assertEquals(SbxApplyEffect.RESTART, off.effect)
+        assertTrue(off.message().contains("OpenCode version 1.x"))
+    }
+
+    @Test
     fun emptyPreviewHasNoProcessChanges() {
         val preview = SbxApplyPreview.build("/tmp/p", base, base, false, false, "")
         assertEquals(SbxApplyEffect.NONE, preview.effect)

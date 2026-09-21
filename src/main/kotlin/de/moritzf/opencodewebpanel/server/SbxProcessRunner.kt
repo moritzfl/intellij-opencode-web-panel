@@ -106,6 +106,38 @@ internal fun sanitizeCliOutputLine(raw: String): String {
     return text
 }
 
+/**
+ * curl `-#` (OpenCode's non-TTY install fallback) redraws
+ * `##                                                                      2.8%`
+ * (hash count follows percent, so early ticks are only one or two `#`).
+ * Empty [CliProgress.label] means bar/percent-only — not strip/indicator text.
+ */
+internal data class CliProgress(
+    val label: String,
+    val fraction: Double? = null,
+)
+
+internal const val OPENCODE_DOWNLOAD_STAGE = "Downloading OpenCode…"
+
+internal fun parseCliProgress(line: String): CliProgress {
+    val trimmed = line.trim()
+    if (trimmed.isEmpty()) return CliProgress("")
+    val percent = TRAILING_PERCENT.find(trimmed)
+        ?.groupValues?.get(1)?.toDoubleOrNull()
+        ?.div(100.0)
+        ?.takeIf { it in 0.0..1.0 }
+    if (!HAS_LETTER.containsMatchIn(trimmed)) return CliProgress("", percent)
+    val withoutHashes = WHITESPACE.replace(HASH_BAR.replace(trimmed, " "), " ").trim()
+    val label = if (withoutHashes.isEmpty() || !HAS_LETTER.containsMatchIn(withoutHashes)) "" else withoutHashes
+    return CliProgress(label, percent)
+}
+
+internal fun nextCliProgressStage(previous: String, parsed: CliProgress): String {
+    if (parsed.label.isNotEmpty()) return parsed.label
+    if (parsed.fraction != null) return OPENCODE_DOWNLOAD_STAGE
+    return previous
+}
+
 private fun emitSanitizedCliLine(raw: String, onOutputLine: (String) -> Unit) {
     val line = sanitizeCliOutputLine(raw)
     if (line.isNotEmpty()) onOutputLine(line)
@@ -159,3 +191,6 @@ private val ANSI_SEQUENCE = Regex(
 private val ORPHAN_CSI = Regex("\\[(?:\\?\\d+[lh]|\\d+D|\\d*[JK](?![A-Za-z]))")
 private val SPINNER_ONLY = Regex("""^[|/\\-]+${'$'}""")
 private val WHITESPACE = Regex("\\s+")
+private val HASH_BAR = Regex("#{2,}")
+private val TRAILING_PERCENT = Regex("""(\d{1,3}(?:\.\d+)?)%\s*$""")
+private val HAS_LETTER = Regex("""\p{L}""")

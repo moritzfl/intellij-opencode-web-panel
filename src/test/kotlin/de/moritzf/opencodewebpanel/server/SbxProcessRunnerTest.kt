@@ -89,6 +89,48 @@ class SbxProcessRunnerTest {
     }
 
     @Test
+    fun parseCliProgressMapsCurlHashBarToFractionAndDropsHashesFromLabel() {
+        assertEquals(
+            CliProgress("", 0.5),
+            parseCliProgress("####################################                                 50.0%"),
+        )
+        assertEquals(
+            CliProgress("", 1.0),
+            parseCliProgress("######################################################################## 100.0%"),
+        )
+        parseCliProgress("## 2.8%").let {
+            assertEquals("", it.label)
+            assertEquals(0.028, checkNotNull(it.fraction), 1e-9)
+        }
+        parseCliProgress("# 1.4%").let {
+            assertEquals("", it.label)
+            assertEquals(0.014, checkNotNull(it.fraction), 1e-9)
+        }
+        assertEquals(CliProgress("", 0.0), parseCliProgress("  0.0%"))
+        assertEquals(CliProgress(""), parseCliProgress("######"))
+        assertEquals(
+            CliProgress("Downloading 50%", 0.5),
+            parseCliProgress("Downloading ###### 50%"),
+        )
+        assertEquals(CliProgress("Downloading 50%", 0.5), parseCliProgress("Downloading 50%"))
+        assertEquals(
+            CliProgress("Installing OpenCode version: 2.0.8"),
+            parseCliProgress("Installing OpenCode version: 2.0.8"),
+        )
+        assertEquals(
+            OPENCODE_DOWNLOAD_STAGE,
+            nextCliProgressStage("Installing OpenCode 2.x…", parseCliProgress("## 2.8%")),
+        )
+        assertEquals(
+            "Installing OpenCode version: 2.0.8",
+            nextCliProgressStage(
+                OPENCODE_DOWNLOAD_STAGE,
+                parseCliProgress("Installing OpenCode version: 2.0.8"),
+            ),
+        )
+    }
+
+    @Test
     fun splitProcessOutputTreatsProgressCsiAsALineBreak() {
         val lines = mutableListOf<String>()
         val pending = StringBuilder()

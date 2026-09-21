@@ -35,6 +35,7 @@ import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.server.SbxCli
 import de.moritzf.opencodewebpanel.server.SbxExtraMount
 import de.moritzf.opencodewebpanel.server.SbxLaunchSpec
+import de.moritzf.opencodewebpanel.server.SbxOpenCodeVersion
 import de.moritzf.opencodewebpanel.server.formatOpenCodeServerLifecycleStatusText
 import de.moritzf.opencodewebpanel.server.formatOpenCodeServerStatusDetail
 import de.moritzf.opencodewebpanel.toolWindow.confirmOpenCodeSandboxBinaryUpgrade
@@ -55,6 +56,8 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
     private var hydrating = false
     private var lifecycleConnection: MessageBusConnection? = null
     private var loadedSpecDirectory: String? = null
+    private var setupCheckSequence = 0L
+    private var setupCheckRunning = false
     private val serverStatusLabel = JBLabel().apply {
         toolTipText = "OpenCode server status for this project"
     }
@@ -65,6 +68,12 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         foreground = JBUI.CurrentTheme.ContextHelp.FOREGROUND
     }
     private val setupChecklistLabel = JBLabel().apply {
+        foreground = JBUI.CurrentTheme.ContextHelp.FOREGROUND
+    }
+    private val checkSetupButton = JButton("Check sandbox setup").apply {
+        toolTipText = "Check sandbox setup and guest network access using saved project settings"
+    }
+    private val setupCheckResultLabel = JBLabel().apply {
         foreground = JBUI.CurrentTheme.ContextHelp.FOREGROUND
     }
     private val restartServerButton = JButton("Restart Server", AllIcons.Actions.Restart).apply {
@@ -116,6 +125,8 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
     }
     private val hostRuntimeRadioButton = JBRadioButton("Host (native CLI)")
     private val sbxRuntimeRadioButton = JBRadioButton("Docker Sandbox (sbx)")
+    private val sbxOpenCodeV1RadioButton = JBRadioButton("1.x")
+    private val sbxOpenCodeV2RadioButton = JBRadioButton("2.x")
     init {
         ButtonGroup().apply {
             add(autoPortRadioButton)
@@ -129,6 +140,10 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
             add(hostRuntimeRadioButton)
             add(sbxRuntimeRadioButton)
         }
+        ButtonGroup().apply {
+            add(sbxOpenCodeV1RadioButton)
+            add(sbxOpenCodeV2RadioButton)
+        }
     }
     private val sbxMemoryField = JBTextField().apply {
         columns = 6
@@ -140,7 +155,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         toolTipText = "Sandbox CPUs at create time"
         accessibleContext.accessibleName = "Sandbox CPUs"
     }
-    private val sbxShareHostConfigCheckBox = JBCheckBox("Share host OpenCode config and file secrets")
+    private val sbxShareHostConfigCheckBox = JBCheckBox("Share host OpenCode config (read-only)")
     private val sbxProtectSandboxFilesCheckBox = JBCheckBox("Protect sandbox files")
     private val sbxPersistSandboxSessionsCheckBox = JBCheckBox("Persist sandbox sessions across Reset")
     private val sbxEnableIntellijMcpCheckBox = JBCheckBox("Enable IntelliJ MCP in the sandbox")
@@ -230,7 +245,17 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
             }
             row {
                 cell(sbxShareHostConfigCheckBox)
-                    .comment("Mounts the host OpenCode config directory read-only (opencode.json/jsonc, skills, agents, commands, plugins), plus file-based auth.json via environment. The sandbox can read those files and cannot change them. Sessions and browser preferences stay separate. Environment API keys use sbx secret. Changing this recreates the VM.")
+                    .comment("Mounts the host OpenCode config directory read-only (opencode.json/jsonc, skills, agents, commands, plugins). Credentials embedded in those files are readable too; host auth.json and the host credential database are not shared. Configure provider access separately with sbx secret or OpenCode inside the sandbox. Changing this recreates the VM.")
+            }
+            buttonsGroup("OpenCode version:") {
+                row {
+                    cell(sbxOpenCodeV1RadioButton)
+                        .comment("Kit OpenCode 1.x. A leftover 2.x binary at ~/.opencode/bin is not launched.")
+                }
+                row {
+                    cell(sbxOpenCodeV2RadioButton)
+                        .comment("Installs OpenCode 2.x to ~/.opencode/bin when missing, then launches it. New sandboxes keep the binary on the host until Reset Sandbox; existing VMs get that mount at Reset. Select this before the first start if sharing OpenCode 2 config. Needs network to opencode.ai and registry.npmjs.org.")
+                }
             }
             row {
                 cell(sbxProtectSandboxFilesCheckBox)
@@ -275,6 +300,13 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
             }
             row {
                 cell(setupChecklistLabel)
+            }
+            row {
+                cell(checkSetupButton)
+                    .comment("Checks saved settings and the existing running VM. Use the extra-network kit to configure blocked hosts.")
+            }
+            row {
+                cell(setupCheckResultLabel)
             }
             row {
                 comment("Sbx location, login, and network policy: Tools → OpenCode Web Panel → Docker Sandboxes.")
@@ -486,6 +518,8 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
     }
 
     override fun disposeUIResources() {
+        setupCheckSequence++
+        setupCheckRunning = false
         panel = null
         lifecycleConnection?.disconnect()
         lifecycleConnection = null
@@ -516,6 +550,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         viewServerLogButton.addActionListener { showThisProjectServerLog() }
         upgradeOpenCodeButton.addActionListener { upgradeOpenCodeInSandbox() }
         createNetworkKitButton.addActionListener { createNetworkKitTemplate() }
+        checkSetupButton.addActionListener { checkSandboxSetup() }
     }
 
     private fun projectBackend() = OpenCodeServerBackendRegistry.getInstance().backendFor(project)
@@ -565,6 +600,29 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         val backend = projectBackend() as? SbxOpenCodeServerBackend ?: return
         if (!confirmOpenCodeSandboxBinaryUpgrade(project)) return
         backend.upgradeOpenCodeBinary(project)
+    }
+
+    private fun checkSandboxSetup() {
+        val backend = projectBackend() as? SbxOpenCodeServerBackend ?: return
+        val sequence = ++setupCheckSequence
+        val modality = ModalityState.stateForComponent(checkSetupButton)
+        setupCheckRunning = true
+        setupCheckResultLabel.text = "Checking sandbox setup and guest network access…"
+        updateSandboxControls()
+        backend.checkSetup().whenComplete { steps, error ->
+            ApplicationManager.getApplication().invokeLater({
+                if (panel == null || project.isDisposed || sequence != setupCheckSequence) return@invokeLater
+                setupCheckRunning = false
+                val text = if (backend !== projectBackend()) "Sandbox changed; check setup again." else if (error != null) {
+                    "Setup check failed. Check the sbx installation and try again."
+                } else {
+                    de.moritzf.opencodewebpanel.server.SbxSetupChecklist.format(steps.orEmpty())
+                }
+                setupCheckResultLabel.text = "<html>" + com.intellij.openapi.util.text.StringUtil.escapeXmlEntities(text)
+                    .replace("\n", "<br>") + "</html>"
+                updateSandboxControls()
+            }, modality)
+        }
     }
 
     private fun showThisProjectServerLog() {
@@ -631,6 +689,11 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                 SbxExtraMount(SbxCli.posixPath(it.hostPath), SbxCli.posixPath(it.sandboxPath.ifBlank { it.hostPath }))
             }.distinct(),
             shareHostOpencodeConfig = sbxShareHostConfigCheckBox.isSelected,
+            openCodeVersion = if (sbxOpenCodeV2RadioButton.isSelected) {
+                SbxOpenCodeVersion.V2
+            } else {
+                SbxOpenCodeVersion.V1
+            },
             enableIntellijMcp = sbxEnableIntellijMcpCheckBox.isSelected,
             protectSandboxFiles = sbxProtectSandboxFilesCheckBox.isSelected,
             persistSandboxSessions = sbxPersistSandboxSessionsCheckBox.isSelected,
@@ -649,6 +712,11 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         sbxMemoryField.text = spec?.memory ?: SbxCli.DEFAULT_MEMORY
         sbxCpusField.text = spec?.cpus ?: SbxCli.DEFAULT_CPUS
         sbxShareHostConfigCheckBox.isSelected = spec?.shareHostOpencodeConfig ?: false
+        if (spec?.openCodeVersion == SbxOpenCodeVersion.V2) {
+            sbxOpenCodeV2RadioButton.isSelected = true
+        } else {
+            sbxOpenCodeV1RadioButton.isSelected = true
+        }
         sbxEnableIntellijMcpCheckBox.isSelected = spec?.enableIntellijMcp ?: true
         sbxProtectSandboxFilesCheckBox.isSelected = spec?.protectSandboxFiles ?: true
         sbxPersistSandboxSessionsCheckBox.isSelected = spec?.persistSandboxSessions ?: true
@@ -784,9 +852,12 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
             de.moritzf.opencodewebpanel.server.SbxSandboxRecordStore.getInstance().recordFor(directory) != null
         val state = projectBackend().getLifecycleState()
         upgradeOpenCodeButton.isVisible = sandbox
-        upgradeOpenCodeButton.isEnabled = sandboxBackend && owned &&
+        val binaryActionsEnabled = sandboxBackend && owned &&
             state != OpenCodeServerLifecycleState.STARTING &&
             state != OpenCodeServerLifecycleState.RESTARTING
+        upgradeOpenCodeButton.isEnabled = binaryActionsEnabled
+        checkSetupButton.isEnabled = sandboxBackend && !setupCheckRunning &&
+            state != OpenCodeServerLifecycleState.STARTING && state != OpenCodeServerLifecycleState.RESTARTING
         val spec = currentSpec()
         val record = directory?.let { de.moritzf.opencodewebpanel.server.SbxSandboxRecordStore.getInstance().recordFor(it) }
         val pending = if (sandbox && spec != null) {

@@ -80,6 +80,12 @@ internal data class SbxApplyPreview(
             if (oldSpec.shareHostOpencodeConfig != newSpec.shareHostOpencodeConfig) {
                 changes += SbxApplyChange("Host OpenCode config sharing", SbxApplyEffect.RECREATE)
             }
+            if (oldSpec.openCodeVersion != newSpec.openCodeVersion) {
+                changes += SbxApplyChange(
+                    "OpenCode version ${newSpec.openCodeVersion.yamlValue()}",
+                    SbxApplyEffect.RESTART,
+                )
+            }
             if (newSpec.kits.size < oldSpec.kits.size || newSpec.kits.take(oldSpec.kits.size) != oldSpec.kits) {
                 changes += SbxApplyChange("Kits removed or reordered", SbxApplyEffect.RECREATE)
             } else if (newSpec.kits.size > oldSpec.kits.size) {

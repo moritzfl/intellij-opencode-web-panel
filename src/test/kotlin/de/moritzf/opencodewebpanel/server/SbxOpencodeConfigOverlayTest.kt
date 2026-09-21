@@ -7,10 +7,27 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SbxOpencodeConfigOverlayTest {
+    @Test
+    fun v1OverlayUsesFlatMcpWithoutProviderOverrides() {
+        val overlay = com.google.gson.JsonParser.parseString(SbxOpencodeConfigOverlay.buildContent(
+            version = SbxOpenCodeVersion.V1,
+            shareHostConfig = true,
+            ideaMcpPort = 64342,
+            hostConfigJson = """{"mcp":{"other":{"type":"remote","url":"http://[::1]:9999/sse"}}}""",
+        )).asJsonObject
+        assertFalse(overlay.has("providers"))
+        val mcp = overlay.getAsJsonObject("mcp")
+        assertFalse(mcp.has("servers"))
+        assertEquals("http://host.docker.internal:64342/sse", mcp.getAsJsonObject("idea").get("url").asString)
+        assertEquals("http://host.docker.internal:9999/sse", mcp.getAsJsonObject("other").get("url").asString)
+        assertFalse(overlay.has("provider"))
+        assertNull(SbxOpencodeConfigOverlay.buildContent(SbxOpenCodeVersion.V1, shareHostConfig = false, ideaMcpPort = null))
+    }
 
     @Test
     fun overlayMergesIdeaMcpAndRewritesLoopbackUrls() {
         val overlay = SbxOpencodeConfigOverlay.buildContent(
+            version = SbxOpenCodeVersion.V2,
             shareHostConfig = true,
             ideaMcpPort = 64342,
             hostConfigJson = """
@@ -22,13 +39,58 @@ class SbxOpencodeConfigOverlayTest {
         )
         assertTrue(overlay!!.contains("host.docker.internal:64342"))
         assertTrue(overlay.contains("host.docker.internal:9999"))
+        assertFalse("Legacy MCP documents must remain legacy for OpenCode's migration", overlay.contains("\"servers\""))
         assertFalse("Host settings must load from their file, not a higher-precedence inline copy", overlay.contains("file-secret"))
-        assertFalse(overlay.contains("provider"))
+        assertFalse(overlay.contains("\"provider\":"))
+        assertFalse(overlay.contains("\"providers\":"))
     }
 
     @Test
-    fun overlayIsNullWhenNothingToShare() {
-        assertNull(SbxOpencodeConfigOverlay.buildContent(shareHostConfig = false, ideaMcpPort = null))
+    fun v2KeepsLegacyTimeoutEnabledAndOAuthTogether() {
+        val overlay = com.google.gson.JsonParser.parseString(SbxOpencodeConfigOverlay.buildContent(
+            version = SbxOpenCodeVersion.V2,
+            shareHostConfig = true,
+            ideaMcpPort = 64342,
+            hostConfigJson = """{"mcp":{"other":{"type":"remote","url":"http://localhost:9999/sse","enabled":false,"timeout":1000,"oauth":{"clientId":"example"}}}}""",
+        )).asJsonObject.getAsJsonObject("mcp")
+        assertFalse(overlay.has("servers"))
+        val other = overlay.getAsJsonObject("other")
+        assertFalse(other.get("enabled").asBoolean)
+        assertEquals(1000, other.get("timeout").asInt)
+        assertEquals("example", other.getAsJsonObject("oauth").get("clientId").asString)
+        assertTrue(overlay.getAsJsonObject("idea").get("enabled").asBoolean)
+    }
+
+    @Test
+    fun v2KeepsNativeMcpFieldsAndGeneratesNativeIdeaEntry() {
+        val overlay = com.google.gson.JsonParser.parseString(SbxOpencodeConfigOverlay.buildContent(
+            version = SbxOpenCodeVersion.V2,
+            shareHostConfig = true,
+            ideaMcpPort = 64342,
+            hostConfigJson = """{"mcp":{"servers":{"other":{"type":"remote","url":"http://localhost:9999/mcp","disabled":true,"timeout":{"startup":1000},"oauth":{"client_id":"example"}}}}}""",
+        )).asJsonObject.getAsJsonObject("mcp").getAsJsonObject("servers")
+        val other = overlay.getAsJsonObject("other")
+        assertEquals("http://host.docker.internal:9999/mcp", other.get("url").asString)
+        assertTrue(other.get("disabled").asBoolean)
+        assertEquals(1000, other.getAsJsonObject("timeout").get("startup").asInt)
+        assertEquals("example", other.getAsJsonObject("oauth").get("client_id").asString)
+        assertFalse(overlay.getAsJsonObject("idea").has("enabled"))
+        assertFalse(overlay.getAsJsonObject("idea").get("disabled").asBoolean)
+    }
+
+    @Test
+    fun v2IdeaOnlyUsesNativeSchema() {
+        val overlay = com.google.gson.JsonParser.parseString(SbxOpencodeConfigOverlay.buildContent(
+            version = SbxOpenCodeVersion.V2, shareHostConfig = false, ideaMcpPort = 64342,
+        )).asJsonObject.getAsJsonObject("mcp").getAsJsonObject("servers").getAsJsonObject("idea")
+        assertEquals("remote", overlay.get("type").asString)
+        assertFalse(overlay.has("enabled"))
+        assertFalse(overlay.get("disabled").asBoolean)
+    }
+
+    @Test
+    fun v2WithoutMcpNeedsNoOverlay() {
+        assertNull(SbxOpencodeConfigOverlay.buildContent(SbxOpenCodeVersion.V2, shareHostConfig = false, ideaMcpPort = null))
     }
 
     @Test
@@ -60,6 +122,7 @@ class SbxOpencodeConfigOverlayTest {
             }
         """.trimIndent()
         val overlay = SbxOpencodeConfigOverlay.buildContent(
+            version = SbxOpenCodeVersion.V2,
             shareHostConfig = true,
             ideaMcpPort = null,
             hostConfigJson = SbxOpencodeConfigOverlay.stripJsonc(jsonc),
@@ -95,6 +158,7 @@ class SbxOpencodeConfigOverlayTest {
                 """.trimIndent(),
             )
             val overlay = SbxOpencodeConfigOverlay.buildContent(
+                version = SbxOpenCodeVersion.V2,
                 shareHostConfig = true,
                 ideaMcpPort = null,
                 hostConfigJson = SbxOpencodeConfigOverlay.readHostConfig(
@@ -108,6 +172,7 @@ class SbxOpencodeConfigOverlayTest {
                 """{"mcp":{"other":{"type":"remote","url":"http://127.0.0.1:1111/sse"}}}""",
             )
             val jsonWins = SbxOpencodeConfigOverlay.buildContent(
+                version = SbxOpenCodeVersion.V2,
                 shareHostConfig = true,
                 ideaMcpPort = null,
                 hostConfigJson = SbxOpencodeConfigOverlay.readHostConfig(
@@ -124,7 +189,8 @@ class SbxOpencodeConfigOverlayTest {
 
     @Test
     fun fileBasedConfigIsNotReplayedAsInlineOverrides() {
-        assertNull(SbxOpencodeConfigOverlay.buildContent(
+        val overlay = SbxOpencodeConfigOverlay.buildContent(
+            version = SbxOpenCodeVersion.V2,
             shareHostConfig = true,
             ideaMcpPort = null,
             hostConfigJson = """{
@@ -133,6 +199,18 @@ class SbxOpencodeConfigOverlayTest {
                 "instructions": ["./instructions.md"],
                 "mcp": { "local": { "type": "local", "command": ["./server"] } }
             }""",
-        ))
+        )
+        assertNull(overlay)
+    }
+
+    @Test
+    fun providerSettingsDoNotGenerateAnOverlay() {
+        val overlay = SbxOpencodeConfigOverlay.buildContent(
+            version = SbxOpenCodeVersion.V2,
+            shareHostConfig = true,
+            ideaMcpPort = null,
+            hostConfigJson = """{"providers":{"xai":{"settings":{"transport":"websocket"},"models":{"future-model":{}}}}}""",
+        )
+        assertNull(overlay)
     }
 }

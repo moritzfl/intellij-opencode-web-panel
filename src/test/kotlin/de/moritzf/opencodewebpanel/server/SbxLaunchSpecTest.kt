@@ -21,6 +21,7 @@ class SbxLaunchSpecTest {
             kits = listOf("./my-kit", "docker.io/sbx/playwright-kit:latest"),
             extraMounts = listOf(SbxExtraMount("~/docs", "/home/agent/docs")),
             shareHostOpencodeConfig = true,
+            openCodeVersion = SbxOpenCodeVersion.V2,
             enableIntellijMcp = false,
             useSandbox = true,
             hostPort = 4096,
@@ -59,6 +60,29 @@ class SbxLaunchSpecTest {
         assertEquals(listOf(SbxExtraMount("~/docs", "/home/agent/docs")), spec.extraMounts)
         assertTrue(spec.enableIntellijMcp)
         assertTrue(spec.shareHostOpencodeConfig)
+        assertEquals(SbxOpenCodeVersion.V1, spec.openCodeVersion)
+        assertEquals(
+            SbxOpenCodeVersion.V1,
+            SbxLaunchSpec.parseYaml("schemaVersion: 1\ncanonicalDirectory: /tmp/p\n")!!.openCodeVersion,
+        )
+        assertEquals(
+            SbxOpenCodeVersion.V2,
+            SbxLaunchSpec.parseYaml(
+                "schemaVersion: 1\ncanonicalDirectory: /tmp/p\ninstallOpenCodeV2: true\n",
+            )!!.openCodeVersion,
+        )
+        assertEquals(
+            SbxOpenCodeVersion.V2,
+            SbxLaunchSpec.parseYaml(
+                "schemaVersion: 1\ncanonicalDirectory: /tmp/p\nopenCodeVersion: 2.x\n",
+            )!!.openCodeVersion,
+        )
+        assertEquals(
+            SbxOpenCodeVersion.V1,
+            SbxLaunchSpec.parseYaml(
+                "schemaVersion: 1\ncanonicalDirectory: /tmp/p\nopenCodeVersion: 1.x\ninstallOpenCodeV2: true\n",
+            )!!.openCodeVersion,
+        )
         assertTrue(spec.protectSandboxFiles)
         assertTrue(spec.persistSandboxSessions)
         assertTrue(SbxLaunchSpec.parseYaml("schemaVersion: 1\ncanonicalDirectory: /tmp/p\n")!!.protectSandboxFiles)
@@ -70,8 +94,14 @@ class SbxLaunchSpecTest {
     }
 
     @Test
-    fun persistWritesProjectSpecAndLaunchers() {
+    fun persistWritesProjectSpecAndSingleLauncherAndRemovesOldHelpers() {
         val root = Files.createTempDirectory("opencode-sbx-spec")
+        val control = Files.createDirectories(SbxLaunchSpec.projectControlDir(root.toString()))
+        val obsolete = listOf(
+            "opencode-sbx-install-v2.sh", "opencode-sbx-version-v2.sh", "opencode-sbx-config-v2.json",
+            SbxLaunchSpec.PROJECT_LAUNCHER_WINDOWS,
+        )
+        obsolete.forEach { Files.writeString(control.resolve(it), "old generated helper") }
         val settings = OpenCodeSettingsState().apply { sbxMemory = "8g" }
         val path = SbxLaunchSpec.persist(settings, root.toString())
         assertNotNull(path)
@@ -79,10 +109,14 @@ class SbxLaunchSpecTest {
         val text = Files.readString(path)
         assertTrue(text.contains("memory: 8g"))
         assertTrue(text.contains("canonicalDirectory: ./\n"))
-        val control = SbxLaunchSpec.projectControlDir(root.toString())
         assertTrue(Files.isRegularFile(control.resolve(SbxLaunchSpec.PROJECT_LAUNCHER_UNIX)))
-        assertFalse(Files.exists(control.resolve(SbxLaunchSpec.PROJECT_LAUNCHER_WINDOWS)))
+        Files.list(control).use { files ->
+            assertEquals(listOf(SbxLaunchSpec.PROJECT_LAUNCHER_UNIX), files.map { it.fileName.toString() }.filter { it.endsWith(".sh") }.toList())
+        }
+        obsolete.forEach { assertFalse(Files.exists(control.resolve(it))) }
         val launcher = Files.readString(control.resolve(SbxLaunchSpec.PROJECT_LAUNCHER_UNIX))
+        assertTrue(launcher.contains(SbxCli.V2_INSTALL_SCRIPT))
+        assertTrue(launcher.contains(SbxCli.GUEST_V2_VERSION_SCRIPT))
         assertTrue(launcher.contains("--cli"))
         assertTrue(launcher.contains("--web"))
         assertTrue(launcher.contains("--acp"))

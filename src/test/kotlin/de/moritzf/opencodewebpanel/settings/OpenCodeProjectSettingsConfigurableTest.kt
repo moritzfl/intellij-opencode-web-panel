@@ -13,6 +13,7 @@ import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState
 import de.moritzf.opencodewebpanel.server.SbxExtraMount
 import de.moritzf.opencodewebpanel.server.SbxLaunchSpec
+import de.moritzf.opencodewebpanel.server.SbxOpenCodeVersion
 import de.moritzf.opencodewebpanel.server.SbxCli
 import de.moritzf.opencodewebpanel.server.SbxSandboxRecordStore
 import de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager
@@ -87,6 +88,7 @@ class OpenCodeProjectSettingsConfigurableTest {
             field<JTextField>("sbxMemoryField").text = "8g"
             field<JTextField>("sbxCpusField").text = "4"
             field<AbstractButton>("sbxShareHostConfigCheckBox").isSelected = true
+            field<AbstractButton>("sbxOpenCodeV2RadioButton").isSelected = true
             field<AbstractButton>("sbxEnableIntellijMcpCheckBox").isSelected = false
             field<AbstractButton>("fixedPortRadioButton").isSelected = true
             field<JTextField>("fixedPortField").text = "49123"
@@ -99,6 +101,7 @@ class OpenCodeProjectSettingsConfigurableTest {
             assertEquals("4", expected.cpus)
             assertEquals(49123, expected.hostPort)
             assertTrue(expected.shareHostOpencodeConfig)
+            assertEquals(SbxOpenCodeVersion.V2, expected.openCodeVersion)
             assertFalse(expected.enableIntellijMcp)
             assertTrue(expected.useSandbox)
             assertFalse(configurable.isModified())

@@ -97,9 +97,9 @@ internal object SbxCli {
         "Together" to "api.together.xyz",
         "Fireworks" to "api.fireworks.ai",
         "Ollama Cloud" to "ollama.com",
+        "npm registry" to "registry.npmjs.org",
     )
-    private val SERVE_ARGV = listOf(
-        "opencode",
+    private val SERVE_FLAGS = listOf(
         "serve",
         "--hostname",
         OpenCodeServerProtocol.SANDBOX_SERVE_HOST,
@@ -107,6 +107,30 @@ internal object SbxCli {
         OpenCodeServerProtocol.SANDBOX_SERVE_PORT.toString(),
         "--print-logs",
     )
+    /**
+     * Kit PATH still has 1.x `opencode`. When [SbxOpenCodeVersion.V2] is selected,
+     * require the validated 2.x at `$HOME/.opencode/bin`. `$0` is dummy;
+     * remaining argv are forwarded after `exec`. 1.x launches kit `opencode` even if
+     * that 2.x binary exists.
+     */
+    const val GUEST_OPENCODE_DISPATCH =
+        $$"""exec "$HOME/.opencode/bin/opencode" "$@""""
+    const val V2_INSTALL_URL = "https://opencode.ai/v2/install"
+    // Read the same quoted heredocs the standalone launcher passes to guest sh -c.
+    private val launcherScript: String by lazy { guestResource("opencode-sbx.sh").replace("\r\n", "\n") }
+    val V2_INSTALL_SCRIPT: String by lazy { guestScript("OCWP_V2_INSTALL") }
+    val GUEST_V2_VERSION_SCRIPT: String by lazy { guestScript("OCWP_V2_VERSION") }
+
+    private fun guestScript(delimiter: String): String {
+        val script = launcherScript.substringAfter("<<'$delimiter'\n", "")
+            .substringBefore("\n$delimiter\n", "").trimEnd()
+        check(script.isNotBlank()) { "Missing sandbox script block: $delimiter" }
+        return script
+    }
+
+    private fun guestResource(resource: String): String =
+        checkNotNull(SbxCli::class.java.getResourceAsStream(resource)) { "Missing sandbox resource: $resource" }
+            .bufferedReader(StandardCharsets.UTF_8).use { it.readText().trimEnd() }
     private const val SERVE_PKILL_PATTERN =
         $$"[o]pencode serve --hostname $${OpenCodeServerProtocol.SANDBOX_SERVE_HOST} " +
             $$"--port $${OpenCodeServerProtocol.SANDBOX_SERVE_PORT} --print-logs"
@@ -394,6 +418,28 @@ internal object SbxCli {
         return SbxExtraMount(host, persistSandboxGuestPath())
     }
 
+    /** Plugin-owned host copy of guest `$HOME/.opencode`. Not host `~/.opencode`. Survives stop/start; Reset deletes it. */
+    fun guestOpenCodeDataHome(sandboxName: String, dataRoot: Path = persistDataDir()): String {
+        return posixPath(dataRoot.resolve("sbx-opencode").resolve(sandboxName).toString())
+    }
+
+    fun guestOpenCodeGuestPath(): String = posixPath("$SANDBOX_HOME/.opencode")
+
+    fun guestOpenCodeMount(
+        sandboxName: String,
+        createDirectories: (Path) -> Unit = { Files.createDirectories(it) },
+    ): SbxExtraMount {
+        val path = Path.of(guestOpenCodeDataHome(sandboxName))
+        createDirectories(path)
+        val host = posixPath(path.toString())
+        return SbxExtraMount(host, guestOpenCodeGuestPath())
+    }
+
+    fun deleteGuestOpenCode(sandboxName: String, dataRoot: Path = persistDataDir()) {
+        val path = Path.of(guestOpenCodeDataHome(sandboxName, dataRoot))
+        if (Files.exists(path)) path.toFile().deleteRecursively()
+    }
+
     fun createSnapshot(
         memory: String,
         cpus: String,
@@ -612,21 +658,59 @@ internal object SbxCli {
         name: String,
         workspace: String,
         extraEnvKeys: List<String> = emptyList(),
+        preferGuestV2: Boolean = false,
     ): List<String> {
         val command = mutableListOf(executable, "exec", "-e", OPENCODE_SERVER_PASSWORD_ENV)
         extraEnvKeys.distinct().filter { it.isNotBlank() && it != OPENCODE_SERVER_PASSWORD_ENV }.forEach { key ->
             command += listOf("-e", key)
         }
         command += listOf("-w", workspace, name)
-        command += SERVE_ARGV
+        appendGuestOpenCode(command, SERVE_FLAGS, preferGuestV2)
         return command
     }
 
     fun buildExecUpgradeCommand(
         executable: String = DEFAULT_EXECUTABLE,
         name: String,
+        preferGuestV2: Boolean = false,
     ): List<String> {
-        return listOf(executable, "exec", name, "opencode", "upgrade", "--print-logs")
+        val command = mutableListOf(executable, "exec", name)
+        appendGuestOpenCode(command, listOf("upgrade", "--print-logs"), preferGuestV2)
+        return command
+    }
+
+    fun buildExecInstallV2Command(
+        executable: String = DEFAULT_EXECUTABLE,
+        name: String,
+    ): List<String> {
+        return listOf(executable, "exec", name, "sh", "-c", V2_INSTALL_SCRIPT)
+    }
+
+    fun buildNetworkProbeCommand(executable: String, name: String, url: String): List<String> = listOf(
+        executable, "exec", name, "curl", "--silent", "--show-error", "--location",
+        "--connect-timeout", "5", "--max-time", "10", "--output", "/dev/null", "--write-out", "%{http_code}", url,
+    )
+
+    const val GUEST_V2_MISSING_EXIT_CODE = 44
+
+    fun buildExecGuestV2VersionCommand(
+        executable: String = DEFAULT_EXECUTABLE,
+        name: String,
+    ): List<String> {
+        return listOf(executable, "exec", name, "sh", "-c", GUEST_V2_VERSION_SCRIPT)
+    }
+
+    private fun appendGuestOpenCode(
+        command: MutableList<String>,
+        args: List<String>,
+        preferGuestV2: Boolean,
+    ) {
+        if (preferGuestV2) {
+            command += listOf("sh", "-c", GUEST_OPENCODE_DISPATCH, "opencode")
+        } else {
+            command += "opencode"
+        }
+        command += args
     }
 
     fun buildAddKitCommand(executable: String = DEFAULT_EXECUTABLE, name: String, ref: String): List<String> =

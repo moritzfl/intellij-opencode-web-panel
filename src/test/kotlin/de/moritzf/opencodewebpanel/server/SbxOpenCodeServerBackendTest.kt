@@ -114,6 +114,23 @@ class SbxOpenCodeServerBackendTest {
     }
 
     @Test
+    fun setupChecksRunOnSerialWorkerAfterPendingStop() {
+        assertNotNull(SbxLaunchSpec.persist(SbxLaunchSpec.fromSettings(OpenCodeSettingsState.getInstance(), directory)))
+        behavior = { command ->
+            when (command[1]) {
+                "ls" -> listed(if (calls.contains("stop")) "stopped" else "running")
+                "stop" -> SbxCommandResult(0, "")
+                else -> error("Setup checks must not boot stopped sandbox")
+            }
+        }
+        backend.stopServer()
+        val steps = backend.checkSetup().get(5, TimeUnit.SECONDS)
+        assertEquals(listOf("ls", "stop", "ls"), calls.toList())
+        assertFalse(steps.last().done)
+        assertTrue(steps.last().detail.contains("Start this sandbox"))
+    }
+
+    @Test
     fun restartAlsoWaitsForQueuedStop() = assertStopBeforeStart {
         backend.restartServer(project, directory, { false }, {}, {})
     }
@@ -158,6 +175,204 @@ class SbxOpenCodeServerBackendTest {
         backend.upgradeOpenCodeBinary(project)
         drain()
         assertEquals(SbxFailureKind.UPGRADE_FAILED, backend.lastFailure())
+        assertFalse(calls.contains("diagnose"))
+    }
+
+    @Test
+    fun installV2RunsOfficialInstallerAndSurfacesStage() {
+        var stageDuringInstall: String? = null
+        val original = behavior
+        behavior = { command ->
+            if (command.any { SbxCli.V2_INSTALL_URL in it }) {
+                stageDuringInstall = backend.startupStage()
+                SbxCommandResult(0, "Installing OpenCode version: 2.0.8")
+            } else {
+                original(command)
+            }
+        }
+        backend.installOpenCodeV2(project)
+        drain()
+        assertEquals("Installing OpenCode 2.x…", stageDuringInstall)
+        assertTrue(calls.contains("exec"))
+        assertTrue(calls.indexOf("exec") < calls.indexOf("diagnose"))
+    }
+
+    @Test
+    fun installV2HashProgressKeepsHeadlineAndDoesNotBecomeStage() {
+        val stages = mutableListOf<String?>()
+        val extra = Executors.newSingleThreadExecutor()
+        lateinit var streaming: SbxOpenCodeServerBackend
+        streaming = SbxOpenCodeServerBackend(
+            directory,
+            object : SbxCommandRunner {
+                override fun run(
+                    command: List<String>,
+                    env: Map<String, String>,
+                    timeoutMillis: Long,
+                    workingDirectory: Path?,
+                ): SbxCommandResult {
+                    assertFalse("CLI must never run on EDT", SwingUtilities.isEventDispatchThread())
+                    calls += command[1]
+                    return behavior(command)
+                }
+
+                override fun run(
+                    command: List<String>,
+                    env: Map<String, String>,
+                    timeoutMillis: Long,
+                    workingDirectory: Path?,
+                    onOutputLine: (String) -> Unit,
+                ): SbxCommandResult {
+                    if (command.any { SbxCli.V2_INSTALL_URL in it }) {
+                        calls += command[1]
+                        onOutputLine("## 2.8%")
+                        stages += streaming.startupStage()
+                        onOutputLine("####################################                                 50.0%")
+                        stages += streaming.startupStage()
+                        onOutputLine("Installing OpenCode version: 2.0.8")
+                        stages += streaming.startupStage()
+                        return SbxCommandResult(0, "")
+                    }
+                    val result = run(command, env, timeoutMillis, workingDirectory)
+                    emitCapturedOutputLines(result.output, onOutputLine)
+                    return result
+                }
+            },
+            { store },
+            extra,
+        )
+        try {
+            streaming.installOpenCodeV2(project)
+            extra.submit {}.get(10, TimeUnit.SECONDS)
+            assertEquals(
+                listOf(OPENCODE_DOWNLOAD_STAGE, OPENCODE_DOWNLOAD_STAGE, "Installing OpenCode version: 2.0.8"),
+                stages,
+            )
+        } finally {
+            streaming.dispose()
+            extra.shutdown()
+            assertTrue(extra.awaitTermination(10, TimeUnit.SECONDS))
+        }
+    }
+
+    @Test
+    fun startInstallsV2FromSpecWhenGuestBinMissing() {
+        val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
+        val spec = SbxLaunchSpec.fromSettings(settings, directory).copy(
+            useSandbox = true,
+            openCodeVersion = SbxOpenCodeVersion.V2,
+            enableIntellijMcp = false,
+        )
+        assertNotNull(SbxLaunchSpec.persist(spec))
+        store.save(directory, record.copy(kits = SbxCli.normalizeLineList(spec.kits.joinToString("\n"))))
+        var probed = false
+        var installed = false
+        behavior = { command ->
+            when (command[1]) {
+                "ls" -> listed("stopped")
+                "exec" -> when {
+                    command.any { SbxCli.V2_INSTALL_URL in it } -> {
+                        installed = true
+                        SbxCommandResult(1, "install blocked")
+                    }
+                    command.contains(SbxCli.GUEST_V2_VERSION_SCRIPT) -> {
+                        probed = true
+                        SbxCommandResult(SbxCli.GUEST_V2_MISSING_EXIT_CODE, "")
+                    }
+                    else -> SbxCommandResult(0, "")
+                }
+                else -> SbxCommandResult(0, "")
+            }
+        }
+        backend.ensureStarted(project, directory, { false }, {}, {})
+        drain()
+        assertTrue(probed)
+        assertTrue(installed)
+        assertEquals(SbxFailureKind.INSTALL_V2_FAILED, backend.lastFailure())
+    }
+
+    @Test
+    fun startSkipsV2InstallWhenGuestBinPresent() {
+        val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
+        val spec = SbxLaunchSpec.fromSettings(settings, directory).copy(
+            useSandbox = true,
+            openCodeVersion = SbxOpenCodeVersion.V2,
+            enableIntellijMcp = false,
+        )
+        assertNotNull(SbxLaunchSpec.persist(spec))
+        store.save(directory, record.copy(kits = SbxCli.normalizeLineList(spec.kits.joinToString("\n"))))
+        var installed = false
+        behavior = { command ->
+            when (command[1]) {
+                "ls" -> listed("stopped")
+                "exec" -> when {
+                    command.any { SbxCli.V2_INSTALL_URL in it } -> {
+                        installed = true
+                        SbxCommandResult(1, "should not install")
+                    }
+                    command.contains(SbxCli.GUEST_V2_VERSION_SCRIPT) -> SbxCommandResult(0, "opencode v2.0.11")
+                    else -> SbxCommandResult(0, "")
+                }
+                else -> SbxCommandResult(0, "")
+            }
+        }
+        backend.ensureStarted(project, directory, { false }, {}, {})
+        drain()
+        assertFalse(installed)
+    }
+
+    @Test
+    fun failedV2InstallKeepsSessionsAndDoesNotStartServe() {
+        val original = behavior
+        behavior = { command ->
+            if (command.any { SbxCli.V2_INSTALL_URL in it }) {
+                SbxCommandResult(1, "curl: (22) The requested URL returned error: 403")
+            } else {
+                original(command)
+            }
+        }
+        backend.installOpenCodeV2(project)
+        drain()
+        assertEquals(SbxFailureKind.INSTALL_V2_FAILED, backend.lastFailure())
+        assertFalse(calls.contains("diagnose"))
+    }
+
+    @Test
+    fun invalidV2BinaryDoesNotInstallOrStartServe() {
+        val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
+        assertNotNull(SbxLaunchSpec.persist(SbxLaunchSpec.fromSettings(settings, directory).copy(
+            useSandbox = true, openCodeVersion = SbxOpenCodeVersion.V2, enableIntellijMcp = false,
+        )))
+        behavior = { command ->
+            when {
+                command[1] == "ls" -> listed("stopped")
+                command.contains(SbxCli.GUEST_V2_VERSION_SCRIPT) -> SbxCommandResult(45, "Expected OpenCode 2.x; got 1.18.23")
+                command.any { SbxCli.V2_INSTALL_URL in it } -> error("An invalid installed binary must not be treated as absent")
+                command.contains("serve") -> error("Invalid binary must not serve")
+                else -> SbxCommandResult(0, "")
+            }
+        }
+        backend.ensureStarted(project, directory, { false }, {}, {})
+        drain()
+        assertEquals(SbxFailureKind.INVALID_V2_BINARY, backend.lastFailure())
+        assertTrue(backend.startFailureMessage()!!.contains("1.18.23"))
+        assertTrue(backend.startFailureMessage()!!.contains("Reinstall OpenCode 2.x"))
+        assertFalse(calls.contains("rm"))
+    }
+
+    @Test
+    fun successfulInstallerMustPassVersionCheckBeforeStartupContinues() {
+        val original = behavior
+        behavior = { command ->
+            when {
+                command.any { SbxCli.V2_INSTALL_URL in it } -> SbxCommandResult(0, "installer complete")
+                command.contains(SbxCli.GUEST_V2_VERSION_SCRIPT) -> SbxCommandResult(45, "version command failed")
+                else -> original(command)
+            }
+        }
+        backend.installOpenCodeV2(project)
+        drain()
+        assertEquals(SbxFailureKind.INVALID_V2_BINARY, backend.lastFailure())
         assertFalse(calls.contains("diagnose"))
     }
 
@@ -289,6 +504,30 @@ class SbxOpenCodeServerBackendTest {
         assertFalse(calls.contains("rm"))
         assertNull(backend.foreignSandbox())
         assertEquals(SbxFailureKind.COMMAND_FAILED, backend.lastFailure())
+    }
+
+    @Test
+    fun readOnlyWorkspaceSuffixDoesNotRecreateExistingVm() {
+        val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
+        val mount = temp.newFolder("shared-config").toPath().toRealPath().toString()
+        val spec = SbxLaunchSpec.fromSettings(settings, directory).copy(
+            useSandbox = true, openCodeVersion = SbxOpenCodeVersion.V2, enableIntellijMcp = false,
+            extraMounts = listOf(SbxExtraMount(mount, "/home/agent/shared-config", readOnly = true)),
+        )
+        assertNotNull(SbxLaunchSpec.persist(spec))
+        store.save(directory, record.copy(kits = SbxCli.normalizeLineList(spec.kits.joinToString("\n"))))
+        behavior = { command ->
+            when (command[1]) {
+                "ls" -> listed("stopped", listOf(directory, "$mount:ro"))
+                "exec" -> SbxCommandResult(1, "stop before serve")
+                else -> SbxCommandResult(0, "")
+            }
+        }
+        backend.ensureStarted(project, directory, { false }, {}, {})
+        drain()
+        assertFalse("Attached :ro mounts must not trigger VM removal", calls.contains("rm"))
+        assertFalse(calls.contains("create"))
+        assertEquals("owned-id", store.recordFor(directory)?.sandboxId)
     }
 
     @Test

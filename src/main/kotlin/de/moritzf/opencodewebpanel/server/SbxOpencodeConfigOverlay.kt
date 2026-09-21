@@ -19,14 +19,6 @@ internal object SbxOpencodeConfigOverlay {
 
     fun hostConfigJsoncPath(): Path = hostConfigDir().resolve("opencode.jsonc")
 
-    fun hostDataDir(): Path {
-        val base = System.getenv("XDG_DATA_HOME")?.takeIf { it.isNotBlank() }
-            ?: Path.of(System.getProperty("user.home"), ".local", "share").toString()
-        return Path.of(base, "opencode").toAbsolutePath().normalize()
-    }
-
-    fun hostAuthJsonPath(): Path = hostDataDir().resolve("auth.json")
-
     fun hostConfigShareMount(
         exists: (Path) -> Boolean = { Files.isDirectory(it) },
     ): SbxExtraMount? {
@@ -51,34 +43,29 @@ internal object SbxOpencodeConfigOverlay {
         return others + extra
     }
 
-    fun readHostAuthJson(): String? {
-        val path = hostAuthJsonPath()
-        if (!Files.isRegularFile(path)) return null
-        val text = runCatching { Files.readString(path) }.getOrNull()?.trim().orEmpty()
-        if (text.isEmpty()) return null
-        return parseObject(text)?.toString()
-    }
-
     fun buildContent(
+        version: SbxOpenCodeVersion,
         shareHostConfig: Boolean,
         ideaMcpPort: Int?,
         hostConfigJson: String? = if (shareHostConfig) readHostConfig() else null,
     ): String? {
-        if (!shareHostConfig && ideaMcpPort == null) return null
         val root = JsonObject()
-        if (shareHostConfig) {
-            val hostMcp = parseObject(hostConfigJson)?.get("mcp")?.takeIf { it.isJsonObject }?.asJsonObject
-            hostMcp?.entrySet()?.forEach { (name, value) ->
-                val server = value.takeIf { it.isJsonObject }?.asJsonObject ?: return@forEach
-                val url = server.stringMember("url") ?: return@forEach
-                val rewritten = rewriteLoopbackUrl(url) ?: return@forEach
-                val mcp = root.getAsJsonObject("mcp") ?: JsonObject().also { root.add("mcp", it) }
-                mcp.add(name, server.deepCopy().apply { addProperty("url", rewritten) })
-            }
+        val hostMcp = if (shareHostConfig) {
+            parseObject(hostConfigJson)?.get("mcp")?.takeIf { it.isJsonObject }?.asJsonObject
+        } else null
+        val nested = hostMcp?.get("servers")?.takeIf { it.isJsonObject }?.asJsonObject
+        // Preserve the source schema, including enabled/disabled, timeout and OAuth fields.
+        // OpenCode 2 migrates legacy documents itself; wrapping legacy entries in mcp.servers
+        // creates an invalid hybrid that it silently discards.
+        val nativeV2 = if (hostMcp != null) nested != null else version == SbxOpenCodeVersion.V2
+        (nested ?: hostMcp)?.entrySet()?.forEach { (name, value) ->
+            val server = value.takeIf { it.isJsonObject }?.asJsonObject ?: return@forEach
+            val rewritten = server.stringMember("url")?.let(::rewriteLoopbackUrl) ?: return@forEach
+            mcpServersObject(root, nativeV2).add(name, server.deepCopy().apply { addProperty("url", rewritten) })
         }
         if (ideaMcpPort != null) {
-            val mcp = root.get("mcp")?.takeIf { it.isJsonObject }?.asJsonObject ?: JsonObject().also { root.add("mcp", it) }
-            mcp.add("idea", ideaMcpObject(ideaMcpPort))
+            val servers = mcpServersObject(root, nativeV2)
+            servers.add("idea", ideaMcpObject(ideaMcpPort, nativeV2))
         }
         return root.takeUnless { it.size() == 0 }?.toString()
     }
@@ -87,7 +74,7 @@ internal object SbxOpencodeConfigOverlay {
         val uri = runCatching { URI(url) }.getOrNull() ?: return null
         val scheme = uri.scheme?.lowercase() ?: return null
         if (scheme != "http" && scheme != "https" && scheme != "ws" && scheme != "wss") return null
-        val host = uri.host?.lowercase() ?: return null
+        val host = uri.host?.lowercase()?.removeSurrounding("[", "]") ?: return null
         if (host != "127.0.0.1" && host != "localhost" && host != "::1") return null
         val port = if (uri.port > 0) ":${uri.port}" else ""
         val path = uri.rawPath.orEmpty()
@@ -193,6 +180,17 @@ internal object SbxOpencodeConfigOverlay {
         return out.toString()
     }
 
+    private fun mcpServersObject(root: JsonObject, nativeV2: Boolean): JsonObject {
+        val mcp = objectChild(root, "mcp")
+        return if (nativeV2) objectChild(mcp, "servers") else mcp
+    }
+
+    private fun objectChild(parent: JsonObject, name: String): JsonObject {
+        val existing = parent.get(name)?.takeIf { it.isJsonObject }?.asJsonObject
+        if (existing != null) return existing
+        return JsonObject().also { parent.add(name, it) }
+    }
+
     private fun parseObject(json: String?): JsonObject? {
         if (json.isNullOrBlank()) return null
         return runCatching { JsonParser.parseString(json) }.getOrNull()
@@ -201,11 +199,11 @@ internal object SbxOpencodeConfigOverlay {
                 ?.takeIf { it.isJsonObject }?.asJsonObject
     }
 
-    private fun ideaMcpObject(port: Int): JsonObject {
+    private fun ideaMcpObject(port: Int, nativeV2: Boolean): JsonObject {
         return JsonObject().apply {
             addProperty("type", "remote")
             addProperty("url", "http://host.docker.internal:$port/sse")
-            addProperty("enabled", true)
+            if (nativeV2) addProperty("disabled", false) else addProperty("enabled", true)
         }
     }
 
