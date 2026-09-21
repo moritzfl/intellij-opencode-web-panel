@@ -22,13 +22,15 @@ import com.intellij.ui.ColorUtil
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBTextField
-import com.intellij.ui.components.panels.BackgroundRoundedPanel
 import com.intellij.util.ui.JBFont
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import java.awt.BorderLayout
 import java.awt.Font
+import java.awt.Graphics
+import java.awt.Graphics2D
 import java.awt.GridLayout
+import java.awt.RenderingHints
 import java.awt.datatransfer.StringSelection
 import javax.swing.Action
 import javax.swing.JButton
@@ -149,7 +151,21 @@ private fun copyableCommandBlock(command: String): JComponent {
             CopyPasteManager.getInstance().setContents(StringSelection(command))
         }
     }
-    return BackgroundRoundedPanel(JBUI.scale(8), BorderLayout(JBUI.scale(16), 0)).apply {
+    return object : JPanel(BorderLayout(JBUI.scale(16), 0)) {
+        override fun paintComponent(g: Graphics) {
+            super.paintComponent(g)
+            val graphics = g.create() as Graphics2D
+            try {
+                graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
+                graphics.color = background
+                val arc = JBUI.scale(8)
+                graphics.fillRoundRect(0, 0, width, height, arc, arc)
+            } finally {
+                graphics.dispose()
+            }
+        }
+    }.apply {
+        isOpaque = false
         // Shade relative to the current theme so the block stays distinct in light and dark modes.
         background = JBColor.lazy { ColorUtil.mix(UIUtil.getPanelBackground(), UIUtil.getLabelForeground(), 0.06) }
         border = JBUI.Borders.empty(16)

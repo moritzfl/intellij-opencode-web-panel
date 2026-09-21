@@ -4,6 +4,35 @@
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-09-21
+
+### Added
+
+- Per-project OpenCode 1.x / 2.x selection for Docker Sandboxes, with automatic
+  2.x installation, version validation, and streamed download progress. Switching
+  versions keeps the VM; new 2.x sandboxes persist the binary until Reset Sandbox.
+- Optional same-major OpenCode update indicator in the tool-window title and gear
+  menu. Click to upgrade a sandbox or copy the Host CLI upgrade command.
+- Project-level sandbox setup checks for installation and model-catalog network access.
+
+### Changed
+
+- Share-host-config no longer copies host `auth.json` into the sandbox. Set up
+  provider access with `sbx secret` or by signing in inside OpenCode. Accounts
+  already copied into persisted sandbox data remain there.
+
+### Fixed
+
+- Sandbox OpenCode 2.x upgrade passes `--method curl`. Persist extra-mounts make
+  `$HOME/.opencode` a symlink, so CLI 2.x cannot detect the curl install and
+  fails with "Pass --method".
+- Detect CLI 2.0.8+ through `/api/info`, with `/api/status` fallback for older 2.x
+  versions. Standalone health checks reject SPA HTML responses.
+- Preserve shared MCP configuration schemas when rewriting loopback URLs, including
+  disabled servers, timeouts, and OAuth settings.
+- Recognize read-only workspace entries without unnecessarily recreating sandboxes.
+- Preserve ACP's initial JSON-RPC request and keep provisioning output off stdout.
+
 ## [2.1.0] - 2026-09-16
 
 ### Added
