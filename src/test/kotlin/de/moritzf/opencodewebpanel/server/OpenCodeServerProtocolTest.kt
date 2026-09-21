@@ -2755,6 +2755,22 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun checkServerRespondingAcceptsCliInfoWhenHealthAndStatusAreMissing() {
+        withCliDualStackHttpServer(
+            identityPath = OpenCodeServerProtocol.INFO_PATH,
+            identityBody = wireFixture("v2_cli/api-info.json"),
+        ) { url ->
+            assertTrue(
+                OpenCodeServerProtocol.checkServerResponding(
+                    url,
+                    connectTimeoutMillis = 1000,
+                    readTimeoutMillis = 1000,
+                ),
+            )
+        }
+    }
+
+    @Test
     fun fetchServerVersionReadsCliStatusWhenGlobalHealthIsHtml() {
         withCliDualStackHttpServer { url ->
             assertEquals("2.0.5", OpenCodeServerProtocol.fetchServerVersion(url, null))
@@ -2762,8 +2778,31 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun fetchServerVersionReadsCliInfoWhenStatusIsMissing() {
+        withCliDualStackHttpServer(
+            identityPath = OpenCodeServerProtocol.INFO_PATH,
+            identityBody = wireFixture("v2_cli/api-info.json"),
+        ) { url ->
+            assertEquals("2.0.8", OpenCodeServerProtocol.fetchServerVersion(url, null))
+        }
+    }
+
+    @Test
     fun detectWireProtocolClassifiesCliTwoFromLiveStatusJson() {
         withCliDualStackHttpServer { url ->
+            assertEquals(
+                OpenCodeWireProtocol.V2_CLI,
+                OpenCodeServerProtocol.detectWireProtocol(url, null),
+            )
+        }
+    }
+
+    @Test
+    fun detectWireProtocolClassifiesCliTwoFromLiveInfoJson() {
+        withCliDualStackHttpServer(
+            identityPath = OpenCodeServerProtocol.INFO_PATH,
+            identityBody = wireFixture("v2_cli/api-info.json"),
+        ) { url ->
             assertEquals(
                 OpenCodeWireProtocol.V2_CLI,
                 OpenCodeServerProtocol.detectWireProtocol(url, null),
@@ -2793,6 +2832,8 @@ class OpenCodeServerProtocolTest {
         val notFound = OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.HTTP, 404)
         assertEquals(OpenCodeWireProtocol.V1_18, OpenCodeServerProtocol.classifyWireProtocolForTest(v1, null, null))
         assertEquals(OpenCodeWireProtocol.V2_CLI, OpenCodeServerProtocol.classifyWireProtocolForTest(html, cli, notFound))
+        val info = OpenCodeProtocolResult.Success(wireFixture("v2_cli/api-info.json"))
+        assertEquals(OpenCodeWireProtocol.V2_CLI, OpenCodeServerProtocol.classifyWireProtocolForTest(html, info, notFound))
     }
 
     @Test
@@ -2866,9 +2907,12 @@ class OpenCodeServerProtocolTest {
         return javaClass.getResource("/de/moritzf/opencodewebpanel/server/wire/$name")!!.readText()
     }
 
-    private fun withCliDualStackHttpServer(block: (String) -> Unit) {
+    private fun withCliDualStackHttpServer(
+        identityPath: String = OpenCodeServerProtocol.STATUS_PATH,
+        identityBody: String = """{"version":"2.0.5","pid":47000,"urls":["http://127.0.0.1:18732"]}""",
+        block: (String) -> Unit,
+    ) {
         val html = "<!doctype html><html lang=\"en\"><title>OpenCode</title></html>"
-        val status = """{"version":"2.0.5","pid":47000,"urls":["http://127.0.0.1:18732"]}"""
         val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
         server.createContext("/global/health") { exchange ->
             val bytes = html.toByteArray()
@@ -2880,8 +2924,8 @@ class OpenCodeServerProtocolTest {
             exchange.sendResponseHeaders(404, -1)
             exchange.responseBody.close()
         }
-        server.createContext("/api/status") { exchange ->
-            val bytes = status.toByteArray()
+        server.createContext(identityPath) { exchange ->
+            val bytes = identityBody.toByteArray()
             exchange.responseHeaders.add("Content-Type", "application/json")
             exchange.sendResponseHeaders(200, bytes.size.toLong())
             exchange.responseBody.use { it.write(bytes) }

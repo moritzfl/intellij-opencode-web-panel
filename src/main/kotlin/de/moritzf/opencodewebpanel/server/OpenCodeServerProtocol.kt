@@ -60,6 +60,8 @@ internal object OpenCodeServerProtocol {
     const val HEALTH_PATH = "/api/health"
     const val GLOBAL_HEALTH_PATH = "/global/health"
     const val STATUS_PATH = "/api/status"
+    /** CLI 2.0.8+ renamed [STATUS_PATH] to this. Same `{version,pid,urls}` identity JSON. */
+    const val INFO_PATH = "/api/info"
     const val GLOBAL_EVENT_PATH = "/global/event"
     const val CLI_EVENT_PATH = "/api/event"
 
@@ -1169,12 +1171,12 @@ internal object OpenCodeServerProtocol {
         val health = httpGetResult(root + HEALTH_PATH, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)
         if (isHealthyJson(health)) return true
         if (health is OpenCodeProtocolResult.Success) return false
-        return isCliStatusJson(httpGetResult(root + STATUS_PATH, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis))
+        return isCliStatusJson(fetchCliIdentityResult(root, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis))
     }
 
     /**
-     * 1.18: `/global/health` `{version}`. CLI 2.x: `/api/status` `{version}`. HTML is ignored.
-     * Returns null when neither JSON body has a string version; that never blocks startup.
+     * 1.18: `/global/health` `{version}`. CLI 2.x: `/api/info` then `/api/status` `{version}`.
+     * HTML is ignored. Returns null when neither JSON body has a string version; that never blocks startup.
      */
     fun fetchServerVersion(
         serverUrl: String,
@@ -1185,17 +1187,18 @@ internal object OpenCodeServerProtocol {
         val root = buildServerRootUrl(serverUrl)
         val global = httpGetResult(root + GLOBAL_HEALTH_PATH, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)
         jsonObject(global)?.let { return it.stringMember("version") }
-        val status = httpGetResult(root + STATUS_PATH, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)
-        return jsonObject(status)?.stringMember("version")
+        return jsonObject(fetchCliIdentityResult(root, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis))
+            ?.stringMember("version")
     }
 
     /**
      * JSON-only wire detect. HTML 200 is not v1 and not CLI 2.x.
      * 1. `/global/health` `{healthy:true}` → [OpenCodeWireProtocol.V1_18]
-     * 2. `/api/status` numeric `pid` + string `version` → [OpenCodeWireProtocol.V2_CLI]
-     * 3. `/api/health` `{healthy:true}` → [OpenCodeWireProtocol.V1_18]
-     * 4. `/api/health` numeric `pid` without `healthy` → [OpenCodeWireProtocol.V1_18_EMBEDDED_V2]
-     * 5. else [OpenCodeWireProtocol.UNKNOWN]
+     * 2. `/api/info` numeric `pid` + string `version` → [OpenCodeWireProtocol.V2_CLI] (CLI 2.0.8+)
+     * 3. `/api/status` same shape → [OpenCodeWireProtocol.V2_CLI] (CLI 2.0.5)
+     * 4. `/api/health` `{healthy:true}` → [OpenCodeWireProtocol.V1_18]
+     * 5. `/api/health` numeric `pid` without `healthy` → [OpenCodeWireProtocol.V1_18_EMBEDDED_V2]
+     * 6. else [OpenCodeWireProtocol.UNKNOWN]
      */
     fun detectWireProtocol(
         serverUrl: String,
@@ -1206,10 +1209,10 @@ internal object OpenCodeServerProtocol {
         val root = buildServerRootUrl(serverUrl)
         val global = httpGetResult(root + GLOBAL_HEALTH_PATH, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)
         if (isHealthyJson(global)) return OpenCodeWireProtocol.V1_18
-        val status = httpGetResult(root + STATUS_PATH, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)
-        if (isCliStatusJson(status, requireVersion = true)) return OpenCodeWireProtocol.V2_CLI
+        val cliIdentity = fetchCliIdentityResult(root, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)
+        if (isCliStatusJson(cliIdentity, requireVersion = true)) return OpenCodeWireProtocol.V2_CLI
         val api = httpGetResult(root + HEALTH_PATH, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)
-        return classifyWireProtocol(global, status, api)
+        return classifyWireProtocol(global, cliIdentity, api)
     }
 
     @TestOnly
@@ -1238,6 +1241,24 @@ internal object OpenCodeServerProtocol {
 
     private fun isHealthyJson(result: OpenCodeProtocolResult<String>?): Boolean {
         return jsonObject(result)?.booleanMember("healthy") == true
+    }
+
+    /**
+     * CLI 2.0.8+ serves identity at [INFO_PATH]; 2.0.5 used [STATUS_PATH]. Same JSON shape.
+     */
+    private fun fetchCliIdentityResult(
+        root: String,
+        basicAuthHeader: String?,
+        connectTimeoutMillis: Int,
+        readTimeoutMillis: Int,
+    ): OpenCodeProtocolResult<String> {
+        var last: OpenCodeProtocolResult<String>? = null
+        for (path in arrayOf(INFO_PATH, STATUS_PATH)) {
+            val result = httpGetResult(root + path, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)
+            last = result
+            if (isCliStatusJson(result, requireVersion = true)) return result
+        }
+        return last ?: OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.IO)
     }
 
     private fun isCliStatusJson(

@@ -11,9 +11,15 @@ AUTH="opencode:${PASSWORD}"
 WORKDIR="$(mktemp -d)"
 trap 'rm -rf "$WORKDIR"' EXIT
 
+cli_identity_ok() {
+  local path="$1"
+  local out="$2"
+  curl -fsu "$AUTH" "$BASE_URL$path" -o "$out" && python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert isinstance(d.get("pid"), int) and isinstance(d.get("version"), str)' "$out" 2>/dev/null
+}
+
 PROTOCOL="${3:-}"
 if [ -z "$PROTOCOL" ]; then
-  if curl -fsu "$AUTH" "$BASE_URL/api/status" -o "$WORKDIR/status-probe.json" && python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert isinstance(d.get("pid"), int) and isinstance(d.get("version"), str)' "$WORKDIR/status-probe.json" 2>/dev/null; then
+  if cli_identity_ok /api/info "$WORKDIR/status-probe.json" || cli_identity_ok /api/status "$WORKDIR/status-probe.json"; then
     PROTOCOL=v2
   else
     PROTOCOL=v1
@@ -21,19 +27,28 @@ if [ -z "$PROTOCOL" ]; then
 fi
 
 if [ "$PROTOCOL" = "v2" ]; then
+  IDENTITY=""
+  if cli_identity_ok /api/info "$WORKDIR/status.json"; then
+    IDENTITY=/api/info
+  elif cli_identity_ok /api/status "$WORKDIR/status.json"; then
+    IDENTITY=/api/status
+  else
+    echo "FAIL: CLI 2.x identity missing (/api/info or /api/status)" >&2
+    exit 1
+  fi
   curl -fsu "$AUTH" "$BASE_URL/openapi.json" -o "$WORKDIR/doc.json"
-  curl -fsu "$AUTH" "$BASE_URL/api/status" -o "$WORKDIR/status.json"
   curl -fsu "$AUTH" "$BASE_URL/api/session/active" -o "$WORKDIR/active.json"
   curl -fsu "$AUTH" "$BASE_URL/api/permission/request" -o "$WORKDIR/permission.json"
   curl -fsu "$AUTH" "$BASE_URL/api/form" -o "$WORKDIR/form.json"
-  python3 - "$WORKDIR" <<'PY'
+  python3 - "$WORKDIR" "$IDENTITY" <<'PY'
 import json, pathlib, sys
 root = pathlib.Path(sys.argv[1])
+identity = sys.argv[2]
 doc = json.loads((root / "doc.json").read_text())
 status = json.loads((root / "status.json").read_text())
 failures = []
 ops = {
-    ("/api/status", "get"): None,
+    (identity, "get"): None,
     ("/api/event", "get"): None,
     ("/api/session", "get"): None,
     ("/api/session/active", "get"): None,
@@ -48,7 +63,7 @@ for (path, method), _ in ops.items():
     if not (doc.get("paths") or {}).get(path, {}).get(method):
         failures.append(f"missing {method.upper()} {path}")
 if not isinstance(status.get("pid"), int) or not isinstance(status.get("version"), str):
-    failures.append("/api/status shape changed")
+    failures.append(f"{identity} shape changed")
 active = json.loads((root / "active.json").read_text())
 if not isinstance(active, dict) or not isinstance(active.get("data"), dict):
     failures.append("/api/session/active envelope changed")
