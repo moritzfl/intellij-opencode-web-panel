@@ -675,7 +675,14 @@ internal object SbxCli {
         preferGuestV2: Boolean = false,
     ): List<String> {
         val command = mutableListOf(executable, "exec", name)
-        appendGuestOpenCode(command, listOf("upgrade", "--print-logs"), preferGuestV2)
+        val args = mutableListOf("upgrade", "--print-logs")
+        if (preferGuestV2) {
+            // CLI 2.x curl-detect is path.resolve(execPath) == $HOME/.opencode/bin/opencode.
+            // Persist extra-mounts that dir and symlink ~/.opencode onto it, so execPath is
+            // the host sbx-opencode realpath and detection fails without --method.
+            args += listOf("--method", "curl")
+        }
+        appendGuestOpenCode(command, args, preferGuestV2)
         return command
     }
 

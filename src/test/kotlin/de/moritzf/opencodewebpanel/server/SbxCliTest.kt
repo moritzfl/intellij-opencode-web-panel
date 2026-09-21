@@ -464,6 +464,8 @@ class SbxCliTest {
                 "opencode",
                 "upgrade",
                 "--print-logs",
+                "--method",
+                "curl",
             ),
             SbxCli.buildExecUpgradeCommand(name = "ide-ocwp-abc", preferGuestV2 = true),
         )
