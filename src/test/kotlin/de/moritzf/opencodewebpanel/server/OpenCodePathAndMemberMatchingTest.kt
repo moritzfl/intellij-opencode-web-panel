@@ -488,6 +488,121 @@ class OpenCodePathAndMemberMatchingTest {
         assertTrue(aliases.contains("src/Main.kt"))
     }
 
+    @Test
+    fun parseCodeReferenceHandlesAbsolutePathWithLine() {
+        val ref = OpenCodeServerProtocol.parseCodeReference("/tmp/project/src/Main.kt:42")!!
+
+        assertEquals("Main.kt", ref.fileName)
+        assertEquals("/tmp/project/src/Main.kt", ref.path)
+        assertNull(ref.qualifiedName)
+        assertEquals("kt", ref.extension)
+        assertEquals(41, ref.line)
+        assertTrue(ref.hasPath)
+    }
+
+    @Test
+    fun parseCodeReferenceUnderstandsCommonLocators() {
+        fun loc(text: String) = OpenCodeServerProtocol.parseCodeReference(text)!!
+
+        val colon = loc("src/main.ts:42")
+        assertEquals("src/main.ts", colon.path)
+        assertEquals(41, colon.line)
+        assertNull(colon.column)
+
+        val colonCol = loc("src/main.ts:42:13")
+        assertEquals("src/main.ts", colonCol.path)
+        assertEquals(41, colonCol.line)
+        assertEquals(12, colonCol.column)
+
+        val github = loc("src/main.ts#L42")
+        assertEquals("src/main.ts", github.path)
+        assertEquals(41, github.line)
+
+        val githubRange = loc("src/main.ts#L42-L57")
+        assertEquals("src/main.ts", githubRange.path)
+        assertEquals(41, githubRange.line)
+
+        val lRange = loc("Foo.java:L123-1234")
+        assertEquals("Foo.java", lRange.path)
+        assertEquals("java", lRange.extension)
+        assertEquals(122, lRange.line)
+
+        val vs = loc("src/main.ts(42)")
+        assertEquals("src/main.ts", vs.path)
+        assertEquals(41, vs.line)
+        assertNull(vs.column)
+
+        val msvc = loc("src/main.ts(42,13)")
+        assertEquals("src/main.ts", msvc.path)
+        assertEquals(41, msvc.line)
+        assertEquals(12, msvc.column)
+
+        val windows = loc("""C:\proj\Foo.java:L10""")
+        assertEquals("""C:\proj\Foo.java""", windows.path)
+        assertEquals(9, windows.line)
+
+        val parenL = loc("Foo.java(L98)")
+        assertEquals("Foo.java", parenL.path)
+        assertEquals(97, parenL.line)
+
+        val colonNoL = loc("production.xsd:16488")
+        assertEquals("production.xsd", colonNoL.path)
+        assertEquals(16487, colonNoL.line)
+    }
+
+    @Test
+    fun parseCodeReferenceStripsMethodCallToType() {
+        val method = OpenCodeServerProtocol.parseCodeReference("PackagingMailingBarcodeDefinition.isWithScanRule()")!!
+        assertEquals("PackagingMailingBarcodeDefinition", method.fileName)
+        assertEquals("PackagingMailingBarcodeDefinition", method.path)
+        assertEquals("isWithScanRule", method.memberName)
+        assertNull(method.qualifiedName)
+        assertNull(method.extension)
+        assertNull(method.line)
+
+        val withLine = OpenCodeServerProtocol.parseCodeReference("PackagingMailingBarcodeDefinition.isWithScanRule()(L98)")!!
+        assertEquals("PackagingMailingBarcodeDefinition", withLine.fileName)
+        assertEquals(97, withLine.line)
+
+        val qualified = OpenCodeServerProtocol.parseCodeReference("java.util.Optional.of(Boolean.TRUE)")!!
+        assertEquals("Optional", qualified.fileName)
+        assertEquals("java.util.Optional", qualified.path)
+        assertEquals("java.util.Optional", qualified.qualifiedName)
+        assertEquals("of", qualified.memberName)
+        assertNull(qualified.extension)
+    }
+
+    @Test
+    fun parseCodeReferenceKeepsLowercaseCallUnchanged() {
+        val ref = OpenCodeServerProtocol.parseCodeReference("handle(CurrentSheetField)")!!
+        assertEquals("handle(CurrentSheetField)", ref.fileName)
+        assertEquals("handle(CurrentSheetField)", ref.path)
+        assertNull(ref.extension)
+    }
+
+    @Test
+    fun parseCodeReferenceAllowsSpacesWhenExtensionPresent() {
+        val ref = OpenCodeServerProtocol.parseCodeReference("Manuelle Verpackung und PM-Mobile.xml:L1063")!!
+        assertEquals("Manuelle Verpackung und PM-Mobile.xml", ref.path)
+        assertEquals("xml", ref.extension)
+        assertEquals(1062, ref.line)
+    }
+
+    @Test
+    fun parseCodeReferenceReturnsNullForBlankInput() {
+        assertNull(OpenCodeServerProtocol.parseCodeReference(""))
+        assertNull(OpenCodeServerProtocol.parseCodeReference("   "))
+    }
+
+    @Test
+    fun scoreFilePathSuffixPrefersTheLongerTrailingMatch() {
+        assertTrue(
+            OpenCodeServerProtocol.scoreFilePathSuffix("/repo/packages/app/src/Main.kt", "src/Main.kt") >
+                OpenCodeServerProtocol.scoreFilePathSuffix("/repo/other/Main.kt", "src/Main.kt"),
+        )
+        assertEquals(0, OpenCodeServerProtocol.scoreFilePathSuffix("/repo/other/Util.kt", "src/Main.kt"))
+    }
+
     private fun withTree(vararg files: String, block: (Path) -> Unit) {
         val root = Files.createTempDirectory("opencode-match")
         try {
