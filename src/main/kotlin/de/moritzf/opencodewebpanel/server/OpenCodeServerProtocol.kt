@@ -1071,10 +1071,19 @@ internal object OpenCodeServerProtocol {
 
     fun shouldHandleBasicAuthChallenge(serverUrl: String?, isProxy: Boolean, host: String?, port: Int): Boolean {
         if (isProxy || serverUrl == null || host == null) return false
-
-        val uri = URI(buildProjectUrl(serverUrl))
+        val uri = runCatching { URI(buildProjectUrl(serverUrl)) }.getOrNull() ?: return false
         val expectedPort = if (uri.port >= 0) uri.port else defaultPort(uri.scheme)
-        return host.equals(uri.host, ignoreCase = true) && port == expectedPort
+        return port == expectedPort && hostsMatchForAuth(host, uri.host)
+    }
+
+    /**
+     * Chromium may challenge `localhost` or `[::1]` for a server bound to `127.0.0.1`.
+     * Those loopback aliases are the same machine; any other host still has to match exactly.
+     */
+    internal fun hostsMatchForAuth(challengeHost: String, serverHost: String?): Boolean {
+        if (serverHost == null) return false
+        if (challengeHost.equals(serverHost, ignoreCase = true)) return true
+        return isLoopbackHost(challengeHost) && isLoopbackHost(serverHost)
     }
 
     /** This JCEF is OpenCode-only. Unanswered challenges become Chromium's login dialog. */
@@ -1116,11 +1125,15 @@ internal object OpenCodeServerProtocol {
             val uri = URI(serverUrl)
             val scheme = uri.scheme?.lowercase()
             if (scheme != "http" && scheme != "https") return false
-            val host = uri.host?.lowercase() ?: return false
-            host == "127.0.0.1" || host == "localhost" || host == "[::1]" || host == "::1"
+            isLoopbackHost(uri.host ?: return false)
         } catch (_: Exception) {
             false
         }
+    }
+
+    private fun isLoopbackHost(host: String): Boolean {
+        val normalized = host.trim().lowercase().removePrefix("[").removeSuffix("]")
+        return normalized == "127.0.0.1" || normalized == "localhost" || normalized == "::1"
     }
 
     fun buildOpenCodeCommand(port: String = DYNAMIC_PORT, executable: String = DEFAULT_EXECUTABLE): List<String> {

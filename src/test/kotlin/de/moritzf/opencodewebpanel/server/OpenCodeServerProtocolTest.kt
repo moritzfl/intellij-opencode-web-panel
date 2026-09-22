@@ -1436,11 +1436,16 @@ class OpenCodeServerProtocolTest {
         val serverUrl = "http://127.0.0.1:60482"
 
         assertTrue(OpenCodeServerProtocol.shouldHandleBasicAuthChallenge(serverUrl, false, "127.0.0.1", 60482))
+        assertTrue(OpenCodeServerProtocol.shouldHandleBasicAuthChallenge(serverUrl, false, "localhost", 60482))
+        assertTrue(OpenCodeServerProtocol.shouldHandleBasicAuthChallenge(serverUrl, false, "::1", 60482))
+        assertTrue(OpenCodeServerProtocol.shouldHandleBasicAuthChallenge(serverUrl, false, "[::1]", 60482))
+        assertTrue(OpenCodeServerProtocol.shouldHandleBasicAuthChallenge("http://localhost:60482", false, "127.0.0.1", 60482))
         assertTrue(OpenCodeServerProtocol.shouldHandleBasicAuthChallenge("http://127.0.0.1", false, "127.0.0.1", 80))
         assertTrue(OpenCodeServerProtocol.shouldHandleBasicAuthChallenge("https://127.0.0.1", false, "127.0.0.1", 443))
         assertFalse(OpenCodeServerProtocol.shouldHandleBasicAuthChallenge(serverUrl, true, "127.0.0.1", 60482))
-        assertFalse(OpenCodeServerProtocol.shouldHandleBasicAuthChallenge(serverUrl, false, "localhost", 60482))
         assertFalse(OpenCodeServerProtocol.shouldHandleBasicAuthChallenge(serverUrl, false, "127.0.0.1", 60483))
+        assertFalse(OpenCodeServerProtocol.shouldHandleBasicAuthChallenge(serverUrl, false, "example.com", 60482))
+        assertFalse(OpenCodeServerProtocol.shouldHandleBasicAuthChallenge("http://example.com:60482", false, "localhost", 60482))
         assertFalse(OpenCodeServerProtocol.shouldHandleBasicAuthChallenge(null, false, "127.0.0.1", 60482))
     }
 
@@ -1450,6 +1455,10 @@ class OpenCodeServerProtocolTest {
         assertEquals(
             OpenCodeServerProtocol.BasicAuthChallengeReply.CONTINUE,
             OpenCodeServerProtocol.replyToBasicAuthChallenge(false, "127.0.0.1", 4096, live, "secret", true),
+        )
+        assertEquals(
+            OpenCodeServerProtocol.BasicAuthChallengeReply.CONTINUE,
+            OpenCodeServerProtocol.replyToBasicAuthChallenge(false, "localhost", 4096, live, "secret", true),
         )
         assertEquals(
             OpenCodeServerProtocol.BasicAuthChallengeReply.CANCEL,
@@ -2299,109 +2308,70 @@ class OpenCodeServerProtocolTest {
         }
     }
 
-    @Test
-    fun sendContinuePromptSendsResumeTrueBody() {
-        val serverSocket = ServerSocket(0)
-        val executor = Executors.newSingleThreadExecutor()
-        val capturedBody = java.util.concurrent.CompletableFuture<String>()
-        val responseFuture = executor.submit {
-            try {
-                serverSocket.accept().use { socket ->
-                    val input = socket.getInputStream()
-                    val reader = input.bufferedReader()
-                    reader.readLine()
-                    val headers = mutableMapOf<String, String>()
-                    while (true) {
-                        val line = reader.readLine()
-                        if (line.isNullOrEmpty()) break
-                        val parts = line.split(": ", limit = 2)
-                        if (parts.size == 2) headers[parts[0]] = parts[1]
-                    }
-                    val contentLength = headers["Content-Length"]?.toIntOrNull() ?: 0
-                    val bodyChars = CharArray(contentLength)
-                    var read = 0
-                    while (read < contentLength) {
-                        val n = reader.read(bodyChars, read, contentLength - read)
-                        if (n < 0) break
-                        read += n
-                    }
-                    capturedBody.complete(String(bodyChars, 0, read))
-                    socket.getOutputStream().write(
-                        "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
-                            .toByteArray(Charsets.UTF_8),
-                    )
-                    socket.getOutputStream().flush()
-                }
-            } catch (_: SocketException) {}
+    private data class CapturedHttpRequest(
+        val method: String,
+        val target: String,
+        val body: String,
+    )
+
+    private fun <T> withCapturedHttpRequest(
+        status: Int = 200,
+        responseBody: String = "",
+        block: (baseUrl: String) -> T,
+    ): Pair<T, CapturedHttpRequest> {
+        val captured = java.util.concurrent.CompletableFuture<CapturedHttpRequest>()
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/") { exchange ->
+            val body = exchange.requestBody.bufferedReader(Charsets.UTF_8).use { it.readText() }
+            val query = exchange.requestURI.rawQuery
+            val target = exchange.requestURI.rawPath + if (query.isNullOrEmpty()) "" else "?$query"
+            captured.complete(CapturedHttpRequest(exchange.requestMethod, target, body))
+            val bytes = responseBody.toByteArray(Charsets.UTF_8)
+            if (bytes.isEmpty()) {
+                exchange.sendResponseHeaders(status, -1)
+                exchange.close()
+            } else {
+                exchange.responseHeaders.add("Content-Type", "application/json")
+                exchange.sendResponseHeaders(status, bytes.size.toLong())
+                exchange.responseBody.use { it.write(bytes) }
+            }
         }
+        server.start()
         try {
-            val auth = OpenCodeServerProtocol.buildBasicAuthHeader("test")
-            val accepted = OpenCodeServerProtocol.sendContinuePrompt(
-                "http://127.0.0.1:${serverSocket.localPort}",
-                auth,
-                "ses_abc123",
-            )
-            assertTrue(accepted)
-            val body = capturedBody.get(5, TimeUnit.SECONDS)
-            assertTrue(body.contains("\"resume\":true"))
-            assertTrue(body.contains("\"text\":\"Continue\""))
-            assertTrue(body.contains("\"prompt\""))
-            responseFuture.get(5, TimeUnit.SECONDS)
+            val result = block("http://127.0.0.1:${server.address.port}")
+            return result to captured.get(5, TimeUnit.SECONDS)
         } finally {
-            serverSocket.close()
-            executor.shutdownNow()
+            server.stop(0)
         }
     }
 
     @Test
-    fun sendContinuePromptOnCliOmitsPromptWrapper() {
-        val serverSocket = ServerSocket(0)
-        val executor = Executors.newSingleThreadExecutor()
-        val capturedBody = java.util.concurrent.CompletableFuture<String>()
-        val responseFuture = executor.submit {
-            try {
-                serverSocket.accept().use { socket ->
-                    val reader = socket.getInputStream().bufferedReader()
-                    reader.readLine()
-                    val headers = mutableMapOf<String, String>()
-                    while (true) {
-                        val line = reader.readLine()
-                        if (line.isNullOrEmpty()) break
-                        val parts = line.split(": ", limit = 2)
-                        if (parts.size == 2) headers[parts[0]] = parts[1]
-                    }
-                    val contentLength = headers["Content-Length"]?.toIntOrNull() ?: 0
-                    val bodyChars = CharArray(contentLength)
-                    var read = 0
-                    while (read < contentLength) {
-                        val n = reader.read(bodyChars, read, contentLength - read)
-                        if (n < 0) break
-                        read += n
-                    }
-                    capturedBody.complete(String(bodyChars, 0, read))
-                    socket.getOutputStream().write(
-                        "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
-                            .toByteArray(Charsets.UTF_8),
-                    )
-                    socket.getOutputStream().flush()
-                }
-            } catch (_: SocketException) {}
+    fun sendContinuePromptSendsResumeTrueBody() {
+        val (accepted, request) = withCapturedHttpRequest { base ->
+            OpenCodeServerProtocol.sendContinuePrompt(
+                base,
+                OpenCodeServerProtocol.buildBasicAuthHeader("test"),
+                "ses_abc123",
+            )
         }
-        try {
-            val accepted = OpenCodeServerProtocol.sendContinuePrompt(
-                "http://127.0.0.1:${serverSocket.localPort}",
+        assertTrue(accepted)
+        assertTrue(request.body.contains("\"resume\":true"))
+        assertTrue(request.body.contains("\"text\":\"Continue\""))
+        assertTrue(request.body.contains("\"prompt\""))
+    }
+
+    @Test
+    fun sendContinuePromptOnCliOmitsPromptWrapper() {
+        val (accepted, request) = withCapturedHttpRequest { base ->
+            OpenCodeServerProtocol.sendContinuePrompt(
+                base,
                 OpenCodeServerProtocol.buildBasicAuthHeader("test"),
                 "ses_abc123",
                 wireProtocol = OpenCodeWireProtocol.V2_CLI,
             )
-            assertTrue(accepted)
-            val body = capturedBody.get(5, TimeUnit.SECONDS)
-            assertEquals("""{"text":"Continue","resume":true}""", body)
-            responseFuture.get(5, TimeUnit.SECONDS)
-        } finally {
-            serverSocket.close()
-            executor.shutdownNow()
         }
+        assertTrue(accepted)
+        assertEquals("""{"text":"Continue","resume":true}""", request.body)
     }
 
     @Test
@@ -2423,102 +2393,30 @@ class OpenCodeServerProtocolTest {
 
     @Test
     fun replyToPermissionPostsToNonDeprecatedReplyEndpoint() {
-        val serverSocket = ServerSocket(0)
-        val executor = Executors.newSingleThreadExecutor()
-        val capturedRequestLine = java.util.concurrent.CompletableFuture<String>()
-        val capturedBody = java.util.concurrent.CompletableFuture<String>()
-        val responseFuture = executor.submit {
-            try {
-                serverSocket.accept().use { socket ->
-                    val reader = socket.getInputStream().bufferedReader()
-                    capturedRequestLine.complete(reader.readLine())
-                    val headers = mutableMapOf<String, String>()
-                    while (true) {
-                        val line = reader.readLine()
-                        if (line.isNullOrEmpty()) break
-                        val parts = line.split(": ", limit = 2)
-                        if (parts.size == 2) headers[parts[0]] = parts[1]
-                    }
-                    val contentLength = headers["Content-Length"]?.toIntOrNull() ?: 0
-                    val bodyChars = CharArray(contentLength)
-                    var read = 0
-                    while (read < contentLength) {
-                        val n = reader.read(bodyChars, read, contentLength - read)
-                        if (n < 0) break
-                        read += n
-                    }
-                    capturedBody.complete(String(bodyChars, 0, read))
-                    socket.getOutputStream().write(
-                        "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
-                            .toByteArray(Charsets.UTF_8),
-                    )
-                    socket.getOutputStream().flush()
-                }
-            } catch (_: SocketException) {}
-        }
-        try {
-            val auth = OpenCodeServerProtocol.buildBasicAuthHeader("test")
-            val accepted = OpenCodeServerProtocol.replyToPermission(
-                "http://127.0.0.1:${serverSocket.localPort}",
-                auth,
+        val (accepted, request) = withCapturedHttpRequest { base ->
+            OpenCodeServerProtocol.replyToPermission(
+                base,
+                OpenCodeServerProtocol.buildBasicAuthHeader("test"),
                 "/tmp/project",
                 "ses_abc123",
                 "per_abc123",
                 OpenCodeServerProtocol.PermissionResponse.ONCE,
             )
-            assertTrue(accepted)
-            val requestLine = capturedRequestLine.get(5, TimeUnit.SECONDS)
-            // Non-deprecated successor: POST /permission/{requestID}/reply, not the deprecated
-            // POST /session/{id}/permissions/{id} form.
-            assertTrue(requestLine.startsWith("POST /permission/per_abc123/reply?directory="))
-            assertFalse(requestLine.contains("/permissions/"))
-            val body = capturedBody.get(5, TimeUnit.SECONDS)
-            assertEquals("{\"reply\":\"once\"}", body)
-            responseFuture.get(5, TimeUnit.SECONDS)
-        } finally {
-            serverSocket.close()
-            executor.shutdownNow()
         }
+        assertTrue(accepted)
+        // Non-deprecated successor: POST /permission/{requestID}/reply, not the deprecated
+        // POST /session/{id}/permissions/{id} form.
+        assertEquals("POST", request.method)
+        assertTrue(request.target.startsWith("/permission/per_abc123/reply?directory="))
+        assertFalse(request.target.contains("/permissions/"))
+        assertEquals("{\"reply\":\"once\"}", request.body)
     }
 
     @Test
     fun replyToPermissionOnCliTwoPostsDecision() {
-        val serverSocket = ServerSocket(0)
-        val executor = Executors.newSingleThreadExecutor()
-        val capturedRequestLine = java.util.concurrent.CompletableFuture<String>()
-        val capturedBody = java.util.concurrent.CompletableFuture<String>()
-        val responseFuture = executor.submit {
-            try {
-                serverSocket.accept().use { socket ->
-                    val reader = socket.getInputStream().bufferedReader()
-                    capturedRequestLine.complete(reader.readLine())
-                    val headers = mutableMapOf<String, String>()
-                    while (true) {
-                        val line = reader.readLine()
-                        if (line.isNullOrEmpty()) break
-                        val parts = line.split(": ", limit = 2)
-                        if (parts.size == 2) headers[parts[0]] = parts[1]
-                    }
-                    val contentLength = headers["Content-Length"]?.toIntOrNull() ?: 0
-                    val bodyChars = CharArray(contentLength)
-                    var read = 0
-                    while (read < contentLength) {
-                        val n = reader.read(bodyChars, read, contentLength - read)
-                        if (n < 0) break
-                        read += n
-                    }
-                    capturedBody.complete(String(bodyChars, 0, read))
-                    socket.getOutputStream().write(
-                        "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
-                            .toByteArray(Charsets.UTF_8),
-                    )
-                    socket.getOutputStream().flush()
-                }
-            } catch (_: SocketException) {}
-        }
-        try {
-            val accepted = OpenCodeServerProtocol.replyToPermission(
-                "http://127.0.0.1:${serverSocket.localPort}",
+        val (accepted, request) = withCapturedHttpRequest(status = 204) { base ->
+            OpenCodeServerProtocol.replyToPermission(
+                base,
                 OpenCodeServerProtocol.buildBasicAuthHeader("test"),
                 "/tmp/project",
                 "ses_abc123",
@@ -2526,17 +2424,11 @@ class OpenCodeServerProtocolTest {
                 OpenCodeServerProtocol.PermissionResponse.ONCE,
                 wireProtocol = OpenCodeWireProtocol.V2_CLI,
             )
-            assertTrue(accepted)
-            assertEquals(
-                "POST /api/session/ses_abc123/permission/per_abc123/reply HTTP/1.1",
-                capturedRequestLine.get(5, TimeUnit.SECONDS),
-            )
-            assertEquals("{\"decision\":\"once\"}", capturedBody.get(5, TimeUnit.SECONDS))
-            responseFuture.get(5, TimeUnit.SECONDS)
-        } finally {
-            serverSocket.close()
-            executor.shutdownNow()
         }
+        assertTrue(accepted)
+        assertEquals("POST", request.method)
+        assertEquals("/api/session/ses_abc123/permission/per_abc123/reply", request.target)
+        assertEquals("{\"decision\":\"once\"}", request.body)
     }
 
     @Test
@@ -2852,84 +2744,34 @@ class OpenCodeServerProtocolTest {
     @Test
     fun fetchSessionDiffRequestsDiffUrlAndParsesResult() {
         val body = """[{"file":"src/Foo.kt","patch":"@@ -1 +1 @@\n-a\n+b","additions":1,"deletions":1,"status":"modified"}]"""
-        val serverSocket = ServerSocket(0)
-        val executor = Executors.newSingleThreadExecutor()
-        val capturedRequestLine = java.util.concurrent.CompletableFuture<String>()
-        val responseFuture = executor.submit {
-            try {
-                serverSocket.accept().use { socket ->
-                    val reader = socket.getInputStream().bufferedReader()
-                    capturedRequestLine.complete(reader.readLine())
-                    while (reader.readLine()?.isNotEmpty() == true) {
-                        // Drain request headers.
-                    }
-                    socket.getOutputStream().write(
-                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ${body.toByteArray(Charsets.UTF_8).size}\r\nConnection: close\r\n\r\n$body"
-                            .toByteArray(Charsets.UTF_8),
-                    )
-                    socket.getOutputStream().flush()
-                }
-            } catch (_: SocketException) {}
-        }
-        try {
-            val auth = OpenCodeServerProtocol.buildBasicAuthHeader("test")
-            val diffs = OpenCodeServerProtocol.fetchSessionDiff(
-                "http://127.0.0.1:${serverSocket.localPort}",
-                auth,
+        val (diffs, request) = withCapturedHttpRequest(responseBody = body) { base ->
+            OpenCodeServerProtocol.fetchSessionDiff(
+                base,
+                OpenCodeServerProtocol.buildBasicAuthHeader("test"),
                 "/tmp/project",
                 "ses_abc123",
             )
-            val requestLine = capturedRequestLine.get(5, TimeUnit.SECONDS)
-            assertTrue(requestLine.startsWith("GET /session/ses_abc123/diff?directory="))
-            assertFalse(requestLine.contains("messageID"))
-            assertEquals(1, diffs.size)
-            assertEquals("src/Foo.kt", diffs[0].file)
-            responseFuture.get(5, TimeUnit.SECONDS)
-        } finally {
-            serverSocket.close()
-            executor.shutdownNow()
         }
+        assertEquals("GET", request.method)
+        assertTrue(request.target.startsWith("/session/ses_abc123/diff?directory="))
+        assertFalse(request.target.contains("messageID"))
+        assertEquals(1, diffs.size)
+        assertEquals("src/Foo.kt", diffs[0].file)
     }
 
     @Test
     fun fetchSessionDiffAppendsMessageIdParam() {
-        val serverSocket = ServerSocket(0)
-        val executor = Executors.newSingleThreadExecutor()
-        val capturedRequestLine = java.util.concurrent.CompletableFuture<String>()
-        val responseFuture = executor.submit {
-            try {
-                serverSocket.accept().use { socket ->
-                    val reader = socket.getInputStream().bufferedReader()
-                    capturedRequestLine.complete(reader.readLine())
-                    while (reader.readLine()?.isNotEmpty() == true) {
-                        // Drain request headers.
-                    }
-                    val body = "[]"
-                    socket.getOutputStream().write(
-                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ${body.length}\r\nConnection: close\r\n\r\n$body"
-                            .toByteArray(Charsets.UTF_8),
-                    )
-                    socket.getOutputStream().flush()
-                }
-            } catch (_: SocketException) {}
-        }
-        try {
-            val auth = OpenCodeServerProtocol.buildBasicAuthHeader("test")
+        val (_, request) = withCapturedHttpRequest(responseBody = "[]") { base ->
             OpenCodeServerProtocol.fetchSessionDiff(
-                "http://127.0.0.1:${serverSocket.localPort}",
-                auth,
+                base,
+                OpenCodeServerProtocol.buildBasicAuthHeader("test"),
                 "/tmp/project",
                 "ses_abc123",
                 "msg_xyz",
             )
-            val requestLine = capturedRequestLine.get(5, TimeUnit.SECONDS)
-            assertTrue(requestLine.contains("/session/ses_abc123/diff?directory="))
-            assertTrue(requestLine.contains("&messageID=msg_xyz"))
-            responseFuture.get(5, TimeUnit.SECONDS)
-        } finally {
-            serverSocket.close()
-            executor.shutdownNow()
         }
+        assertTrue(request.target.contains("/session/ses_abc123/diff?directory="))
+        assertTrue(request.target.contains("&messageID=msg_xyz"))
     }
 
 }
