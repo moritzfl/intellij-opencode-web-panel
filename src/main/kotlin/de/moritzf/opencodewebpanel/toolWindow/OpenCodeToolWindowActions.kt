@@ -3,6 +3,7 @@ package de.moritzf.opencodewebpanel.toolWindow
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
+import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.actionSystem.PlatformDataKeys
 import com.intellij.openapi.actionSystem.ToggleAction
 import com.intellij.openapi.application.ApplicationManager
@@ -50,6 +51,64 @@ import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsListener
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsListener
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
+
+internal fun openCodeTitleActions() = listOf(
+    OpenCodeUpdateAvailableAction(),
+    OpenCodeMovePanelAction(),
+    OpenCodeZoomOutAction(),
+    OpenCodeZoomInAction(),
+    OpenCodeReloadPageAction(),
+    OpenCodeRestartServerAction(),
+)
+
+internal fun openCodeGearActions() = DefaultActionGroup().apply {
+    add(OpenCodeUpdateAvailableAction())
+    add(OpenCodeNewSessionAction())
+    add(OpenCodeMovePanelAction())
+    addSeparator()
+    add(OpenCodeZoomOutAction())
+    add(OpenCodeZoomInAction())
+    add(OpenCodeResetZoomAction())
+    addSeparator()
+    add(OpenCodeAutoAcceptPermissionsAction())
+    addSeparator()
+    add(OpenCodeReloadPageAction())
+    add(OpenCodeRestartServerAction())
+    add(OpenCodeStopServerAction())
+    addSeparator()
+    add(OpenCodeResetWebStateAction())
+    add(OpenCodeResetSandboxAction())
+    add(OpenCodeUpgradeSandboxBinaryAction())
+    add(OpenCodeUpdateSandboxImageAction())
+    add(OpenCodeOpenDevToolsAction())
+    add(OpenCodeViewServerLogAction())
+    addSeparator()
+    add(OpenCodeOpenProjectSettingsAction())
+    add(OpenCodeOpenSettingsAction())
+    add(OpenCodeOpenKeymapAction())
+}
+
+internal class OpenCodeMovePanelAction : DumbAwareAction(
+    "Move to Editor",
+    "Move the live OpenCode panel into an editor tab",
+    AllIcons.Actions.OpenNewTab,
+) {
+    override fun actionPerformed(e: AnActionEvent) {
+        val controller = e.project?.getServiceIfCreated(OpenCodePanelController::class.java) ?: return
+        if (controller.isInEditor) controller.moveToToolWindow() else controller.moveToEditor()
+    }
+
+    override fun update(e: AnActionEvent) {
+        val controller = e.project?.getServiceIfCreated(OpenCodePanelController::class.java)
+        val inEditor = controller?.isInEditor == true
+        e.presentation.isEnabled = controller != null && !controller.isDisposed
+        e.presentation.text = if (inEditor) "Move to Tool Window" else "Move to Editor"
+        e.presentation.icon = if (inEditor) AllIcons.General.OpenInToolWindow else AllIcons.Actions.OpenNewTab
+        e.presentation.description = "Move the live panel without reloading or losing your draft"
+    }
+
+    override fun getActionUpdateThread() = ActionUpdateThread.EDT
+}
 
 /**
  * Lightning on the tool-window title when a same-major OpenCode release is newer.

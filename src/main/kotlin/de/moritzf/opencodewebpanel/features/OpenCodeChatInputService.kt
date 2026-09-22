@@ -4,9 +4,9 @@ import com.intellij.openapi.components.Service
 import com.intellij.openapi.project.Project
 
 /**
- * Project-scoped hand-off point between IDE actions and the embedded OpenCode chat. The tool
- * window content registers a dispatcher while its page is available; texts sent when the panel is
- * not ready are queued and flushed by the content once the OpenCode project page has loaded.
+ * Project-scoped hand-off point between IDE actions and the embedded OpenCode chat. The panel
+ * controller registers a dispatcher for its current browser; texts sent when the panel is not
+ * ready are queued and flushed by the content once the OpenCode project page has loaded.
  */
 @Service(Service.Level.PROJECT)
 class OpenCodeChatInputService {

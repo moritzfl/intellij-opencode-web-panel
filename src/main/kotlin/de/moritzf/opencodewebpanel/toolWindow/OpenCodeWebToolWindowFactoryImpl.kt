@@ -1,6 +1,5 @@
 package de.moritzf.opencodewebpanel.toolWindow
 
-import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow
@@ -26,7 +25,7 @@ internal fun updateOpenCodeToolWindowHeading(toolWindow: ToolWindow) {
 class OpenCodeWebToolWindowFactoryImpl : ToolWindowFactory, DumbAware {
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
         val controller = OpenCodePanelController.getInstance(project)
-        val content = ContentFactory.getInstance().createContent(controller.component, null, false)
+        val content = ContentFactory.getInstance().createContent(controller.toolWindowComponent, null, false)
         toolWindow.contentManager.addContent(content)
         controller.attachToolWindow(toolWindow)
         updateOpenCodeToolWindowHeading(toolWindow)
@@ -36,41 +35,7 @@ class OpenCodeWebToolWindowFactoryImpl : ToolWindowFactory, DumbAware {
     private fun installTitleActions(toolWindow: ToolWindow) {
         // Icon-only actions in the existing title bar; IntelliJ clips them on narrow panels,
         // so the gear menu below duplicates everything.
-        toolWindow.setTitleActions(
-            listOf(
-                OpenCodeUpdateAvailableAction(),
-                OpenCodeZoomOutAction(),
-                OpenCodeZoomInAction(),
-                OpenCodeReloadPageAction(),
-                OpenCodeRestartServerAction(),
-            ),
-        )
-        toolWindow.setAdditionalGearActions(
-            DefaultActionGroup().apply {
-                add(OpenCodeUpdateAvailableAction())
-                add(OpenCodeNewSessionAction())
-                addSeparator()
-                add(OpenCodeZoomOutAction())
-                add(OpenCodeZoomInAction())
-                add(OpenCodeResetZoomAction())
-                addSeparator()
-                add(OpenCodeAutoAcceptPermissionsAction())
-                addSeparator()
-                add(OpenCodeReloadPageAction())
-                add(OpenCodeRestartServerAction())
-                add(OpenCodeStopServerAction())
-                addSeparator()
-                add(OpenCodeResetWebStateAction())
-                add(OpenCodeResetSandboxAction())
-                add(OpenCodeUpgradeSandboxBinaryAction())
-                add(OpenCodeUpdateSandboxImageAction())
-                add(OpenCodeOpenDevToolsAction())
-                add(OpenCodeViewServerLogAction())
-                addSeparator()
-                add(OpenCodeOpenProjectSettingsAction())
-                add(OpenCodeOpenSettingsAction())
-                add(OpenCodeOpenKeymapAction())
-            },
-        )
+        toolWindow.setTitleActions(openCodeTitleActions())
+        toolWindow.setAdditionalGearActions(openCodeGearActions())
     }
 }
