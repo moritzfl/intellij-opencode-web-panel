@@ -1528,7 +1528,12 @@ internal object OpenCodeServerProtocol {
 
     // ─── Session lookup for notifications ───────────────────────────────────────
 
-    data class SessionInfo(val title: String, val parentID: String?, val id: String = "")
+    data class SessionInfo(
+        val title: String,
+        val parentID: String?,
+        val id: String = "",
+        val directory: String? = null,
+    )
 
     /**
      * Fetches one session (`GET /session/{sessionID}?directory=...`), used for notification
@@ -1604,6 +1609,7 @@ internal object OpenCodeServerProtocol {
             title = session.stringMember("title").orEmpty(),
             parentID = session.stringMember("parentID")?.takeIf { it.isNotBlank() },
             id = id,
+            directory = sessionDirectory(session),
         )
     }
 

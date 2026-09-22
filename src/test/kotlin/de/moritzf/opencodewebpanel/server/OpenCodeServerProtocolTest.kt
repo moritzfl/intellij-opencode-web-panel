@@ -1474,16 +1474,20 @@ class OpenCodeServerProtocolTest {
 
     @Test
     fun parseSessionInfoReadsBareAndEnvelopedSessions() {
-        val bare = OpenCodeServerProtocol.parseSessionInfo("""{"id":"ses_1","title":"Fix the build"}""")!!
+        val bare = OpenCodeServerProtocol.parseSessionInfo(
+            """{"id":"ses_1","title":"Fix the build","directory":"/tmp/project"}""",
+        )!!
         assertEquals("ses_1", bare.id)
         assertEquals("Fix the build", bare.title)
         assertNull(bare.parentID)
+        assertEquals("/tmp/project", bare.directory)
 
         val enveloped = OpenCodeServerProtocol.parseSessionInfo(
-            """{"data":{"id":"ses_2","title":"Subtask","parentID":"ses_1"}}""",
+            """{"data":{"id":"ses_2","title":"Subtask","parentID":"ses_1","location":{"directory":"/private/tmp/other"},"directory":"/tmp/other"}}""",
         )!!
         assertEquals("Subtask", enveloped.title)
         assertEquals("ses_1", enveloped.parentID)
+        assertEquals("/private/tmp/other", enveloped.directory)
 
         val untitled = OpenCodeServerProtocol.parseSessionInfo("""{"id":"ses_3"}""")!!
         assertEquals("", untitled.title)
