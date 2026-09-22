@@ -19,6 +19,8 @@
 
 - OpenCode 2.x Home uses the full available width when **Lock to compact view**
   is enabled, including in wide editor tabs.
+- Password and Host CLI upgrade command copy buttons briefly show a checkmark
+  after copying, matching the LLM Subscription Usage plugin.
 
 ## [2.2.0] - 2026-09-21
 

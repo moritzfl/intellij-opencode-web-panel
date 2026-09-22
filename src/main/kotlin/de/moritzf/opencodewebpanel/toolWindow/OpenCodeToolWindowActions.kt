@@ -38,6 +38,7 @@ import javax.swing.Action
 import javax.swing.JButton
 import javax.swing.JComponent
 import javax.swing.JPanel
+import javax.swing.Timer
 import de.moritzf.opencodewebpanel.features.OpenCodeReleaseUpdates
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
@@ -212,8 +213,17 @@ private fun copyableCommandBlock(command: String): JComponent {
         isOpaque = false
         isFocusable = false
         preferredSize = JBUI.size(28, 28)
+        val feedbackTimer = Timer(1_500) {
+            icon = AllIcons.Actions.Copy
+            toolTipText = "Copy command"
+            accessibleContext.accessibleName = "Copy command"
+        }.apply { isRepeats = false }
         addActionListener {
             CopyPasteManager.getInstance().setContents(StringSelection(command))
+            icon = AllIcons.Actions.Checked
+            toolTipText = "Copied"
+            accessibleContext.accessibleName = "Copied"
+            feedbackTimer.restart()
         }
     }
     return object : JPanel(BorderLayout(JBUI.scale(16), 0)) {

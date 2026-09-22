@@ -35,6 +35,7 @@ import javax.swing.JComponent
 import javax.swing.JSpinner
 import javax.swing.JToggleButton
 import javax.swing.SpinnerNumberModel
+import javax.swing.Timer
 
 class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
     private var panel: JComponent? = null
@@ -50,6 +51,14 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
         toolTipText = "Copy password to clipboard"
         accessibleContext.accessibleName = "Copy password"
     }
+    private val copyPasswordFeedbackTimer = Timer(1_500) {
+        copyPasswordButton.apply {
+            text = "Copy"
+            icon = AllIcons.Actions.Copy
+            toolTipText = "Copy password to clipboard"
+            accessibleContext.accessibleName = "Copy password"
+        }
+    }.apply { isRepeats = false }
     private val generatePasswordButton = JButton("Generate").apply {
         toolTipText = "Generate a new password; apply settings to save it"
         accessibleContext.accessibleName = "Generate password"
@@ -681,6 +690,13 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
     private fun copyPassword() {
         val password = password() ?: return
         Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(password), null)
+        copyPasswordButton.apply {
+            text = "Copied"
+            icon = AllIcons.Actions.Checked
+            toolTipText = "Copied"
+            accessibleContext.accessibleName = "Copied"
+        }
+        copyPasswordFeedbackTimer.restart()
     }
 
     private fun detectBinaryPath() {
