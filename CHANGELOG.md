@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+### Added
+
+- Optional IDE warning when a selected conversation belongs to a different directory
+  than this project's OpenCode workspace. Off by default. Does not block opening
+  the conversation.
+
 ## [2.3.0] - 2026-09-22
 
 ### Added

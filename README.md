@@ -45,6 +45,7 @@ OpenCode Web Panel brings the official OpenCode web UI into JetBrains IDEs. Use 
 - **External links stay outside** - HTTP links open in your system browser instead of taking over the panel.
 - **IDE notifications** - OpenCode browser notifications can appear as JetBrains IDE notifications, including Allow/Deny actions for agent permission requests.
 - **Agent status at a glance** - The tool window icon shows when the agent is working or waiting for your input.
+- **Optional workspace warning** - Opt in to an IDE warning when a selected conversation belongs to a different directory than this project.
 - **Tool window or editor tab** - Move the same live panel between hosts without reloading or losing an unsent draft. Zoom, restart, and other controls are available in both.
 - **Recovery built in** - Failed or crashed servers surface a clear error panel with recent logs, retry, and settings shortcuts, and the panel recovers automatically where possible.
 - **Configurable safeguards** - Browser-side convenience features can be disabled if an OpenCode update conflicts with them.
@@ -191,6 +192,7 @@ and [OpenCode provider accounts](https://opencode.ai/v2/docs/cli/providers).
 - Hide OpenCode's floating website/help button in the panel.
 - Sync OpenCode's system color scheme with the IDE theme.
 - Suppress project-switch prompts that are not useful inside the embedded panel.
+- Warn when a selected conversation belongs to another workspace (off by default).
 - Forward OpenCode browser notifications to the IDE, optionally with Allow/Deny actions for permission requests.
 - Show agent status on the tool window icon.
 - Wait briefly for IntelliJ MCP server readiness before launching OpenCode.
