@@ -164,6 +164,7 @@ MARKERS_V1=(
 MARKERS_V2=(
   'composer-editor'
   'home-session-row'
+  'home-session-search'
   'home-session-project-name'
   'opencode-v2-icon'
   'file-tree-v2-row'

@@ -306,7 +306,7 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
                 }
                 row {
                     cell(forceCompactLayoutCheckBox)
-                        .comment("Keep the compact mobile layout even when the panel is wide. On: classic review panel. Off: OpenCode's redesigned desktop review panel.")
+                        .comment("Keep the compact mobile layout even when the panel is wide, with a full-width Home session list in OpenCode 2.x. On: classic review panel. Off: OpenCode's native responsive layout and redesigned desktop review panel.")
                 }
                 row {
                     cell(hideWebsiteButtonCheckBox)

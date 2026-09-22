@@ -306,6 +306,10 @@ internal class OpenCodeWebToolWindowContent(
             )
         },
     )
+    private val compactHomeLayoutFeature = EarlyInjectedFeature(
+        enabledInSettings = { OpenCodeSettingsState.getInstance().forceCompactLayout },
+        buildScript = { OpenCodeBrowserSnippets.buildCompactHomeLayoutScript(enabled = true) },
+    )
     private val hideWebsiteButtonFeature = EarlyInjectedFeature(
         enabledInSettings = { OpenCodeSettingsState.getInstance().hideWebsiteButton },
         buildScript = { OpenCodeBrowserSnippets.buildHideWebsiteButtonScript(enabled = true) },
@@ -349,6 +353,7 @@ internal class OpenCodeWebToolWindowContent(
     private val earlyInjectedFeatures = listOf(
         openProjectSeedFeature,
         matchMediaPatchFeature,
+        compactHomeLayoutFeature,
         hideWebsiteButtonFeature,
         pathHoverPreviewFeature,
         eventStreamWatchdogFeature,
@@ -1901,7 +1906,7 @@ internal class OpenCodeWebToolWindowContent(
     }
 
     private fun applyCompactLayout() {
-        // Toggling requires a page reload — early injection on next load start
+        // Reload rebuilds all early scripts: both the media-query patch and V2 Home stylesheet.
         reloadForEarlyFeatureToggle(matchMediaPatchFeature)
     }
 

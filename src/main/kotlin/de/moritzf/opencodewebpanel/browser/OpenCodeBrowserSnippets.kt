@@ -710,6 +710,51 @@ internal object OpenCodeBrowserSnippets {
         return buildMatchMediaPatchScript(compact = enabled, theme = false, dark = false)
     }
 
+    /**
+     * V2 Home removes its project sidebar in compact mode, but its CSS still reserves the desktop
+     * grid columns at wide viewport sizes. Let the remaining session list use the whole panel.
+     * This accompanies the compact media-query patch and is removed by the same toggle-off reload.
+     */
+    fun buildCompactHomeLayoutScript(enabled: Boolean): String? {
+        if (!enabled) return null
+        @Language("JavaScript")
+        val script = """
+            (() => {
+              if (window.__opencodeIntellijCompactHomeLayoutInstalled) return;
+              window.__opencodeIntellijCompactHomeLayoutInstalled = true;
+              const STYLE_ID = 'opencode-intellij-compact-home-layout';
+              // V1 and native desktop Home retain an aside; only widen the sidebar-free compact grid.
+              const CSS = 'div:has(> section [data-component="home-session-search"]):not(:has(> aside))' +
+                ' { max-width: none !important; grid-template-columns: minmax(0, 1fr) !important; }';
+              const ensureStyle = () => {
+                const parent = document.head || document.documentElement;
+                if (!parent) return;
+                let style = document.getElementById(STYLE_ID);
+                if (!style) {
+                  style = document.createElement('style');
+                  style.id = STYLE_ID;
+                  style.textContent = CSS;
+                }
+                if (!style.isConnected) parent.appendChild(style);
+              };
+              ensureStyle();
+              // CSS handles route changes and resizing. Only repair a stylesheet removed with <head>.
+              let ensureQueued = false;
+              const observer = new MutationObserver(() => {
+                if (ensureQueued) return;
+                ensureQueued = true;
+                window.requestAnimationFrame(() => {
+                  ensureQueued = false;
+                  ensureStyle();
+                });
+              });
+              observer.observe(document.documentElement || document, { childList: true, subtree: true });
+              document.addEventListener('DOMContentLoaded', ensureStyle, { once: true });
+            })();
+        """
+        return script.trimIndent()
+    }
+
     fun buildMatchMediaPatchScript(compact: Boolean, theme: Boolean, dark: Boolean): String? {
         if (!compact && !theme) return null
         val compactLiteral = compact.toString()

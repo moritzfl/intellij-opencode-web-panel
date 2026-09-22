@@ -15,6 +15,11 @@
 - **Move OpenCode Panel** action in Find Action and Keymap, with a user-assignable
   shortcut for switching between the tool window and editor.
 
+### Fixed
+
+- OpenCode 2.x Home uses the full available width when **Lock to compact view**
+  is enabled, including in wide editor tabs.
+
 ## [2.2.0] - 2026-09-21
 
 ### Added
