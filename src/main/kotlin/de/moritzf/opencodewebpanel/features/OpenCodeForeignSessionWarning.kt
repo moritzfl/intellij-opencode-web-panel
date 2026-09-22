@@ -1,5 +1,6 @@
 package de.moritzf.opencodewebpanel.features
 
+import com.intellij.openapi.diagnostic.thisLogger
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import java.util.concurrent.atomic.AtomicLong
 
@@ -37,7 +38,11 @@ internal class OpenCodeForeignSessionWarning(
         val workspace = workspaceDirectory()?.takeIf { it.isNotBlank() } ?: return
         executeAsync {
             if (!stillCurrent(token)) return@executeAsync
-            val info = runCatching { loadSession(sessionID) }.getOrNull()
+            val info = runCatching { loadSession(sessionID) }
+                .onFailure { error ->
+                    thisLogger().debug("Could not load session $sessionID to check its directory", error)
+                }
+                .getOrNull()
             if (!stillCurrent(token)) return@executeAsync
             val prefixes = guestToHostPrefixes()
             val guestPath = sandboxGuestPath(workspace)

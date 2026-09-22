@@ -58,7 +58,12 @@ internal class OpenCodeIdeNavigation(
                 navigateToEditor(virtualFile, hintedLine, target.column)
             }
             if (hintedLine != null || partID.isNullOrBlank()) return@executeOnPooledThread
-            val line = runCatching { firstChangeLineFromPart(partID, targetHref) }.getOrNull()
+            val line = runCatching { firstChangeLineFromPart(partID, targetHref) }
+                .onFailure { error ->
+                    if (error is ProcessCanceledException) throw error
+                    thisLogger().debug("Could not resolve a diff line for part $partID", error)
+                }
+                .getOrNull()
                 ?: return@executeOnPooledThread
             ApplicationManager.getApplication().invokeLater {
                 if (requestGeneration != fileLinkRequestGeneration.get()) return@invokeLater
@@ -179,7 +184,12 @@ internal class OpenCodeIdeNavigation(
 
     private fun memberLine(virtualFile: VirtualFile, memberName: String?): Int? {
         val member = memberName?.trim()?.ifBlank { null } ?: return null
-        val text = runCatching { Files.readString(virtualFile.toNioPath()) }.getOrNull() ?: return null
+        val text = runCatching { Files.readString(virtualFile.toNioPath()) }
+            .onFailure { error ->
+                if (error is ProcessCanceledException) throw error
+                thisLogger().debug("Could not read ${virtualFile.path} to locate a member", error)
+            }
+            .getOrNull() ?: return null
         return OpenCodeServerProtocol.findMemberLineIndex(text, member)
     }
 
