@@ -1,6 +1,8 @@
 package de.moritzf.opencodewebpanel.toolWindow
 
 import com.intellij.icons.AllIcons
+import com.intellij.openapi.actionSystem.ActionManager
+import com.intellij.openapi.actionSystem.ActionPlaces
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.DefaultActionGroup
@@ -52,9 +54,11 @@ import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsListener
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
 
+internal const val OPEN_CODE_MOVE_PANEL_ACTION_ID = "OpenCodeWebPanel.MovePanel"
+
 internal fun openCodeTitleActions() = listOf(
     OpenCodeUpdateAvailableAction(),
-    OpenCodeMovePanelAction(),
+    ActionManager.getInstance().getAction(OPEN_CODE_MOVE_PANEL_ACTION_ID),
     OpenCodeZoomOutAction(),
     OpenCodeZoomInAction(),
     OpenCodeReloadPageAction(),
@@ -64,7 +68,7 @@ internal fun openCodeTitleActions() = listOf(
 internal fun openCodeGearActions() = DefaultActionGroup().apply {
     add(OpenCodeUpdateAvailableAction())
     add(OpenCodeNewSessionAction())
-    add(OpenCodeMovePanelAction())
+    add(ActionManager.getInstance().getAction(OPEN_CODE_MOVE_PANEL_ACTION_ID))
     addSeparator()
     add(OpenCodeZoomOutAction())
     add(OpenCodeZoomInAction())
@@ -89,8 +93,8 @@ internal fun openCodeGearActions() = DefaultActionGroup().apply {
 }
 
 internal class OpenCodeMovePanelAction : DumbAwareAction(
-    "Move to Editor",
-    "Move the live OpenCode panel into an editor tab",
+    "Move OpenCode Panel",
+    "Move the live OpenCode panel between the tool window and an editor tab",
     AllIcons.Actions.OpenNewTab,
 ) {
     override fun actionPerformed(e: AnActionEvent) {
@@ -102,7 +106,11 @@ internal class OpenCodeMovePanelAction : DumbAwareAction(
         val controller = e.project?.getServiceIfCreated(OpenCodePanelController::class.java)
         val inEditor = controller?.isInEditor == true
         e.presentation.isEnabled = controller != null && !controller.isDisposed
-        e.presentation.text = if (inEditor) "Move to Tool Window" else "Move to Editor"
+        e.presentation.text = when {
+            e.place == ActionPlaces.ACTION_SEARCH -> "Move OpenCode Panel"
+            inEditor -> "Move to Tool Window"
+            else -> "Move to Editor"
+        }
         e.presentation.icon = if (inEditor) AllIcons.General.OpenInToolWindow else AllIcons.Actions.OpenNewTab
         e.presentation.description = "Move the live panel without reloading or losing your draft"
     }

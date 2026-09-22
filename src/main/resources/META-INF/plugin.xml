@@ -27,6 +27,10 @@
 
     <actions>
         <group id="OpenCodeWebPanel.Shortcuts" text="OpenCode" popup="false">
+            <action id="OpenCodeWebPanel.MovePanel"
+                    class="de.moritzf.opencodewebpanel.toolWindow.OpenCodeMovePanelAction"
+                    text="Move OpenCode Panel"
+                    description="Move the live OpenCode panel between the tool window and an editor tab"/>
             <action id="OpenCodeWebPanel.NewSession"
                     class="com.intellij.openapi.actionSystem.EmptyAction"
                     text="OpenCode: New Session"

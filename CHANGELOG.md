@@ -12,6 +12,8 @@
   when closed. Chat actions and notifications follow the current placement.
   Thanks to [@herrlegno](https://github.com/herrlegno) for the shared-browser
   proposal and transfer tests in [#14](https://github.com/moritzfl/intellij-opencode-web-panel/pull/14).
+- **Move OpenCode Panel** action in Find Action and Keymap, with a user-assignable
+  shortcut for switching between the tool window and editor.
 
 ## [2.2.0] - 2026-09-21
 
