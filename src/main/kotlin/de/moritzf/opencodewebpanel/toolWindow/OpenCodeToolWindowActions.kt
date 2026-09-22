@@ -17,7 +17,6 @@ import com.intellij.openapi.ui.DialogWrapper
 import com.intellij.openapi.ui.MessageDialogBuilder
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.vfs.LocalFileSystem
-import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.ui.ColorUtil
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
@@ -36,7 +35,6 @@ import javax.swing.Action
 import javax.swing.JButton
 import javax.swing.JComponent
 import javax.swing.JPanel
-import de.moritzf.opencodewebpanel.features.OPEN_CODE_TOOL_WINDOW_ID
 import de.moritzf.opencodewebpanel.features.OpenCodeReleaseUpdates
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
@@ -396,16 +394,11 @@ internal class OpenCodeAutoAcceptPermissionsAction : ToggleAction(
 }
 
 /**
- * Resolves the OpenCode panel content for the invoking tool window, so a reload targets only the
- * panel the user clicked instead of every project's panel. Prefers the tool window carried by the
- * action event (title-bar invocation) and falls back to a lookup by ID (gear menu).
+ * Resolves the invoking project's panel without constructing a browser from action updates.
  */
 private fun openCodePanelContent(e: AnActionEvent): OpenCodeWebToolWindowContent? {
-    val toolWindow = e.getData(PlatformDataKeys.TOOL_WINDOW)
-        ?: e.project?.let { ToolWindowManager.getInstance(it).getToolWindow(OPEN_CODE_TOOL_WINDOW_ID) }
-        ?: return null
-    return toolWindow.contentManager.contents
-        .firstNotNullOfOrNull { it.disposer as? OpenCodeWebToolWindowContent }
+    val project = e.getData(PlatformDataKeys.TOOL_WINDOW)?.project ?: e.project ?: return null
+    return project.getServiceIfCreated(OpenCodePanelController::class.java)?.content()
 }
 
 internal fun requestOpenCodeServerRestart(project: Project?) {

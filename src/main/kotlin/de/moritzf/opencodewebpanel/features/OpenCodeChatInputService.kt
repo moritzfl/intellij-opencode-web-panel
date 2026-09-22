@@ -15,6 +15,7 @@ class OpenCodeChatInputService {
 
     private val lock = Any()
     private var dispatcher: ((Delivery) -> Boolean)? = null
+    @Volatile private var activator: (() -> Unit)? = null
     private val pending = ArrayDeque<Batch>()
     private var inFlight: Delivery? = null
     private var nextBatchID = 0L
@@ -25,6 +26,17 @@ class OpenCodeChatInputService {
             if (dispatcher == null) requeueInFlightLocked()
             this.dispatcher = dispatcher
         }
+    }
+
+    internal fun setActivator(activator: (() -> Unit)?) {
+        this.activator = activator
+    }
+
+    /** Uses the current panel host; false lets the first IDE action create the tool window. */
+    internal fun activatePanel(): Boolean {
+        val activate = activator ?: return false
+        activate()
+        return true
     }
 
     /** Queues each text as an independently acknowledged delivery, preserving caller order. */

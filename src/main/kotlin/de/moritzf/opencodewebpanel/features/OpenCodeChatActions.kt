@@ -114,8 +114,11 @@ private fun openCodeProjectDirectory(project: Project): String? {
 }
 
 private fun sendToOpenCodeChat(project: Project, texts: List<String>) {
-    OpenCodeChatInputService.getInstance(project).send(texts)
+    val service = OpenCodeChatInputService.getInstance(project)
+    service.send(texts)
     // Bring the panel forward; if the texts were queued because the page is not ready yet, the
     // activation triggers content creation and the panel flushes the queue once loaded.
-    ToolWindowManager.getInstance(project).getToolWindow(OPEN_CODE_TOOL_WINDOW_ID)?.activate(null, true)
+    if (!service.activatePanel()) {
+        ToolWindowManager.getInstance(project).getToolWindow(OPEN_CODE_TOOL_WINDOW_ID)?.activate(null, true)
+    }
 }
