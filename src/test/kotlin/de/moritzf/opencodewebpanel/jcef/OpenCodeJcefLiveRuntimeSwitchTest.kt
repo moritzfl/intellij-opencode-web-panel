@@ -1,34 +1,51 @@
 package de.moritzf.opencodewebpanel.jcef
 
+import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import com.intellij.ide.impl.OpenProjectTask
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.components.ComponentManagerEx
+import com.intellij.openapi.fileEditor.FileEditorManager
+import com.intellij.openapi.fileEditor.impl.FileEditorManagerImpl
+import com.intellij.openapi.project.ex.ProjectManagerEx
+import com.intellij.openapi.project.impl.ProjectImpl
 import com.intellij.openapi.util.Disposer
+import com.intellij.openapi.wm.impl.IdeGlassPaneImpl
+import com.intellij.platform.util.coroutines.childScope
 import com.intellij.testFramework.ApplicationRule
 import com.intellij.testFramework.DisposableRule
+import com.intellij.testFramework.replaceService
 import com.intellij.ui.jcef.JBCefBrowser
 import de.moritzf.opencodewebpanel.browser.OpenCodeBrowserSnippets
 import de.moritzf.opencodewebpanel.browser.OpenCodeDocumentStartInjector
 import de.moritzf.opencodewebpanel.browser.OpenCodeJsQuery
 import de.moritzf.opencodewebpanel.browser.createOpenCodeBrowserBeforeReplacement
-import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
+import de.moritzf.opencodewebpanel.features.OpenCodeChatInputService
 import de.moritzf.opencodewebpanel.server.OpenCodeProcessTerminator
+import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
+import de.moritzf.opencodewebpanel.server.OpenCodeWireProtocol
 import de.moritzf.opencodewebpanel.server.SbxCli
 import de.moritzf.opencodewebpanel.server.SbxProcessRunner
+import de.moritzf.opencodewebpanel.toolWindow.OpenCodePanel
+import de.moritzf.opencodewebpanel.toolWindow.OpenCodePanelController
 import org.cef.browser.CefBrowser
 import org.cef.browser.CefFrame
 import org.cef.handler.CefLoadHandlerAdapter
 import org.cef.network.CefRequest
+import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Before
-import org.junit.After
 import org.junit.ClassRule
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
-import java.net.URI
 import java.net.HttpURLConnection
+import java.net.URI
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
@@ -36,6 +53,8 @@ import java.nio.file.Path
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
+import javax.swing.JFrame
 import javax.swing.SwingUtilities
 
 /** Opt-in, against two isolated real `opencode serve` processes, never the synthetic HTML fixture. */
@@ -54,11 +73,13 @@ class OpenCodeJcefLiveRuntimeSwitchTest {
     @Before
     fun setUp() {
         OpenCodeJcefTestHelper.assumeHarnessEnabled()
-        val executable = OpenCodeServerProtocol.detectExecutablePath()
+        val executable = System.getenv("OPENCODE_JCEF_EXECUTABLE") ?: OpenCodeServerProtocol.detectExecutablePath()
         assumeTrue("Install opencode to run the live JCEF tests", executable != null)
         workspace = temp.newFolder("workspace").toPath().toRealPath().toString()
         origins = listOf(startServer(executable!!, "native"), startServer(executable, "sandbox"))
-        val connection = URI("${origins[0]}/session?directory=${URLEncoder.encode(workspace, StandardCharsets.UTF_8)}")
+        val v2 = OpenCodeServerProtocol.detectWireProtocol(origins[0], "Basic b3BlbmNvZGU6cHJvYmUtb25seQ==") == OpenCodeWireProtocol.V2_CLI
+        val path = if (v2) "/api/session" else "/session?directory=${URLEncoder.encode(workspace, StandardCharsets.UTF_8)}"
+        val connection = URI("${origins[0]}$path")
             .toURL().openConnection() as HttpURLConnection
         try {
             connection.connectTimeout = 5_000
@@ -67,8 +88,15 @@ class OpenCodeJcefLiveRuntimeSwitchTest {
             connection.setRequestProperty("Authorization", "Basic b3BlbmNvZGU6cHJvYmUtb25seQ==")
             connection.setRequestProperty("Content-Type", "application/json")
             connection.doOutput = true
-            connection.outputStream.use { it.write("""{"title":"Native fixture session"}""".toByteArray()) }
-            nativeSession = connection.inputStream.bufferedReader().use { JsonParser.parseString(it.readText()).asJsonObject.get("id").asString }
+            val body = JsonObject().apply {
+                addProperty("title", "Native fixture session")
+                if (v2) add("location", JsonObject().apply { addProperty("directory", workspace) })
+            }
+            connection.outputStream.use { it.write(body.toString().toByteArray()) }
+            nativeSession = connection.inputStream.bufferedReader().use {
+                val json = JsonParser.parseString(it.readText()).asJsonObject
+                (if (v2) json.getAsJsonObject("data") else json).get("id").asString
+            }
         } finally {
             connection.disconnect()
         }
@@ -76,9 +104,12 @@ class OpenCodeJcefLiveRuntimeSwitchTest {
 
     @After
     fun tearDown() {
-        SwingUtilities.invokeAndWait { Disposer.dispose(disposable.disposable) }
-        servers.forEach { it.destroy() }
-        servers.forEach { if (!it.waitFor(5, TimeUnit.SECONDS)) it.destroyForcibly().waitFor(5, TimeUnit.SECONDS) }
+        try {
+            ApplicationManager.getApplication().invokeAndWait { Disposer.dispose(disposable.disposable) }
+        } finally {
+            servers.forEach { it.destroy() }
+            servers.forEach { if (!it.waitFor(5, TimeUnit.SECONDS)) it.destroyForcibly().waitFor(5, TimeUnit.SECONDS) }
+        }
     }
 
     private fun startServer(executable: String, name: String): String {
@@ -145,6 +176,135 @@ class OpenCodeJcefLiveRuntimeSwitchTest {
             evaluate(browser, "!!document.querySelector('main [contenteditable=true]')") == "true"
         }
         assertTrue(browser.cefBrowser.url.contains("/session/$nativeSession"))
+    }
+
+    @Test
+    fun editorTransfersKeepRealComposerDraftAndCallbacksWithoutReload() {
+        lateinit var query: OpenCodeJsQuery
+        lateinit var chatQuery: OpenCodeJsQuery
+        lateinit var chat: OpenCodeChatInputService
+        val callbacks = AtomicInteger()
+        val browser = open(origins[0], OpenCodeServerProtocol.buildServerSessionUrl(origins[0], nativeSession),
+            onBrowserCreated = {
+                query = OpenCodeJsQuery.create(it)
+                assertTrue(query.isAvailable)
+                query.addHandler { callbacks.incrementAndGet(); null }
+                chatQuery = OpenCodeJsQuery.create(it)
+                assertTrue(chatQuery.isAvailable)
+                chatQuery.addHandler { reply ->
+                    val fields = reply.split('\n')
+                    chat.acknowledge(fields[0], fields.getOrNull(1) == "1")
+                    null
+                }
+            })
+        OpenCodeJcefTestHelper.awaitCondition("real composer") {
+            evaluate(browser, "!!document.querySelector('main [contenteditable=true]')") == "true"
+        }
+        evaluate(browser, """(() => {
+          const input = document.querySelector('main [contenteditable=true]');
+          input.focus(); document.execCommand('insertText', false, 'unsent editor transfer draft');
+          window.__transferMarker = 'same document';
+          return input.textContent;
+        })()""")
+        val loads = AtomicInteger()
+        browser.jbCefClient.addLoadHandler(object : CefLoadHandlerAdapter() {
+            override fun onLoadStart(b: CefBrowser?, frame: CefFrame?, type: CefRequest.TransitionType?) {
+                if (frame?.isMain == true) loads.incrementAndGet()
+            }
+        }, browser.cefBrowser)
+        val project = requireNotNull(ProjectManagerEx.getInstanceEx().newProject(
+            Path.of(workspace), OpenProjectTask.build().withProjectName("Live editor transfer"),
+        ))
+        chat = OpenCodeChatInputService.getInstance(project)
+        // EditorWindow.closeFile has different selection semantics for closed projects.
+        // Open the test project, but skip unrelated installed-IDE startup activities.
+        project.putUserData(ProjectImpl.RUN_START_UP_ACTIVITIES, false)
+        ProjectManagerEx.getInstanceEx().openProject(Path.of(workspace), OpenProjectTask.build().withProject(project))
+        Disposer.register(disposable.disposable) {
+            ProjectManagerEx.getInstanceEx().forceCloseProject(project)
+        }
+        lateinit var controller: OpenCodePanelController
+        lateinit var source: JFrame
+        lateinit var destination: JFrame
+        ApplicationManager.getApplication().invokeAndWait {
+            // Use the real manager as FileEditorManagerTestCase does.
+            val editors = FileEditorManagerImpl(project, (project as ComponentManagerEx).getCoroutineScope().childScope("Live editor transfer"))
+            project.replaceService(FileEditorManager::class.java, editors, disposable.disposable)
+            Disposer.register(disposable.disposable, editors)
+            controller = OpenCodePanelController(project) {
+                object : OpenCodePanel {
+                    override val component = browser.component
+                    override val preferredFocus = browser.component
+                    override fun prepareBrowserForReplacement() = createOpenCodeBrowserBeforeReplacement(browser)
+                    override fun checkAndLoadContent() = Unit // Already on the real session.
+                    override fun dispatchChatBatch(delivery: OpenCodeChatInputService.Delivery): Boolean {
+                        val script = OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(
+                            emptyList(), textPlain = listOf(delivery.batch.text), enabled = true,
+                            batchId = delivery.attemptID,
+                            resultCallback = chatQuery.inject("batchId + '\\n' + (accepted ? '1' : '0')"),
+                        )!!
+                        browser.cefBrowser.executeJavaScript(script, origins[0], 0)
+                        return true
+                    }
+                    override fun onHostChanged() { browser.cefBrowser.notifyScreenInfoChanged() }
+                    override fun dispose() = Unit // The test's disposable owns this browser.
+                }
+            }
+            Disposer.register(disposable.disposable, controller)
+            controller.ensurePanel()
+            source = JFrame("OpenCode tool window host").apply {
+                setSize(700, 600); add(controller.toolWindowComponent); isVisible = true
+            }
+            Disposer.register(disposable.disposable) { source.dispose() }
+            destination = JFrame("OpenCode native editor host").apply {
+                setSize(800, 600); setLocation(710, 0)
+                glassPane = IdeGlassPaneImpl(rootPane)
+                add(editors.component); isVisible = true
+            }
+            Disposer.register(disposable.disposable) { destination.dispose() }
+        }
+        try {
+            repeat(3) { transfer ->
+                ApplicationManager.getApplication().invokeAndWait {
+                    controller.moveToEditor()
+                    val file = requireNotNull(controller.editorFile)
+                    val editors = FileEditorManager.getInstance(project)
+                    assertTrue(editors.isFileOpen(file))
+                    assertSame(destination, SwingUtilities.getWindowAncestor(controller.component))
+                    assertTrue(chat.activatePanel())
+                    assertSame(file, controller.editorFile)
+                }
+                assertEquals("unsent editor transfer draft", evaluate(browser, "document.querySelector('main [contenteditable=true]').textContent"))
+                assertEquals("same document", evaluate(browser, "window.__transferMarker"))
+                browser.cefBrowser.executeJavaScript(query.inject("'alive'")!!, browser.cefBrowser.url, 0)
+                OpenCodeJcefTestHelper.awaitCondition("callback after editor transfer") { callbacks.get() > transfer }
+                ApplicationManager.getApplication().invokeAndWait {
+                    controller.moveToToolWindow()
+                    assertSame(source, SwingUtilities.getWindowAncestor(controller.component))
+                }
+            }
+            ApplicationManager.getApplication().invokeAndWait {
+                controller.moveToEditor()
+                assertTrue(chat.send(listOf(" context from IDE")))
+                assertTrue(chat.activatePanel())
+                assertTrue(controller.isInEditor)
+            }
+            OpenCodeJcefTestHelper.awaitCondition("IDE input acknowledged in editor") { chat.queuedCount() == 0 }
+            val deliveredDraft = evaluate(browser, "document.querySelector('main [contenteditable=true]').textContent")
+            assertTrue(deliveredDraft.contains("unsent editor transfer draft"))
+            assertTrue(deliveredDraft.contains("context from IDE"))
+            ApplicationManager.getApplication().invokeAndWait {
+                FileEditorManager.getInstance(project).closeFile(requireNotNull(controller.editorFile))
+            }
+            ApplicationManager.getApplication().invokeAndWait {
+                assertFalse(controller.isInEditor)
+                assertSame(controller.toolWindowComponent, controller.component.parent)
+            }
+            assertEquals(0, loads.get())
+            assertEquals(deliveredDraft, evaluate(browser, "document.querySelector('main [contenteditable=true]').textContent"))
+        } finally {
+            ApplicationManager.getApplication().invokeAndWait { controller.moveToToolWindow() }
+        }
     }
 
     @Test
@@ -251,10 +411,17 @@ class OpenCodeJcefLiveRuntimeSwitchTest {
         }
     }
 
-    private fun open(origin: String, url: String, parent: Disposable = disposable.disposable, beforeLoad: () -> Unit = {}): JBCefBrowser {
+    private fun open(
+        origin: String,
+        url: String,
+        parent: Disposable = disposable.disposable,
+        onBrowserCreated: (JBCefBrowser) -> Unit = {},
+        beforeLoad: () -> Unit = {},
+    ): JBCefBrowser {
         lateinit var browser: JBCefBrowser
         SwingUtilities.invokeAndWait {
             browser = OpenCodeJcefTestHelper.createBrowser(parent)
+            onBrowserCreated(browser)
             repeat(9) { assertTrue("JCEF query channel creation", OpenCodeJsQuery.create(browser).isAvailable) }
         }
         browser.jbCefClient.addRequestHandler(

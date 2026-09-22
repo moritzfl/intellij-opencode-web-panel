@@ -4,6 +4,15 @@
 
 ## [Unreleased]
 
+### Added
+
+- Move the live OpenCode panel between the tool window and an editor tab without
+  reloading or losing an unsent draft. Editor tabs support moving between splits
+  and windows, retain the panel controls, and return the panel to the tool window
+  when closed. Chat actions and notifications follow the current placement.
+  Thanks to [@herrlegno](https://github.com/herrlegno) for the shared-browser
+  proposal and transfer tests in [#14](https://github.com/moritzfl/intellij-opencode-web-panel/pull/14).
+
 ## [2.2.0] - 2026-09-21
 
 ### Added

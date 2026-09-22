@@ -29,7 +29,7 @@
 
 <!-- Plugin description -->
 
-OpenCode Web Panel brings the official OpenCode web UI into JetBrains IDEs. It opens OpenCode in a right-side tool window, keeps it focused on the project you are working on, and adds small IDE conveniences on top of the normal OpenCode experience. Host CLI and Docker Sandbox work with **OpenCode 1.18** and **CLI 2.x**.
+OpenCode Web Panel brings the official OpenCode web UI into JetBrains IDEs. Use it in a right-side tool window or move the live panel into an editor tab. It stays focused on the project you are working on and adds small IDE conveniences on top of the normal OpenCode experience. Host CLI and Docker Sandbox work with **OpenCode 1.18** and **CLI 2.x**.
 
 > **Note:** This is an unofficial community plugin for OpenCode and is not affiliated with OpenCode.
 
@@ -45,7 +45,7 @@ OpenCode Web Panel brings the official OpenCode web UI into JetBrains IDEs. It o
 - **External links stay outside** - HTTP links open in your system browser instead of taking over the panel.
 - **IDE notifications** - OpenCode browser notifications can appear as JetBrains IDE notifications, including Allow/Deny actions for agent permission requests.
 - **Agent status at a glance** - The tool window icon shows when the agent is working or waiting for your input.
-- **Panel controls in the title bar** - Zoom the panel and restart the OpenCode server directly from the tool window.
+- **Tool window or editor tab** - Move the same live panel between hosts without reloading or losing an unsent draft. Zoom, restart, and other controls are available in both.
 - **Recovery built in** - Failed or crashed servers surface a clear error panel with recent logs, retry, and settings shortcuts, and the panel recovers automatically where possible.
 - **Configurable safeguards** - Browser-side convenience features can be disabled if an OpenCode update conflicts with them.
 
@@ -81,21 +81,28 @@ OpenCode Web Panel brings the official OpenCode web UI into JetBrains IDEs. It o
 
 The plugin starts a local OpenCode server when needed, authenticates the embedded web UI automatically, and opens the configured project directory.
 
-## Tool Window Controls
+## Panel Controls
 
-The tool window title bar offers quick controls (also available in the tool window's gear menu on narrow panels):
+The tool window title bar and editor toolbar offer quick controls (also available in their gear menus on narrow panels):
 
 - **Zoom out / Zoom in** - Scale the embedded OpenCode UI in 10% steps without reloading. Cmd/Ctrl with <kbd>+</kbd>, <kbd>-</kbd>, and <kbd>0</kbd> work inside the panel too.
 - **Reload Page** - Reload the embedded OpenCode UI. The server stays running.
-- **Restart Server** - Stop and restart OpenCode, and recreate the embedded browser. Recovers a stuck or crashed panel. Host CLI: shared by all open projects. Docker Sandbox: this project only. Also on **OpenCode Web Panel (Project)**.
+- **Move to Editor / Move to Tool Window** - Move the live panel without reloading. The current session, draft, and browser state stay intact.
+- **Restart Server** - Stop and restart this project's OpenCode server, and recreate the embedded browser in its current host. Recovers a stuck or crashed panel. Also on **OpenCode Web Panel (Project)**.
 - The gear menu additionally offers **Reset Zoom**, **View Server Log**, and **OpenCode Web Panel Settings**.
+
+### OpenCode in the Editor
+
+Choose **Move to Editor** from the panel title bar or gear menu. The editor tab can move between splits and IDE windows like other tabs; each project keeps one live OpenCode panel. Closing the tab returns that panel to the tool window without stopping the server. Choose **Move to Tool Window** to return and show it immediately.
+
+While the panel is in an editor, reopening the tool window offers **Show in Editor** and **Move to Tool Window**. Chat context actions and **Show in OpenCode** notifications activate the current host.
 
 ### Context Menu Actions
 
 - **Add to OpenCode Chat** (project view, editor tabs) - Insert `@path` references for the selected project files into the chat.
 - **Add Selection to OpenCode Chat** (editor) - Insert the file reference plus the selected lines as a code snippet.
 
-Both actions open the panel and deliver the input once OpenCode has finished loading. They follow the **Enable file drop and paste into chat** setting.
+Both actions activate the panel wherever it is currently placed and deliver the input once OpenCode has finished loading. They follow the **Enable file drop and paste into chat** setting.
 
 ## Settings
 
