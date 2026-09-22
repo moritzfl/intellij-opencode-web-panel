@@ -50,6 +50,8 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
     var enableSystemNotifications: Boolean = true
     var enablePermissionNotificationActions: Boolean = true
     var showAgentStatusBadge: Boolean = true
+    /** Off until the user opts in. Warn when a selected conversation's directory is not this workspace. */
+    var warnForeignSession: Boolean = false
     var autoContinueInterruptedSessions: Boolean = true
     var waitForIntellijMcpServer: Boolean = true
     var enableServerLogs: Boolean = true
@@ -93,6 +95,7 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
         enableSystemNotifications = state.enableSystemNotifications
         enablePermissionNotificationActions = state.enablePermissionNotificationActions
         showAgentStatusBadge = state.showAgentStatusBadge
+        warnForeignSession = state.warnForeignSession
         autoContinueInterruptedSessions = state.autoContinueInterruptedSessions
         waitForIntellijMcpServer = state.waitForIntellijMcpServer
         enableServerLogs = state.enableServerLogs

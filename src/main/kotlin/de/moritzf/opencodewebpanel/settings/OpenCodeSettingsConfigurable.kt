@@ -122,6 +122,7 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
     private val enableSystemNotificationsCheckBox = JBCheckBox("Forward OpenCode system notifications to the IDE")
     private val enablePermissionNotificationActionsCheckBox = JBCheckBox("Offer Allow/Deny actions on permission notifications")
     private val showAgentStatusBadgeCheckBox = JBCheckBox("Show agent status on the tool window icon")
+    private val warnForeignSessionCheckBox = JBCheckBox("Warn when a selected conversation belongs to another workspace")
     private val autoContinueInterruptedSessionsCheckBox = JBCheckBox("Automatically continue interrupted conversations after recovery")
     private val waitForIntellijMcpServerCheckBox = JBCheckBox("Wait for IntelliJ MCP server before starting OpenCode")
     private val uiZoomSpinner = JSpinner(
@@ -172,6 +173,7 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
         CheckBoxSettingBinding(enableSystemNotificationsCheckBox, { enableSystemNotifications }, { value -> enableSystemNotifications = value }),
         CheckBoxSettingBinding(enablePermissionNotificationActionsCheckBox, { enablePermissionNotificationActions }, { value -> enablePermissionNotificationActions = value }),
         CheckBoxSettingBinding(showAgentStatusBadgeCheckBox, { showAgentStatusBadge }, { value -> showAgentStatusBadge = value }, OpenCodeUiSetting.AGENT_STATUS_BADGE),
+        CheckBoxSettingBinding(warnForeignSessionCheckBox, { warnForeignSession }, { value -> warnForeignSession = value }, OpenCodeUiSetting.FOREIGN_SESSION_WARNING),
         CheckBoxSettingBinding(autoContinueInterruptedSessionsCheckBox, { autoContinueInterruptedSessions }, { value -> autoContinueInterruptedSessions = value }),
         CheckBoxSettingBinding(waitForIntellijMcpServerCheckBox, { waitForIntellijMcpServer }, { value -> waitForIntellijMcpServer = value }),
         CheckBoxSettingBinding(enableServerLogsCheckBox, { enableServerLogs }, { value -> enableServerLogs = value }),
@@ -384,6 +386,10 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
                 row {
                     cell(showAgentStatusBadgeCheckBox)
                         .comment("Overlay the tool window icon with a live indicator while the agent works and a warning while it awaits your input.")
+                }
+                row {
+                    cell(warnForeignSessionCheckBox)
+                        .comment("Off by default. Show an IDE warning when the open conversation's directory is not this project's OpenCode directory, including a session OpenCode restores on startup. Does not block opening it. Symlink spellings and sandbox guest paths count as the same folder.")
                 }
                 row {
                     cell(autoContinueInterruptedSessionsCheckBox)

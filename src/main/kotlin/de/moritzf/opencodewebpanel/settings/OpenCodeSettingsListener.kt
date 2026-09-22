@@ -21,6 +21,7 @@ enum class OpenCodeUiSetting {
     CHUNK_LOAD_RECOVERY,
     RENDERER_WATCHDOG,
     AGENT_STATUS_BADGE,
+    FOREIGN_SESSION_WARNING,
 }
 
 interface OpenCodeSettingsListener {

@@ -3,6 +3,7 @@ package de.moritzf.opencodewebpanel.toolWindow
 import com.intellij.ide.AppLifecycleListener
 import com.intellij.ide.ui.LafManager
 import com.intellij.ide.ui.LafManagerListener
+import com.intellij.notification.Notification
 import com.intellij.notification.NotificationAction
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
@@ -33,6 +34,7 @@ import de.moritzf.opencodewebpanel.features.OpenCodeCefFileDialogHandler
 import de.moritzf.opencodewebpanel.features.OpenCodeChatInputService
 import de.moritzf.opencodewebpanel.features.OpenCodeDiffNavigation
 import de.moritzf.opencodewebpanel.features.OpenCodeFileDropHandler
+import de.moritzf.opencodewebpanel.features.OpenCodeForeignSessionWarning
 import de.moritzf.opencodewebpanel.features.OpenCodeIdeNavigation
 import de.moritzf.opencodewebpanel.features.OpenCodeInterruptedSessionRecovery
 import de.moritzf.opencodewebpanel.features.OpenCodeLocalStorageBridge
@@ -42,6 +44,7 @@ import de.moritzf.opencodewebpanel.features.OpenCodeSystemNotifications
 import de.moritzf.opencodewebpanel.features.OpenCodeWorkspaceRefreshCoordinator
 import de.moritzf.opencodewebpanel.server.OpenCodeGlobalEvent
 import de.moritzf.opencodewebpanel.server.OpenCodeGlobalEventListener
+import de.moritzf.opencodewebpanel.server.OpenCodeHostPaths
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleListener
 import de.moritzf.opencodewebpanel.server.OpenCodeLifecycleStripModel
 import de.moritzf.opencodewebpanel.server.shouldTickLifecycleStrip
@@ -52,6 +55,7 @@ import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.server.OpenCodeSuspendResumeListener
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
+import de.moritzf.opencodewebpanel.server.SbxCli
 import de.moritzf.opencodewebpanel.server.SbxFailureKind
 import de.moritzf.opencodewebpanel.server.SbxOpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.isSuccessfulOpenCodeDocumentLoad
@@ -207,6 +211,21 @@ internal class OpenCodeWebToolWindowContent(
             )
         },
         backendId = { serverManager.backendId },
+    )
+    private var foreignSessionNotification: Notification? = null
+    private val foreignSessionWarning = OpenCodeForeignSessionWarning(
+        enabled = { OpenCodeSettingsState.getInstance().warnForeignSession },
+        workspaceDirectory = ::openCodeProjectDirectory,
+        loadSession = { sessionID -> loadDisplayedSession(sessionID) },
+        guestToHostPrefixes = {
+            OpenCodeHostPaths.guestToHostPrefixes(serverManager.backendId, openCodeProjectDirectory())
+        },
+        sandboxGuestPath = { workspace ->
+            if (OpenCodeServerBackend.isNative(serverManager.backendId)) null else SbxCli.guestBindPath(workspace)
+        },
+        executeAsync = { task -> ApplicationManager.getApplication().executeOnPooledThread(task) },
+        notify = ::showForeignSessionWarning,
+        clearWarning = ::clearForeignSessionWarning,
     )
     @Suppress("UnstableApiUsage")
     private val openProjectAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
@@ -757,6 +776,11 @@ internal class OpenCodeWebToolWindowContent(
                         OpenCodeUiSetting.CHUNK_LOAD_RECOVERY -> applyChunkLoadRecovery()
                         OpenCodeUiSetting.RENDERER_WATCHDOG -> applyRendererWatchdog()
                         OpenCodeUiSetting.AGENT_STATUS_BADGE -> applyAgentStatusBadge(enabled)
+                        OpenCodeUiSetting.FOREIGN_SESSION_WARNING -> {
+                            if (!isContentDisposed()) {
+                                if (enabled) foreignSessionWarning.recheck() else foreignSessionWarning.suppress()
+                            }
+                        }
                     }
                 }
 
@@ -2048,8 +2072,61 @@ internal class OpenCodeWebToolWindowContent(
      * async fetch. Safe to call from CEF handler threads: [prepareSession][OpenCodePermissionAutoResponder.prepareSession]
      * only touches concurrent maps and hops to a pooled thread for the REST walk.
      */
+    private fun loadDisplayedSession(sessionID: String): OpenCodeServerProtocol.SessionInfo? {
+        val serverUrl = serverManager.getServerUrl() ?: return null
+        val directory = openCodeProjectDirectory() ?: return null
+        val password = serverManager.getServerPassword() ?: return null
+        return OpenCodeServerProtocol.fetchSessionInfo(
+            serverUrl,
+            OpenCodeServerProtocol.buildBasicAuthHeader(password),
+            directory,
+            sessionID,
+            wireProtocol = serverManager.getWireProtocol(),
+        )
+    }
+
+    private fun showForeignSessionWarning(title: String, content: String) {
+        val application = ApplicationManager.getApplication()
+        if (application.isDispatchThread) {
+            publishForeignSessionWarning(title, content)
+        } else {
+            application.invokeLater { publishForeignSessionWarning(title, content) }
+        }
+    }
+
+    private fun publishForeignSessionWarning(title: String, content: String) {
+        if (isContentDisposed()) return
+        foreignSessionNotification?.expire()
+        val group = NotificationGroupManager.getInstance()
+            .getNotificationGroup(OpenCodeServerProtocol.NOTIFICATION_GROUP_ID)
+            ?: return
+        val notification = group.createNotification(
+            title,
+            StringUtil.escapeXmlEntities(content),
+            NotificationType.WARNING,
+        )
+        foreignSessionNotification = notification
+        notification.notify(project)
+    }
+
+    private fun clearForeignSessionWarning() {
+        val application = ApplicationManager.getApplication()
+        if (application.isDispatchThread) {
+            expireForeignSessionWarning()
+        } else {
+            application.invokeLater { expireForeignSessionWarning() }
+        }
+    }
+
+    private fun expireForeignSessionWarning() {
+        foreignSessionNotification?.expire()
+        foreignSessionNotification = null
+    }
+
     private fun prepareDisplayedSessionLineage(url: String?) {
-        OpenCodeServerProtocol.sessionIdFromUrl(url)?.let(permissionAutoResponder::prepareSession)
+        val sessionID = OpenCodeServerProtocol.sessionIdFromUrl(url)
+        sessionID?.let(permissionAutoResponder::prepareSession)
+        foreignSessionWarning.onDisplayedSessionChanged(sessionID)
     }
 
     /** Session-scoped and includes subagent children through their parent lineage. */
@@ -2092,6 +2169,7 @@ internal class OpenCodeWebToolWindowContent(
     override fun dispose() {
         disposed = true
         pendingBrowserLoadGeneration++
+        foreignSessionWarning.suppress()
         permissionAutoResponder.dispose()
         openProjectAlarm.cancelAllRequests()
         pageLoadWatchdogAlarm.cancelAllRequests()

@@ -274,6 +274,14 @@ class OpenCodeSettingsStateTest {
     }
 
     @Test
+    fun warnForeignSessionIsOptIn() {
+        assertEquals(false, OpenCodeSettingsState().warnForeignSession)
+        val settings = OpenCodeSettingsState()
+        settings.loadState(OpenCodeSettingsState().apply { warnForeignSession = true })
+        assertEquals(true, settings.warnForeignSession)
+    }
+
+    @Test
     fun systemNotificationsAreEnabledByDefault() {
         assertEquals(true, OpenCodeSettingsState().enableSystemNotifications)
     }
