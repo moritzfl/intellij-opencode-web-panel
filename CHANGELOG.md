@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-09-22
+
 ### Added
 
 - Move the live OpenCode panel between the tool window and an editor tab without
