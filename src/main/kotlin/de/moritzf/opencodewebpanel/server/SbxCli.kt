@@ -284,6 +284,62 @@ internal object SbxCli {
         return if (posix.endsWith(":ro", ignoreCase = true)) posix.dropLast(3) else posix
     }
 
+    private fun workspaceIsReadOnly(arg: String): Boolean = posixPath(arg).endsWith(":ro", ignoreCase = true)
+
+    /**
+     * Differences between the running VM and the spec that only a new VM can apply. Start never
+     * acts on them by itself: a pulled spec must not silently delete VM-only data.
+     *
+     * [desiredMounts] are the spec's extra mounts plus the shared config mount; [pluginMounts] are
+     * the plugin's own workspaces (protect overlays, persist store, 2.x binary copy).
+     */
+    fun recreateReasons(
+        record: SbxSandboxRecord,
+        listedWorkspaces: List<String>,
+        workspace: String,
+        kitsText: String,
+        shareHostConfig: Boolean,
+        desiredMounts: List<SbxExtraMount>,
+        pluginMounts: List<SbxExtraMount>,
+        sharedConfigPath: String?,
+    ): List<String> {
+        if (record.adopted) return emptyList()
+        val reasons = ArrayList<String>()
+        val installedKits = parseLineList(record.kits)
+        val desiredKits = parseLineList(kitsText)
+        if (desiredKits.size < installedKits.size || desiredKits.take(installedKits.size) != installedKits) {
+            reasons += "kits were removed or reordered"
+        }
+        if (record.shareHostConfig != shareHostConfig) {
+            reasons += if (shareHostConfig) "host OpenCode config sharing was turned on" else "host OpenCode config sharing was turned off"
+        }
+        fun listed(host: String) = listedWorkspaces.firstOrNull {
+            OpenCodeServerProtocol.isSameFilesystemPath(workspaceHostPath(it), host)
+        }
+        for (mount in extraMountsForCreate(desiredMounts, workspace)) {
+            val attached = listed(mount.hostPath)
+            if (attached == null) {
+                reasons += "new mount ${mount.hostPath}"
+                continue
+            }
+            // A VM created before config sharing became read-only keeps its bind until Reset.
+            val sharedConfig = sharedConfigPath != null &&
+                OpenCodeServerProtocol.isSameFilesystemPath(mount.hostPath, sharedConfigPath)
+            if (!sharedConfig && workspaceIsReadOnly(attached) != mount.readOnly) {
+                reasons += if (mount.readOnly) "mount ${mount.hostPath} should be read-only" else "mount ${mount.hostPath} should be writable"
+            }
+        }
+        val known = (desiredMounts + pluginMounts).map { it.hostPath } + workspace
+        for (attached in listedWorkspaces) {
+            if (workspaceIsReadOnly(attached)) continue
+            val host = workspaceHostPath(attached)
+            if (known.none { OpenCodeServerProtocol.isSameFilesystemPath(it, host) }) {
+                reasons += "mount $host was removed but is still writable in the VM"
+            }
+        }
+        return reasons
+    }
+
     fun networkKitTemplateYaml(): String {
         val out = StringBuilder()
         out.append("schemaVersion: \"2\"\n")

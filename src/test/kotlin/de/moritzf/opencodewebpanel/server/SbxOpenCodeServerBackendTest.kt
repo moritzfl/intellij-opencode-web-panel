@@ -570,7 +570,7 @@ class SbxOpenCodeServerBackendTest {
         val spec = SbxLaunchSpec.fromSettings(settings, directory).copy(useSandbox = true, enableIntellijMcp = false)
         assertNotNull(SbxLaunchSpec.persist(spec))
         store.save(directory, record.copy(kits = SbxCli.normalizeLineList(spec.kits.joinToString("\n"))))
-        val persist = "/tmp/persist-extra"
+        val persist = SbxCli.sandboxPersistDataHome(record.name)
         val protect = "$directory/opencode-sbx"
         behavior = { command ->
             when (command[1]) {
@@ -749,6 +749,77 @@ class SbxOpenCodeServerBackendTest {
         backend.applyLiveSettings()
         drain()
         assertFalse(calls.contains("kit"))
+    }
+
+    @Test
+    fun startNeverRecreatesWhenThePulledSpecNeedsANewVm() {
+        val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
+        val removed = "/tmp/ocwp-removed-mount"
+        for ((spec, recordKits, workspaces) in listOf(
+            Triple(SbxLaunchSpec.fromSettings(settings, directory).copy(kits = listOf("./b", "./a")), "./a\n./b", listOf(directory)),
+            Triple(SbxLaunchSpec.fromSettings(settings, directory).copy(shareHostOpencodeConfig = true), "", listOf(directory)),
+            Triple(SbxLaunchSpec.fromSettings(settings, directory), "", listOf(directory, removed)),
+        )) {
+            calls.clear()
+            assertNotNull(SbxLaunchSpec.persist(spec.copy(useSandbox = true, enableIntellijMcp = false)))
+            store.save(directory, record.copy(kits = recordKits))
+            behavior = { command ->
+                when (command[1]) {
+                    "ls" -> listed("running", workspaces)
+                    else -> SbxCommandResult(0, "")
+                }
+            }
+            backend.ensureStarted(project, directory, { false }, {}, {})
+            drain()
+            assertFalse(calls.contains("rm"))
+            assertFalse(calls.contains("create"))
+            assertEquals(SbxFailureKind.RECREATE_REQUIRED, backend.lastFailure())
+            assertTrue(backend.pendingRecreateReasons().isNotEmpty())
+            assertEquals("owned-id", store.recordFor(directory)?.sandboxId)
+        }
+        assertTrue(backend.pendingRecreateReasons().single().contains(removed))
+    }
+
+    @Test
+    fun resetRemovesTheVmThatStartRefusedToRecreate() {
+        val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
+        assertNotNull(SbxLaunchSpec.persist(SbxLaunchSpec.fromSettings(settings, directory).copy(
+            useSandbox = true, enableIntellijMcp = false, kits = listOf("./b"),
+        )))
+        store.save(directory, record.copy(kits = "./a"))
+        behavior = { command ->
+            when (command[1]) {
+                "ls" -> if (calls.contains("rm")) SbxCommandResult(0, """{"sandboxes":[]}""") else listed("running")
+                "create" -> SbxCommandResult(21, "stop after create")
+                else -> SbxCommandResult(0, "")
+            }
+        }
+        store.acknowledgeExposure(directory, SbxExposure.of(SbxLaunchSpec.load(directory)!!, directory).fingerprint)
+        backend.resetSandbox(project, { false }, {}, {}, dropGuestOpenCode = false)
+        drain()
+        assertTrue(calls.indexOf("rm") < calls.indexOf("create"))
+    }
+
+    @Test
+    fun missingMountPathIsSkippedInsteadOfDestroyingTheVm() {
+        val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
+        assertNotNull(SbxLaunchSpec.persist(SbxLaunchSpec.fromSettings(settings, directory).copy(
+            useSandbox = true, enableIntellijMcp = false,
+            extraMounts = listOf(SbxExtraMount("/definitely/missing/ocwp-mount", "/home/agent/data")),
+        )))
+        store.save(directory, record)
+        behavior = { command ->
+            when (command[1]) {
+                "ls" -> listed("running")
+                "exec" -> SbxCommandResult(1, "stop before serve")
+                else -> SbxCommandResult(0, "")
+            }
+        }
+        backend.ensureStarted(project, directory, { false }, {}, {})
+        drain()
+        assertFalse(calls.contains("rm"))
+        assertFalse(calls.contains("create"))
+        assertTrue(backend.pendingRecreateReasons().isEmpty())
     }
 
     @Test

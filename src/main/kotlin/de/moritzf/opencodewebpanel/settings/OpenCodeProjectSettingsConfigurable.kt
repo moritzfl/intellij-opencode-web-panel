@@ -42,6 +42,7 @@ import de.moritzf.opencodewebpanel.server.formatOpenCodeServerLifecycleStatusTex
 import de.moritzf.opencodewebpanel.server.formatOpenCodeServerStatusDetail
 import de.moritzf.opencodewebpanel.toolWindow.confirmOpenCodeSandboxBinaryUpgrade
 import de.moritzf.opencodewebpanel.toolWindow.confirmOpenCodeServerRestart
+import de.moritzf.opencodewebpanel.toolWindow.requestOpenCodeSandboxReset
 import de.moritzf.opencodewebpanel.toolWindow.requestOpenCodeServerRestart
 import java.awt.Component
 import java.io.File
@@ -493,10 +494,15 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
             preview.effect == de.moritzf.opencodewebpanel.server.SbxApplyEffect.RESTART ||
             preview.effect == de.moritzf.opencodewebpanel.server.SbxApplyEffect.RECREATE
         val modality = ModalityState.defaultModalityState()
+        // Start never recreates on its own; a confirmed Recreate is carried out here.
+        val recreate = spec.useSandbox && preview.effect == de.moritzf.opencodewebpanel.server.SbxApplyEffect.RECREATE
         if (shouldStop) {
             oldBackend.stopServer {
                 ApplicationManager.getApplication().invokeLater({
-                    if (!project.isDisposed) {
+                    if (project.isDisposed) return@invokeLater
+                    if (recreate) {
+                        requestOpenCodeSandboxReset(project, dropGuestOpenCode = false)
+                    } else {
                         project.messageBus.syncPublisher(OpenCodeProjectSettingsListener.TOPIC).serverRestartRequested()
                     }
                 }, modality)

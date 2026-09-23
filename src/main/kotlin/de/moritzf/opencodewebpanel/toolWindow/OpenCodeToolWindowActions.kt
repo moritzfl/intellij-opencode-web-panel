@@ -486,13 +486,14 @@ internal fun requestOpenCodeServerRestart(project: Project?) {
         .serverRestartRequested()
 }
 
-internal fun requestOpenCodeSandboxReset(project: Project) {
+internal fun requestOpenCodeSandboxReset(project: Project, dropGuestOpenCode: Boolean = true) {
     val backend = openCodeBackend(project) as? SbxOpenCodeServerBackend ?: return
     backend.resetSandbox(
         project,
         callbackActive = { !project.isDisposed },
         onStarted = {},
         onFailed = {},
+        dropGuestOpenCode = dropGuestOpenCode,
     )
     requestOpenCodeServerRestart(project)
 }
@@ -679,6 +680,23 @@ internal fun confirmDiscardForeignSandbox(project: Project?): Boolean {
             "Sessions in that VM are dropped.",
     )
         .yesText("Create new")
+        .noText("Cancel")
+        .icon(Messages.getWarningIcon())
+        .ask(project)
+}
+
+internal fun confirmOpenCodeSandboxRecreate(project: Project?, reasons: List<String>): Boolean {
+    val retention = project?.let {
+        OpenCodeProjectSettingsState.getInstance(it).effectiveProjectDirectory(it.basePath)
+            ?.let(OpenCodeProjectSettingsConfigurable::sandboxSessionRetentionSummary)
+    } ?: "Conversation history retention is unknown until the VM is inspected."
+    return MessageDialogBuilder.yesNo(
+        "Recreate Sandbox",
+        "The sandbox differs from opencode-sbx.yaml:\n" + reasons.joinToString("\n") { "• $it" } +
+            "\n\nRecreating removes the VM and creates a new one from the file. " +
+            "Packages and other VM-only state are dropped. $retention",
+    )
+        .yesText("Recreate")
         .noText("Cancel")
         .icon(Messages.getWarningIcon())
         .ask(project)

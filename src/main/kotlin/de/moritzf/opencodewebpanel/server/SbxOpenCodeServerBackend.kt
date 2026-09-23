@@ -62,6 +62,7 @@ internal enum class SbxFailureKind {
     CANCELLED,
     UNTRUSTED_PROJECT,
     EXPOSURE_UNCONFIRMED,
+    RECREATE_REQUIRED,
 }
 
 private fun defaultSandboxTrustCheck(project: Project?, directory: String): Boolean = runCatching {
@@ -125,6 +126,7 @@ internal class SbxOpenCodeServerBackend(
     private var pendingCreateStaleReasons: List<String> = emptyList()
     private var warnedCreateSnapshot: String? = null
     private var pendingExposure: SbxExposure? = null
+    private var pendingRecreateReasons: List<String> = emptyList()
 
     /** Trust of the project that last asked for a start; health restarts have no project. */
     @Volatile
@@ -220,8 +222,16 @@ internal class SbxOpenCodeServerBackend(
                     items.joinToString("\n") { "• $it" } +
                     "\nReview the file, then choose Allow and Start."
             }
+            SbxFailureKind.RECREATE_REQUIRED -> {
+                val reasons = synchronized(lock) { pendingRecreateReasons }
+                "This sandbox was created with different settings than opencode-sbx.yaml:\n" +
+                    reasons.joinToString("\n") { "• $it" } +
+                    "\nRecreate the sandbox to apply them, or revert the file. Recreating drops VM-only data."
+            }
         }
     }
+
+    fun pendingRecreateReasons(): List<String> = synchronized(lock) { pendingRecreateReasons }
 
     fun pendingExposure(): SbxExposure? = synchronized(lock) { pendingExposure }
 
@@ -542,11 +552,16 @@ internal class SbxOpenCodeServerBackend(
         return result
     }
 
+    /**
+     * Removes the owned VM and starts a fresh one from the current spec. Reset also drops the
+     * 2.x binary copy; a settings-driven recreate keeps it.
+     */
     fun resetSandbox(
         project: Project,
         callbackActive: () -> Boolean = { true },
         onStarted: () -> Unit,
         onFailed: () -> Unit,
+        dropGuestOpenCode: Boolean = true,
     ) {
         synchronized(lock) {
             cancelPendingStarts()
@@ -554,7 +569,8 @@ internal class SbxOpenCodeServerBackend(
                 val name = recordStore().recordFor(canonicalDirectory)?.name
                 stopOwnedServe(stopVm = false)
                 removeOwnedSandbox()
-                if (name != null) SbxCli.deleteGuestOpenCode(name)
+                synchronized(lock) { pendingRecreateReasons = emptyList() }
+                if (name != null && dropGuestOpenCode) SbxCli.deleteGuestOpenCode(name)
                 true
             }
         }
@@ -742,11 +758,13 @@ internal class SbxOpenCodeServerBackend(
                     throw SbxCommandFailure("Read sandbox settings", -1, "Invalid ${SbxLaunchSpec.PROJECT_SPEC_NAME} in $canonicalDirectory.")
             }
             val shareHostConfig = spec.shareHostOpencodeConfig
-            val extraMounts = SbxOpencodeConfigOverlay.withHostConfigShare(
-                SbxCli.resolveExtraMounts(spec.extraMounts, canonicalDirectory),
-                shareHostConfig,
+            val sharedConfigMount = if (shareHostConfig) SbxOpencodeConfigOverlay.hostConfigShareMount() else null
+            val extraMounts = existingExtraMounts(
+                SbxOpencodeConfigOverlay.withHostConfigShare(
+                    SbxCli.resolveExtraMounts(spec.extraMounts, canonicalDirectory),
+                    shareHostConfig,
+                ),
             )
-            val extraHostPaths = SbxCli.extraMountHostPaths(extraMounts, canonicalDirectory)
             val protectMounts = if (spec.protectSandboxFiles) {
                 SbxCli.sandboxProtectMounts(canonicalDirectory, spec.kits)
             } else {
@@ -772,27 +790,26 @@ internal class SbxOpenCodeServerBackend(
             val cpus = spec.cpus
             val desiredHostPort = spec.hostPort
             var listedWorkspaces = owned?.workspaces.orEmpty()
-            val missingExtraMount = extraHostPaths.any { extra ->
-                listedWorkspaces.none { OpenCodeServerProtocol.isSameFilesystemPath(SbxCli.workspaceHostPath(it), extra) }
-            }
             val desiredKits = SbxCli.parseLineList(kitsText)
-            if (owned != null && !missingExtraMount) {
-                val current = record
-                if (current.shareHostConfig == shareHostConfig) {
-                    if (appendsKits(current, desiredKits) && !gateSandboxProvisioning(startId, spec)) return
-                    record = appendUniqueKits(sbx, name, current, desiredKits, startId)
-                }
-            }
-            val provisionChanged = record != null && !record.adopted && (
-                (extraHostPaths.isNotEmpty() && missingExtraMount) ||
-                    record.kits != kitsText ||
-                    record.shareHostConfig != shareHostConfig
+            if (owned != null && record != null) {
+                // Plugin-owned stores count as known even when their option is off now.
+                val pluginMounts = protectMounts + listOf(
+                    SbxExtraMount(SbxCli.sandboxPersistDataHome(name), SbxCli.persistSandboxGuestPath()),
+                    SbxExtraMount(SbxCli.guestOpenCodeDataHome(name), SbxCli.guestOpenCodeGuestPath()),
                 )
-            if ((provisionChanged || record == null || owned == null) && !gateSandboxProvisioning(startId, spec)) return
-            if (provisionChanged) {
-                removeOwnedSandbox()
-                record = null
+                val reasons = SbxCli.recreateReasons(
+                    record, listedWorkspaces, canonicalDirectory, kitsText, shareHostConfig,
+                    extraMounts, pluginMounts, sharedConfigMount?.hostPath,
+                )
+                if (reasons.isNotEmpty()) {
+                    synchronized(lock) { pendingRecreateReasons = reasons }
+                    fail(startId, SbxFailureKind.RECREATE_REQUIRED)
+                    return
+                }
+                if (appendsKits(record, desiredKits) && !gateSandboxProvisioning(startId, spec)) return
+                record = appendUniqueKits(sbx, name, record, desiredKits, startId)
             }
+            if ((record == null || owned == null) && !gateSandboxProvisioning(startId, spec)) return
             var createdNow = false
             if (record == null || owned == null) {
                 if (!isCurrentStart(startId)) return
@@ -893,9 +910,11 @@ internal class SbxOpenCodeServerBackend(
             if (overlay != null) {
                 extraEnv[SbxCli.OPENCODE_CONFIG_CONTENT_ENV] = overlay
             }
-            if (shareHostConfig) {
+            // Only when the config directory is actually mounted; otherwise OpenCode would read an
+            // empty path instead of the sandbox agent's own config.
+            if (sharedConfigMount != null) {
                 extraEnv[SbxOpencodeConfigOverlay.XDG_CONFIG_HOME_ENV] =
-                    SbxCli.guestBindPath(SbxOpencodeConfigOverlay.hostConfigDir().parent.toString())
+                    SbxCli.guestBindPath(Path.of(sharedConfigMount.hostPath).parent.toString())
             }
             val password = OpenCodePasswordStore.getInstance().ensurePasswordBlocking()
             val processBuilder = ProcessBuilder(
@@ -1067,6 +1086,17 @@ internal class SbxOpenCodeServerBackend(
             thisLogger().warn("Could not publish sandbox port ${SbxCli.publishSpec(desiredHostPort)}: ${published.output}")
         }
         return published.exitCode == 0
+    }
+
+    /** A teammate's mount that does not exist on this machine is skipped, like the launcher does. */
+    private fun existingExtraMounts(mounts: List<SbxExtraMount>): List<SbxExtraMount> = mounts.filter { mount ->
+        val exists = runCatching { java.nio.file.Files.exists(Path.of(mount.hostPath)) }.getOrDefault(false)
+        if (!exists) {
+            val message = "Skipping sandbox mount ${mount.hostPath}: it does not exist on this machine."
+            serverLogBuffer.append(message)
+            thisLogger().warn(message)
+        }
+        exists
     }
 
     private fun appendsKits(record: SbxSandboxRecord, desiredKits: List<String>): Boolean {

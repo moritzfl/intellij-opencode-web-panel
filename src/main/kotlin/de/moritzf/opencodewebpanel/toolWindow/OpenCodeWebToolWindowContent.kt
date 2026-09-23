@@ -2029,6 +2029,14 @@ internal class OpenCodeWebToolWindowContent(
                     restartOpenCodeServer()
                 }
             }
+            SbxFailureKind.RECREATE_REQUIRED -> OpenCodeStartupRecoveryAction(
+                "Recreate Sandbox",
+                "Remove this sandbox and create a new one from opencode-sbx.yaml",
+            ) {
+                if (confirmOpenCodeSandboxRecreate(project, sbx.pendingRecreateReasons())) {
+                    requestOpenCodeSandboxReset(project, dropGuestOpenCode = false)
+                }
+            }
             else -> null
         }
         startupErrorPanel.showFailure(

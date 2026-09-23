@@ -619,6 +619,21 @@ class SbxCliTest {
     }
 
     @Test
+    fun recreateReasonsCoverReadOnlyChangesButKeepLegacySharedConfigBinds() {
+        val record = SbxSandboxRecord("id", "ide-ocwp-x", "opencode", "/p", shareHostConfig = true)
+        val config = SbxExtraMount("/home/u/.config/opencode", "/home/u/.config/opencode", readOnly = true)
+        val data = SbxExtraMount("/data", "/data", readOnly = true)
+        fun reasons(listed: List<String>) = SbxCli.recreateReasons(
+            record, listed, "/p", "", true, listOf(config, data), emptyList(), config.hostPath,
+        )
+        assertEquals(emptyList<String>(), reasons(listOf("/p", "/home/u/.config/opencode", "/data:ro")))
+        assertEquals(listOf("mount /data should be read-only"), reasons(listOf("/p", "/home/u/.config/opencode:ro", "/data")))
+        assertEquals(emptyList<String>(), SbxCli.recreateReasons(
+            record.copy(adopted = true), listOf("/p"), "/p", "./x", false, listOf(data), emptyList(), null,
+        ))
+    }
+
+    @Test
     fun ownedSandboxMatchesByIdEvenWhenProjectIsNotFirstWorkspace() {
         val project = "/tmp/project"
         val persist = "/tmp/persist"
