@@ -289,78 +289,177 @@ parse_flow_kits() {
   [[ -n "$item" ]] && KITS+=("$item")
 }
 
+spec_error() {
+  echo "opencode-sbx: invalid spec $SPEC: $*" >&2
+  exit 1
+}
+
+lower() {
+  printf '%s' "$1" | tr 'A-Z' 'a-z'
+}
+
+# Same rules as SbxLaunchSpec.parseYamlResult: anything outside the subset the plugin writes
+# makes the spec invalid instead of being skipped. Sets FLAG_VALUE (no subshell, so
+# spec_error can exit the launcher).
+spec_flag() {
+  FLAG_VALUE="$(lower "$2")"
+  case "$FLAG_VALUE" in
+    true|false) ;;
+    *) spec_error "$1 must be true or false" ;;
+  esac
+}
+
+finish_mount() {
+  [[ "$MOUNT_OPEN" -eq 1 ]] || return 0
+  MOUNT_OPEN=0
+  [[ -n "$MOUNT_HOST" ]] || spec_error "every extraMounts entry needs a host"
+  local host="${MOUNT_HOST//\\//}" ro="0"
+  if [[ "$(lower "$host")" == *:ro && "${#host}" -gt 3 ]]; then
+    host="${host:0:${#host}-3}"
+    ro="1"
+  fi
+  case "$(lower "$MOUNT_RO")" in
+    "") ;;
+    true) ro="1" ;;
+    false) ;;
+    *) spec_error "readOnly must be true or false" ;;
+  esac
+  local sandbox="${MOUNT_SANDBOX//\\//}"
+  [[ -n "$sandbox" ]] || sandbox="$host"
+  MOUNT_HOSTS+=("$host")
+  MOUNT_SANDBOXES+=("$sandbox")
+  MOUNT_READONLY+=("$ro")
+}
+
+set_mount_key() {
+  local key="$1" val="$2"
+  case "$key" in
+    host) [[ -z "$MOUNT_HOST_SET" ]] || spec_error "duplicate host in mount"; MOUNT_HOST_SET=1; MOUNT_HOST="$val" ;;
+    sandbox) [[ -z "$MOUNT_SANDBOX_SET" ]] || spec_error "duplicate sandbox in mount"; MOUNT_SANDBOX_SET=1; MOUNT_SANDBOX="$val" ;;
+    readOnly) [[ -z "$MOUNT_RO_SET" ]] || spec_error "duplicate readOnly in mount"; MOUNT_RO_SET=1; MOUNT_RO="$val" ;;
+  esac
+}
+
 parse_spec() {
-  local file="$1"
-  local list=""
-  local host=""
+  local file="$1" section="" seen=" " line content key raw val g1 g3
+  local version_raw="" install_v2=""
+  MOUNT_OPEN=0
+  CANONICAL_SET=0
   while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%$'\r'}"
     line="${line%"${line##*[![:space:]]}"}"
     [[ -z "$line" ]] && continue
-    if [[ "$line" =~ ^[[:space:]]*-[[:space:]]*host:[[:space:]]*(.*)$ ]]; then
-      host="$(yaml_unquote "${BASH_REMATCH[1]}")"
-      list="extraMounts"
-      continue
-    fi
-    if [[ "$line" =~ ^[[:space:]]*sandbox:[[:space:]]*(.*)$ && -n "$host" ]]; then
-      MOUNT_HOSTS+=("$host")
-      MOUNT_SANDBOXES+=("$(yaml_unquote "${BASH_REMATCH[1]}")")
-      MOUNT_READONLY+=("0")
-      host=""
-      continue
-    fi
-    if [[ "$line" =~ ^[[:space:]]*-[[:space:]]+(.*)$ && -n "$list" && "$list" != extraMounts ]]; then
-      local item
-      item="$(yaml_unquote "${BASH_REMATCH[1]}")"
-      case "$list" in
-        kits) KITS+=("$item") ;;
-      esac
-      continue
-    fi
-    if [[ "$line" =~ ^([A-Za-z][A-Za-z0-9_]*):[[:space:]]*(.*)$ ]]; then
-      local key="${BASH_REMATCH[1]}"
-      local raw="${BASH_REMATCH[2]}"
-      raw="${raw%"${raw##*[![:space:]]}"}"
-      local val
+    [[ "$line" =~ ^([[:blank:]]*)(.*)$ ]]
+    local indent_text="${BASH_REMATCH[1]}"
+    content="${BASH_REMATCH[2]}"
+    [[ "$content" == "#"* ]] && continue
+    [[ "$indent_text" == *$'\t'* ]] && spec_error "tabs are not allowed for indentation"
+    if [[ -z "$indent_text" ]]; then
+      finish_mount
+      [[ "$content" =~ ^([A-Za-z][A-Za-z0-9_]*):([[:space:]]+(.*))?$ ]] || spec_error "expected \"key: value\": $content"
+      key="${BASH_REMATCH[1]}"
+      raw="${BASH_REMATCH[3]}"
+      [[ "$seen" == *" $key "* ]] && spec_error "duplicate key $key"
+      seen="$seen$key "
+      section="$key"
       val="$(yaml_unquote "$raw")"
-      list="$key"
-      host=""
       case "$key" in
-        canonicalDirectory) CANONICAL="$val" ;;
-        name) NAME="$val" ;;
-        memory) MEMORY="$val" ;;
-        cpus) CPUS="$val" ;;
-        hostPort) HOST_PORT="$val" ;;
-        shareHostOpencodeConfig) SHARE_CONFIG="$val" ;;
-        openCodeVersion)
-          case "$val" in
-            2|2.x|v2|V2) OPENCODE_VERSION="2.x" ;;
-            *) OPENCODE_VERSION="1.x" ;;
-          esac
-          ;;
-        installOpenCodeV2)
-          if [[ -z "$OPENCODE_VERSION" ]]; then
-            if [[ "$val" == "true" ]]; then
-              OPENCODE_VERSION="2.x"
-            else
-              OPENCODE_VERSION="1.x"
-            fi
-          fi
-          ;;
-        protectSandboxFiles) PROTECT_FILES="$val" ;;
-        persistSandboxSessions) PERSIST_SESSIONS="$val" ;;
         kits)
           if [[ "$raw" == "["* ]]; then
-            if [[ "$raw" != *"]" ]]; then
-              echo "opencode-sbx: invalid kits list in spec" >&2
-              exit 1
-            fi
+            [[ "$raw" == *"]" ]] || spec_error "invalid kits list"
             parse_flow_kits "$raw"
+          elif [[ -n "$val" ]]; then
+            spec_error "kits must be a list"
           fi
           ;;
-        setupCommands|networkAllows|networkAllowPresets|extraNetworkAllows|extraMounts) ;;
+        extraMounts)
+          [[ -z "$val" || "$val" == "[]" ]] || spec_error "extraMounts must be a block list of host/sandbox entries"
+          ;;
+        setupCommands|networkAllows|networkAllowPresets|extraNetworkAllows) ;;
+        *)
+          case "$val" in
+            "|"|">"|"{"*|"["*) spec_error "$key must be a plain value" ;;
+          esac
+          case "$key" in
+            schemaVersion) [[ "$val" == 1 ]] || spec_error "unsupported schemaVersion $val" ;;
+            canonicalDirectory) CANONICAL="$val"; CANONICAL_SET=1 ;;
+            name) [[ -n "$val" ]] && NAME="$val" ;;
+            memory)
+              val="$(lower "$val")"
+              [[ "$val" =~ ^[1-9][0-9]*[gm]$ ]] || spec_error "memory must look like 4g or 512m"
+              MEMORY="$val"
+              ;;
+            cpus)
+              [[ "$val" =~ ^[0-9]+$ ]] && [[ "$((10#$val))" -ge 1 && "$((10#$val))" -le 32 ]] || spec_error "cpus must be 1 to 32"
+              CPUS="$((10#$val))"
+              ;;
+            hostPort)
+              if [[ -n "$val" ]]; then
+                [[ "$val" =~ ^[0-9]+$ ]] && [[ "$((10#$val))" -ge 1 && "$((10#$val))" -le 65535 ]] || spec_error "hostPort must be 1 to 65535"
+                HOST_PORT="$((10#$val))"
+              fi
+              ;;
+            shareHostOpencodeConfig) spec_flag "$key" "$val"; SHARE_CONFIG="$FLAG_VALUE" ;;
+            protectSandboxFiles) spec_flag "$key" "$val"; PROTECT_FILES="$FLAG_VALUE" ;;
+            persistSandboxSessions) spec_flag "$key" "$val"; PERSIST_SESSIONS="$FLAG_VALUE" ;;
+            useSandbox|enableIntellijMcp) spec_flag "$key" "$val" ;;
+            installOpenCodeV2) spec_flag "$key" "$val"; install_v2="$FLAG_VALUE" ;;
+            openCodeVersion)
+              version_raw="$(lower "$val")"
+              case "$version_raw" in
+                1|1.x|v1|2|2.x|v2) ;;
+                *) spec_error "openCodeVersion must be 1.x or 2.x" ;;
+              esac
+              ;;
+          esac
+          ;;
       esac
+      continue
     fi
+    case "$section" in
+      "") spec_error "indented line outside a list: $content" ;;
+      kits)
+        [[ "$content" =~ ^-[[:space:]]+(.*)$ ]] || spec_error "expected \"- kit\": $content"
+        val="$(yaml_unquote "${BASH_REMATCH[1]}")"
+        [[ -n "$val" ]] && KITS+=("$val")
+        ;;
+      extraMounts)
+        if [[ "$content" =~ ^-[[:space:]]+(host|sandbox|readOnly):([[:space:]]+(.*))?$ ]]; then
+          g1="${BASH_REMATCH[1]}"
+          g3="${BASH_REMATCH[3]}"
+          finish_mount
+          MOUNT_OPEN=1
+          MOUNT_HOST="" MOUNT_SANDBOX="" MOUNT_RO=""
+          MOUNT_HOST_SET="" MOUNT_SANDBOX_SET="" MOUNT_RO_SET=""
+        elif [[ "$content" =~ ^(host|sandbox|readOnly):([[:space:]]+(.*))?$ ]]; then
+          g1="${BASH_REMATCH[1]}"
+          g3="${BASH_REMATCH[3]}"
+          [[ "$MOUNT_OPEN" -eq 1 ]] || spec_error "mount entries start with \"- host:\""
+        else
+          spec_error "expected host, sandbox or readOnly: $content"
+        fi
+        set_mount_key "$g1" "$(yaml_unquote "$g3")"
+        ;;
+      setupCommands|networkAllows|networkAllowPresets|extraNetworkAllows) ;;
+      schemaVersion|canonicalDirectory|name|memory|cpus|openCodeVersion|hostPort|shareHostOpencodeConfig|protectSandboxFiles|persistSandboxSessions|useSandbox|enableIntellijMcp|installOpenCodeV2)
+        spec_error "$section must be a plain value"
+        ;;
+    esac
   done < "$file"
+  finish_mount
+  [[ "$CANONICAL_SET" -eq 1 && -n "$CANONICAL" ]] || spec_error "canonicalDirectory is required"
+  case "$version_raw" in
+    2|2.x|v2) OPENCODE_VERSION="2.x" ;;
+    1|1.x|v1) OPENCODE_VERSION="1.x" ;;
+    *) [[ "$install_v2" == true ]] && OPENCODE_VERSION="2.x" || OPENCODE_VERSION="1.x" ;;
+  esac
+  local i
+  for ((i = 0; i < ${#KITS[@]}; i++)); do
+    KITS[$i]="${KITS[$i]//\\//}"
+    if [[ "${KITS[$i]}" == "~" || "${KITS[$i]}" == "~/"* ]]; then
+      KITS[$i]="${HOME}${KITS[$i]:1}"
+    fi
+  done
 }
 
 write_init_spec() {

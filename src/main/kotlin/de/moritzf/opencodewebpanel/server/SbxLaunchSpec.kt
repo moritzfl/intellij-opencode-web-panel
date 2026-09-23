@@ -31,7 +31,7 @@ internal enum class SbxOpenCodeVersion {
 
         fun fromYaml(values: Map<String, String>): SbxOpenCodeVersion {
             parse(values["openCodeVersion"])?.let { return it }
-            return if (values["installOpenCodeV2"]?.toBooleanStrictOrNull() == true) V2 else V1
+            return if (values["installOpenCodeV2"]?.trim()?.lowercase(Locale.ROOT) == "true") V2 else V1
         }
     }
 }
@@ -68,6 +68,7 @@ internal data class SbxLaunchSpec(
             extraMounts.forEach { mount ->
                 out.append("  - host: ").append(yamlScalar(mount.hostPath)).append('\n')
                 out.append("    sandbox: ").append(yamlScalar(mount.sandboxPath)).append('\n')
+                if (mount.readOnly) out.append("    readOnly: true\n")
             }
         }
         out.append("shareHostOpencodeConfig: ").append(shareHostOpencodeConfig).append('\n')
@@ -119,89 +120,168 @@ internal data class SbxLaunchSpec(
             )
         }
 
-        fun parseYaml(text: String): SbxLaunchSpec? {
+        fun parseYaml(text: String): SbxLaunchSpec? = parseYamlResult(text).spec
+
+        internal data class ParseResult(val spec: SbxLaunchSpec?, val error: String?)
+
+        /**
+         * Strict reader for the small YAML subset this plugin writes. Anything outside that
+         * subset (merge markers, tabs, nested maps, unknown mount keys, non-boolean flags) makes
+         * the spec invalid instead of being skipped; `opencode-sbx.sh` mirrors these rules.
+         */
+        internal fun parseYamlResult(text: String): ParseResult {
+            fun invalid(line: Int, reason: String) = ParseResult(null, "line $line: $reason")
             val values = LinkedHashMap<String, String>()
-            val lists = LinkedHashMap<String, MutableList<String>>()
-            val mounts = ArrayList<SbxExtraMount>()
-            var listKey: String? = null
-            var pendingHost: String? = null
+            val seenKeys = HashSet<String>()
+            val kits = ArrayList<String>()
+            val mounts = ArrayList<LinkedHashMap<String, String>>()
+            var section: String? = null
+            var lineNumber = 0
             for (raw in text.lineSequence()) {
-                val line = stripYamlComment(raw).trimEnd()
+                lineNumber++
+                val line = stripYamlComment(raw.removeSuffix("\r")).trimEnd()
                 if (line.isBlank()) continue
-                val mountHost = Regex("^\\s*-\\s*host:\\s*(.*)$").matchEntire(line)
-                if (mountHost != null) {
-                    pendingHost = unquote(mountHost.groupValues[1].trim())
-                    listKey = "extraMounts"
-                    continue
-                }
-                val mountSandbox = Regex("^\\s*sandbox:\\s*(.*)$").matchEntire(line)
-                if (mountSandbox != null && pendingHost != null) {
-                    val sandbox = unquote(mountSandbox.groupValues[1].trim())
-                    if (pendingHost.isNotBlank()) {
-                        mounts += SbxExtraMount(
-                            SbxCli.posixPath(pendingHost),
-                            SbxCli.posixPath(sandbox.ifBlank { pendingHost }),
-                        )
+                if ('\t' in line.takeWhile { it == ' ' || it == '\t' }) return invalid(lineNumber, "tabs are not allowed for indentation")
+                val indent = line.length - line.trimStart().length
+                val content = line.trimStart()
+                if (indent == 0) {
+                    val keyValue = TOP_LEVEL_KEY.matchEntire(content)
+                        ?: return invalid(lineNumber, "expected \"key: value\"")
+                    val key = keyValue.groupValues[1]
+                    val value = keyValue.groupValues[2].trim()
+                    if (!seenKeys.add(key)) return invalid(lineNumber, "duplicate key $key")
+                    section = key
+                    when (key) {
+                        "kits" -> when {
+                            value.isEmpty() -> Unit
+                            value.startsWith("[") -> kits += parseFlowSequence(value)
+                                ?.map { SbxCli.posixPath(it) }
+                                ?: return invalid(lineNumber, "invalid kits list")
+                            else -> return invalid(lineNumber, "kits must be a list")
+                        }
+                        "extraMounts" -> if (value.isNotEmpty() && value != "[]") {
+                            return invalid(lineNumber, "extraMounts must be a block list of host/sandbox entries")
+                        }
+                        in LEGACY_LIST_KEYS -> Unit
+                        else -> {
+                            if (value == "|" || value == ">" || value.startsWith("{") || value.startsWith("[")) {
+                                return invalid(lineNumber, "$key must be a plain value")
+                            }
+                            values[key] = unquote(value)
+                        }
                     }
-                    pendingHost = null
                     continue
                 }
-                val listItem = Regex("^\\s*-\\s+(.*)$").matchEntire(line)
-                if (listItem != null && listKey != null && listKey != "extraMounts") {
-                    val item = unquote(listItem.groupValues[1].trim())
-                    if (item.isNotBlank()) {
-                        val stored = if (listKey == "kits") SbxCli.posixPath(item) else item
-                        lists.getOrPut(listKey) { ArrayList() }.add(stored)
+                when (section) {
+                    null -> return invalid(lineNumber, "indented line outside a list")
+                    "kits" -> {
+                        val item = LIST_ITEM.matchEntire(content)
+                            ?: return invalid(lineNumber, "expected \"- kit\"")
+                        val ref = unquote(item.groupValues[1].trim())
+                        if (ref.isNotBlank()) kits += SbxCli.posixPath(ref)
                     }
-                    continue
+                    "extraMounts" -> {
+                        val start = MOUNT_ITEM_START.matchEntire(content)
+                        val entry = start ?: MOUNT_ITEM_KEY.matchEntire(content)
+                            ?: return invalid(lineNumber, "expected host, sandbox or readOnly")
+                        if (start != null) {
+                            mounts += LinkedHashMap()
+                        } else if (mounts.isEmpty()) {
+                            return invalid(lineNumber, "mount entries start with \"- host:\"")
+                        }
+                        val current = mounts.last()
+                        val key = entry.groupValues[1]
+                        if (key in current) return invalid(lineNumber, "duplicate $key in mount")
+                        current[key] = unquote(entry.groupValues[2].trim())
+                    }
+                    in LEGACY_LIST_KEYS -> Unit
+                    else -> if (section in KNOWN_SCALAR_KEYS) {
+                        return invalid(lineNumber, "$section must be a plain value")
+                    }
                 }
-                val keyValue = Regex("^([A-Za-z][A-Za-z0-9_]*):\\s*(.*)$").matchEntire(line.trim())
-                    ?: continue
-                val key = keyValue.groupValues[1]
-                val value = keyValue.groupValues[2].trim()
-                listKey = key
-                pendingHost = null
-                if (value.isEmpty() || value == "|" || value == ">") {
-                    lists.getOrPut(key) { ArrayList() }
-                    continue
-                }
-                if (value == "[]") {
-                    lists[key] = ArrayList()
-                    continue
-                }
-                if (value.startsWith("[")) {
-                    val items = parseFlowSequence(value) ?: return null
-                    lists[key] = items.map { item ->
-                        if (key == "kits") SbxCli.posixPath(item) else item
-                    }.toMutableList()
-                    continue
-                }
-                values[key] = unquote(value)
             }
             val directory = values["canonicalDirectory"]?.trim().orEmpty()
-            if (directory.isEmpty()) return null
-            val schema = values["schemaVersion"]?.toIntOrNull() ?: SCHEMA_VERSION
-            if (schema != SCHEMA_VERSION) return null
+            if (directory.isEmpty()) return ParseResult(null, "canonicalDirectory is required")
+            val schema = values["schemaVersion"]?.let { it.trim().toIntOrNull() ?: -1 } ?: SCHEMA_VERSION
+            if (schema != SCHEMA_VERSION) return ParseResult(null, "unsupported schemaVersion ${values["schemaVersion"]}")
             val name = values["name"]?.trim()?.ifBlank { null } ?: SbxCli.sandboxName(directory)
             // The name is joined into host paths (machine spec, persist, 2.x binary). Never trust it.
-            if (!SbxCli.isValidSandboxName(name)) return null
-            return SbxLaunchSpec(
-                schemaVersion = schema,
-                canonicalDirectory = directory,
-                name = name,
-                memory = SbxCli.sanitizeMemory(values["memory"]),
-                cpus = SbxCli.sanitizeCpus(values["cpus"]),
-                kits = lists["kits"].orEmpty(),
-                extraMounts = mounts,
-                shareHostOpencodeConfig = values["shareHostOpencodeConfig"]?.toBooleanStrictOrNull() ?: false,
-                openCodeVersion = SbxOpenCodeVersion.fromYaml(values),
-                enableIntellijMcp = values["enableIntellijMcp"]?.toBooleanStrictOrNull() ?: true,
-                useSandbox = values["useSandbox"]?.toBooleanStrictOrNull() ?: true,
-                hostPort = values["hostPort"]?.toIntOrNull()?.takeIf { it in 1..65535 },
-                protectSandboxFiles = values["protectSandboxFiles"]?.toBooleanStrictOrNull() ?: true,
-                persistSandboxSessions = values["persistSandboxSessions"]?.toBooleanStrictOrNull() ?: true,
+            if (!SbxCli.isValidSandboxName(name)) return ParseResult(null, "invalid sandbox name $name")
+            fun flag(key: String, default: Boolean): Boolean? {
+                val raw = values[key]?.trim() ?: return default
+                return when (raw.lowercase(Locale.ROOT)) {
+                    "true" -> true
+                    "false" -> false
+                    else -> null
+                }
+            }
+            val flags = BOOLEAN_KEYS.associateWith { (key, default) ->
+                flag(key, default) ?: return ParseResult(null, "$key must be true or false")
+            }.mapKeys { it.key.first }
+            val memory = values["memory"]?.let { SbxCli.parseMemory(it) ?: return ParseResult(null, "memory must look like 4g or 512m") }
+                ?: SbxCli.DEFAULT_MEMORY
+            val cpus = values["cpus"]?.let { SbxCli.parseCpus(it) ?: return ParseResult(null, "cpus must be 1 to 32") }
+                ?: SbxCli.DEFAULT_CPUS
+            val version = when {
+                values["openCodeVersion"] != null -> SbxOpenCodeVersion.parse(values["openCodeVersion"])
+                    ?: return ParseResult(null, "openCodeVersion must be 1.x or 2.x")
+                else -> SbxOpenCodeVersion.fromYaml(values)
+            }
+            val hostPort = values["hostPort"]?.trim()?.ifBlank { null }?.let { raw ->
+                raw.toIntOrNull()?.takeIf { it in 1..65535 } ?: return ParseResult(null, "hostPort must be 1 to 65535")
+            }
+            val extraMounts = ArrayList<SbxExtraMount>()
+            for (mount in mounts) {
+                val rawHost = mount["host"]?.trim().orEmpty()
+                if (rawHost.isEmpty()) return ParseResult(null, "every extraMounts entry needs a host")
+                val suffixReadOnly = rawHost.endsWith(":ro", ignoreCase = true) && rawHost.length > 3
+                val host = SbxCli.posixPath(if (suffixReadOnly) rawHost.dropLast(3) else rawHost)
+                val readOnly = when (mount["readOnly"]?.trim()?.lowercase(Locale.ROOT)) {
+                    null -> suffixReadOnly
+                    "true" -> true
+                    "false" -> suffixReadOnly
+                    else -> return ParseResult(null, "readOnly must be true or false")
+                }
+                val sandbox = SbxCli.posixPath(mount["sandbox"]?.trim()?.ifBlank { null } ?: host)
+                extraMounts += SbxExtraMount(host, sandbox, readOnly)
+            }
+            return ParseResult(
+                SbxLaunchSpec(
+                    schemaVersion = schema,
+                    canonicalDirectory = directory,
+                    name = name,
+                    memory = memory,
+                    cpus = cpus,
+                    kits = kits.filter { it.isNotBlank() },
+                    extraMounts = extraMounts,
+                    shareHostOpencodeConfig = flags.getValue("shareHostOpencodeConfig"),
+                    openCodeVersion = version,
+                    enableIntellijMcp = flags.getValue("enableIntellijMcp"),
+                    useSandbox = flags.getValue("useSandbox"),
+                    hostPort = hostPort,
+                    protectSandboxFiles = flags.getValue("protectSandboxFiles"),
+                    persistSandboxSessions = flags.getValue("persistSandboxSessions"),
+                ),
+                null,
             )
         }
+
+        private val TOP_LEVEL_KEY = Regex("^([A-Za-z][A-Za-z0-9_]*):(?:\\s+(.*)|)$")
+        private val LIST_ITEM = Regex("^-\\s+(.*)$")
+        private val MOUNT_ITEM_START = Regex("^-\\s+(host|sandbox|readOnly):(?:\\s+(.*)|)$")
+        private val MOUNT_ITEM_KEY = Regex("^(host|sandbox|readOnly):(?:\\s+(.*)|)$")
+        private val LEGACY_LIST_KEYS = setOf("setupCommands", "networkAllows", "networkAllowPresets", "extraNetworkAllows")
+        private val BOOLEAN_KEYS = listOf(
+            "shareHostOpencodeConfig" to false,
+            "enableIntellijMcp" to true,
+            "useSandbox" to true,
+            "protectSandboxFiles" to true,
+            "persistSandboxSessions" to true,
+            "installOpenCodeV2" to false,
+        )
+        private val KNOWN_SCALAR_KEYS = setOf(
+            "schemaVersion", "canonicalDirectory", "name", "memory", "cpus", "openCodeVersion", "hostPort",
+        ) + BOOLEAN_KEYS.map { it.first }
 
         fun inspect(canonicalDirectory: String?): SbxLaunchSpecInspection {
             val directory = OpenCodeServerProtocol.canonicalOpenCodeDirectory(canonicalDirectory)
@@ -210,8 +290,9 @@ internal data class SbxLaunchSpec(
             val path = projectSpecCandidates(directory).firstOrNull { Files.isRegularFile(it) }
                 ?: return SbxLaunchSpecInspection.Missing
             return runCatching {
-                val spec = parseYaml(Files.readString(path))
-                    ?: return SbxLaunchSpecInspection.Invalid(path, "Unsupported or incomplete sandbox spec.")
+                val parsed = parseYamlResult(Files.readString(path))
+                val spec = parsed.spec
+                    ?: return SbxLaunchSpecInspection.Invalid(path, parsed.error ?: "Unsupported or incomplete sandbox spec.")
                 val stored = Path.of(SbxCli.posixPath(spec.canonicalDirectory))
                 val resolved = OpenCodeServerProtocol.canonicalOpenCodeDirectory(
                     workspaceBaseForSpec(path).resolve(stored).toString(),

@@ -191,6 +191,14 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                 item.sandboxPath = SbxCli.posixPath(value.orEmpty())
             }
         },
+        object : ColumnInfo<ExtraMountRow, Boolean>("Read-only") {
+            override fun valueOf(item: ExtraMountRow): Boolean = item.readOnly
+            override fun isCellEditable(item: ExtraMountRow): Boolean = true
+            override fun getColumnClass(): Class<*> = java.lang.Boolean::class.java
+            override fun setValue(item: ExtraMountRow, value: Boolean?) {
+                item.readOnly = value == true
+            }
+        },
     )
     private val extraMountTable = TableView<ExtraMountRow>(extraMountTableModel).apply {
         tableHeader.reorderingAllowed = false
@@ -699,7 +707,10 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
             cpus = SbxCli.sanitizeCpus(sbxCpusField.text),
             kits = SbxCli.parseLineList(kitRows().joinToString("\n") { it.ref }),
             extraMounts = extraMountRows().filter { it.hostPath.isNotBlank() }.map {
-                SbxExtraMount(SbxCli.posixPath(it.hostPath), SbxCli.posixPath(it.sandboxPath.ifBlank { it.hostPath }))
+                // sbx's `path:ro` spelling typed into the host cell means read-only.
+                val suffix = it.hostPath.endsWith(":ro", ignoreCase = true) && it.hostPath.length > 3
+                val host = SbxCli.posixPath(if (suffix) it.hostPath.dropLast(3) else it.hostPath)
+                SbxExtraMount(host, SbxCli.posixPath(it.sandboxPath.ifBlank { host }), it.readOnly || suffix)
             }.distinct(),
             shareHostOpencodeConfig = sbxShareHostConfigCheckBox.isSelected,
             openCodeVersion = if (sbxOpenCodeV2RadioButton.isSelected) {
@@ -824,6 +835,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
             ExtraMountRow(
                 hostPath = if (column == 0) value else row.hostPath,
                 sandboxPath = if (column == 1) value else row.sandboxPath,
+                readOnly = row.readOnly,
             )
         }
     }
@@ -847,7 +859,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
 
     private fun loadExtraMounts(mounts: List<SbxExtraMount>) {
         if (extraMountTable.isEditing) extraMountTable.cellEditor?.cancelCellEditing()
-        extraMountTableModel.items = mounts.map { ExtraMountRow(it.hostPath, it.sandboxPath) }
+        extraMountTableModel.items = mounts.map { ExtraMountRow(it.hostPath, it.sandboxPath, it.readOnly) }
     }
 
     private fun updateProjectDirectoryControls() {
@@ -969,6 +981,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
     private class ExtraMountRow(
         var hostPath: String = "",
         var sandboxPath: String = "",
+        var readOnly: Boolean = false,
     )
 
     private class KitRow(

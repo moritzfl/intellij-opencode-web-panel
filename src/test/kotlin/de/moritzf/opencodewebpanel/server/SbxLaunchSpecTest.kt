@@ -205,6 +205,48 @@ class SbxLaunchSpecTest {
     }
 
     @Test
+    fun strictParserRejectsInputOutsideTheWrittenSubset() {
+        val base = "canonicalDirectory: ./\n"
+        val invalid = listOf(
+            "<<<<<<< HEAD\n$base",
+            "$base\tmemory: 4g\n",
+            "$base  memory: 4g\n",
+            "${base}memory: 4gb\n",
+            "${base}cpus: 64\n",
+            "${base}protectSandboxFiles: yes\n",
+            "${base}openCodeVersion: 3.x\n",
+            "${base}hostPort: 70000\n",
+            "${base}memory: 4g\nmemory: 8g\n",
+            "${base}extraMounts: [{host: /x}]\n",
+            "${base}extraMounts:\n  - sandbox: /home/agent/x\n",
+            "${base}extraMounts:\n  - host: /x\n    mode: rw\n",
+            "${base}kits: ./a\n",
+            "${base}name: |\n  multi\n",
+            "memory: 4g\n",
+        )
+        for (yaml in invalid) {
+            val result = SbxLaunchSpec.parseYamlResult(yaml)
+            assertNull(yaml, result.spec)
+            assertNotNull(yaml, result.error)
+        }
+        val legacy = SbxLaunchSpec.parseYaml("${base}unknownFutureKey: 1\nsetupCommands:\n  - apt-get install -y jq\n")
+        assertNotNull("Unknown scalar keys and legacy lists stay readable", legacy)
+        assertEquals("8g", SbxLaunchSpec.parseYaml("${base}memory: 8G\nprotectSandboxFiles: False\n")!!.memory)
+    }
+
+    @Test
+    fun readOnlyMountsRoundTripAndAcceptTheSbxSuffix() {
+        val spec = SbxLaunchSpec.fromSettings(OpenCodeSettingsState(), "/tmp/project").copy(
+            extraMounts = listOf(SbxExtraMount("/data", "/data", readOnly = true), SbxExtraMount("/rw", "/home/agent/rw")),
+        )
+        assertEquals(spec, SbxLaunchSpec.parseYaml(spec.toYaml()))
+        val suffix = SbxLaunchSpec.parseYaml(
+            "canonicalDirectory: ./\nextraMounts:\n  - sandbox: /home/agent/d\n    host: /data:ro\n",
+        )
+        assertEquals(listOf(SbxExtraMount("/data", "/home/agent/d", readOnly = true)), suffix!!.extraMounts)
+    }
+
+    @Test
     fun unquoteHandlesSingleQuotedApostrophes() {
         assertEquals("./O'Brien", SbxLaunchSpec.unquote("'./O''Brien'"))
         assertEquals("./O''Brien", SbxLaunchSpec.unquote("\"./O''Brien\""))

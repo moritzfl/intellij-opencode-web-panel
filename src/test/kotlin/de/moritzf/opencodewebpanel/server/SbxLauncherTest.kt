@@ -67,10 +67,10 @@ class SbxLauncherTest {
                 "--kit", "./kit #1",
                 "--kit", "./kit \"quoted\" #2",
                 "--kit", "./kit 'quoted' #3",
-                "--kit", "./kit\\path",
+                "--kit", "./kit/path",
                 "--kit", "./team's-kit",
                 "opencode", project.toString(),
-            ) + protectCreateArgs(project, listOf("./kit #1", "./kit \"quoted\" #2", "./kit 'quoted' #3", "./kit\\path", "./team's-kit")) + persistCreateArgs(project) + listOf(
+            ) + protectCreateArgs(project, listOf("./kit #1", "./kit \"quoted\" #2", "./kit 'quoted' #3", "./kit/path", "./team's-kit")) + persistCreateArgs(project) + listOf(
                 fileMount.toString(), directoryMount.toString(),
             ),
             actual,
@@ -718,6 +718,35 @@ class SbxLauncherTest {
     }
 
     @Test
+    fun invalidSpecFailsClosedLikeThePlugin() {
+        for (yaml in listOf(
+            "canonicalDirectory: ./\nprotectSandboxFiles: yes\n",
+            "canonicalDirectory: ./\nmemory: 8GB\n",
+            "canonicalDirectory: ./\n<<<<<<< HEAD\n",
+            "memory: 4g\n",
+        )) {
+            val project = directory("project ${yaml.hashCode()}")
+            Files.writeString(project.resolve("opencode-sbx.yaml"), yaml)
+            runLauncher(launcher(project), project, expectedExit = 1)
+            assertTrue(yaml, launcherOutput().contains("invalid spec"))
+            assertTrue("Plugin must reject the same spec", SbxLaunchSpec.parseYaml(yaml) == null)
+        }
+    }
+
+    @Test
+    fun readOnlyMountIsPassedWithTheSbxSuffix() {
+        val project = directory("project")
+        val data = directory("data")
+        Files.writeString(
+            project.resolve("opencode-sbx.yaml"),
+            "canonicalDirectory: ./\nmemory: 8G\nextraMounts:\n  - host: '$data'\n    readOnly: true\n",
+        )
+        val args = runLauncher(launcher(project), project)
+        assertTrue(args.contains("$data:ro"))
+        assertTrue(args.containsAll(listOf("--memory", "8g")))
+    }
+
+    @Test
     fun specNameCannotEscapePluginDataDirectory() {
         val project = directory("project")
         val home = Files.createDirectories(temp.root.toPath().resolve("home")).toRealPath()
@@ -800,8 +829,8 @@ class SbxLauncherTest {
         acpInput: String? = null,
         cliHealth: Boolean = false,
     ): List<String> {
-        val bin = directory("fake bin")
-        val log = directory("log")
+        val bin = Files.createDirectories(temp.root.toPath().resolve("fake bin")).toRealPath()
+        val log = Files.createDirectories(temp.root.toPath().resolve("log")).toRealPath()
         val fakeSbx = Files.writeString(
             bin.resolve("sbx"),
             """
