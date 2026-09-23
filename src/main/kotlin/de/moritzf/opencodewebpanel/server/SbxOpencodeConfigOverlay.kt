@@ -19,6 +19,8 @@ internal object SbxOpencodeConfigOverlay {
 
     fun hostConfigJsoncPath(): Path = hostConfigDir().resolve("opencode.jsonc")
 
+    fun hostLegacyConfigPath(): Path = hostConfigDir().resolve("config.json")
+
     fun hostConfigShareMount(
         exists: (Path) -> Boolean = { Files.isDirectory(it) },
     ): SbxExtraMount? {
@@ -76,23 +78,44 @@ internal object SbxOpencodeConfigOverlay {
         if (scheme != "http" && scheme != "https" && scheme != "ws" && scheme != "wss") return null
         val host = uri.host?.lowercase()?.removeSurrounding("[", "]") ?: return null
         if (host != "127.0.0.1" && host != "localhost" && host != "::1") return null
+        val userInfo = uri.rawUserInfo?.let { "$it@" }.orEmpty()
         val port = if (uri.port > 0) ":${uri.port}" else ""
         val path = uri.rawPath.orEmpty()
         val query = uri.rawQuery?.let { "?$it" }.orEmpty()
-        return "$scheme://host.docker.internal$port$path$query"
+        val fragment = uri.rawFragment?.let { "#$it" }.orEmpty()
+        return "$scheme://${userInfo}host.docker.internal$port$path$query$fragment"
     }
 
+    /**
+     * The host global config as OpenCode sees it: `config.json`, then `opencode.json`, then
+     * `opencode.jsonc`, deep-merged with later files winning (OpenCode's own load order).
+     */
     internal fun readHostConfig(
         jsonPath: Path = hostConfigPath(),
         jsoncPath: Path = hostConfigJsoncPath(),
+        legacyPath: Path = hostLegacyConfigPath(),
     ): String? {
-        jsonPath.takeIf { Files.isRegularFile(it) }?.let { path ->
-            runCatching { Files.readString(path) }.getOrNull()?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
+        var merged: JsonObject? = null
+        for (path in listOf(legacyPath, jsonPath, jsoncPath)) {
+            if (!Files.isRegularFile(path)) continue
+            val text = runCatching { Files.readString(path) }.getOrNull()?.trim()?.takeIf { it.isNotEmpty() } ?: continue
+            val parsed = parseObject(text) ?: continue
+            merged = merged?.let { deepMerge(it, parsed) } ?: parsed
         }
-        jsoncPath.takeIf { Files.isRegularFile(it) }?.let { path ->
-            runCatching { Files.readString(path) }.getOrNull()?.trim()?.takeIf { it.isNotEmpty() }?.let { return stripJsonc(it) }
+        return merged?.toString()
+    }
+
+    private fun deepMerge(target: JsonObject, source: JsonObject): JsonObject {
+        val result = target.deepCopy()
+        for ((key, value) in source.entrySet()) {
+            val existing = result.get(key)
+            if (existing != null && existing.isJsonObject && value.isJsonObject) {
+                result.add(key, deepMerge(existing.asJsonObject, value.asJsonObject))
+            } else {
+                result.add(key, value.deepCopy())
+            }
         }
-        return null
+        return result
     }
 
     internal fun stripJsonc(text: String): String {

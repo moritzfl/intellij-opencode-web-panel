@@ -141,6 +141,10 @@ class SbxOpencodeConfigOverlayTest {
             SbxOpencodeConfigOverlay.rewriteLoopbackUrl("http://127.0.0.1:9999/sse"),
         )
         assertNull(SbxOpencodeConfigOverlay.rewriteLoopbackUrl("ftp://localhost/mcp"))
+        assertEquals(
+            "http://user:tok@host.docker.internal:8080/mcp?a=1#frag",
+            SbxOpencodeConfigOverlay.rewriteLoopbackUrl("http://user:tok@localhost:8080/mcp?a=1#frag"),
+        )
     }
 
     @Test
@@ -169,19 +173,26 @@ class SbxOpencodeConfigOverlayTest {
             assertTrue(overlay!!.contains("host.docker.internal:9999"))
             java.nio.file.Files.writeString(
                 root.resolve("opencode.json"),
-                """{"mcp":{"other":{"type":"remote","url":"http://127.0.0.1:1111/sse"}}}""",
+                """{"${'$'}schema":"https://opencode.ai/config.json","mcp":{"other":{"type":"remote","url":"http://127.0.0.1:1111/sse"}}}""",
             )
-            val jsonWins = SbxOpencodeConfigOverlay.buildContent(
+            java.nio.file.Files.writeString(
+                root.resolve("config.json"),
+                """{"mcp":{"legacy":{"type":"remote","url":"http://localhost:2222/mcp"}}}""",
+            )
+            // OpenCode merges config.json, opencode.json, opencode.jsonc; later files win.
+            val merged = SbxOpencodeConfigOverlay.buildContent(
                 version = SbxOpenCodeVersion.V2,
                 shareHostConfig = true,
                 ideaMcpPort = null,
                 hostConfigJson = SbxOpencodeConfigOverlay.readHostConfig(
                     jsonPath = root.resolve("opencode.json"),
                     jsoncPath = jsonc,
+                    legacyPath = root.resolve("config.json"),
                 ),
             )
-            assertTrue(jsonWins!!.contains("host.docker.internal:1111"))
-            assertFalse(jsonWins.contains(":9999"))
+            assertTrue(merged!!.contains("host.docker.internal:9999"))
+            assertTrue(merged.contains("host.docker.internal:2222"))
+            assertFalse(merged.contains(":1111"))
         } finally {
             root.toFile().deleteRecursively()
         }
