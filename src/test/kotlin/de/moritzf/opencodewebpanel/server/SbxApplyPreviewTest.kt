@@ -45,9 +45,47 @@ class SbxApplyPreviewTest {
 
     @Test
     fun enablingSandboxFromMissingSpecRestarts() {
-        val preview = SbxApplyPreview.build("/tmp/p", null, base, false, false, "")
+        val preview = SbxApplyPreview.build("/tmp/p", base.copy(useSandbox = false), base, false, false, "")
         assertEquals(SbxApplyEffect.RESTART, preview.effect)
         assertEquals("Docker Sandbox (sbx)", preview.runtimeLabel)
+    }
+
+    @Test
+    fun hostModeIgnoresSandboxOnlyOptions() {
+        val host = base.copy(useSandbox = false)
+        val preview = SbxApplyPreview.build(
+            "/tmp/p", host,
+            host.copy(kits = emptyList(), shareHostOpencodeConfig = true, extraMounts = listOf(SbxExtraMount("/x", "/x"))),
+            false, false, "",
+        )
+        assertEquals(SbxApplyEffect.NONE, preview.effect)
+        assertTrue(preview.changes.isEmpty())
+    }
+
+    @Test
+    fun createTimeChangesOnlyRecreateAnExistingVm() {
+        val changed = base.copy(kits = emptyList(), shareHostOpencodeConfig = true)
+        val withoutVm = SbxApplyPreview.build("/tmp/p", base.copy(kits = listOf("./a")), changed, false, false, "", hasVm = false)
+        assertEquals(SbxApplyEffect.NONE, withoutVm.effect)
+        assertTrue(withoutVm.message().contains("applies when the sandbox is created"))
+        val withVm = SbxApplyPreview.build("/tmp/p", base.copy(kits = listOf("./a")), changed, false, false, "", hasVm = true)
+        assertEquals(SbxApplyEffect.RECREATE, withVm.effect)
+    }
+
+    @Test
+    fun mountRemovalReadOnlyAndAliasChangesAreReported() {
+        val mount = SbxExtraMount("/data", "/home/agent/data")
+        val old = base.copy(extraMounts = listOf(mount))
+        assertEquals(SbxApplyEffect.RECREATE, SbxApplyPreview.build("/tmp/p", old, base, false, false, "").effect)
+        assertTrue(SbxApplyPreview.build("/tmp/p", old, base, false, false, "").message().contains("Extra mount removed"))
+        assertEquals(
+            SbxApplyEffect.RECREATE,
+            SbxApplyPreview.build("/tmp/p", old, base.copy(extraMounts = listOf(mount.copy(readOnly = true))), false, false, "").effect,
+        )
+        assertEquals(
+            SbxApplyEffect.RESTART,
+            SbxApplyPreview.build("/tmp/p", old, base.copy(extraMounts = listOf(mount.copy(sandboxPath = "/home/agent/d"))), false, false, "").effect,
+        )
     }
 
     @Test

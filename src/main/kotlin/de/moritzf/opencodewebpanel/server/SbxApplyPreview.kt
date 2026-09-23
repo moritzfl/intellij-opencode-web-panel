@@ -48,20 +48,22 @@ internal data class SbxApplyPreview(
     }
 
     companion object {
+        /**
+         * [oldSpec] is the destination's stored spec, or the defaults the runtime currently uses
+         * when none exists yet. [hasVm] says whether this directory owns a sandbox VM: create-time
+         * options only need a recreate once one exists.
+         */
         fun build(
             directory: String,
-            oldSpec: SbxLaunchSpec?,
+            oldSpec: SbxLaunchSpec,
             newSpec: SbxLaunchSpec,
             directoryChanged: Boolean,
             portChanged: Boolean,
             historyNote: String,
+            hasVm: Boolean = true,
         ): SbxApplyPreview {
             val changes = ArrayList<SbxApplyChange>()
             if (directoryChanged) changes += SbxApplyChange("OpenCode directory", SbxApplyEffect.RESTART)
-            if (oldSpec == null) {
-                if (newSpec.useSandbox) changes += SbxApplyChange("Enable Docker Sandbox", SbxApplyEffect.RESTART)
-                return SbxApplyPreview(directory, runtimeLabel(newSpec), changes, historyNote)
-            }
             if (oldSpec.useSandbox != newSpec.useSandbox) {
                 changes += SbxApplyChange(
                     if (newSpec.useSandbox) "Switch to Docker Sandbox" else "Switch to Host CLI",
@@ -71,14 +73,13 @@ internal data class SbxApplyPreview(
             if (portChanged) {
                 changes += SbxApplyChange(
                     "Server port",
-                    if (newSpec.useSandbox) SbxApplyEffect.LIVE else SbxApplyEffect.RESTART,
+                    if (newSpec.useSandbox && oldSpec.useSandbox) SbxApplyEffect.LIVE else SbxApplyEffect.RESTART,
                 )
             }
+            // Sandbox-only options do not affect the Host CLI; they apply once the sandbox is used.
+            if (!newSpec.useSandbox) return SbxApplyPreview(directory, runtimeLabel(newSpec), changes, historyNote)
             if (oldSpec.enableIntellijMcp != newSpec.enableIntellijMcp) {
                 changes += SbxApplyChange("IntelliJ MCP overlay", SbxApplyEffect.RESTART)
-            }
-            if (oldSpec.shareHostOpencodeConfig != newSpec.shareHostOpencodeConfig) {
-                changes += SbxApplyChange("Host OpenCode config sharing", SbxApplyEffect.RECREATE)
             }
             if (oldSpec.openCodeVersion != newSpec.openCodeVersion) {
                 changes += SbxApplyChange(
@@ -86,28 +87,45 @@ internal data class SbxApplyPreview(
                     SbxApplyEffect.RESTART,
                 )
             }
+            val recreate = if (hasVm) SbxApplyEffect.RECREATE else SbxApplyEffect.NONE
+            val atCreate = if (hasVm) "" else " (applies when the sandbox is created)"
+            if (oldSpec.shareHostOpencodeConfig != newSpec.shareHostOpencodeConfig) {
+                changes += SbxApplyChange("Host OpenCode config sharing$atCreate", recreate)
+            }
             if (newSpec.kits.size < oldSpec.kits.size || newSpec.kits.take(oldSpec.kits.size) != oldSpec.kits) {
-                changes += SbxApplyChange("Kits removed or reordered", SbxApplyEffect.RECREATE)
+                changes += SbxApplyChange("Kits removed or reordered$atCreate", recreate)
             } else if (newSpec.kits.size > oldSpec.kits.size) {
-                changes += SbxApplyChange("Append sandbox kit", SbxApplyEffect.LIVE)
+                changes += SbxApplyChange(
+                    "Append sandbox kit$atCreate",
+                    if (hasVm) SbxApplyEffect.LIVE else SbxApplyEffect.NONE,
+                )
             }
-            if (newSpec.extraMounts.any { extra ->
-                    oldSpec.extraMounts.none { OpenCodeServerProtocol.isSameFilesystemPath(it.hostPath, extra.hostPath) }
-                }
-            ) {
-                changes += SbxApplyChange("New extra mount", SbxApplyEffect.RECREATE)
+            fun sameHost(a: SbxExtraMount, b: SbxExtraMount) = OpenCodeServerProtocol.isSameFilesystemPath(a.hostPath, b.hostPath)
+            if (newSpec.extraMounts.any { extra -> oldSpec.extraMounts.none { sameHost(it, extra) } }) {
+                changes += SbxApplyChange("New extra mount$atCreate", recreate)
             }
+            if (oldSpec.extraMounts.any { old -> newSpec.extraMounts.none { sameHost(it, old) } }) {
+                changes += SbxApplyChange("Extra mount removed$atCreate", recreate)
+            }
+            val kept = newSpec.extraMounts.mapNotNull { extra -> oldSpec.extraMounts.firstOrNull { sameHost(it, extra) }?.let { it to extra } }
+            if (kept.any { (old, new) -> old.readOnly != new.readOnly }) {
+                changes += SbxApplyChange("Extra mount read-only setting$atCreate", recreate)
+            }
+            if (kept.any { (old, new) -> old.sandboxPath != new.sandboxPath }) {
+                changes += SbxApplyChange("Extra mount sandbox path", SbxApplyEffect.RESTART)
+            }
+            val atReset = if (hasVm) " (applies at Reset)" else " (applies when the sandbox is created)"
             if (oldSpec.memory != newSpec.memory) {
-                changes += SbxApplyChange("Memory ${oldSpec.memory} → ${newSpec.memory} (applies at Reset)", SbxApplyEffect.NONE)
+                changes += SbxApplyChange("Memory ${oldSpec.memory} → ${newSpec.memory}$atReset", SbxApplyEffect.NONE)
             }
             if (oldSpec.cpus != newSpec.cpus) {
-                changes += SbxApplyChange("CPUs ${oldSpec.cpus} → ${newSpec.cpus} (applies at Reset)", SbxApplyEffect.NONE)
+                changes += SbxApplyChange("CPUs ${oldSpec.cpus} → ${newSpec.cpus}$atReset", SbxApplyEffect.NONE)
             }
             if (oldSpec.protectSandboxFiles != newSpec.protectSandboxFiles) {
-                changes += SbxApplyChange("Protect sandbox files (applies at Reset)", SbxApplyEffect.NONE)
+                changes += SbxApplyChange("Protect sandbox files$atReset", SbxApplyEffect.NONE)
             }
             if (oldSpec.persistSandboxSessions != newSpec.persistSandboxSessions) {
-                changes += SbxApplyChange("Persist sandbox sessions (applies at Reset)", SbxApplyEffect.NONE)
+                changes += SbxApplyChange("Persist sandbox sessions$atReset", SbxApplyEffect.NONE)
             }
             return SbxApplyPreview(directory, runtimeLabel(newSpec), changes, historyNote)
         }

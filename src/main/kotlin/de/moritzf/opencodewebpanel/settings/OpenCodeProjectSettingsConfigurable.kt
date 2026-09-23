@@ -79,6 +79,10 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
     private val setupCheckResultLabel = JBLabel().apply {
         foreground = JBUI.CurrentTheme.ContextHelp.FOREGROUND
     }
+    private val specStatusLabel = JBLabel().apply {
+        foreground = com.intellij.util.ui.UIUtil.getErrorForeground()
+        isVisible = false
+    }
     private val restartServerButton = JButton("Restart Server", AllIcons.Actions.Restart).apply {
         toolTipText = "Restart OpenCode for this project"
         accessibleContext.accessibleName = "Restart OpenCode server"
@@ -248,15 +252,15 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         group("Docker Sandbox") {
             row("Memory:") {
                 cell(sbxMemoryField)
-                    .comment("Used when creating a sandbox (default ${SbxCli.DEFAULT_MEMORY}). Changing this recreates the VM (gear menu → Reset Sandbox).")
+                    .comment("Used when creating a sandbox (default ${SbxCli.DEFAULT_MEMORY}). An existing VM keeps its value until Reset Sandbox (gear menu).")
             }
             row("CPUs:") {
                 cell(sbxCpusField)
-                    .comment("Used when creating a sandbox (default ${SbxCli.DEFAULT_CPUS}). Changing this recreates the VM (gear menu → Reset Sandbox).")
+                    .comment("Used when creating a sandbox (default ${SbxCli.DEFAULT_CPUS}). An existing VM keeps its value until Reset Sandbox (gear menu).")
             }
             row {
                 cell(sbxShareHostConfigCheckBox)
-                    .comment("Mounts the host OpenCode config directory read-only (opencode.json/jsonc, skills, agents, commands, plugins). Credentials embedded in those files are readable too; host auth.json and the host credential database are not shared. Configure provider access separately with sbx secret or OpenCode inside the sandbox. Changing this recreates the VM.")
+                    .comment("Mounts the host OpenCode config directory read-only (opencode.json/jsonc, skills, agents, commands, plugins). Credentials embedded in those files are readable too; host auth.json and the host credential database are not shared. Configure provider access separately with sbx secret or OpenCode inside the sandbox. Changing this needs a new VM; Apply asks before recreating it.")
             }
             buttonsGroup("OpenCode version:") {
                 row {
@@ -284,7 +288,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                 cell(extraMountPanel)
                     .label("Mounts:", LabelPosition.TOP)
                     .align(AlignX.FILL)
-                    .comment("Host file or folder is mounted as-is; a symlink is created at the sandbox path when they differ. Changing this recreates the VM. Use + to add a row; double-click a cell to edit it.")
+                    .comment("Host file or folder is mounted as-is; a symlink is created at the sandbox path when they differ. Adding or removing a mount, or changing Read-only, needs a new VM; Apply asks before recreating it. Changing only the sandbox path applies on restart. Use + to add a row; double-click a cell to edit it.")
             }
             row {
                 cell(kitPanel)
@@ -293,7 +297,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                     .comment(
                         "YAML applied when the sandbox is created (tools, files, env, network). " +
                             "Mixin kits only — do not use a kit that replaces the OpenCode agent. " +
-                            "Appending a new, uniquely named kit uses sbx kit add and preserves sessions. Removing/reordering kits recreates the VM. " +
+                            "Appending a new, uniquely named kit uses sbx kit add and preserves sessions. Removing or reordering kits needs a new VM; Apply asks before recreating it. " +
                             "Use + to add a row; double-click a cell to edit it. " +
                             "<a href=\"$SBX_KIT_DOCS_URL\">Docker kit docs</a>",
                         action = HyperlinkEventAction { event ->
@@ -361,6 +365,9 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                 }
             }
             group("Runtime") {
+                row {
+                    cell(specStatusLabel)
+                }
                 buttonsGroup {
                     row {
                         cell(hostRuntimeRadioButton)
@@ -387,6 +394,15 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         val directoryChanged = selectedProjectDirectoryMode() != settings.projectDirectoryModeValue() ||
             projectDirectory() != settings.openCodeProjectDirectory
         if (directoryChanged) return true
+        if (SbxLaunchSpec.inspect(effectiveDirectory()) is de.moritzf.opencodewebpanel.server.SbxLaunchSpecInspection.Invalid) {
+            // Keep Apply reachable so the user can replace the invalid file with the form values.
+            return true
+        }
+        if (sbxRuntimeRadioButton.isSelected &&
+            (SbxCli.parseMemory(sbxMemoryField.text) == null || SbxCli.parseCpus(sbxCpusField.text) == null)
+        ) {
+            return true
+        }
         val loaded = loadedOrDefaultSpec() ?: return false
         val current = currentSpec() ?: return true
         // `name` is derived from the directory and has no form field; a hand-written name in
@@ -413,6 +429,12 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
             }
         }
         commitTableEditors()
+        // Enter or the folder chooser can apply before focus-lost loaded the new directory's spec.
+        // Never write the previous directory's form into another project's YAML.
+        if (effectiveDirectory() != loadedSpecDirectory) {
+            onDirectoryTargetChanged()
+            throw ConfigurationException("Loaded the sandbox settings of the new OpenCode directory. Review them, then apply again.")
+        }
         if (sbxRuntimeRadioButton.isSelected) {
             if (SbxCli.parseMemory(sbxMemoryField.text) == null) {
                 throw ConfigurationException("Sandbox memory must be a value like 4g or 512m.")
@@ -442,14 +464,21 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         // that are really another project's settings, and offer "Recreate" for a write that only
         // creates a fresh spec. Stopping the previous backend is decided by directoryChanged below.
         val storedDestinationSpec = SbxLaunchSpec.load(spec.canonicalDirectory)
+        // Without a stored spec the runtime currently uses app defaults and the project XML port.
+        val baselineSpec = storedDestinationSpec ?: SbxLaunchSpec.fromSettings(
+            OpenCodeSettingsState.getInstance(),
+            spec.canonicalDirectory,
+            hostPort = settings.hostPortOrNull(),
+        ).copy(useSandbox = SbxLaunchSpec.usesSandbox(spec.canonicalDirectory))
         val canonicalOldDirectory = OpenCodeServerProtocol.canonicalOpenCodeDirectory(oldDirectory) ?: oldDirectory
         val preview = de.moritzf.opencodewebpanel.server.SbxApplyPreview.build(
             directory = spec.canonicalDirectory,
-            oldSpec = storedDestinationSpec,
+            oldSpec = baselineSpec,
             newSpec = spec,
             directoryChanged = canonicalOldDirectory != null && canonicalOldDirectory != spec.canonicalDirectory,
-            portChanged = storedDestinationSpec?.hostPort != spec.hostPort,
+            portChanged = baselineSpec.hostPort != spec.hostPort,
             historyNote = sandboxSessionRetentionSummary(spec.canonicalDirectory),
+            hasVm = SbxSandboxRecordStore.getInstance().recordFor(spec.canonicalDirectory) != null,
         )
         val exposure = SbxExposure.of(spec, spec.canonicalDirectory)
         val exposureUnacknowledged = spec.useSandbox && !exposure.isEmpty &&
@@ -523,6 +552,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         }
         updateSandboxControls()
         updateServerStatus()
+        showSpecStatus(SbxLaunchSpec.inspect(effectiveDirectory()))
     }
 
     override fun reset() {
@@ -536,6 +566,8 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
             projectDirectoryField.text = settings.openCodeProjectDirectory
             loadSpecIntoUi(loadedOrDefaultSpec(), fromYaml = SbxLaunchSpec.load(effectiveDirectory()) != null)
             loadedSpecDirectory = effectiveDirectory()
+            showSpecStatus(SbxLaunchSpec.inspect(loadedSpecDirectory))
+            setupCheckResultLabel.text = ""
             updateProjectDirectoryControls()
             updateSandboxControls()
             updateServerStatus()
@@ -965,7 +997,22 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
             )
         }
         loadedSpecDirectory = next
+        showSpecStatus(inspection)
+        setupCheckResultLabel.text = ""
         updateSandboxControls()
+    }
+
+    /** An invalid spec fails closed as a sandbox; show that instead of the Host defaults it hydrates. */
+    private fun showSpecStatus(inspection: de.moritzf.opencodewebpanel.server.SbxLaunchSpecInspection) {
+        val invalid = inspection as? de.moritzf.opencodewebpanel.server.SbxLaunchSpecInspection.Invalid
+        specStatusLabel.isVisible = invalid != null
+        if (invalid != null) {
+            specStatusLabel.text = "<html>" + com.intellij.openapi.util.text.StringUtil.escapeXmlEntities(
+                "Invalid ${SbxCli.posixPath(invalid.path.toString())}: ${invalid.reason}. " +
+                    "OpenCode will not start until the file is fixed, or replaced with these values on Apply.",
+            ) + "</html>"
+            sbxRuntimeRadioButton.isSelected = true
+        }
     }
 
     companion object {
