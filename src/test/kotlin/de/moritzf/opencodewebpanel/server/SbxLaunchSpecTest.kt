@@ -291,14 +291,6 @@ class SbxLaunchSpecTest {
     }
 
     @Test
-    fun kitRemovalRequiresVmRecreationWhileAppendDoesNot() {
-        val base = SbxLaunchSpec.fromSettings(OpenCodeSettingsState(), "/tmp/p").copy(kits = listOf("./a"))
-        assertFalse(SbxLaunchSpec.requiresVmRecreation(base, base.copy(kits = listOf("./a", "./b"))))
-        assertTrue(SbxLaunchSpec.requiresVmRecreation(base.copy(kits = listOf("./a", "./b")), base))
-        assertTrue(SbxLaunchSpec.requiresVmRecreation(base, base.copy(shareHostOpencodeConfig = true)))
-    }
-
-    @Test
     fun yamlPreservesHashesInKitRefsAndMountPaths() {
         val expected = SbxLaunchSpec.fromSettings(OpenCodeSettingsState(), "/tmp/project").copy(
             kits = listOf("git+https://github.com/team/kits.git#ref=v1&dir=network", "./kit #1"),

@@ -808,12 +808,6 @@ internal class OpenCodeWebToolWindowContent(
         project.messageBus.connect(this).subscribe(
             OpenCodeProjectSettingsListener.TOPIC,
             object : OpenCodeProjectSettingsListener {
-                override fun projectDirectoryChanged(directory: String?) {
-                    ApplicationManager.getApplication().invokeLater {
-                        if (!isContentDisposed()) applyOpenCodeProjectDirectoryChange()
-                    }
-                }
-
                 override fun serverRestartRequested() {
                     ApplicationManager.getApplication().invokeLater {
                         if (isContentDisposed()) return@invokeLater
@@ -1840,21 +1834,6 @@ internal class OpenCodeWebToolWindowContent(
         if (enabled && OpenCodeSettingsState.getInstance().enableCodeNavigation) {
             applyFeature(codeNavigationFeature, enabled = true)
         }
-    }
-
-    private fun applyOpenCodeProjectDirectoryChange() {
-        if (panelBackendIsStale()) {
-            schedulePanelReplacement()
-            return
-        }
-        host.updateHeading()
-        openProjectScriptScheduled = false
-        openProjectSeedFeature.scheduled = false
-        fileLinkFeature.scheduled = false
-        openProjectAlarm.cancelAllRequests()
-        // The badge state belongs to the previous directory; loadProjectPage re-seeds.
-        resetAgentStatusTracking()
-        checkAndLoadContent()
     }
 
     private fun navigateFromNotification(targetUrl: String) {

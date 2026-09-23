@@ -669,7 +669,8 @@ internal object SbxCli {
         val rows = ArrayList<Pair<String, String>>()
         val seen = HashSet<Pair<String, String>>()
         for (rawLine in text.orEmpty().lineSequence()) {
-            val line = rawLine.trim().substringBefore('#').trim()
+            // A `#` starts a comment only at the start or after whitespace (`C#Proj` is a path).
+            val line = COMMENT_AFTER_SPACE.replace(rawLine, "").trim()
             if (line.isBlank()) continue
             val parts = line.split('|', limit = 2).map { it.trim() }
             val host = posixPath(parts[0])
@@ -681,6 +682,8 @@ internal object SbxCli {
         return rows
     }
 
+    private val COMMENT_AFTER_SPACE = Regex("(^|\\s)#.*$")
+
     fun serializeExtraMountRows(rows: List<Pair<String, String>>): String {
         return rows.map { posixPath(it.first) to posixPath(it.second) }
             .filter { it.first.isNotBlank() }
@@ -689,34 +692,6 @@ internal object SbxCli {
             }
             .distinct()
             .joinToString("\n")
-    }
-
-    fun parseExtraMounts(
-        text: String?,
-        hostHome: String = System.getProperty("user.home").orEmpty(),
-        sandboxHome: String = SANDBOX_HOME,
-        exists: (Path) -> Boolean = { Files.exists(it) },
-    ): List<SbxExtraMount> {
-        val mounts = ArrayList<SbxExtraMount>()
-        val seen = HashSet<Pair<String, String>>()
-        for (rawLine in text.orEmpty().lineSequence()) {
-            val line = rawLine.trim().substringBefore('#').trim()
-            if (line.isBlank()) continue
-            val parts = line.split('|', limit = 2).map { it.trim() }
-            val hostRaw = parts[0]
-            if (hostRaw.isBlank()) continue
-            val sandboxRaw = parts.getOrElse(1) { hostRaw }.ifBlank { hostRaw }
-            val hostExpanded = posixPath(expandUserHome(hostRaw, hostHome))
-            val sandboxPath = posixPath(expandUserHome(sandboxRaw, sandboxHome))
-            if (!isAbsolutePosixPath(sandboxPath)) continue
-            val hostPath = runCatching { Path.of(hostExpanded).toAbsolutePath().normalize() }.getOrNull()
-                ?: continue
-            if (!exists(hostPath)) continue
-            val hostStr = posixPath(hostPath.toString())
-            if (!seen.add(hostStr to sandboxPath)) continue
-            mounts += SbxExtraMount(hostStr, sandboxPath)
-        }
-        return mounts
     }
 
     fun isAbsolutePosixPath(path: String): Boolean {

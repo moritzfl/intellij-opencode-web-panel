@@ -3,8 +3,6 @@ package de.moritzf.opencodewebpanel.settings
 import com.intellij.util.messages.Topic
 
 interface OpenCodeProjectSettingsListener {
-    fun projectDirectoryChanged(directory: String?) {}
-
     fun serverRestartRequested() {}
 
     fun serverReloadRequested() {}

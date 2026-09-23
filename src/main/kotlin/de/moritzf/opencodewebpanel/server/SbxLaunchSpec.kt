@@ -419,14 +419,6 @@ internal data class SbxLaunchSpec(
             }
         }
 
-        fun requiresVmRecreation(old: SbxLaunchSpec, new: SbxLaunchSpec): Boolean {
-            if (old.shareHostOpencodeConfig != new.shareHostOpencodeConfig) return true
-            if (new.kits.size < old.kits.size || new.kits.take(old.kits.size) != old.kits) return true
-            return new.extraMounts.any { extra ->
-                old.extraMounts.none { OpenCodeServerProtocol.isSameFilesystemPath(it.hostPath, extra.hostPath) }
-            }
-        }
-
         fun configDir(): Path {
             val override = System.getenv(CONFIG_DIR_ENV)?.trim()?.ifBlank { null }
             if (override != null) return Path.of(override)

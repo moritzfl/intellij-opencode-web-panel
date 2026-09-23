@@ -71,24 +71,10 @@ class SbxCliTest {
     }
 
     @Test
-    fun parseExtraMountsPairsHostAndSandboxPaths() {
-        val existing = "/Users/me/docs"
-        val parsed = SbxCli.parseExtraMounts(
-            """
-            ~/docs | /home/agent/docs
-            /no/such/dir | /home/agent/missing
-            # comment
-            """.trimIndent(),
-            hostHome = "/Users/me",
-            exists = { it.toString() == existing },
-        )
+    fun parseExtraMountRowsPairsHostAndSandboxPaths() {
         assertEquals(
-            listOf(SbxExtraMount(existing, "/home/agent/docs")),
-            parsed,
-        )
-        assertEquals(
-            listOf(SbxExtraMount(existing, existing)),
-            SbxCli.parseExtraMounts(existing, hostHome = "/Users/me", exists = { it.toString() == existing }),
+            listOf("/work/C#Proj" to "/work/C#Proj"),
+            SbxCli.parseExtraMountRows("/work/C#Proj # trailing comment\n# whole-line comment"),
         )
         assertEquals(
             listOf("~/docs" to "/home/agent/docs", "/no/such/dir" to "/home/agent/missing"),
