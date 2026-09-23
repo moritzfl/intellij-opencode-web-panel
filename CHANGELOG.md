@@ -2,7 +2,7 @@
 
 # OpenCode Web Panel Changelog
 
-## [Unreleased]
+## [2.5.0] - 2026-09-23
 
 ### Security
 
@@ -981,7 +981,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.4.1...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.5.0...HEAD
+[2.5.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.4.1...2.5.0
 [2.4.1]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.4.0...2.4.1
 [2.4.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.3.0...2.4.0
 [2.3.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.2.0...2.3.0
