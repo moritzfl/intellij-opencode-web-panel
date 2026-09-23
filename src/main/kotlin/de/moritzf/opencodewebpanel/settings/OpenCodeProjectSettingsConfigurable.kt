@@ -525,17 +525,26 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         val modality = ModalityState.defaultModalityState()
         // Start never recreates on its own; a confirmed Recreate is carried out here.
         val recreate = spec.useSandbox && preview.effect == de.moritzf.opencodewebpanel.server.SbxApplyEffect.RECREATE
-        if (shouldStop) {
-            oldBackend.stopServer {
-                ApplicationManager.getApplication().invokeLater({
-                    if (project.isDisposed) return@invokeLater
-                    if (recreate) {
-                        requestOpenCodeSandboxReset(project, dropGuestOpenCode = false)
-                    } else {
-                        project.messageBus.syncPublisher(OpenCodeProjectSettingsListener.TOPIC).serverRestartRequested()
-                    }
-                }, modality)
+        val afterStop = {
+            ApplicationManager.getApplication().invokeLater({
+                if (project.isDisposed) return@invokeLater
+                if (recreate) {
+                    requestOpenCodeSandboxReset(project, dropGuestOpenCode = false)
+                } else {
+                    requestOpenCodeServerRestart(project)
+                }
+            }, modality)
+        }
+        // Backends are per directory: another open project on the same directory keeps using the
+        // old one when only this project moves away from it.
+        val leavingSharedBackend = (directoryChanged || runtimeChanged) &&
+            com.intellij.openapi.project.ProjectManager.getInstance().openProjects.any { other ->
+                other !== project && !other.isDisposed && registry.backendFor(other) === oldBackend
             }
+        if (shouldStop && leavingSharedBackend) {
+            afterStop()
+        } else if (shouldStop) {
+            oldBackend.stopServer { afterStop() }
         } else if (preview.effect == de.moritzf.opencodewebpanel.server.SbxApplyEffect.LIVE &&
             oldBackend is SbxOpenCodeServerBackend
         ) {

@@ -610,6 +610,14 @@ class SbxCliTest {
     }
 
     @Test
+    fun policyInitializationRequiresAGlobalRule() {
+        assertFalse(SbxCli.policyIsInitialized("""{"rules":[]}"""))
+        assertFalse(SbxCli.policyIsInitialized("""{"rules":[{"scope":"sandbox","applies_to":"sandbox:x"}]}"""))
+        assertFalse(SbxCli.policyIsInitialized("not json"))
+        assertTrue(SbxCli.policyIsInitialized("""{"rules":[{"id":"default-ai-services","scope":"global","applies_to":"all"}]}"""))
+    }
+
+    @Test
     fun conflictingSandboxMatchesNameOrWorkspace() {
         val entries = SbxCli.parseLsJson(resource("sbx-ls-running.json"))
         val workspace = entries.single().workspaces.single()

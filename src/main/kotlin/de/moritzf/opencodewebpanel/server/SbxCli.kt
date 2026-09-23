@@ -898,6 +898,23 @@ internal object SbxCli {
         return listOf(executable, "policy", "init", profile)
     }
 
+    fun buildPolicyLsCommand(executable: String = DEFAULT_EXECUTABLE): List<String> =
+        listOf(executable, "policy", "ls", "--json")
+
+    /**
+     * True once a global network policy exists (`sbx policy init`, a terminal setup, or org
+     * governance). Kit and per-sandbox rules alone do not count.
+     */
+    fun policyIsInitialized(json: String): Boolean {
+        val root = runCatching { JsonParser.parseString(json) }.getOrNull()
+            ?.takeIf { it.isJsonObject }?.asJsonObject ?: return false
+        val rules = root.get("rules")?.takeIf { it.isJsonArray }?.asJsonArray ?: return false
+        return rules.any { element ->
+            val rule = element.takeIf { it.isJsonObject }?.asJsonObject ?: return@any false
+            rule.stringMember("scope") == "global" || rule.stringMember("applies_to") == "all"
+        }
+    }
+
     fun buildPolicyAllowCommand(
         executable: String = DEFAULT_EXECUTABLE,
         name: String,

@@ -736,6 +736,34 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
     }
 
     private fun consentToSbxPolicy() {
+        val settings = OpenCodeSettingsState.getInstance()
+        val executable = OpenCodeServerProtocol.resolveExecutableForLaunch(
+            if (customSbxRadioButton.isSelected) sbxPath() else settings.sbxExecutablePath(),
+        )
+        // Captured on the EDT: a pooled thread's invokeLater would otherwise wait for Settings to close.
+        val modality = ModalityState.stateForComponent(initSbxPolicyButton)
+        initSbxPolicyButton.isEnabled = false
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val existing = SbxProcessRunner.run(SbxCli.buildPolicyLsCommand(executable), emptyMap(), 30_000L)
+            val initialized = existing.exitCode == 0 && SbxCli.policyIsInitialized(existing.stdout)
+            ApplicationManager.getApplication().invokeLater({
+                if (initialized) {
+                    // `sbx policy init` is one-time; never replace a policy set up elsewhere.
+                    settings.sbxNetworkPolicyConsent = true
+                    Messages.showInfoMessage(
+                        panel ?: initSbxPolicyButton,
+                        "This computer already has a sandbox network policy. The plugin uses it and does not change it.",
+                        "Sandbox Network Policy",
+                    )
+                    if (panel != null) updateRuntimeControls()
+                    return@invokeLater
+                }
+                initializeSbxPolicy(executable, modality)
+            }, modality)
+        }
+    }
+
+    private fun initializeSbxPolicy(executable: String, modality: ModalityState) {
         val confirmed = MessageDialogBuilder.yesNo(
             "Set up sandbox network policy",
             "Docker Sandboxes start with no internet. This runs sbx policy init balanced once " +
@@ -748,19 +776,18 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
             .noText("Cancel")
             .icon(Messages.getWarningIcon())
             .ask(panel)
-        if (!confirmed) return
+        if (!confirmed) {
+            if (panel != null) updateRuntimeControls()
+            return
+        }
         val settings = OpenCodeSettingsState.getInstance()
-        val executable = OpenCodeServerProtocol.resolveExecutableForLaunch(
-            if (customSbxRadioButton.isSelected) sbxPath() else settings.sbxExecutablePath(),
-        )
-        initSbxPolicyButton.isEnabled = false
         ApplicationManager.getApplication().executeOnPooledThread {
             val result = SbxProcessRunner.run(
                 SbxCli.buildPolicyInitCommand(executable),
                 emptyMap(),
                 60_000L,
             )
-            ApplicationManager.getApplication().invokeLater {
+            ApplicationManager.getApplication().invokeLater({
                 if (result.exitCode == 0) {
                     settings.sbxNetworkPolicyConsent = true
                 } else {
@@ -771,7 +798,7 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
                     )
                 }
                 if (panel != null) updateRuntimeControls()
-            }
+            }, modality)
         }
     }
 

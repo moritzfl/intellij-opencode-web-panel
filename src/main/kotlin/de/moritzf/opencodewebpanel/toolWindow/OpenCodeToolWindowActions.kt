@@ -9,6 +9,7 @@ import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.actionSystem.PlatformDataKeys
 import com.intellij.openapi.actionSystem.ToggleAction
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.ide.CopyPasteManager
@@ -480,7 +481,14 @@ private fun openCodePanelContent(e: AnActionEvent): OpenCodeWebToolWindowContent
 }
 
 internal fun requestOpenCodeServerRestart(project: Project?) {
-    if (project == null) return
+    if (project == null || project.isDisposed) return
+    // Only a live panel listens for this topic. Without one (tool window never opened, or the
+    // panel failure card) Restart must still reach the server. Unit tests only see the topic.
+    val hasPanel = project.getServiceIfCreated(OpenCodePanelController::class.java)?.content() != null
+    if (!hasPanel && !ApplicationManager.getApplication().isUnitTestMode) {
+        openCodeBackend(project).restartServer(project, project.basePath, { !project.isDisposed }, {}, {})
+        return
+    }
     project.messageBus
         .syncPublisher(OpenCodeProjectSettingsListener.TOPIC)
         .serverRestartRequested()
@@ -614,7 +622,8 @@ internal class OpenCodeUpdateSandboxImageAction : DumbAwareAction(
         val backend = openCodeBackend(project) as? SbxOpenCodeServerBackend ?: return
         if (!confirmOpenCodeSandboxImageUpdate(project)) return
         backend.dropCachedOfficialOpencodeTemplates().whenComplete { ok, _ ->
-            ApplicationManager.getApplication().invokeLater {
+            ApplicationManager.getApplication().invokeLater({
+                if (project.isDisposed) return@invokeLater
                 if (ok == true) {
                     requestOpenCodeSandboxReset(project)
                 } else {
@@ -624,7 +633,7 @@ internal class OpenCodeUpdateSandboxImageAction : DumbAwareAction(
                         "Update OpenCode Sandbox Image",
                     )
                 }
-            }
+            }, ModalityState.nonModal())
         }
     }
 
@@ -709,8 +718,9 @@ internal fun confirmOpenCodeSandboxReset(project: Project?): Boolean {
     } ?: "Conversation history retention is unknown until the VM is inspected."
     return MessageDialogBuilder.yesNo(
         "Reset Sandbox",
-        "This force-removes the plugin-owned Docker Sandbox VM and creates a new one. " +
+        "This force-removes the plugin-owned Docker Sandbox VM and creates a new one, then starts OpenCode. " +
             "Packages and other VM-only state are dropped. $retention " +
+            "An OpenCode 2.x binary kept for this sandbox is deleted and reinstalled on the next start (needs network). " +
             "Host OpenCode history is not affected.",
     )
         .yesText("Reset Sandbox")

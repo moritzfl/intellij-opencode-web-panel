@@ -750,8 +750,14 @@ internal class SbxOpenCodeServerBackend(
                 throw SbxCommandFailure("Save sandbox settings", -1, details)
             }
             if (!settings.sbxNetworkPolicyConsent) {
-                fail(startId, SbxFailureKind.POLICY_UNINITIALIZED)
-                return
+                // A policy set up in a terminal or by the organisation counts as consent.
+                val policies = commandRunner.run(SbxCli.buildPolicyLsCommand(sbx), emptyMap(), 30_000L)
+                if (policies.exitCode == 0 && SbxCli.policyIsInitialized(policies.stdout)) {
+                    settings.sbxNetworkPolicyConsent = true
+                } else {
+                    fail(startId, SbxFailureKind.POLICY_UNINITIALIZED)
+                    return
+                }
             }
             var name = SbxCli.sandboxName(canonicalDirectory)
             var record = recordStore().recordFor(canonicalDirectory)

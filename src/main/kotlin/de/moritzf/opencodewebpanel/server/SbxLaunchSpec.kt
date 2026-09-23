@@ -97,6 +97,11 @@ internal data class SbxLaunchSpec(
         const val SCHEMA_VERSION = 1
         const val CONFIG_DIR_ENV = "OCWP_CONFIG_DIR"
 
+        /**
+         * Defaults for a directory without a project spec. The application-level sandbox fields of
+         * older releases have no settings UI any more, so they no longer decide a project's runtime
+         * or seed its spec: a project without `opencode-sbx.yaml` runs the Host CLI.
+         */
         fun fromSettings(
             settings: OpenCodeSettingsState,
             canonicalDirectory: String,
@@ -106,16 +111,14 @@ internal data class SbxLaunchSpec(
             return SbxLaunchSpec(
                 canonicalDirectory = directory,
                 name = SbxCli.sandboxName(directory),
-                memory = settings.sbxMemoryValue(),
-                cpus = settings.sbxCpusValue(),
-                kits = SbxCli.parseLineList(settings.sbxExtraKits),
-                extraMounts = SbxCli.parseExtraMountRows(settings.sbxExtraWorkspaces)
-                    .map { SbxExtraMount(it.first, it.second) },
-                shareHostOpencodeConfig = settings.sbxShareHostOpencodeConfig,
+                memory = SbxCli.DEFAULT_MEMORY,
+                cpus = SbxCli.DEFAULT_CPUS,
+                kits = emptyList(),
+                extraMounts = emptyList(),
+                shareHostOpencodeConfig = false,
                 openCodeVersion = SbxOpenCodeVersion.V1,
-                enableIntellijMcp = settings.sbxEnableIntellijMcp,
-                useSandbox = settings.runtimeModeValue() ==
-                    de.moritzf.opencodewebpanel.settings.OpenCodeRuntimeMode.DOCKER_SANDBOX,
+                enableIntellijMcp = true,
+                useSandbox = false,
                 hostPort = hostPort?.takeIf { it in 1..65535 },
             )
         }
@@ -339,8 +342,7 @@ internal data class SbxLaunchSpec(
             return when (val result = inspect(canonicalDirectory)) {
                 is SbxLaunchSpecInspection.Valid -> result.spec.useSandbox
                 is SbxLaunchSpecInspection.Invalid -> true
-                SbxLaunchSpecInspection.Missing -> OpenCodeSettingsState.getInstance().runtimeModeValue() ==
-                    de.moritzf.opencodewebpanel.settings.OpenCodeRuntimeMode.DOCKER_SANDBOX
+                SbxLaunchSpecInspection.Missing -> false
             }
         }
 

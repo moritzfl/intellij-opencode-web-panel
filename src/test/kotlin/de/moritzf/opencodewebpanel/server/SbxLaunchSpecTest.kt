@@ -46,21 +46,23 @@ class SbxLaunchSpecTest {
     }
 
     @Test
-    fun fromSettingsUsesSandboxNameAndDefaultsMcpOn() {
+    fun fromSettingsUsesSandboxNameAndIgnoresHiddenLegacyAppDefaults() {
         val settings = OpenCodeSettingsState().apply {
             sbxMemory = "8g"
             sbxCpus = "4"
             sbxExtraKits = "./kit\n# skip"
             sbxExtraWorkspaces = "~/docs | /home/agent/docs"
             sbxShareHostOpencodeConfig = true
+            runtimeMode = de.moritzf.opencodewebpanel.settings.OpenCodeRuntimeMode.DOCKER_SANDBOX.name
         }
         val spec = SbxLaunchSpec.fromSettings(settings, "/tmp/project")
         assertEquals(SbxCli.sandboxName("/tmp/project"), spec.name)
-        assertEquals("8g", spec.memory)
-        assertEquals(listOf("./kit"), spec.kits)
-        assertEquals(listOf(SbxExtraMount("~/docs", "/home/agent/docs")), spec.extraMounts)
+        assertEquals(SbxCli.DEFAULT_MEMORY, spec.memory)
+        assertEquals(emptyList<String>(), spec.kits)
+        assertEquals(emptyList<SbxExtraMount>(), spec.extraMounts)
         assertTrue(spec.enableIntellijMcp)
-        assertTrue(spec.shareHostOpencodeConfig)
+        assertFalse(spec.shareHostOpencodeConfig)
+        assertFalse("A project without a spec runs the Host CLI", spec.useSandbox)
         assertEquals(SbxOpenCodeVersion.V1, spec.openCodeVersion)
         assertEquals(
             SbxOpenCodeVersion.V1,
@@ -108,7 +110,8 @@ class SbxLaunchSpecTest {
         assertNotNull(path)
         assertTrue(Files.isSameFile(SbxLaunchSpec.projectSpecPath(root.toString()), path!!))
         val text = Files.readString(path)
-        assertTrue(text.contains("memory: 8g"))
+        assertTrue("Hidden legacy app defaults no longer seed specs", text.contains("memory: 4g"))
+        assertEquals("*.sh text eol=lf\n", Files.readString(control.resolve(".gitattributes")))
         assertTrue(text.contains("canonicalDirectory: ./\n"))
         assertTrue(Files.isRegularFile(control.resolve(SbxLaunchSpec.PROJECT_LAUNCHER_UNIX)))
         Files.list(control).use { files ->
@@ -122,7 +125,7 @@ class SbxLaunchSpecTest {
         assertTrue(launcher.contains("--web"))
         assertTrue(launcher.contains("--acp"))
         val parsed = SbxLaunchSpec.parseYaml(text)
-        assertEquals("8g", parsed?.memory)
+        assertEquals("4g", parsed?.memory)
         assertEquals(SbxCli.sandboxName(root.toRealPath().toString()), parsed?.name)
     }
 
