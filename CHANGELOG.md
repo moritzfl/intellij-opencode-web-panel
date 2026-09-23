@@ -4,11 +4,20 @@
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-09-23
+
 ### Added
 
 - Optional IDE warning when a selected conversation belongs to a different directory
   than this project's OpenCode workspace. Off by default. Does not block opening
-  the conversation.
+  the conversation. While that conversation is open, its tab and the panel border
+  are outlined in red.
+
+### Fixed
+
+- Basic auth accepts loopback aliases (`localhost`, `::1`, `127.0.0.1`) on the
+  same port, so a Chromium challenge that uses a different loopback name than the
+  bound server still receives the panel password.
 
 ## [2.3.0] - 2026-09-22
 
