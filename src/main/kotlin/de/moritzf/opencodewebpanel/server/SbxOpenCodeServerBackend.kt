@@ -909,6 +909,10 @@ internal class SbxOpenCodeServerBackend(
             extraEnv.forEach { (key, value) -> processBuilder.environment()[key] = value }
             processBuilder.directory(java.io.File(canonicalDirectory))
             if (!isCurrentStart(startId)) return
+            // A serve from an earlier IDE session, superseded start, or host-side timeout can
+            // outlive its `sbx exec` client. It would hold 4096 or answer health with stale env.
+            killLeftoverGuestServe(sbx, name)
+            if (!isCurrentStart(startId)) return
             val process = processBuilder.start()
             if (!setStartedProcess(startId, process, password)) {
                 processTerminator.destroy(process)
@@ -1378,6 +1382,14 @@ internal class SbxOpenCodeServerBackend(
             processTerminator.destroy(process)
         }
         return ok
+    }
+
+    private fun killLeftoverGuestServe(sbx: String, name: String) {
+        val killed = commandRunner.run(SbxCli.buildRemotePkillCommand(sbx, name), emptyMap(), 15_000L)
+        // pkill returns 1 when nothing matched.
+        if (killed.exitCode !in 0..1) {
+            throw SbxCommandFailure("Stop leftover OpenCode serve", killed.exitCode, killed.output)
+        }
     }
 
     private fun setStartedProcess(startId: Long, process: Process, password: String): Boolean {

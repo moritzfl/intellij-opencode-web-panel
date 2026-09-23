@@ -325,6 +325,28 @@ class SbxOpenCodeServerBackendTest {
     }
 
     @Test
+    fun leftoverGuestServeIsKilledBeforeLaunch() {
+        val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
+        val spec = SbxLaunchSpec.fromSettings(settings, directory).copy(useSandbox = true, enableIntellijMcp = false)
+        assertNotNull(SbxLaunchSpec.persist(spec))
+        store.save(directory, record.copy(kits = SbxCli.normalizeLineList(spec.kits.joinToString("\n"))))
+        var pkills = 0
+        behavior = { command ->
+            when (command[1]) {
+                "ls" -> listed("running")
+                "exec" -> {
+                    if (command.any { "pkill -TERM" in it }) pkills++
+                    SbxCommandResult(0, "")
+                }
+                else -> SbxCommandResult(0, "")
+            }
+        }
+        backend.ensureStarted(project, directory, { false }, {}, {})
+        drain()
+        assertEquals("No host serve process existed, yet a guest serve may", 1, pkills)
+    }
+
+    @Test
     fun failedV2InstallKeepsSessionsAndDoesNotStartServe() {
         val original = behavior
         behavior = { command ->
