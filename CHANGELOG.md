@@ -2,6 +2,44 @@
 
 # OpenCode Web Panel Changelog
 
+## [Unreleased]
+
+### Security
+
+- Sandbox names from a spec are validated; a crafted name could make the
+  launcher's `--recreate` delete files outside the plugin data directory.
+- Creating a sandbox requires a trusted project, and a spec that grants
+  access beyond the project (outside mounts, shared config, kits) must be
+  allowed once per distinct set of grants.
+
+### Changed
+
+- Starting never recreates the sandbox. Differences that need a new VM stop
+  the start with a **Recreate Sandbox** action; Apply asks before recreating.
+- The spec is parsed strictly in the plugin and the launcher; Apply keeps
+  comments and unknown keys.
+- Mounts can be read-only. Missing mount paths are skipped.
+- A project without `opencode-sbx.yaml` runs the Host CLI; hidden legacy
+  application sandbox defaults no longer apply.
+- An existing sbx network policy counts as consent.
+
+### Fixed
+
+- A leftover guest serve is stopped before a new one starts.
+- Another project's sandbox that mounts this directory is no longer treated as
+  foreign; adopted sandboxes no longer get their kits re-added.
+- Apply previews port changes for projects without a spec, ignores sandbox
+  fields in Host mode, reports removed mounts, and no longer writes the
+  previous directory's settings into a new directory.
+- stderr notices no longer break `sbx ls` parsing; Stop cancels running sbx
+  commands; starts from Settings no longer wait for the dialog to close.
+- A new sandbox port is published before the old one is removed; a taken
+  fixed port fails fast.
+- The launcher links mounts, shares config and reuses VMs like the plugin,
+  works under Git Bash path conversion, and keeps the password out of argv.
+- Loopback MCP URLs from `opencode.jsonc` and `config.json` are rewritten.
+- Restart works when the tool window was never opened.
+
 ## [2.4.1] - 2026-09-23
 
 ### Changed
