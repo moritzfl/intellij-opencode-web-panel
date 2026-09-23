@@ -169,6 +169,8 @@ MARKERS_V2=(
   'opencode-v2-icon'
   'file-tree-v2-row'
   'select-v2'
+  'data-titlebar-tab'
+  'titlebar-tabs'
 )
 
 marker_present() {

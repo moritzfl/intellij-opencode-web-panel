@@ -137,6 +137,50 @@ class OpenCodeForeignSessionWarningTest {
     }
 
     @Test
+    fun foreignSelectionOutlinesThatSessionAndClearsWhenLeft() {
+        val outlines = mutableListOf<String?>()
+        val outlined = OpenCodeForeignSessionWarning(
+            enabled = { true },
+            workspaceDirectory = { workspace },
+            loadSession = { sessions[it] },
+            executeAsync = { it.run() },
+            notify = { _, _ -> },
+            clearWarning = {},
+            onOutline = { outlines.add(it) },
+        )
+        sessions["ses_other"] = info("ses_other", "/Users/me/other", "Other")
+        sessions["ses_here"] = info("ses_here", workspace, "Here")
+
+        outlined.onDisplayedSessionChanged("ses_other")
+        outlined.onDisplayedSessionChanged("ses_other")
+        outlined.onDisplayedSessionChanged("ses_here")
+
+        assertEquals(listOf(null, "ses_other", "ses_other", null), outlines)
+    }
+
+    @Test
+    fun suppressClearsTheOutline() {
+        val outlines = mutableListOf<String?>()
+        sessions["ses_other"] = info("ses_other", "/Users/me/other", "Other")
+        val pending = mutableListOf<Runnable>()
+        val deferred = OpenCodeForeignSessionWarning(
+            enabled = { true },
+            workspaceDirectory = { workspace },
+            loadSession = { sessions[it] },
+            executeAsync = { pending.add(it) },
+            notify = { _, _ -> },
+            clearWarning = {},
+            onOutline = { outlines.add(it) },
+        )
+
+        deferred.onDisplayedSessionChanged("ses_other")
+        deferred.suppress()
+        pending.forEach { it.run() }
+
+        assertEquals(listOf(null, null), outlines)
+    }
+
+    @Test
     fun disabledSettingDoesNotLoad() {
         enabled = false
         sessions["ses_other"] = info("ses_other", "/Users/me/other", "Other")

@@ -11,6 +11,10 @@ import java.util.concurrent.atomic.AtomicLong
  * flicker of the same `ses_`. Does not block navigation. A missing directory or a failed
  * lookup is not a mismatch. Exact folder match only — a subdirectory is a different cwd.
  * Symlink spellings and sandbox guest paths count as the same folder.
+ *
+ * [onOutline] receives the foreign session id while that conversation is on screen, and
+ * null as soon as it is not. A reload of the same `ses_` reapplies the outline without
+ * posting another notification.
  */
 internal class OpenCodeForeignSessionWarning(
     private val enabled: () -> Boolean,
@@ -21,19 +25,29 @@ internal class OpenCodeForeignSessionWarning(
     private val executeAsync: (Runnable) -> Unit,
     private val notify: (title: String, content: String) -> Unit,
     private val clearWarning: () -> Unit,
+    private val onOutline: (sessionID: String?) -> Unit = {},
 ) {
     private val generation = AtomicLong()
 
     @Volatile
     private var displayedSessionID: String? = null
 
+    @Volatile
+    private var outlinedSessionID: String? = null
+
     fun onDisplayedSessionChanged(sessionID: String?, force: Boolean = false) {
-        if (!force && sessionID == displayedSessionID) return
+        if (!force && sessionID == displayedSessionID) {
+            // A reload drops the page outline. Repaint only when this session is already foreign.
+            if (outlinedSessionID != null) reapplyOutline()
+            return
+        }
         displayedSessionID = sessionID
         val token = generation.incrementAndGet()
         // Drop the previous warning immediately. A new one is posted only after the lookup
         // confirms this session is outside the workspace.
+        outlinedSessionID = null
         clearWarning()
+        onOutline(null)
         if (!enabled() || sessionID == null || !OpenCodeServerProtocol.isSessionId(sessionID)) return
         val workspace = workspaceDirectory()?.takeIf { it.isNotBlank() } ?: return
         executeAsync {
@@ -50,10 +64,12 @@ internal class OpenCodeForeignSessionWarning(
             val directory = info?.directory
             if (!OpenCodeForeignSessionPolicy.isForeign(directory, workspace, prefixes, guestPath)) return@executeAsync
             if (!stillCurrent(token)) return@executeAsync
+            outlinedSessionID = sessionID
             notify(
                 OpenCodeForeignSessionPolicy.TITLE,
                 OpenCodeForeignSessionPolicy.message(info?.title.orEmpty(), directory!!, workspace),
             )
+            onOutline(sessionID)
         }
     }
 
@@ -62,10 +78,21 @@ internal class OpenCodeForeignSessionWarning(
         onDisplayedSessionChanged(displayedSessionID, force = true)
     }
 
+    /** Paint the outline again after a reload of the session already confirmed foreign. */
+    fun reapplyOutline() {
+        if (!enabled()) {
+            onOutline(null)
+            return
+        }
+        onOutline(outlinedSessionID)
+    }
+
     /** Drop an in-flight check and the current warning. The displayed id is kept. */
     fun suppress() {
         generation.incrementAndGet()
+        outlinedSessionID = null
         clearWarning()
+        onOutline(null)
     }
 
     private fun stillCurrent(token: Long): Boolean = token == generation.get() && enabled()

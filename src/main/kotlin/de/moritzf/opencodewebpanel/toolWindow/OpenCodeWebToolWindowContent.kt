@@ -78,6 +78,7 @@ import org.cef.handler.CefLoadHandler
 import org.cef.handler.CefLoadHandlerAdapter
 import org.cef.network.CefRequest
 import java.awt.CardLayout
+import java.awt.Color
 import java.awt.Component
 import java.awt.Container
 import java.awt.Cursor
@@ -87,6 +88,7 @@ import java.awt.event.MouseEvent
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
+import javax.swing.BorderFactory
 import javax.swing.JComponent
 import javax.swing.JPanel
 
@@ -226,6 +228,7 @@ internal class OpenCodeWebToolWindowContent(
         executeAsync = { task -> ApplicationManager.getApplication().executeOnPooledThread(task) },
         notify = ::showForeignSessionWarning,
         clearWarning = ::clearForeignSessionWarning,
+        onOutline = ::applyForeignSessionOutline,
     )
     @Suppress("UnstableApiUsage")
     private val openProjectAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
@@ -2121,6 +2124,32 @@ internal class OpenCodeWebToolWindowContent(
     private fun expireForeignSessionWarning() {
         foreignSessionNotification?.expire()
         foreignSessionNotification = null
+    }
+
+    private fun applyForeignSessionOutline(sessionID: String?) {
+        val application = ApplicationManager.getApplication()
+        if (application.isDispatchThread) {
+            paintForeignSessionOutline(sessionID)
+        } else {
+            application.invokeLater { paintForeignSessionOutline(sessionID) }
+        }
+    }
+
+    private fun paintForeignSessionOutline(sessionID: String?) {
+        if (isContentDisposed()) return
+        host.component.border = if (sessionID == null) {
+            null
+        } else {
+            BorderFactory.createLineBorder(Color(0xFF1744), 2)
+        }
+        host.component.revalidate()
+        host.component.repaint()
+        val serverUrl = serverManager.getServerUrl() ?: return
+        browser.cefBrowser.executeJavaScript(
+            OpenCodeBrowserSnippets.buildForeignSessionTabOutlineScript(sessionID),
+            OpenCodeServerProtocol.buildServerRootUrl(serverUrl),
+            0,
+        )
     }
 
     private fun prepareDisplayedSessionLineage(url: String?) {
