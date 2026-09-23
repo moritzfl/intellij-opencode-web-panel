@@ -4,6 +4,7 @@ import com.intellij.execution.process.CapturingProcessHandler
 import com.intellij.execution.process.ProcessEvent
 import com.intellij.execution.process.ProcessListener
 import com.intellij.execution.process.ProcessOutputTypes
+import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.util.Key
 import java.io.IOException
 import java.nio.charset.Charset
@@ -11,7 +12,10 @@ import java.nio.file.Path
 
 internal data class SbxCommandResult(
     val exitCode: Int,
+    /** stdout and stderr in arrival order, for logs and error details. */
     val output: String,
+    /** stdout only: JSON commands must not be broken by a stderr notice. */
+    val stdout: String = output,
 )
 
 internal fun interface SbxCommandRunner {
@@ -41,6 +45,11 @@ internal object SbxProcessRunner : SbxCommandRunner {
         workingDirectory: Path?,
     ): SbxCommandResult = run(command, env, timeoutMillis, workingDirectory, onOutputLine = {})
 
+    /**
+     * Runs [command] to completion, [timeoutMillis] or cancellation of the calling thread's
+     * progress indicator (Stop / Cancel), whichever comes first. The process is destroyed on
+     * timeout and cancellation.
+     */
     override fun run(
         command: List<String>,
         env: Map<String, String>,
@@ -48,7 +57,7 @@ internal object SbxProcessRunner : SbxCommandRunner {
         workingDirectory: Path?,
         onOutputLine: (String) -> Unit,
     ): SbxCommandResult {
-        val processBuilder = ProcessBuilder(command).redirectErrorStream(true)
+        val processBuilder = ProcessBuilder(command)
         workingDirectory?.let { processBuilder.directory(it.toFile()) }
         processBuilder.environment()["PATH"] = OpenCodeServerProtocol.resolvePath()
         env.forEach { (key, value) -> processBuilder.environment()[key] = value }
@@ -60,19 +69,34 @@ internal object SbxProcessRunner : SbxCommandRunner {
         // Drain the pipe concurrently: reading to EOF before waitFor makes the timeout ineffective.
         // Do not pass argv/env as the handler's diagnostic command line (they may contain secrets).
         val handler = CapturingProcessHandler(process, Charset.defaultCharset(), command.first())
-        val pending = StringBuilder()
+        val combined = StringBuffer()
+        val pendingStdout = StringBuilder()
+        val pendingStderr = StringBuilder()
         handler.addProcessListener(object : ProcessListener {
             override fun onTextAvailable(event: ProcessEvent, outputType: Key<*>) {
                 if (outputType === ProcessOutputTypes.SYSTEM) return
-                splitProcessOutputLines(pending, event.text.orEmpty(), onOutputLine)
+                val text = event.text.orEmpty()
+                combined.append(text)
+                val pending = if (outputType === ProcessOutputTypes.STDERR) pendingStderr else pendingStdout
+                synchronized(pending) { splitProcessOutputLines(pending, text, onOutputLine) }
             }
         })
-        val output = handler.runProcess(timeoutMillis.coerceIn(1L, Int.MAX_VALUE.toLong()).toInt(), true)
-        flushProcessOutputLines(pending, onOutputLine)
-        if (output.isTimeout || output.isCancelled) {
-            return SbxCommandResult(-1, output.stdout + "\nCommand timed out or was cancelled after ${timeoutMillis}ms")
+        val timeout = timeoutMillis.coerceIn(1L, Int.MAX_VALUE.toLong()).toInt()
+        val indicator = ProgressManager.getGlobalProgressIndicator()
+        val output = if (indicator != null) {
+            handler.runProcessWithProgressIndicator(indicator, timeout, true)
+        } else {
+            handler.runProcess(timeout, true)
         }
-        return SbxCommandResult(output.exitCode, output.stdout)
+        synchronized(pendingStdout) { flushProcessOutputLines(pendingStdout, onOutputLine) }
+        synchronized(pendingStderr) { flushProcessOutputLines(pendingStderr, onOutputLine) }
+        if (output.isCancelled) {
+            return SbxCommandResult(-1, "$combined\nCommand was cancelled", output.stdout)
+        }
+        if (output.isTimeout) {
+            return SbxCommandResult(-1, "$combined\nCommand timed out after ${timeoutMillis}ms", output.stdout)
+        }
+        return SbxCommandResult(output.exitCode, combined.toString(), output.stdout)
     }
 }
 

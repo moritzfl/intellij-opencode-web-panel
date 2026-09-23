@@ -144,6 +144,28 @@ class SbxProcessRunnerTest {
     }
 
     @Test
+    fun jsonReadersGetStdoutWithoutStderrNotices() {
+        val result = SbxProcessRunner.run(probe("json"), emptyMap(), 10_000L)
+        assertEquals(0, result.exitCode)
+        assertEquals("{\"sandboxes\":[]}", result.stdout.trim())
+        assertTrue(result.output.contains("update available"))
+    }
+
+    @Test
+    fun cancellingTheCallersIndicatorStopsTheCommand() {
+        val indicator = com.intellij.openapi.progress.util.ProgressIndicatorBase()
+        val started = System.nanoTime()
+        var result: SbxCommandResult? = null
+        Thread { Thread.sleep(300); indicator.cancel() }.start()
+        com.intellij.openapi.progress.ProgressManager.getInstance().runProcess({
+            result = SbxProcessRunner.run(probe("sleep"), emptyMap(), 60_000L)
+        }, indicator)
+        assertEquals(-1, result!!.exitCode)
+        assertTrue(result!!.output.contains("cancelled"))
+        assertTrue(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started) < 10_000L)
+    }
+
+    @Test
     fun missingExecutableReturnsAnActionableFailure() {
         val result = SbxProcessRunner.run(listOf(temp.root.resolve("missing-executable").path), emptyMap(), 1_000L)
         assertEquals(-1, result.exitCode)
@@ -174,6 +196,11 @@ class SbxProcessRunnerTest {
                             System.out.flush();
                             Thread.sleep(400);
                             System.out.println("second");
+                            break;
+                        case "json":
+                            System.err.println("update available");
+                            System.err.flush();
+                            System.out.println("{\"sandboxes\":[]}");
                             break;
                         case "cwd":
                             System.out.println(Path.of(".").toRealPath());

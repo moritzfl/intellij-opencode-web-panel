@@ -775,8 +775,13 @@ internal object SbxCli {
 
     fun buildNetworkProbeCommand(executable: String, name: String, url: String): List<String> = listOf(
         executable, "exec", name, "curl", "--silent", "--show-error", "--location",
-        "--connect-timeout", "5", "--max-time", "10", "--output", "/dev/null", "--write-out", "%{http_code}", url,
+        "--connect-timeout", "5", "--max-time", "10", "--output", "/dev/null", "--write-out", "\n$NETWORK_PROBE_MARKER%{http_code}\n", url,
     )
+
+    const val NETWORK_PROBE_MARKER = "OCWP_HTTP="
+
+    fun networkProbeStatus(stdout: String): Int? =
+        Regex("${NETWORK_PROBE_MARKER}(\\d{3})").find(stdout)?.groupValues?.get(1)?.toIntOrNull()
 
     const val GUEST_V2_MISSING_EXIT_CODE = 44
 

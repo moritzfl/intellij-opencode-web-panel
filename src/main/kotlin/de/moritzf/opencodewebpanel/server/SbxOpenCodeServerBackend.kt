@@ -2,7 +2,10 @@ package de.moritzf.opencodewebpanel.server
 
 import com.intellij.ide.trustedProjects.TrustedProjects
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.diagnostic.thisLogger
+import com.intellij.openapi.progress.EmptyProgressIndicator
+import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.progress.Task.Backgroundable
@@ -127,6 +130,9 @@ internal class SbxOpenCodeServerBackend(
     private var warnedCreateSnapshot: String? = null
     private var pendingExposure: SbxExposure? = null
     private var pendingRecreateReasons: List<String> = emptyList()
+
+    /** Indicator of the running start; cancelling it stops the current sbx command. */
+    private var activeIndicator: ProgressIndicator? = null
 
     /** Trust of the project that last asked for a start; health restarts have no project. */
     @Volatile
@@ -536,7 +542,7 @@ internal class SbxOpenCodeServerBackend(
                 try {
                     val executable = sbxExecutable()
                     val listed = requiredCommand("List templates", SbxCli.buildTemplateLsCommand(executable), 30_000L)
-                    SbxCli.officialOpencodeTemplateRefs(SbxCli.parseTemplateLsJson(listed.output)).forEach { ref ->
+                    SbxCli.officialOpencodeTemplateRefs(SbxCli.parseTemplateLsJson(listed.stdout)).forEach { ref ->
                         requiredCommand("Remove template", SbxCli.buildTemplateRmCommand(executable, ref), 60_000L)
                     }
                     result.complete(true)
@@ -599,6 +605,7 @@ internal class SbxOpenCodeServerBackend(
     private fun cancelPendingStarts() {
         if (starting) lastFailure = SbxFailureKind.CANCELLED
         startSequence++
+        activeIndicator?.cancel()
         starting = false
         pendingBinaryUpgrade = null
         val callbacks = pendingStarts.toList()
@@ -632,6 +639,7 @@ internal class SbxOpenCodeServerBackend(
             if (replaceCurrent && starting) {
                 startSequence++
                 starting = false
+                activeIndicator?.cancel()
             }
             pendingStarts.add(callback)
             if (starting) return
@@ -678,21 +686,41 @@ internal class SbxOpenCodeServerBackend(
             }
             val indicator = progressIndicatorOnEdt(task)
             try {
-                ProgressManager.getInstance().runProcess({ task.run(indicator) }, indicator)
+                runWithCancellableIndicator(startId, indicator) { ProgressManager.getInstance().runProcess({ task.run(indicator) }, indicator) }
             } finally {
                 // ProgressWindow owns Swing UI; queue disposal after its EDT initialization.
                 EdtInvocationManager.invokeLaterIfNeeded { Disposer.dispose(indicator) }
             }
             return
         }
-        runStart(startId, indicator = null)
+        // Health restarts have no project UI; an indicator still lets Stop cancel sbx commands.
+        val indicator = EmptyProgressIndicator()
+        runWithCancellableIndicator(startId, indicator) {
+            ProgressManager.getInstance().runProcess({ runStart(startId, indicator = null) }, indicator)
+        }
+    }
+
+    private fun runWithCancellableIndicator(startId: Long, indicator: ProgressIndicator, action: () -> Unit) {
+        synchronized(lock) {
+            if (startId != startSequence) return
+            activeIndicator = indicator
+        }
+        try {
+            action()
+        } catch (_: ProcessCanceledException) {
+            // A superseding start reports its own outcome; a user cancel still has to finish this one.
+            if (isCurrentStart(startId)) fail(startId, SbxFailureKind.CANCELLED)
+        } finally {
+            synchronized(lock) { if (activeIndicator === indicator) activeIndicator = null }
+        }
     }
 
     private fun progressIndicatorOnEdt(task: Backgroundable): BackgroundableProcessIndicator {
         val app = ApplicationManager.getApplication()
         if (app.isDispatchThread) return BackgroundableProcessIndicator(task)
         var indicator: BackgroundableProcessIndicator? = null
-        app.invokeAndWait { indicator = BackgroundableProcessIndicator(task) }
+        // Only constructs the indicator; must not wait for a modal Settings dialog to close.
+        app.invokeAndWait({ indicator = BackgroundableProcessIndicator(task) }, ModalityState.any())
         return checkNotNull(indicator)
     }
 
@@ -710,7 +738,7 @@ internal class SbxOpenCodeServerBackend(
                 return
             }
             val diagnose = commandRunner.run(SbxCli.buildDiagnoseJsonCommand(sbx), emptyMap(), 30_000L)
-            if (SbxCli.diagnoseReportsUnsupported(diagnose.output) ||
+            if (SbxCli.diagnoseReportsUnsupported(diagnose.stdout) ||
                 SbxCli.looksUnsupportedHost(
                     System.getProperty("os.name").orEmpty(),
                     System.getProperty("os.arch").orEmpty(),
@@ -1025,6 +1053,10 @@ internal class SbxOpenCodeServerBackend(
             Thread.currentThread().interrupt()
         } catch (e: SbxCommandFailure) {
             if (!isCurrentStart(startId)) return
+            if (indicator?.isCanceled == true) {
+                fail(startId, SbxFailureKind.CANCELLED)
+                return
+            }
             recordCommandFailure(e)
             fail(startId, if (looksUnauthenticated(e.output)) SbxFailureKind.NOT_AUTHENTICATED else SbxFailureKind.COMMAND_FAILED)
         } catch (e: Exception) {
@@ -1039,10 +1071,10 @@ internal class SbxOpenCodeServerBackend(
 
     private fun listPublishedPorts(sbx: String, name: String): List<SbxPortMapping> {
         val listed = commandRunner.run(SbxCli.buildPortsCommand(sbx, name), emptyMap(), 15_000L)
-        val fromPorts = SbxCli.parsePortsJson(listed.output)
+        val fromPorts = SbxCli.parsePortsJson(listed.stdout)
         if (fromPorts.isNotEmpty()) return fromPorts
         val inventory = commandRunner.run(SbxCli.buildLsCommand(sbx), emptyMap(), 15_000L)
-        return SbxCli.parseLsJson(inventory.output).firstOrNull { it.name == name }?.ports.orEmpty()
+        return SbxCli.parseLsJson(inventory.stdout).firstOrNull { it.name == name }?.ports.orEmpty()
     }
 
     private fun ensurePublishedHostPort(
@@ -1203,7 +1235,7 @@ internal class SbxOpenCodeServerBackend(
     }
 
     private fun parseSandboxList(result: SbxCommandResult): List<SbxSandboxListEntry> =
-        SbxCli.parseLsJsonOrNull(result.output)
+        SbxCli.parseLsJsonOrNull(result.stdout)
             ?: throw SbxCommandFailure("Read sandbox list", result.exitCode, "Invalid sbx ls JSON; sandbox ownership is unknown.")
 
     private fun recordCommandFailure(error: SbxCommandFailure) {
@@ -1363,7 +1395,14 @@ internal class SbxOpenCodeServerBackend(
         }
     }
 
+    /** Cleanup must finish even when it runs for a cancelled start. */
     private fun stopOwnedServe(stopVm: Boolean): Boolean {
+        var ok = true
+        ProgressManager.getInstance().executeNonCancelableSection { ok = stopOwnedServeNow(stopVm) }
+        return ok
+    }
+
+    private fun stopOwnedServeNow(stopVm: Boolean): Boolean {
         cancelPeriodicCheck()
         val url: String?
         val password: String?

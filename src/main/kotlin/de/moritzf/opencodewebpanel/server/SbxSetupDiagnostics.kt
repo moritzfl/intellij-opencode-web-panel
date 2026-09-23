@@ -11,14 +11,14 @@ internal object SbxSetupDiagnostics {
         val steps = mutableListOf<SbxSetupStep>()
         if (record == null) return steps + SbxSetupStep("Guest network", false, "Start or Adopt this sandbox before checking guest access")
         val inventory = runner.run(SbxCli.buildLsCommand(executable), emptyMap(), 15_000L)
-        val entries = if (inventory.exitCode == 0) SbxCli.parseLsJsonOrNull(inventory.output) else null
+        val entries = if (inventory.exitCode == 0) SbxCli.parseLsJsonOrNull(inventory.stdout) else null
         if (entries == null) return steps + SbxSetupStep("Guest network", false, "Could not read sandbox inventory; no guest checks ran")
         val owned = SbxCli.findOwnedSandbox(entries, record)
         if (owned == null) return steps + SbxSetupStep("Guest network", false, "Sandbox ownership changed; no guest checks ran")
         if (owned.status != "running") return steps + SbxSetupStep("Guest network", false, "Start this sandbox before checking guest access")
         for ((host, url) in networkTargets(spec.openCodeVersion)) {
             val result = runner.run(SbxCli.buildNetworkProbeCommand(executable, owned.name, url), emptyMap(), 15_000L)
-            val status = result.output.trim().takeLast(3).toIntOrNull()
+            val status = SbxCli.networkProbeStatus(result.stdout)
             val ok = result.exitCode == 0 && status != null && status in 200..299
             val detail = when {
                 ok -> "Reachable (HTTP $status)"

@@ -23,7 +23,7 @@ class SbxSetupDiagnosticsTest {
                 probes += command
                 assertEquals(listOf("sbx", "exec", "sandbox", "curl"), command.take(4))
                 assertTrue(command.contains("--max-time"))
-                SbxCommandResult(0, if (command.last().contains("models.opencode.ai")) "403" else "200")
+                SbxCommandResult(0, if (command.last().contains("models.opencode.ai")) "\nOCWP_HTTP=403\n" else "curl: note on stderr\nOCWP_HTTP=200\n")
             }
         })
         assertEquals(3, probes.size)
@@ -57,7 +57,7 @@ class SbxSetupDiagnosticsTest {
             SbxCommandRunner { command, _, _, _ ->
                 if (command[1] == "ls") inventory() else {
                     assertEquals("https://models.opencode.ai/api.json", command.last())
-                    SbxCommandResult(28, "curl: Operation timed out\n000")
+                    SbxCommandResult(28, "curl: Operation timed out\nOCWP_HTTP=000\n")
                 }
             },
         )
