@@ -13,8 +13,8 @@ import java.util.concurrent.atomic.AtomicLong
  * Symlink spellings and sandbox guest paths count as the same folder.
  *
  * [onOutline] receives the foreign session id while that conversation is on screen, and
- * null as soon as it is not. A reload of the same `ses_` reapplies the outline without
- * posting another notification.
+ * null as soon as it is not. A reload of the same `ses_` reapplies the panel border
+ * without posting another notification.
  */
 internal class OpenCodeForeignSessionWarning(
     private val enabled: () -> Boolean,
@@ -37,7 +37,7 @@ internal class OpenCodeForeignSessionWarning(
 
     fun onDisplayedSessionChanged(sessionID: String?, force: Boolean = false) {
         if (!force && sessionID == displayedSessionID) {
-            // A reload drops the page outline. Repaint only when this session is already foreign.
+            // Repaint the panel border when this session is already foreign. A replaced host would otherwise have none.
             if (outlinedSessionID != null) reapplyOutline()
             return
         }
@@ -78,7 +78,7 @@ internal class OpenCodeForeignSessionWarning(
         onDisplayedSessionChanged(displayedSessionID, force = true)
     }
 
-    /** Paint the outline again after a reload of the session already confirmed foreign. */
+    /** Paint the panel border again after a reload of the session already confirmed foreign. */
     fun reapplyOutline() {
         if (!enabled()) {
             onOutline(null)

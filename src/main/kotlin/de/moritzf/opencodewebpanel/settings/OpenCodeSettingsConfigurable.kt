@@ -389,7 +389,7 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
                 }
                 row {
                     cell(warnForeignSessionCheckBox)
-                        .comment("Off by default. Show an IDE warning and a bright red outline on the conversation tab when its directory is not this project's OpenCode directory, including a session OpenCode restores on startup. Does not block opening it. Symlink spellings and sandbox guest paths count as the same folder.")
+                        .comment("Off by default. Show an IDE warning and a bright red border around the panel when the conversation's directory is not this project's OpenCode directory, including a session OpenCode restores on startup. Does not block opening it. Symlink spellings and sandbox guest paths count as the same folder.")
                 }
                 row {
                     cell(autoContinueInterruptedSessionsCheckBox)

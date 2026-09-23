@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Foreign-session warning keeps the red border around the panel and no longer
+  outlines the conversation tab.
+
 ## [2.4.0] - 2026-09-23
 
 ### Added

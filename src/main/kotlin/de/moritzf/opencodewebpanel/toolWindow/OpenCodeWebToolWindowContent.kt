@@ -2144,12 +2144,6 @@ internal class OpenCodeWebToolWindowContent(
         }
         host.component.revalidate()
         host.component.repaint()
-        val serverUrl = serverManager.getServerUrl() ?: return
-        browser.cefBrowser.executeJavaScript(
-            OpenCodeBrowserSnippets.buildForeignSessionTabOutlineScript(sessionID),
-            OpenCodeServerProtocol.buildServerRootUrl(serverUrl),
-            0,
-        )
     }
 
     private fun prepareDisplayedSessionLineage(url: String?) {

@@ -79,8 +79,6 @@ class OpenCodeInjectedScriptSyntaxTest {
             "codeNav" to OpenCodeBrowserSnippets.buildCodeNavigationScript(enabled = true, openCodeCallback = callback),
             "diffNav" to OpenCodeBrowserSnippets.buildDiffNavigationScript(enabled = true, openDiffCallback = callback),
             "shortcuts" to OpenCodeBrowserSnippets.buildShortcutDispatchScript(listOf("Mod+Shift+'"), listOf("Mod+N")),
-            "foreignTab" to OpenCodeBrowserSnippets.buildForeignSessionTabOutlineScript("ses_abc123"),
-            "foreignTabClear" to OpenCodeBrowserSnippets.buildForeignSessionTabOutlineScript(null),
         ).mapNotNull { (name, script) -> script?.let { name to it } }
     }
 

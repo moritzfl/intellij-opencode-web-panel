@@ -934,20 +934,4 @@ class OpenCodeBrowserSnippetsTest {
         assertTrue(script.contains("file-tree-v2-row"))
         assertTrue(script.contains("if (!filesBrowserRow(event.target)) return"))
     }
-
-    @Test
-    fun foreignSessionTabOutlineMarksTheTitlebarTabAndClears() {
-        val script = OpenCodeBrowserSnippets.buildForeignSessionTabOutlineScript("ses_abc123")
-        assertTrue(script.contains("outline:2px solid #ff1744"))
-        assertTrue(script.contains("[data-titlebar-tab-slot]"))
-        assertTrue(script.contains("data-tab-key"))
-        assertTrue(script.contains("ses_abc123"))
-        assertTrue(script.contains("setTimeout"))
-        assertFalse(script.contains("requestAnimationFrame"))
-
-        val cleared = OpenCodeBrowserSnippets.buildForeignSessionTabOutlineScript(null)
-        assertTrue(cleared.contains("const sessionId = '';"))
-        assertTrue(cleared.contains("existing.remove()"))
-        assertFalse(cleared.contains("ses_"))
-    }
 }
