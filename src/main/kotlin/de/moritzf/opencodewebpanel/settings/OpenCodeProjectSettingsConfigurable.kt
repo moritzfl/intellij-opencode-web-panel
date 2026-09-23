@@ -541,10 +541,21 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         ) {
             val reload = preview.changes.any { it.summary == "Server port" } &&
                 oldBackend.getLifecycleState() == OpenCodeServerLifecycleState.RUNNING
-            oldBackend.applyLiveSettings {
-                if (!reload) return@applyLiveSettings
+            oldBackend.applyLiveSettings { error ->
                 ApplicationManager.getApplication().invokeLater({
-                    if (!project.isDisposed) {
+                    if (project.isDisposed) return@invokeLater
+                    if (error != null) {
+                        com.intellij.notification.NotificationGroupManager.getInstance()
+                            .getNotificationGroup("OpenCode Web Panel")
+                            .createNotification(
+                                "Sandbox settings not applied",
+                                com.intellij.openapi.util.text.StringUtil.escapeXmlEntities(error).replace("\n", "<br>"),
+                                com.intellij.notification.NotificationType.WARNING,
+                            )
+                            .notify(project)
+                        return@invokeLater
+                    }
+                    if (reload) {
                         project.messageBus.syncPublisher(OpenCodeProjectSettingsListener.TOPIC).serverReloadRequested()
                     }
                 }, modality)

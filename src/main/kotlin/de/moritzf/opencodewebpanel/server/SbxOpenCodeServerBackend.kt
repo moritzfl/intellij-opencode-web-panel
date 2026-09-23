@@ -422,21 +422,25 @@ internal class SbxOpenCodeServerBackend(
         }
     }
 
-    fun applyLiveSettings(onDone: () -> Unit = {}) {
+    /** [onDone] receives an error message when a live change (kit add, port remap) failed. */
+    fun applyLiveSettings(onDone: (error: String?) -> Unit = {}) {
         synchronized(lock) {
             if (disposed) {
-                onDone()
+                onDone(null)
                 return
             }
-            runOnLifecycle(onReject = onDone) {
+            runOnLifecycle(onReject = { onDone(null) }) {
+                var error: String? = null
                 try {
-                    applyLiveOnWorker()
+                    error = applyLiveOnWorker()
                 } catch (e: SbxCommandFailure) {
                     recordCommandFailure(e)
+                    error = synchronized(lock) { lastFailureDetails } ?: e.message
                 } catch (e: Exception) {
                     thisLogger().warn("Live sandbox apply failed: ${e.message}")
+                    error = e.message ?: e::class.java.simpleName
                 } finally {
-                    onDone()
+                    onDone(error)
                 }
             }
         }
@@ -992,9 +996,11 @@ internal class SbxOpenCodeServerBackend(
             noteStartupStage("Starting OpenCode server…")
             indicator?.text = "Starting OpenCode server…"
             val timeout = if (createdNow) FIRST_START_TIMEOUT_MILLIS else RECONNECT_TIMEOUT_MILLIS
-            val deadline = System.currentTimeMillis() + timeout
+            val launchedAt = System.currentTimeMillis()
+            val deadline = launchedAt + timeout
             var healthyUrl: String? = null
             var extraPublishes = 0
+            var publishFailures = 0
             while (isCurrentStart(startId) && System.currentTimeMillis() < deadline) {
                 checkSbxServeAlive(process) {
                     outputReader.join(1_000L)
@@ -1016,8 +1022,18 @@ internal class SbxOpenCodeServerBackend(
                 }
                 noteStartupStage(waitText)
                 indicator?.text = waitText
-                if (known.isEmpty() || extraPublishes < 3) {
-                    if (ensurePublishedHostPort(sbx, name, desiredHostPort, ports, force = known.isNotEmpty())) {
+                // A mapping that exists but does not answer is usually serve still booting; only
+                // republish (a stale mapping can reset) once serve had time to listen.
+                val booting = System.currentTimeMillis() - launchedAt < REPUBLISH_GRACE_MILLIS
+                if (known.isEmpty() || (!booting && extraPublishes < 3)) {
+                    val result = ensurePublishedHostPort(sbx, name, desiredHostPort, ports, force = known.isNotEmpty())
+                    if (result.error != null && desiredHostPort != null && ++publishFailures >= 2) {
+                        // A taken fixed port does not free itself; do not wait out the full timeout.
+                        recordCommandFailure(SbxCommandFailure("Publish sandbox port", -1, result.error))
+                        fail(startId, SbxFailureKind.COMMAND_FAILED)
+                        return
+                    }
+                    if (result.published) {
                         extraPublishes++
                         ports = listPublishedPorts(sbx, name)
                         healthyUrl = healthyPublishedSandboxUrl(ports, desiredHostPort, password)
@@ -1077,47 +1093,52 @@ internal class SbxOpenCodeServerBackend(
         return SbxCli.parseLsJson(inventory.stdout).firstOrNull { it.name == name }?.ports.orEmpty()
     }
 
+    private data class PublishResult(val published: Boolean, val error: String? = null)
+
+    /**
+     * Makes the VM's 4096 reachable on loopback. A new mapping is published before old ones are
+     * removed, so a taken fixed port leaves the running server on its previous mapping.
+     * [force] republishes when the current mappings do not answer (a stale mapping can reset).
+     */
     private fun ensurePublishedHostPort(
         sbx: String,
         name: String,
         desiredHostPort: Int?,
         ports: List<SbxPortMapping>,
         force: Boolean = false,
-    ): Boolean {
-        val current = SbxCli.publishedHostPort(ports)
-        if (desiredHostPort == null) {
-            if (current != null && !force) return false
-            val published = commandRunner.run(
-                SbxCli.buildPortsPublishCommand(sbx, name, SbxCli.publishSpec()),
-                emptyMap(),
-                15_000L,
-            )
-            if (published.exitCode != 0) {
-                thisLogger().warn("Could not publish sandbox port: ${published.output}")
-            }
-            return published.exitCode == 0
+    ): PublishResult {
+        val loopback = SbxCli.loopbackPortMappings(ports)
+        val desiredPresent = desiredHostPort != null && loopback.any { it.hostPort == desiredHostPort }
+        if (!force && (if (desiredHostPort == null) loopback.isNotEmpty() else desiredPresent)) {
+            return PublishResult(false)
         }
-        if (current == desiredHostPort && !force) return false
-        SbxCli.sandboxPortMappings(ports).forEach { mapping ->
-            val unpublished = commandRunner.run(
+        fun unpublish(mapping: SbxPortMapping): Boolean {
+            val result = commandRunner.run(
                 SbxCli.buildPortsUnpublishCommand(sbx, name, SbxCli.unpublishSpec(mapping)),
                 emptyMap(),
                 15_000L,
             )
-            if (unpublished.exitCode != 0) {
-                thisLogger().warn("Could not unpublish sandbox port ${SbxCli.unpublishSpec(mapping)}: ${unpublished.output}")
-                return false
+            if (result.exitCode != 0) {
+                thisLogger().warn("Could not unpublish sandbox port ${SbxCli.unpublishSpec(mapping)}: ${result.output}")
             }
+            return result.exitCode == 0
         }
-        val published = commandRunner.run(
+        fun publish(): SbxCommandResult = commandRunner.run(
             SbxCli.buildPortsPublishCommand(sbx, name, SbxCli.publishSpec(desiredHostPort)),
             emptyMap(),
             15_000L,
         )
+        // The same fixed mapping cannot be published twice: reset it in place.
+        if (desiredPresent) loopback.filter { it.hostPort == desiredHostPort }.forEach(::unpublish)
+        val published = publish()
         if (published.exitCode != 0) {
-            thisLogger().warn("Could not publish sandbox port ${SbxCli.publishSpec(desiredHostPort)}: ${published.output}")
+            val spec = SbxCli.publishSpec(desiredHostPort)
+            thisLogger().warn("Could not publish sandbox port $spec: ${published.output}")
+            if (desiredPresent) publish()
+            return PublishResult(false, "Could not publish sandbox port $spec (exit ${published.exitCode}).\n${published.output}".trim())
         }
-        return published.exitCode == 0
+        loopback.filter { desiredHostPort == null || it.hostPort != desiredHostPort }.forEach(::unpublish)
+        return PublishResult(true)
     }
 
     /** A teammate's mount that does not exist on this machine is skipped, like the launcher does. */
@@ -1182,29 +1203,32 @@ internal class SbxOpenCodeServerBackend(
         return current
     }
 
-    private fun applyLiveOnWorker() {
+    /** Returns a user-facing error, or null when the live changes were applied (or nothing to do). */
+    private fun applyLiveOnWorker(): String? {
         val spec = when (val inspection = SbxLaunchSpec.inspect(canonicalDirectory)) {
             is SbxLaunchSpecInspection.Valid -> inspection.spec
-            else -> return
+            else -> return null
         }
-        var record = recordStore().recordFor(canonicalDirectory) ?: return
-        val sbx = OpenCodeServerProtocol.detectExecutablePath(sbxExecutable()) ?: return
+        var record = recordStore().recordFor(canonicalDirectory) ?: return null
+        val sbx = OpenCodeServerProtocol.detectExecutablePath(sbxExecutable()) ?: return "The sbx CLI was not found."
         val listed = parseSandboxList(
             requiredCommand("List sandbox for live apply", SbxCli.buildLsCommand(sbx), 30_000L),
         )
-        val owned = SbxCli.findOwnedSandbox(listed, record) ?: return
+        val owned = SbxCli.findOwnedSandbox(listed, record) ?: return null
         val desiredKits = SbxCli.parseLineList(SbxCli.normalizeLineList(spec.kits.joinToString("\n")))
         record = appendUniqueKits(sbx, owned.name, record, desiredKits)
-        if (record.hostPort != spec.hostPort) {
-            record = record.copy(hostPort = spec.hostPort)
-            recordStore().save(canonicalDirectory, record)
+        if (owned.status != "running") {
+            // The next start publishes the spec's port.
+            if (record.hostPort != spec.hostPort) recordStore().save(canonicalDirectory, record.copy(hostPort = spec.hostPort))
+            return null
         }
-        if (owned.status != "running") return
         val ports = listPublishedPorts(sbx, owned.name)
-        ensurePublishedHostPort(sbx, owned.name, spec.hostPort, ports)
-        val password = getServerPassword() ?: return
+        val published = ensurePublishedHostPort(sbx, owned.name, spec.hostPort, ports)
+        if (published.error != null) return published.error
+        if (record.hostPort != spec.hostPort) recordStore().save(canonicalDirectory, record.copy(hostPort = spec.hostPort))
+        val password = getServerPassword() ?: return null
         val healthy = healthyPublishedSandboxUrl(listPublishedPorts(sbx, owned.name), spec.hostPort, password)
-            ?: return
+            ?: return "OpenCode did not answer on the new sandbox port yet; Restart the server if the panel stays blank."
         synchronized(lock) {
             serverUrl = healthy
             rememberBrowserAuth(url = healthy)
@@ -1212,6 +1236,7 @@ internal class SbxOpenCodeServerBackend(
         if (getLifecycleState() == OpenCodeServerLifecycleState.RUNNING) {
             updateGlobalEventStream(OpenCodeServerLifecycleState.RUNNING)
         }
+        return null
     }
 
     private fun fail(startId: Long, kind: SbxFailureKind) {
@@ -1652,5 +1677,6 @@ internal class SbxOpenCodeServerBackend(
         private const val INSTALL_V2_TIMEOUT_MILLIS = 5 * 60 * 1000L
         private const val GUEST_V2_VERSION_TIMEOUT_MILLIS = 60_000L
         private const val STAGE_MAX_CHARS = 120
+        private const val REPUBLISH_GRACE_MILLIS = 10_000L
     }
 }

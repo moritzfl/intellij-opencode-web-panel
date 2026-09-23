@@ -643,6 +643,33 @@ class SbxOpenCodeServerBackendTest {
     }
 
     @Test
+    fun takenFixedPortKeepsTheRunningMappingAndReportsTheError() {
+        val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
+        assertNotNull(SbxLaunchSpec.persist(SbxLaunchSpec.fromSettings(settings, directory).copy(
+            useSandbox = true, hostPort = 49123, enableIntellijMcp = false,
+        )))
+        val portCommands = mutableListOf<String>()
+        behavior = { command ->
+            when (command[1]) {
+                "ls" -> listed("running")
+                "ports" -> when {
+                    command.contains("--publish") -> { portCommands += "publish"; SbxCommandResult(1, "address already in use") }
+                    command.contains("--unpublish") -> { portCommands += "unpublish"; SbxCommandResult(0, "") }
+                    else -> SbxCommandResult(0, """[{"host_ip":"127.0.0.1","host_port":49161,"sandbox_port":4096,"protocol":"tcp4"}]""")
+                }
+                else -> SbxCommandResult(0, "")
+            }
+        }
+        var error: String? = null
+        val done = CountDownLatch(1)
+        backend.applyLiveSettings { error = it; done.countDown() }
+        assertTrue(done.await(5, TimeUnit.SECONDS))
+        assertEquals(listOf("publish"), portCommands)
+        assertTrue(error!!.contains("address already in use"))
+        assertNull("Record keeps the port that is actually published", store.recordFor(directory)!!.hostPort)
+    }
+
+    @Test
     fun liveKitApplyAppendsWithoutStoppingTheVm() {
         val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
         val spec = SbxLaunchSpec.fromSettings(settings, directory).copy(

@@ -991,6 +991,12 @@ internal object SbxCli {
         return ports.filter { it.sandboxPort == sandboxPort }
     }
 
+    /** IPv4 loopback mappings of the serve port: the only ones this plugin publishes or removes. */
+    fun loopbackPortMappings(
+        ports: List<SbxPortMapping>,
+        sandboxPort: Int = OpenCodeServerProtocol.SANDBOX_SERVE_PORT,
+    ): List<SbxPortMapping> = sandboxPortMappings(ports, sandboxPort).filter { it.hostIp == "127.0.0.1" }
+
     fun publishedHostPorts(
         ports: List<SbxPortMapping>,
         sandboxPort: Int = OpenCodeServerProtocol.SANDBOX_SERVE_PORT,
