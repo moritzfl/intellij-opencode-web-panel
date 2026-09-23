@@ -553,6 +553,8 @@ internal data class SbxLaunchSpec(
         private fun installLaunchers(directory: Path) {
             Files.createDirectories(directory)
             copyResource("opencode-sbx.sh", directory.resolve(PROJECT_LAUNCHER_UNIX), executable = true)
+            // Git for Windows checks out CRLF by default; Git Bash then fails on `set -o pipefail\r`.
+            Files.writeString(directory.resolve(".gitattributes"), "*.sh text eol=lf\n", StandardCharsets.UTF_8)
             Files.deleteIfExists(directory.resolve(PROJECT_LAUNCHER_WINDOWS))
             // Older releases shipped these guest scripts beside the launcher.
             Files.deleteIfExists(directory.resolve("opencode-sbx-install-v2.sh"))

@@ -213,7 +213,9 @@ class SbxLauncherTest {
         Files.createDirectories(auth.parent)
         Files.writeString(auth, """{"fixture":{"type":"api","key":"fixture-only"}}""")
         Files.writeString(project.resolve("opencode-sbx.yaml"), "canonicalDirectory: ./\nshareHostOpencodeConfig: true\n")
-        val args = runLauncher(launcher(project), project, serve = true)
+        val name = SbxCli.sandboxName(project.toString())
+        val lsJson = """{"sandboxes":[{"name":"$name","workspaces":["$project","${home.resolve(".config/opencode")}:ro"]}]}"""
+        val args = runLauncher(launcher(project), project, serve = true, lsJson = lsJson)
         assertEquals(
             listOf("exec", "-e", "OPENCODE_SERVER_PASSWORD", "-e", "XDG_CONFIG_HOME",
                 "-w", project.toString(), SbxCli.sandboxName(project.toString()),
@@ -438,7 +440,7 @@ class SbxLauncherTest {
         Files.writeString(project.resolve("opencode-sbx.yaml"), "canonicalDirectory: ./\nopenCodeVersion: 2.x\n")
         val args = runLauncher(
             launcher(directory("machine bin")), caller, project.toString(), serve = true, versionExit = 44,
-            lsJson = """{"sandboxes":[{"name":"${SbxCli.sandboxName(project.toString())}"}]}""",
+            lsJson = """{"sandboxes":[{"name":"${SbxCli.sandboxName(project.toString())}","workspaces":["$project"]}]}""",
         )
         assertTrue(args.contains("serve"))
         assertEquals(SbxCli.V2_INSTALL_SCRIPT, Files.readString(temp.root.toPath().resolve("log/install-script")))
@@ -512,7 +514,8 @@ class SbxLauncherTest {
         Files.createDirectories(auth.parent)
         Files.writeString(auth, """{"fixture":{"type":"api","key":"fixture-only"}}""")
         Files.writeString(project.resolve("opencode-sbx.yaml"), "canonicalDirectory: ./\nshareHostOpencodeConfig: true\n")
-        val args = runLauncher(launcher(project), project, "--cli", serve = true)
+        val lsJson = """{"sandboxes":[{"name":"${SbxCli.sandboxName(project.toString())}","workspaces":["$project","${home.resolve(".config/opencode")}:ro"]}]}"""
+        val args = runLauncher(launcher(project), project, "--cli", serve = true, lsJson = lsJson)
         assertEquals(
             listOf(
                 "exec", "-i", "-e", "XDG_CONFIG_HOME",
@@ -747,6 +750,55 @@ class SbxLauncherTest {
     }
 
     @Test
+    fun createMatchesThePluginForTheSameSpec() {
+        val project = directory("project")
+        val home = Files.createDirectories(temp.root.toPath().resolve("home")).toRealPath()
+        Files.createDirectories(home.resolve("data"))
+        Files.createDirectories(project.resolve("docs"))
+        Files.createDirectories(project.resolve("kit"))
+        val yaml = """
+            canonicalDirectory: ./
+            memory: 6G
+            cpus: "3"
+            hostPort: 49200
+            kits:
+              - ./kit
+              - git+https://example.com/kits.git#ref=v1
+            extraMounts:
+              - host: ~/data
+                sandbox: ~/data
+              - host: ./docs
+                sandbox: ./docs
+              - host: ~/data
+                sandbox: data-ro
+                readOnly: true
+              - host: ~/missing
+                sandbox: /home/agent/missing
+        """.trimIndent() + "\n"
+        Files.writeString(project.resolve("opencode-sbx.yaml"), yaml)
+        val spec = SbxLaunchSpec.parseYaml(yaml)!!
+        val resolved = SbxCli.resolveExtraMounts(spec.extraMounts, project.toString(), home.toString())
+            .filter { Files.exists(Path.of(it.hostPath)) }
+        val expected = SbxCli.buildCreateCommand(
+            executable = "sbx",
+            name = SbxCli.sandboxName(project.toString()),
+            workspace = project.toString(),
+            memory = spec.memory,
+            cpus = spec.cpus,
+            hostPort = spec.hostPort,
+            kits = SbxCli.parseKitRefs(spec.kits.joinToString("\n"), home.toString()),
+            extraWorkspaces = SbxCli.extraMountCreateArgs(SbxCli.sandboxProtectMounts(project.toString(), spec.kits, home.toString()), project.toString()) +
+                persistCreateArgs(project) +
+                SbxCli.extraMountCreateArgs(resolved, project.toString()),
+        ).drop(1)
+        assertEquals(expected, runLauncher(launcher(project), project))
+        assertEquals(
+            listOf(home.resolve("data").toString(), project.resolve("docs").toString(), "/home/agent/data-ro"),
+            resolved.map { it.sandboxPath },
+        )
+    }
+
+    @Test
     fun specNameCannotEscapePluginDataDirectory() {
         val project = directory("project")
         val home = Files.createDirectories(temp.root.toPath().resolve("home")).toRealPath()
@@ -855,7 +907,7 @@ class SbxLauncherTest {
                 if [[ -n "${'$'}OCWP_TEST_LS" ]]; then
                   printf '%s\n' "${'$'}OCWP_TEST_LS"
                 elif [[ "${'$'}OCWP_TEST_SERVE" == true ]]; then
-                  printf '{"sandboxes":[{"name":"%s"}]}\n' "${'$'}OCWP_TEST_NAME"
+                  printf '{"sandboxes":[{"name":"%s","workspaces":["%s"]}]}\n' "${'$'}OCWP_TEST_NAME" "${'$'}OCWP_TEST_WORKSPACE"
                 else
                   printf '[]\n'
                 fi ;;
@@ -936,6 +988,7 @@ class SbxLauncherTest {
                         "OCWP_TEST_LOG" to log.toString(),
                         "OCWP_TEST_SERVE" to serve.toString(),
                         "OCWP_TEST_NAME" to SbxCli.sandboxName(script.parent.toString()),
+                        "OCWP_TEST_WORKSPACE" to script.parent.toString(),
                         "OCWP_TEST_CREATE_EXIT" to createExit.toString(),
                         "OCWP_TEST_REMOVE_EXIT" to removeExit.toString(),
                         "OCWP_TEST_VERSION_EXIT" to versionExit.toString(),

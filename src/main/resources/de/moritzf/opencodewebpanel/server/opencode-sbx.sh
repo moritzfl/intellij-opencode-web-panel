@@ -24,6 +24,14 @@
 #
 set -euo pipefail
 
+case "$(uname -s 2>/dev/null || true)" in
+  MINGW*|MSYS*|CYGWIN*)
+    # Git Bash rewrites /-leading argv and env for native programs such as sbx.exe:
+    # /home/agent/... would become C:/Program Files/Git/home/agent/...
+    export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' MSYS2_ENV_CONV_EXCL='*'
+    ;;
+esac
+
 CONTROL_DIR="opencode-sbx"
 SPEC_NAME="opencode-sbx.yaml"
 IN_VM_PORT=4096
@@ -35,7 +43,7 @@ v2_install_script() {
   cat <<'OCWP_V2_INSTALL'
 #!/bin/sh
 # opencode.ai latest can precede this architecture's tarball; retry, then pin npm latest.
-curl -fsSL https://opencode.ai/v2/install -o /tmp/opencode-v2-install.sh || exit 1
+curl -fsSL --connect-timeout 15 --max-time 120 https://opencode.ai/v2/install -o /tmp/opencode-v2-install.sh || exit 1
 if bash /tmp/opencode-v2-install.sh --no-modify-path && test -x "$HOME/.opencode/bin/opencode"; then exit 0; fi
 sleep 2
 if bash /tmp/opencode-v2-install.sh --no-modify-path && test -x "$HOME/.opencode/bin/opencode"; then exit 0; fi
@@ -43,7 +51,7 @@ os=$(uname -s | tr A-Z a-z)
 case "$os" in darwin) ;; *) os=linux ;; esac
 arch=$(uname -m)
 case "$arch" in aarch64) arch=arm64 ;; x86_64) arch=x64 ;; esac
-ver=$(curl -fsSL "https://registry.npmjs.org/@opencode%2fcli-${os}-${arch}/latest" | sed -n "s/.*\"version\":\"\\([^\"]*\\)\".*/\\1/p" | head -1)
+ver=$(curl -fsSL --connect-timeout 15 --max-time 60 "https://registry.npmjs.org/@opencode%2fcli-${os}-${arch}/latest" | sed -n "s/.*\"version\":\"\\([^\"]*\\)\".*/\\1/p" | head -1)
 test -n "$ver" || exit 1
 bash /tmp/opencode-v2-install.sh --no-modify-path --version "$ver" || exit $?
 test -x "$HOME/.opencode/bin/opencode"
@@ -176,7 +184,13 @@ guest_bind_path() {
 }
 
 hash12() {
-  printf '%s' "$1" | openssl dgst -sha256 -r | awk '{print substr($1,1,12)}'
+  if command -v openssl >/dev/null 2>&1; then
+    printf '%s' "$1" | openssl dgst -sha256 -r | awk '{print substr($1,1,12)}'
+  elif command -v shasum >/dev/null 2>&1; then
+    printf '%s' "$1" | shasum -a 256 | awk '{print substr($1,1,12)}'
+  else
+    printf '%s' "$1" | sha256sum | awk '{print substr($1,1,12)}'
+  fi
 }
 CANONICAL="$(identity_path "$CANONICAL")"
 NAME="ide-ocwp-$(hash12 "$CANONICAL")"
@@ -511,6 +525,9 @@ if ! is_absolute "$CANONICAL"; then
 else
   resolved="$(cd "$CANONICAL" && pwd -P)" || exit 1
   CANONICAL="$(identity_path "$resolved")"
+  if [[ "$CANONICAL" != "$(identity_path "$spec_base")" ]]; then
+    echo "opencode-sbx: note: $SPEC mounts $CANONICAL read-write as the workspace." >&2
+  fi
 fi
 # NAME is joined into host paths below (persist, 2.x binary, --recreate cleanup).
 # Same rule as SbxCli.isValidSandboxName.
@@ -524,6 +541,9 @@ if [[ "$valid_name" -ne 1 || ! "$NAME" =~ ^[A-Za-z0-9][A-Za-z0-9.-]+$ ]]; then
 fi
 # Local kit and mount paths are project-relative, including for the machine launcher.
 cd "$CANONICAL"
+
+# Inventory reads below need a running daemon; a stopped one is not proof of absence.
+"$SBX" daemon start >/dev/null 2>&1 || true
 
 sandbox_json() {
   "$SBX" ls --json 2>/dev/null || true
@@ -585,8 +605,16 @@ sandbox_entry_for_name() {
   return 1
 }
 
+# sbx prints Go JSON: `&` is \u0026 and Windows paths use escaped backslashes.
+json_unescape_paths() {
+  printf '%s' "$1" | sed -e 's/\\u0026/\&/g' -e 's/\\u003c/</g' -e 's/\\u003e/>/g' \
+    -e 's#\\/#/#g' -e 's#\\\\#/#g'
+}
+
 entry_has_workspace() {
-  local obj="$1" path="$2" needle
+  local obj path needle
+  obj="$(json_unescape_paths "$1")"
+  path="${2//\\//}"
   needle="\"$path\""
   case "$obj" in
     *"${needle},"*|*"${needle}]"*|*"${needle} "* ) return 0 ;;
@@ -633,8 +661,6 @@ if [[ "$RECREATE" -eq 1 ]]; then
   fi
 fi
 
-"$SBX" daemon start >/dev/null 2>&1 || true
-
 serve_env=()
 PASSWORD="${OPENCODE_SERVER_PASSWORD:-}"
 if [[ "$MODE" == web && -n "$PASSWORD" ]]; then
@@ -642,10 +668,7 @@ if [[ "$MODE" == web && -n "$PASSWORD" ]]; then
   serve_env+=( -e OPENCODE_SERVER_PASSWORD )
 fi
 HOST_CONFIG_DIR="${XDG_CONFIG_HOME:-${HOME}/.config}/opencode"
-if [[ "$SHARE_CONFIG" == "true" ]]; then
-  export XDG_CONFIG_HOME="$(guest_bind_path "${HOST_CONFIG_DIR%/opencode}")"
-  serve_env+=( -e XDG_CONFIG_HOME )
-fi
+HOST_CONFIG_DIR="${HOST_CONFIG_DIR//\\//}"
 PERSIST_GUEST="/home/agent/.local/share/opencode"
 GUEST_OPENCODE_GUEST="/home/agent/.opencode"
 uname_s="$(uname -s 2>/dev/null || true)"
@@ -685,6 +708,8 @@ resolve_host_path() {
   printf '%s' "$host"
 }
 
+# Same guest scripts as SbxCli.extraMountLinkScript. The persist/2.x replace variant copies
+# guest data onto the host only when the host store is still empty.
 link_mount() {
   local host sandbox replace script
   host="$(guest_bind_path "$1")"
@@ -694,18 +719,54 @@ link_mount() {
     script='mkdir -p -- "$(dirname -- "$2")"
 if [ -d "$2" ] && [ ! -L "$2" ]; then
   mkdir -p -- "$1"
-  cp -a -- "$2"/. "$1"/ || exit 1
+  if [ -z "$(ls -A -- "$1" 2>/dev/null)" ]; then
+    cp -a -- "$2"/. "$1"/ || exit 1
+  fi
   rm -rf -- "$2"
 fi
 ln -sfn -- "$1" "$2"'
   else
-    script='mkdir -p -- "$(dirname -- "$2")" && ln -sfn -- "$1" "$2"'
+    script='mkdir -p -- "$(dirname -- "$2")" || exit 1
+if [ -d "$2" ] && [ ! -L "$2" ]; then
+  echo "opencode-link: $2 already exists as a directory in the sandbox" >&2
+  exit 1
+fi
+ln -sfn -- "$1" "$2"'
   fi
   "$SBX" exec "$NAME" sh -c "$script" opencode-link "$host" "$sandbox"
 }
 
+# Resolve mounts like SbxCli.resolveExtraMounts: the same raw host and sandbox path means
+# "mount as-is" (no link); `~` and relative sandbox paths are under the guest home.
+for ((i = 0; i < ${#MOUNT_HOSTS[@]}; i++)); do
+  raw_host="${MOUNT_HOSTS[$i]}"
+  raw_sandbox="${MOUNT_SANDBOXES[$i]}"
+  host="$(resolve_host_path "$raw_host")"
+  if [[ -z "$raw_sandbox" || "$raw_sandbox" == "$raw_host" ]]; then
+    sandbox="$host"
+  else
+    sandbox="$raw_sandbox"
+    if [[ "$sandbox" == "~" || "$sandbox" == "~/"* ]]; then
+      sandbox="/home/agent${sandbox:1}"
+    elif [[ "$sandbox" != /* ]]; then
+      sandbox="/home/agent/${sandbox#./}"
+    fi
+  fi
+  MOUNT_HOSTS[$i]="$host"
+  MOUNT_SANDBOXES[$i]="$sandbox"
+done
+
+EXISTING_ENTRY=""
+if EXISTING_ENTRY="$(sandbox_entry_for_name "$NAME")"; then
+  if ! entry_has_workspace "$EXISTING_ENTRY" "$CANONICAL"; then
+    echo "opencode-sbx: sandbox $NAME exists for another workspace; refusing to use it." >&2
+    exit 1
+  fi
+fi
+
 CREATED=0
-if ! sandbox_entry_for_name "$NAME" >/dev/null; then
+SHARE_MOUNTED=0
+if [[ -z "$EXISTING_ENTRY" ]]; then
   CREATED=1
   PUBLISH="${IN_VM_PORT}/tcp4"
   if [[ "$HOST_PORT" =~ ^[1-9][0-9]*$ ]] && [[ "$HOST_PORT" -le 65535 ]]; then
@@ -743,31 +804,49 @@ if ! sandbox_entry_for_name "$NAME" >/dev/null; then
   if [[ "$OPENCODE_VERSION" == "2.x" && -n "${GUEST_OPENCODE_HOME:-}" && -d "$GUEST_OPENCODE_HOME" && "$GUEST_OPENCODE_HOME" != "$CANONICAL" ]]; then
     create+=( "$GUEST_OPENCODE_HOME" )
   fi
-  if [[ "$SHARE_CONFIG" == "true" && -d "$HOST_CONFIG_DIR" ]]; then
-    MOUNT_HOSTS+=("$HOST_CONFIG_DIR")
-    MOUNT_SANDBOXES+=("$HOST_CONFIG_DIR")
-    MOUNT_READONLY+=("1")
-  fi
+  seen_mounts=$'\n'
   for ((i = 0; i < ${#MOUNT_HOSTS[@]}; i++)); do
-    host="$(resolve_host_path "${MOUNT_HOSTS[$i]}")"
-    MOUNT_HOSTS[$i]="$host"
+    host="${MOUNT_HOSTS[$i]}"
+    # First entry per host wins, like SbxCli.extraMountCreateArgs.
+    [[ "$seen_mounts" == *$'\n'"$host"$'\n'* ]] && continue
+    seen_mounts="$seen_mounts$host"$'\n'
     if [[ -n "$host" && "$host" != "$CANONICAL" && -e "$host" ]]; then
       if [[ "${MOUNT_READONLY[$i]:-0}" == "1" ]]; then
         create+=( "$host:ro" )
       else
         create+=( "$host" )
       fi
+    else
+      echo "opencode-sbx: skipping mount $host: it does not exist on this machine." >&2
     fi
   done
+  # The shared config is mounted exactly at its host spelling (no symlink resolution), so
+  # XDG_CONFIG_HOME below names the same path inside the VM.
+  if [[ "$SHARE_CONFIG" == "true" && -d "$HOST_CONFIG_DIR" ]]; then
+    create+=( "$HOST_CONFIG_DIR:ro" )
+    SHARE_MOUNTED=1
+  fi
   "${create[@]}"
-  for ((i = 0; i < ${#MOUNT_HOSTS[@]}; i++)); do
-    host="${MOUNT_HOSTS[$i]}"
-    sandbox="${MOUNT_SANDBOXES[$i]}"
-    if [[ -n "$sandbox" && "$host" != "$sandbox" ]]; then
-      link_mount "$host" "$sandbox"
-    fi
-  done
+elif [[ "$SHARE_CONFIG" == "true" ]] && {
+  entry_has_workspace "$EXISTING_ENTRY" "$HOST_CONFIG_DIR" || entry_has_workspace "$EXISTING_ENTRY" "$HOST_CONFIG_DIR:ro"
+}; then
+  SHARE_MOUNTED=1
+elif [[ "$SHARE_CONFIG" == "true" ]]; then
+  echo "opencode-sbx: this sandbox was created without the shared OpenCode config; run with --recreate to mount it." >&2
 fi
+if [[ "$SHARE_MOUNTED" -eq 1 ]]; then
+  export XDG_CONFIG_HOME="$(guest_bind_path "${HOST_CONFIG_DIR%/opencode}")"
+  serve_env+=( -e XDG_CONFIG_HOME )
+fi
+
+for ((i = 0; i < ${#MOUNT_HOSTS[@]}; i++)); do
+  host="${MOUNT_HOSTS[$i]}"
+  sandbox="${MOUNT_SANDBOXES[$i]}"
+  [[ -n "$sandbox" && "$host" != "$sandbox" && -e "$host" ]] || continue
+  if [[ "$CREATED" -eq 1 ]] || entry_has_workspace "$EXISTING_ENTRY" "$host" || entry_has_workspace "$EXISTING_ENTRY" "$host:ro"; then
+    link_mount "$host" "$sandbox"
+  fi
+done
 
 if [[ "$PERSIST_SESSIONS" == "true" && -n "${PERSIST_HOME:-}" && -d "$PERSIST_HOME" ]]; then
   if [[ "$CREATED" -eq 1 ]] || workspace_has "$PERSIST_HOME"; then
@@ -780,10 +859,33 @@ if [[ "$OPENCODE_VERSION" == "2.x" && -n "${GUEST_OPENCODE_HOME:-}" && -d "$GUES
   fi
 fi
 
+# A fixed hostPort edited after creation: publish it, then drop the other loopback mappings,
+# like the plugin's live port apply. Mappings on other addresses are left alone.
+port_mappings() {
+  "$SBX" ports "$NAME" --json 2>/dev/null | tr -d '\n' | tr '}' '\n' |
+    sed -n 's/.*"host_ip"[^"]*"\([^"]*\)".*"host_port"[^0-9]*\([0-9][0-9]*\).*"sandbox_port"[^0-9]*\([0-9][0-9]*\).*"protocol"[^"]*"\([^"]*\)".*/\1 \2 \3 \4/p'
+}
+if [[ "$MODE" == web && "$CREATED" -eq 0 && -n "$HOST_PORT" ]]; then
+  mappings="$(port_mappings || true)"
+  if ! printf '%s\n' "$mappings" | grep -q "^127\.0\.0\.1 $HOST_PORT $IN_VM_PORT "; then
+    if "$SBX" ports "$NAME" --publish "127.0.0.1:${HOST_PORT}:${IN_VM_PORT}/tcp4" >/dev/null; then
+      printf '%s\n' "$mappings" | while read -r ip port guest proto; do
+        [[ "$ip" == 127.0.0.1 && "$guest" == "$IN_VM_PORT" && "$port" != "$HOST_PORT" ]] || continue
+        "$SBX" ports "$NAME" --unpublish "${ip}:${port}:${guest}/${proto:-tcp4}" >/dev/null || true
+      done
+    else
+      echo "opencode-sbx: could not publish 127.0.0.1:${HOST_PORT}; keeping the current port mapping." >&2
+    fi
+  fi
+fi
+
+CURL_PASSWORD="$(printf '%s' "$PASSWORD" | sed 's/[\\"]/\\&/g')"
 healthy() {
   local url="$1" body
   if [[ -n "$PASSWORD" ]]; then
-    body="$(curl -fsS --connect-timeout 1 --max-time 2 -u "opencode:${PASSWORD}" "$url" 2>/dev/null)" || return 1
+    # Credentials go through a curl config on stdin, not argv (visible in ps).
+    body="$(printf 'user = "opencode:%s"\n' "$CURL_PASSWORD" |
+      curl -fsS --connect-timeout 1 --max-time 2 -K - "$url" 2>/dev/null)" || return 1
   else
     body="$(curl -fsS --connect-timeout 1 --max-time 2 "$url" 2>/dev/null)" || return 1
   fi

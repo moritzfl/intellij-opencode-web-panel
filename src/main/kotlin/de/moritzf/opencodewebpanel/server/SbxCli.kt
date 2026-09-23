@@ -591,8 +591,12 @@ internal object SbxCli {
         hostHome: String = System.getProperty("user.home").orEmpty(),
     ): List<SbxExtraMount> = mounts.map { mount ->
         val host = posixPath(Path.of(workspace).resolve(expandUserHome(mount.hostPath, hostHome)).normalize().toString())
-        val sandbox = if (mount.sandboxPath.isBlank() || mount.sandboxPath == mount.hostPath) host
-            else posixPath(expandUserHome(mount.sandboxPath, SANDBOX_HOME))
+        val sandbox = if (mount.sandboxPath.isBlank() || mount.sandboxPath == mount.hostPath) {
+            host
+        } else {
+            val expanded = posixPath(expandUserHome(mount.sandboxPath, SANDBOX_HOME))
+            if (isAbsolutePosixPath(expanded)) expanded else "$SANDBOX_HOME/${expanded.removePrefix("./")}"
+        }
         SbxExtraMount(host, sandbox, mount.readOnly)
     }
 
@@ -604,19 +608,31 @@ internal object SbxCli {
 
     const val LINK_ARGV0 = "opencode-link"
 
+    /** Same guest scripts as `link_mount` in `opencode-sbx.sh`. */
     fun extraMountLinkScript(replaceExistingDirectory: Boolean): String {
         return if (replaceExistingDirectory) {
+            // Persist / 2.x stores: host data wins; guest data is only copied into an empty store.
             $$"""
             mkdir -p -- "$(dirname -- "$2")"
             if [ -d "$2" ] && [ ! -L "$2" ]; then
               mkdir -p -- "$1"
-              cp -a -- "$2"/. "$1"/ || exit 1
+              if [ -z "$(ls -A -- "$1" 2>/dev/null)" ]; then
+                cp -a -- "$2"/. "$1"/ || exit 1
+              fi
               rm -rf -- "$2"
             fi
             ln -sfn -- "$1" "$2"
             """.trimIndent()
         } else {
-            $$"""mkdir -p -- "$(dirname -- "$2")" && ln -sfn -- "$1" "$2""""
+            // `ln -sfn` onto a real directory would create the link inside it.
+            $$"""
+            mkdir -p -- "$(dirname -- "$2")" || exit 1
+            if [ -d "$2" ] && [ ! -L "$2" ]; then
+              echo "opencode-link: $2 already exists as a directory in the sandbox" >&2
+              exit 1
+            fi
+            ln -sfn -- "$1" "$2"
+            """.trimIndent()
         }
     }
 
