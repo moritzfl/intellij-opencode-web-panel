@@ -14,6 +14,9 @@ import com.intellij.openapi.components.Storage
 @Service(Service.Level.APP)
 internal class SbxSandboxRecordStore : PersistentStateComponent<SbxSandboxRecordStore> {
     var records: MutableMap<String, SbxSandboxRecordBean> = HashMap()
+
+    /** Directory → [SbxExposure.fingerprint] the user allowed for sandbox creation. */
+    var acknowledgedExposure: MutableMap<String, String> = HashMap()
     private val lock = Any()
 
     override fun getState(): SbxSandboxRecordStore {
@@ -21,6 +24,7 @@ internal class SbxSandboxRecordStore : PersistentStateComponent<SbxSandboxRecord
         synchronized(lock) {
             snapshot.records = HashMap()
             records.forEach { (key, value) -> snapshot.records[key] = value.copy() }
+            snapshot.acknowledgedExposure = HashMap(acknowledgedExposure)
         }
         return snapshot
     }
@@ -34,12 +38,36 @@ internal class SbxSandboxRecordStore : PersistentStateComponent<SbxSandboxRecord
                 val bean = value.takeIf { it.sandboxId.isNotBlank() && it.name.isNotBlank() } ?: return@forEach
                 records[directory] = bean.copy()
             }
+            acknowledgedExposure = HashMap(state.acknowledgedExposure.filter { (key, value) ->
+                key.isNotBlank() && value.isNotBlank()
+            })
         }
     }
 
     fun recordFor(canonicalDirectory: String): SbxSandboxRecord? {
         val key = OpenCodeServerProtocol.filesystemPathKey(canonicalDirectory) ?: canonicalDirectory
         return synchronized(lock) { records[key]?.toRecord() }
+    }
+
+    /** Directory that owns [sandboxId], if any. */
+    fun directoryForSandboxId(sandboxId: String): String? {
+        if (sandboxId.isBlank()) return null
+        return synchronized(lock) {
+            records.entries.firstOrNull { it.value.sandboxId == sandboxId }?.value?.workspace
+        }
+    }
+
+    fun isExposureAcknowledged(canonicalDirectory: String, fingerprint: String): Boolean {
+        if (fingerprint.isBlank()) return true
+        val key = OpenCodeServerProtocol.filesystemPathKey(canonicalDirectory) ?: canonicalDirectory
+        return synchronized(lock) { acknowledgedExposure[key] == fingerprint }
+    }
+
+    fun acknowledgeExposure(canonicalDirectory: String, fingerprint: String) {
+        val key = OpenCodeServerProtocol.filesystemPathKey(canonicalDirectory) ?: canonicalDirectory
+        synchronized(lock) {
+            if (fingerprint.isBlank()) acknowledgedExposure.remove(key) else acknowledgedExposure[key] = fingerprint
+        }
     }
 
     fun save(canonicalDirectory: String, record: SbxSandboxRecord) {

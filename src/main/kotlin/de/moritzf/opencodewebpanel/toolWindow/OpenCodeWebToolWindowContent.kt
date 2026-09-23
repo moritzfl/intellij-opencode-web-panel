@@ -2017,12 +2017,26 @@ internal class OpenCodeWebToolWindowContent(
         pageLoadTargetUrl = null
         updateLifecycleIndicator()
         val sbx = serverManager as? SbxOpenCodeServerBackend
-        val foreign = sbx?.lastFailure() == SbxFailureKind.FOREIGN_SANDBOX
+        val failure = sbx?.lastFailure()
+        val foreign = failure == SbxFailureKind.FOREIGN_SANDBOX
+        val recoveryAction = when (failure) {
+            SbxFailureKind.EXPOSURE_UNCONFIRMED -> OpenCodeStartupRecoveryAction(
+                "Allow and Start",
+                "Allow the host access listed above for this project's sandbox, then start it",
+            ) {
+                if (confirmOpenCodeSandboxExposure(project, sbx.pendingExposure())) {
+                    sbx.acknowledgeExposure()
+                    restartOpenCodeServer()
+                }
+            }
+            else -> null
+        }
         startupErrorPanel.showFailure(
             OpenCodeSettingsState.getInstance().executablePath(),
             serverManager.getServerLogFile(),
             offerAutomaticPort = serverManager.offersHostPortControls,
             failureMessage = serverManager.startFailureMessage(),
+            recoveryAction = recoveryAction,
             onAdoptForeign = if (foreign) {
                 {
                     if (sbx.adoptForeignSandbox()) restartOpenCodeServer()

@@ -43,6 +43,7 @@ import de.moritzf.opencodewebpanel.features.OpenCodeReleaseUpdates
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState
+import de.moritzf.opencodewebpanel.server.SbxExposure
 import de.moritzf.opencodewebpanel.server.SbxOpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.SbxSandboxRecord
 import de.moritzf.opencodewebpanel.server.SbxSandboxRecordStore
@@ -650,6 +651,22 @@ internal fun confirmOpenCodeSandboxImageUpdate(project: Project?): Boolean {
             "until they are recreated.",
     )
         .yesText("Update and Recreate")
+        .noText("Cancel")
+        .icon(Messages.getWarningIcon())
+        .ask(project)
+}
+
+internal fun confirmOpenCodeSandboxExposure(project: Project?, exposure: SbxExposure?): Boolean {
+    val items = exposure?.items.orEmpty()
+    if (items.isEmpty()) return true
+    return MessageDialogBuilder.yesNo(
+        "Allow Sandbox Access",
+        "This project's opencode-sbx.yaml gives its Docker Sandbox access beyond the project:\n\n" +
+            items.joinToString("\n") { "• $it" } +
+            "\n\nKits can grant network access and run setup inside the VM. " +
+            "Allow only if you trust the source of this file. You are asked again when these grants change.",
+    )
+        .yesText("Allow and Start")
         .noText("Cancel")
         .icon(Messages.getWarningIcon())
         .ask(project)

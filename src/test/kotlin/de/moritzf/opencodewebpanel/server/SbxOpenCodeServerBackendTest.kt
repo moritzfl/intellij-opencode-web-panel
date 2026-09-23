@@ -58,6 +58,7 @@ class SbxOpenCodeServerBackendTest {
     private lateinit var record: SbxSandboxRecord
     private lateinit var backend: SbxOpenCodeServerBackend
     private var createWorkingDirectory: Path? = null
+    private var trusted = true
     private var behavior: (List<String>) -> SbxCommandResult = { command ->
         when (command[1]) {
             "ls" -> listed()
@@ -98,6 +99,7 @@ class SbxOpenCodeServerBackendTest {
             },
             { store },
             executor,
+            trustCheck = { _, _ -> trusted },
         )
     }
 
@@ -240,6 +242,7 @@ class SbxOpenCodeServerBackendTest {
             },
             { store },
             extra,
+            trustCheck = { _, _ -> trusted },
         )
         try {
             streaming.installOpenCodeV2(project)
@@ -393,6 +396,7 @@ class SbxOpenCodeServerBackendTest {
             useSandbox = true, kits = listOf("./first-kit", "./second-kit"), enableIntellijMcp = false,
         )
         assertNotNull(SbxLaunchSpec.persist(spec))
+        acknowledge(spec)
         val added = mutableListOf<String>()
         behavior = { command ->
             when (command[1]) {
@@ -429,6 +433,7 @@ class SbxOpenCodeServerBackendTest {
             hostPort = 49123, enableIntellijMcp = false,
         )
         assertNotNull(SbxLaunchSpec.persist(spec))
+        acknowledge(spec)
         var createArgs: List<String>? = null
         behavior = { command ->
             when (command[1]) {
@@ -459,6 +464,60 @@ class SbxOpenCodeServerBackendTest {
         assertEquals(spec, SbxLaunchSpec.load(directory))
         assertTrue(backend.startFailureMessage()!!.contains("Create sandbox failed (exit 21)"))
         assertTrue(backend.startFailureMessage()!!.contains("kit source not allowed"))
+    }
+
+    @Test
+    fun untrustedProjectNeverCreatesASandbox() {
+        store.remove(directory)
+        trusted = false
+        OpenCodeSettingsState.getInstance().sbxNetworkPolicyConsent = true
+        val spec = SbxLaunchSpec.fromSettings(OpenCodeSettingsState.getInstance(), directory)
+            .copy(useSandbox = true, enableIntellijMcp = false)
+        assertNotNull(SbxLaunchSpec.persist(spec))
+        behavior = { command -> if (command[1] == "ls") SbxCommandResult(0, """{"sandboxes":[]}""") else SbxCommandResult(0, "") }
+        backend.ensureStarted(project, directory, { false }, {}, {})
+        drain()
+        assertFalse(calls.contains("create"))
+        assertEquals(SbxFailureKind.UNTRUSTED_PROJECT, backend.lastFailure())
+    }
+
+    @Test
+    fun unacknowledgedHostAccessBlocksCreateUntilAllowed() {
+        store.remove(directory)
+        OpenCodeSettingsState.getInstance().sbxNetworkPolicyConsent = true
+        val outsideDir = java.nio.file.Files.createTempDirectory("ocwp-outside").toRealPath()
+        outsideDir.toFile().deleteOnExit()
+        val outside = outsideDir.toString()
+        val spec = SbxLaunchSpec.fromSettings(OpenCodeSettingsState.getInstance(), directory).copy(
+            useSandbox = true, enableIntellijMcp = false,
+            extraMounts = listOf(SbxExtraMount(outside, outside)),
+        )
+        assertNotNull(SbxLaunchSpec.persist(spec))
+        behavior = { command ->
+            when (command[1]) {
+                "ls" -> SbxCommandResult(0, """{"sandboxes":[]}""")
+                "create" -> SbxCommandResult(21, "stop after create")
+                else -> SbxCommandResult(0, "")
+            }
+        }
+        backend.ensureStarted(project, directory, { false }, {}, {})
+        drain()
+        assertFalse(calls.contains("create"))
+        assertEquals(SbxFailureKind.EXPOSURE_UNCONFIRMED, backend.lastFailure())
+        assertTrue(backend.startFailureMessage()!!.contains("Host path mounted read-write: $outside"))
+
+        backend.acknowledgeExposure()
+        backend.ensureStarted(project, directory, { false }, {}, {})
+        drain()
+        assertTrue(calls.contains("create"))
+
+        calls.clear()
+        store.remove(directory)
+        assertNotNull(SbxLaunchSpec.persist(spec.copy(shareHostOpencodeConfig = true)))
+        backend.ensureStarted(project, directory, { false }, {}, {})
+        drain()
+        assertFalse("A changed grant asks again", calls.contains("create"))
+        assertEquals(SbxFailureKind.EXPOSURE_UNCONFIRMED, backend.lastFailure())
     }
 
     @Test
@@ -806,6 +865,10 @@ class SbxOpenCodeServerBackendTest {
     }
 
     private fun drain() = executor.submit {}.get(10, TimeUnit.SECONDS)
+
+    private fun acknowledge(spec: SbxLaunchSpec) {
+        store.acknowledgeExposure(directory, SbxExposure.of(SbxLaunchSpec.load(directory) ?: spec, directory).fingerprint)
+    }
 
     private fun listed(status: String = "running", workspaces: List<String> = listOf(directory)): SbxCommandResult {
         val listedWorkspaces = workspaces.joinToString(",") { "\"${it.replace("\\", "\\\\")}\"" }

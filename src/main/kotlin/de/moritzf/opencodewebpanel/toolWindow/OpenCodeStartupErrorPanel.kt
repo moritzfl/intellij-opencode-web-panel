@@ -4,6 +4,7 @@ import com.intellij.icons.AllIcons
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.text.StringUtil
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTextArea
@@ -84,6 +85,9 @@ internal class OpenCodeStartupErrorPanel(
         toolTipText = "Remove the unmatched sandbox and create one owned by this panel"
         isVisible = false
     }
+    private val recoveryButton = JButton().apply {
+        isVisible = false
+    }
     private val logArea = JBTextArea().apply {
         isEditable = false
         lineWrap = false
@@ -114,6 +118,8 @@ internal class OpenCodeStartupErrorPanel(
                         isOpaque = false
                         alignmentX = 0f
                         add(retryButton)
+                        add(Box.createHorizontalStrut(JBUI.scale(8)))
+                        add(recoveryButton)
                         add(Box.createHorizontalStrut(JBUI.scale(8)))
                         add(useAutoPortButton)
                         add(Box.createHorizontalStrut(JBUI.scale(8)))
@@ -151,21 +157,29 @@ internal class OpenCodeStartupErrorPanel(
         failureMessage: String? = null,
         onAdoptForeign: (() -> Unit)? = null,
         onCreateNewSandbox: (() -> Unit)? = null,
+        recoveryAction: OpenCodeStartupRecoveryAction? = null,
     ) {
         logFile = serverLogFile
         val cancelled = failureMessage?.contains("cancelled", ignoreCase = true) == true
         titleLabel.text = if (cancelled) "Start cancelled" else "Could not start OpenCode"
-        messageLabel.text = failureMessage
+        messageLabel.text = failureMessage?.let(::messageHtml)
             ?: "OpenCode was started as \u201C$executable\u201D but the server did not become available."
         adoptSandboxButton.isVisible = onAdoptForeign != null
         createNewSandboxButton.isVisible = onCreateNewSandbox != null
         adoptSandboxButton.actionListeners.forEach { adoptSandboxButton.removeActionListener(it) }
         createNewSandboxButton.actionListeners.forEach { createNewSandboxButton.removeActionListener(it) }
+        recoveryButton.actionListeners.forEach { recoveryButton.removeActionListener(it) }
         if (onAdoptForeign != null) {
             adoptSandboxButton.addActionListener { onAdoptForeign() }
         }
         if (onCreateNewSandbox != null) {
             createNewSandboxButton.addActionListener { onCreateNewSandbox() }
+        }
+        recoveryButton.isVisible = recoveryAction != null
+        if (recoveryAction != null) {
+            recoveryButton.text = recoveryAction.label
+            recoveryButton.toolTipText = recoveryAction.tooltip
+            recoveryButton.addActionListener { recoveryAction.run() }
         }
         ApplicationManager.getApplication().executeOnPooledThread {
             val executableFound = runCatching { OpenCodeServerProtocol.detectExecutablePath(executable) != null }
@@ -178,7 +192,7 @@ internal class OpenCodeStartupErrorPanel(
             val portConflict = executableFound && fixedPort != null && OpenCodeServerProtocol.logIndicatesPortConflict(logTail)
             ApplicationManager.getApplication().invokeLater {
                 messageLabel.text = when {
-                    !failureMessage.isNullOrBlank() -> failureMessage
+                    !failureMessage.isNullOrBlank() -> messageHtml(failureMessage)
                     !executableFound ->
                         "The OpenCode executable \u201C$executable\u201D was not found. " +
                             "Configure its location in the settings or install OpenCode."
@@ -199,4 +213,15 @@ internal class OpenCodeStartupErrorPanel(
             }
         }
     }
+
+    private fun messageHtml(message: String): String {
+        if ('\n' !in message) return message
+        return "<html>" + StringUtil.escapeXmlEntities(message).replace("\n", "<br>") + "</html>"
+    }
 }
+
+internal data class OpenCodeStartupRecoveryAction(
+    val label: String,
+    val tooltip: String,
+    val run: () -> Unit,
+)

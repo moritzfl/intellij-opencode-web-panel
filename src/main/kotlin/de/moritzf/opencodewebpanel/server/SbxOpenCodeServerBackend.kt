@@ -1,5 +1,6 @@
 package de.moritzf.opencodewebpanel.server
 
+import com.intellij.ide.trustedProjects.TrustedProjects
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.progress.ProgressIndicator
@@ -59,7 +60,17 @@ internal enum class SbxFailureKind {
     INSTALL_V2_FAILED,
     INVALID_V2_BINARY,
     CANCELLED,
+    UNTRUSTED_PROJECT,
+    EXPOSURE_UNCONFIRMED,
 }
+
+private fun defaultSandboxTrustCheck(project: Project?, directory: String): Boolean = runCatching {
+    if (project != null && !project.isDisposed) {
+        TrustedProjects.isProjectTrusted(project)
+    } else {
+        TrustedProjects.isProjectTrusted(Path.of(directory))
+    }
+}.getOrDefault(false)
 
 internal class SbxOpenCodeServerBackend(
     private val canonicalDirectory: String,
@@ -68,6 +79,7 @@ internal class SbxOpenCodeServerBackend(
     private val lifecycleExecutor: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "OpenCode-Sbx-Lifecycle").apply { isDaemon = true }
     },
+    private val trustCheck: (Project?, String) -> Boolean = ::defaultSandboxTrustCheck,
 ) : OpenCodeServerBackend {
 
     override val backendId: String = "sbx:${SbxCli.sandboxName(canonicalDirectory)}"
@@ -112,6 +124,11 @@ internal class SbxOpenCodeServerBackend(
     private var lastForeignSandbox: SbxSandboxListEntry? = null
     private var pendingCreateStaleReasons: List<String> = emptyList()
     private var warnedCreateSnapshot: String? = null
+    private var pendingExposure: SbxExposure? = null
+
+    /** Trust of the project that last asked for a start; health restarts have no project. */
+    @Volatile
+    private var requesterTrusted: Boolean? = null
 
     private var checkScheduledFuture: ScheduledFuture<*>? = null
     private val globalEventStream = OpenCodeGlobalEventStream()
@@ -191,6 +208,30 @@ internal class SbxOpenCodeServerBackend(
                     synchronized(lock) { lastFailureDetails.orEmpty() }
             SbxFailureKind.CANCELLED ->
                 "Start was cancelled."
+            SbxFailureKind.UNTRUSTED_PROJECT ->
+                "This project is not trusted, so its opencode-sbx.yaml is not used to create a Docker Sandbox. " +
+                    "Trust the project, or switch the runtime to Host (native CLI)."
+            SbxFailureKind.EXPOSURE_UNCONFIRMED -> {
+                val items = synchronized(lock) { pendingExposure?.items }.orEmpty()
+                "opencode-sbx.yaml gives this sandbox access beyond the project:\n" +
+                    items.joinToString("\n") { "• $it" } +
+                    "\nReview the file, then choose Allow and Start."
+            }
+        }
+    }
+
+    fun pendingExposure(): SbxExposure? = synchronized(lock) { pendingExposure }
+
+    /**
+     * Records the user's consent to the grants in the current project spec. Called from the
+     * failure card and from settings Apply (the user edited those values themselves).
+     */
+    fun acknowledgeExposure(spec: SbxLaunchSpec? = SbxLaunchSpec.load(canonicalDirectory)) {
+        val exposure = spec?.let { SbxExposure.of(it, canonicalDirectory) } ?: return
+        recordStore().acknowledgeExposure(canonicalDirectory, exposure.fingerprint)
+        synchronized(lock) {
+            pendingExposure = null
+            if (lastFailure == SbxFailureKind.EXPOSURE_UNCONFIRMED) lastFailure = SbxFailureKind.NONE
         }
     }
 
@@ -566,6 +607,9 @@ internal class SbxOpenCodeServerBackend(
                 notifyStartCallbacks(listOf(callback), success = false)
                 return
             }
+            if (project != null && !project.isDisposed) {
+                requesterTrusted = trustCheck(project, canonicalDirectory)
+            }
             if (replaceCurrent && starting) {
                 startSequence++
                 starting = false
@@ -732,6 +776,7 @@ internal class SbxOpenCodeServerBackend(
             if (owned != null && !missingExtraMount) {
                 val current = record
                 if (current.shareHostConfig == shareHostConfig) {
+                    if (appendsKits(current, desiredKits) && !gateSandboxProvisioning(startId, spec)) return
                     record = appendUniqueKits(sbx, name, current, desiredKits, startId)
                 }
             }
@@ -740,6 +785,7 @@ internal class SbxOpenCodeServerBackend(
                     record.kits != kitsText ||
                     record.shareHostConfig != shareHostConfig
                 )
+            if ((provisionChanged || record == null || owned == null) && !gateSandboxProvisioning(startId, spec)) return
             if (provisionChanged) {
                 removeOwnedSandbox()
                 record = null
@@ -1014,6 +1060,25 @@ internal class SbxOpenCodeServerBackend(
             thisLogger().warn("Could not publish sandbox port ${SbxCli.publishSpec(desiredHostPort)}: ${published.output}")
         }
         return published.exitCode == 0
+    }
+
+    private fun appendsKits(record: SbxSandboxRecord, desiredKits: List<String>): Boolean {
+        val previousKits = SbxCli.parseLineList(record.kits)
+        return desiredKits.size > previousKits.size && desiredKits.take(previousKits.size) == previousKits
+    }
+
+    /** Fails the start unless the project is trusted and the spec's host grants were acknowledged. */
+    private fun gateSandboxProvisioning(startId: Long, spec: SbxLaunchSpec): Boolean {
+        val trusted = requesterTrusted ?: trustCheck(null, canonicalDirectory)
+        if (!trusted) {
+            fail(startId, SbxFailureKind.UNTRUSTED_PROJECT)
+            return false
+        }
+        val exposure = SbxExposure.of(spec, canonicalDirectory)
+        if (recordStore().isExposureAcknowledged(canonicalDirectory, exposure.fingerprint)) return true
+        synchronized(lock) { pendingExposure = exposure }
+        fail(startId, SbxFailureKind.EXPOSURE_UNCONFIRMED)
+        return false
     }
 
     private fun appendUniqueKits(

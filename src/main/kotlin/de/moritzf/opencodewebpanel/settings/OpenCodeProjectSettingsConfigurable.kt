@@ -33,9 +33,11 @@ import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleListener
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.server.SbxCli
+import de.moritzf.opencodewebpanel.server.SbxExposure
 import de.moritzf.opencodewebpanel.server.SbxExtraMount
 import de.moritzf.opencodewebpanel.server.SbxLaunchSpec
 import de.moritzf.opencodewebpanel.server.SbxOpenCodeVersion
+import de.moritzf.opencodewebpanel.server.SbxSandboxRecordStore
 import de.moritzf.opencodewebpanel.server.formatOpenCodeServerLifecycleStatusText
 import de.moritzf.opencodewebpanel.server.formatOpenCodeServerStatusDetail
 import de.moritzf.opencodewebpanel.toolWindow.confirmOpenCodeSandboxBinaryUpgrade
@@ -440,14 +442,23 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
             portChanged = storedDestinationSpec?.hostPort != spec.hostPort,
             historyNote = sandboxSessionRetentionSummary(spec.canonicalDirectory),
         )
-        if (preview.changes.isNotEmpty() &&
+        val exposure = SbxExposure.of(spec, spec.canonicalDirectory)
+        val exposureUnacknowledged = spec.useSandbox && !exposure.isEmpty &&
+            !SbxSandboxRecordStore.getInstance().isExposureAcknowledged(spec.canonicalDirectory, exposure.fingerprint)
+        if ((preview.changes.isNotEmpty() || exposureUnacknowledged) &&
             !ApplicationManager.getApplication().isUnitTestMode
         ) {
             val recreate = preview.effect == de.moritzf.opencodewebpanel.server.SbxApplyEffect.RECREATE
-            val confirmed = MessageDialogBuilder.yesNo(preview.confirmTitle(), preview.message())
+            val message = if (exposureUnacknowledged) {
+                preview.message() + "\n\nThe sandbox gets access beyond the project:\n" +
+                    exposure.items.joinToString("\n") { "• $it" }
+            } else {
+                preview.message()
+            }
+            val confirmed = MessageDialogBuilder.yesNo(preview.confirmTitle(), message)
                 .yesText(if (recreate) "Recreate" else "Apply")
                 .noText("Cancel")
-                .icon(if (recreate) Messages.getWarningIcon() else Messages.getInformationIcon())
+                .icon(if (recreate || exposureUnacknowledged) Messages.getWarningIcon() else Messages.getInformationIcon())
                 .ask(panel)
             if (!confirmed) throw ConfigurationException("Cancelled.")
         }
@@ -460,6 +471,8 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         if (SbxLaunchSpec.persist(specToPersist) == null) {
             throw ConfigurationException("Could not save ${SbxLaunchSpec.PROJECT_SPEC_NAME}. Check the project directory permissions and IDE log.")
         }
+        // The user reviewed these values in the form (and the dialog above when they grant host access).
+        SbxSandboxRecordStore.getInstance().acknowledgeExposure(spec.canonicalDirectory, exposure.fingerprint)
         settings.projectDirectoryMode = nextMode.name
         settings.openCodeProjectDirectory = nextDirectory
         settings.portMode = selectedPortMode().name
