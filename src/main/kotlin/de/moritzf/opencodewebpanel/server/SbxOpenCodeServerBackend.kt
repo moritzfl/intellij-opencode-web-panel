@@ -145,6 +145,7 @@ internal class SbxOpenCodeServerBackend(
     fun adoptForeignSandbox(): Boolean {
         val entry = synchronized(lock) { lastForeignSandbox } ?: return false
         if (entry.agent != SbxCli.AGENT) return false
+        if (ownedByAnotherDirectory(entry)) return false
         if (entry.workspaces.none { OpenCodeServerProtocol.isSameFilesystemPath(it, canonicalDirectory) }) {
             return false
         }
@@ -167,6 +168,8 @@ internal class SbxOpenCodeServerBackend(
 
     fun discardForeignSandbox() {
         val entry = synchronized(lock) { lastForeignSandbox } ?: return
+        // Never remove a VM this plugin records for another directory.
+        if (ownedByAnotherDirectory(entry)) return
         synchronized(lock) {
             if (disposed) return
             runOnLifecycle {
@@ -725,7 +728,7 @@ internal class SbxOpenCodeServerBackend(
             val listed = parseSandboxList(ls)
             val owned = record?.let { SbxCli.findOwnedSandbox(listed, it) }
             if (owned != null) name = owned.name
-            val conflicting = SbxCli.conflictingSandbox(listed, name, canonicalDirectory)
+            val conflicting = SbxCli.conflictingSandbox(listed, name, canonicalDirectory, ::ownedByAnotherDirectory)
             if (owned == null && conflicting != null) {
                 synchronized(lock) { lastForeignSandbox = conflicting }
                 fail(startId, SbxFailureKind.FOREIGN_SANDBOX)
@@ -1067,6 +1070,8 @@ internal class SbxOpenCodeServerBackend(
     }
 
     private fun appendsKits(record: SbxSandboxRecord, desiredKits: List<String>): Boolean {
+        // Adopted VMs keep unknown provisioning: their kits may already be installed.
+        if (record.adopted) return false
         val previousKits = SbxCli.parseLineList(record.kits)
         return desiredKits.size > previousKits.size && desiredKits.take(previousKits.size) == previousKits
     }
@@ -1092,10 +1097,8 @@ internal class SbxOpenCodeServerBackend(
         desiredKits: List<String>,
         startId: Long? = null,
     ): SbxSandboxRecord {
+        if (!appendsKits(record, desiredKits)) return record
         val previousKits = SbxCli.parseLineList(record.kits)
-        if (desiredKits.size <= previousKits.size || desiredKits.take(previousKits.size) != previousKits) {
-            return record
-        }
         var current = record
         for (index in previousKits.size until desiredKits.size) {
             if (startId != null && !isCurrentStart(startId)) return current
@@ -1195,10 +1198,15 @@ internal class SbxOpenCodeServerBackend(
         val owned = SbxCli.findOwnedSandbox(listed, record)
         if (owned != null) {
             requiredCommand("Remove sandbox", SbxCli.buildRmForceCommand(executable, owned.name), 60_000L)
-        } else if (SbxCli.conflictingSandbox(listed, record.name, canonicalDirectory) != null) {
+        } else if (SbxCli.conflictingSandbox(listed, record.name, canonicalDirectory, ::ownedByAnotherDirectory) != null) {
             throw SbxCommandFailure("Remove sandbox", -1, "Sandbox ownership changed; nothing was removed.")
         }
         recordStore().remove(canonicalDirectory)
+    }
+
+    private fun ownedByAnotherDirectory(entry: SbxSandboxListEntry): Boolean {
+        val owner = recordStore().directoryForSandboxId(entry.id) ?: return false
+        return !OpenCodeServerProtocol.isSameFilesystemPath(owner, canonicalDirectory)
     }
 
     private fun dumpDiagnose(output: String) {

@@ -729,6 +729,53 @@ class SbxOpenCodeServerBackendTest {
     }
 
     @Test
+    fun adoptedSandboxNeverReceivesKitAdds() {
+        val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
+        val spec = SbxLaunchSpec.fromSettings(settings, directory).copy(
+            useSandbox = true, kits = listOf("./team-kit"), enableIntellijMcp = false,
+        )
+        assertNotNull(SbxLaunchSpec.persist(spec))
+        store.save(directory, record.copy(adopted = true, kits = ""))
+        behavior = { command ->
+            when (command[1]) {
+                "ls" -> listed("stopped")
+                "exec" -> SbxCommandResult(1, "stop before serve")
+                else -> SbxCommandResult(0, "")
+            }
+        }
+        backend.ensureStarted(project, directory, { false }, {}, {})
+        drain()
+        assertFalse(calls.contains("kit"))
+        backend.applyLiveSettings()
+        drain()
+        assertFalse(calls.contains("kit"))
+    }
+
+    @Test
+    fun anotherProjectsVmMountingThisDirectoryIsNotForeign() {
+        store.remove(directory)
+        val other = "/tmp/other-project"
+        store.save(other, SbxSandboxRecord("other-id", "ide-ocwp-other", "opencode", other))
+        val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
+        assertNotNull(SbxLaunchSpec.persist(SbxLaunchSpec.fromSettings(settings, directory).copy(useSandbox = true, enableIntellijMcp = false)))
+        behavior = { command ->
+            when (command[1]) {
+                "ls" -> SbxCommandResult(
+                    0,
+                    """{"sandboxes":[{"id":"other-id","name":"ide-ocwp-other","agent":"opencode","status":"running","workspaces":["$other","$directory"]}]}""",
+                )
+                "create" -> SbxCommandResult(21, "stop after create")
+                else -> SbxCommandResult(0, "")
+            }
+        }
+        backend.ensureStarted(project, directory, { false }, {}, {})
+        drain()
+        assertNull(backend.foreignSandbox())
+        assertTrue(calls.contains("create"))
+        assertFalse(calls.contains("rm"))
+    }
+
+    @Test
     fun liveProjectProgressIsDisposedOnEdtWithoutMaskingStartupResult() {
         val liveProject = MockProject(null, disposable.disposable)
         val disposed = CountDownLatch(1)

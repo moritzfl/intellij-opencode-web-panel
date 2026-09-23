@@ -612,6 +612,10 @@ class SbxCliTest {
         assertEquals(entries.single(), SbxCli.conflictingSandbox(entries, "ide-ocwp-spike", "/tmp/other"))
         assertEquals(entries.single(), SbxCli.conflictingSandbox(entries, "other-name", workspace))
         assertNull(SbxCli.conflictingSandbox(entries, "other-name", "/tmp/other"))
+        assertNull(
+            "A VM recorded for another project may mount this directory as an extra workspace",
+            SbxCli.conflictingSandbox(entries, "other-name", workspace) { true },
+        )
     }
 
     @Test

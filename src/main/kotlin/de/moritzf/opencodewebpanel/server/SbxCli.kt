@@ -938,13 +938,20 @@ internal object SbxCli {
         return entries.firstOrNull { record.matches(it) }
     }
 
+    /**
+     * A VM that already carries this [name], or mounts [workspace] read-write and is not recorded
+     * as another directory's sandbox. Another project may legitimately mount this directory as an
+     * extra workspace; that VM is not a candidate to adopt or discard.
+     */
     fun conflictingSandbox(
         entries: List<SbxSandboxListEntry>,
         name: String,
         workspace: String,
+        ownedElsewhere: (SbxSandboxListEntry) -> Boolean = { false },
     ): SbxSandboxListEntry? {
         return entries.firstOrNull { entry ->
             entry.name == name ||
+                !ownedElsewhere(entry) &&
                 entry.workspaces.any { OpenCodeServerProtocol.isSameFilesystemPath(it, workspace) }
         }
     }
