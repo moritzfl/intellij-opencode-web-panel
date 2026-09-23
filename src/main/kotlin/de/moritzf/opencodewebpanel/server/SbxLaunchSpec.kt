@@ -286,6 +286,70 @@ internal data class SbxLaunchSpec(
             "schemaVersion", "canonicalDirectory", "name", "memory", "cpus", "openCodeVersion", "hostPort",
         ) + BOOLEAN_KEYS.map { it.first }
 
+        /** Keys [toYaml] owns; any other top-level block in a hand-edited spec is kept as written. */
+        private val WRITTEN_KEYS = KNOWN_SCALAR_KEYS + setOf("kits", "extraMounts")
+
+        private data class YamlBlock(val key: String?, val lines: List<String>)
+
+        private fun yamlBlocks(text: String): List<YamlBlock> {
+            val blocks = ArrayList<YamlBlock>()
+            var key: String? = null
+            var lines = ArrayList<String>()
+            for (line in text.removeSuffix("\n").split('\n').map { it.removeSuffix("\r") }) {
+                val top = TOP_LEVEL_KEY.matchEntire(stripYamlComment(line).trimEnd())
+                if (top != null && !line.startsWith(" ") && !line.startsWith("-")) {
+                    if (key != null || lines.isNotEmpty()) blocks += YamlBlock(key, lines)
+                    key = top.groupValues[1]
+                    lines = arrayListOf(line)
+                } else {
+                    lines += line
+                }
+            }
+            if (key != null || lines.isNotEmpty()) blocks += YamlBlock(key, lines)
+            return blocks
+        }
+
+        private fun normalizedBlock(lines: List<String>): List<String> = lines
+            .map { stripYamlComment(it).trimEnd() }
+            .filter { it.isNotBlank() }
+            .map { line ->
+                val scalar = TOP_LEVEL_KEY.matchEntire(line)
+                if (scalar != null && scalar.groupValues[2].isNotBlank()) {
+                    "${scalar.groupValues[1]}: ${unquote(scalar.groupValues[2].trim())}"
+                } else {
+                    val item = LIST_ITEM.matchEntire(line.trim())
+                    if (item != null) "- ${unquote(item.groupValues[1].trim())}" else line.trim()
+                }
+            }
+
+        /**
+         * Applies [generated] (from [toYaml]) to a spec someone may have edited by hand: comments,
+         * key order, unknown keys and unchanged values keep their original text; changed keys are
+         * replaced in place, removed ones dropped, new ones appended.
+         */
+        internal fun mergeYaml(existing: String, generated: String): String {
+            val next = yamlBlocks(generated).filter { it.key != null }.associateBy { it.key!! }
+            val out = ArrayList<String>()
+            val written = HashSet<String>()
+            for (block in yamlBlocks(existing)) {
+                val key = block.key
+                if (key == null || key !in WRITTEN_KEYS) {
+                    out += block.lines
+                    continue
+                }
+                val replacement = next[key]
+                // Trailing comment or blank lines usually introduce the next key; keep them.
+                val trailing = block.lines.takeLastWhile { it.isBlank() || it.trimStart().startsWith("#") }
+                val body = block.lines.dropLast(trailing.size)
+                if (replacement != null && written.add(key)) {
+                    out += if (normalizedBlock(body) == normalizedBlock(replacement.lines)) body else replacement.lines
+                }
+                out += trailing
+            }
+            next.values.filter { it.key !in written }.forEach { out += it.lines }
+            return out.joinToString("\n").trimEnd('\n') + "\n"
+        }
+
         fun inspect(canonicalDirectory: String?): SbxLaunchSpecInspection {
             val directory = OpenCodeServerProtocol.canonicalOpenCodeDirectory(canonicalDirectory)
                 ?: canonicalDirectory?.trim()?.takeIf { it.isNotBlank() }
@@ -433,7 +497,11 @@ internal data class SbxLaunchSpec(
                 installLaunchers(projectControlDir(directory))
                 if (writeProjectSpec) {
                     inspectionCache.clear()
-                    val yaml = named.copy(canonicalDirectory = "./").toYaml()
+                    val generated = named.copy(canonicalDirectory = "./").toYaml()
+                    val existing = runCatching { Files.readString(projectPath) }.getOrNull()
+                    val merged = if (existing != null && parseYaml(existing) != null) mergeYaml(existing, generated) else generated
+                    // Never let comment preservation change what the file means.
+                    val yaml = if (parseYaml(merged) == parseYaml(generated)) merged else generated
                     val tmp = projectPath.resolveSibling("${projectPath.fileName}.tmp")
                     Files.writeString(tmp, yaml, StandardCharsets.UTF_8)
                     runCatching {

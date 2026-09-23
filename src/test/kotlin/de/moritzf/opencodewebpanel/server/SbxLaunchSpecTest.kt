@@ -250,6 +250,41 @@ class SbxLaunchSpecTest {
     }
 
     @Test
+    fun applyKeepsCommentsUnknownKeysAndUnchangedValues() {
+        val root = Files.createTempDirectory("opencode-sbx-merge")
+        try {
+            val path = SbxLaunchSpec.projectSpecPath(root.toString())
+            Files.createDirectories(path.parent)
+            Files.writeString(
+                path,
+                """
+                # Team sandbox. Ask #infra before adding mounts.
+                schemaVersion: 1
+                canonicalDirectory: ./
+                memory: '8g' # builds need it
+                cpus: "2"
+                # Kits we rely on:
+                kits:
+                  - ./opencode-sbx/opencode-network-kit # network allowances
+                futureOption: keep-me
+                """.trimIndent() + "\n",
+            )
+            val loaded = SbxLaunchSpec.load(root.toString())!!
+            assertNotNull(SbxLaunchSpec.persist(loaded.copy(cpus = "4", hostPort = 49200)))
+            val text = Files.readString(path)
+            assertTrue(text.startsWith("# Team sandbox. Ask #infra before adding mounts.\n"))
+            assertTrue(text.contains("memory: '8g' # builds need it\n"))
+            assertTrue(text, text.contains("cpus: 4\n"))
+            assertTrue(text.contains("# Kits we rely on:\nkits:\n  - ./opencode-sbx/opencode-network-kit # network allowances\n"))
+            assertTrue(text.contains("futureOption: keep-me\n"))
+            assertTrue(text.contains("hostPort: 49200\n"))
+            assertEquals(loaded.copy(cpus = "4", hostPort = 49200), SbxLaunchSpec.load(root.toString()))
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
     fun unquoteHandlesSingleQuotedApostrophes() {
         assertEquals("./O'Brien", SbxLaunchSpec.unquote("'./O''Brien'"))
         assertEquals("./O''Brien", SbxLaunchSpec.unquote("\"./O''Brien\""))
