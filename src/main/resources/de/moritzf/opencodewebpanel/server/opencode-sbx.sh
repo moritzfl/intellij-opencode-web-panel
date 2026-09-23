@@ -413,6 +413,16 @@ else
   resolved="$(cd "$CANONICAL" && pwd -P)" || exit 1
   CANONICAL="$(identity_path "$resolved")"
 fi
+# NAME is joined into host paths below (persist, 2.x binary, --recreate cleanup).
+# Same rule as SbxCli.isValidSandboxName.
+case "$NAME" in
+  [Dd][Ee][Ff][Aa][Uu][Ll][Tt]) valid_name=0 ;;
+  *) valid_name=1 ;;
+esac
+if [[ "$valid_name" -ne 1 || ! "$NAME" =~ ^[A-Za-z0-9][A-Za-z0-9.-]+$ ]]; then
+  echo "opencode-sbx: invalid sandbox name in spec: $NAME" >&2
+  exit 1
+fi
 # Local kit and mount paths are project-relative, including for the machine launcher.
 cd "$CANONICAL"
 

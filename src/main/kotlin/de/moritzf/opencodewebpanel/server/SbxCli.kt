@@ -175,11 +175,19 @@ internal object SbxCli {
 
     fun sanitizeCpus(value: String?): String = parseCpus(value) ?: DEFAULT_CPUS
 
+    /** Names are joined into host paths; keep this in sync with the launcher's `valid_sandbox_name`. */
     fun isValidSandboxName(name: String): Boolean {
         if (name.equals("default", ignoreCase = true)) return false
         if (name.length < 2) return false
-        if (!name[0].isLetterOrDigit()) return false
-        return name.all { it.isLetterOrDigit() || it == '.' || it == '-' }
+        if (!name[0].isAsciiLetterOrDigit()) return false
+        return name.all { it.isAsciiLetterOrDigit() || it == '.' || it == '-' }
+    }
+
+    private fun Char.isAsciiLetterOrDigit(): Boolean = this in 'a'..'z' || this in 'A'..'Z' || this in '0'..'9'
+
+    private fun requireValidSandboxName(name: String): String {
+        require(isValidSandboxName(name)) { "Invalid sandbox name: $name" }
+        return name
     }
 
     fun buildCreateCommand(
@@ -403,7 +411,7 @@ internal object SbxCli {
     }
 
     fun sandboxPersistDataHome(sandboxName: String, dataRoot: Path = persistDataDir()): String {
-        return posixPath(dataRoot.resolve("sbx").resolve(sandboxName).toString())
+        return posixPath(dataRoot.resolve("sbx").resolve(requireValidSandboxName(sandboxName)).toString())
     }
 
     fun persistSandboxGuestPath(): String = posixPath("$SANDBOX_HOME/.local/share/opencode")
@@ -420,7 +428,7 @@ internal object SbxCli {
 
     /** Plugin-owned host copy of guest `$HOME/.opencode`. Not host `~/.opencode`. Survives stop/start; Reset deletes it. */
     fun guestOpenCodeDataHome(sandboxName: String, dataRoot: Path = persistDataDir()): String {
-        return posixPath(dataRoot.resolve("sbx-opencode").resolve(sandboxName).toString())
+        return posixPath(dataRoot.resolve("sbx-opencode").resolve(requireValidSandboxName(sandboxName)).toString())
     }
 
     fun guestOpenCodeGuestPath(): String = posixPath("$SANDBOX_HOME/.opencode")

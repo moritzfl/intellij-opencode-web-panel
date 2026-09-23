@@ -717,6 +717,24 @@ class SbxLauncherTest {
         assertFalse(Files.readString(path).contains("schemaVersion"))
     }
 
+    @Test
+    fun specNameCannotEscapePluginDataDirectory() {
+        val project = directory("project")
+        val home = Files.createDirectories(temp.root.toPath().resolve("home")).toRealPath()
+        Files.createDirectories(home.resolve(".local/share/opencode-web-panel/sbx-opencode"))
+        val sentinel = Files.writeString(Files.createDirectories(home.resolve("sentinel")).resolve("keep"), "keep")
+        Files.writeString(
+            project.resolve("opencode-sbx.yaml"),
+            "canonicalDirectory: '$project'\nname: ../../../../sentinel\nopenCodeVersion: 2.x\n",
+        )
+        runLauncher(
+            launcher(project), project, "--recreate",
+            expectedExit = 1, lsJson = """{"sandboxes":[]}""",
+        )
+        assertTrue("Launcher must not delete outside its data directory", Files.exists(sentinel))
+        assertTrue(launcherOutput().contains("invalid sandbox name"))
+    }
+
     private fun directory(name: String): Path = temp.newFolder(name).toPath().toRealPath()
 
     private fun launcher(directory: Path): Path {

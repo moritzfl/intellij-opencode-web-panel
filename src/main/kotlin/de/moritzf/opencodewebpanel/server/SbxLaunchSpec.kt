@@ -183,6 +183,8 @@ internal data class SbxLaunchSpec(
             val schema = values["schemaVersion"]?.toIntOrNull() ?: SCHEMA_VERSION
             if (schema != SCHEMA_VERSION) return null
             val name = values["name"]?.trim()?.ifBlank { null } ?: SbxCli.sandboxName(directory)
+            // The name is joined into host paths (machine spec, persist, 2.x binary). Never trust it.
+            if (!SbxCli.isValidSandboxName(name)) return null
             return SbxLaunchSpec(
                 schemaVersion = schema,
                 canonicalDirectory = directory,
@@ -275,7 +277,10 @@ internal data class SbxLaunchSpec(
         const val PROJECT_LAUNCHER_UNIX = "opencode-sbx.sh"
         const val PROJECT_LAUNCHER_WINDOWS = "opencode-sbx.cmd"
 
-        fun specPath(name: String): Path = configDir().resolve("sbx").resolve("$name.yaml")
+        fun specPath(name: String): Path {
+            require(SbxCli.isValidSandboxName(name)) { "Invalid sandbox name: $name" }
+            return configDir().resolve("sbx").resolve("$name.yaml")
+        }
 
         fun projectControlDir(canonicalDirectory: String): Path =
             Path.of(canonicalDirectory, SbxCli.PROJECT_CONTROL_DIR)

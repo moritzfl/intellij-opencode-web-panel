@@ -5,6 +5,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.nio.file.Files
@@ -189,6 +190,18 @@ class SbxLaunchSpecTest {
         } finally {
             root.toFile().deleteRecursively()
         }
+    }
+
+    @Test
+    fun unsafeSandboxNamesMakeTheSpecInvalid() {
+        for (name in listOf("../../../../x", "a/b", "default", ".hidden", "ünicode")) {
+            val yaml = "schemaVersion: 1\ncanonicalDirectory: /tmp/project\nname: \"$name\"\n"
+            assertNull(name, SbxLaunchSpec.parseYaml(yaml))
+        }
+        assertEquals("ide-ocwp-test", SbxLaunchSpec.parseYaml("canonicalDirectory: /tmp/p\nname: ide-ocwp-test\n")?.name)
+        assertThrows(IllegalArgumentException::class.java) { SbxLaunchSpec.specPath("../x") }
+        assertThrows(IllegalArgumentException::class.java) { SbxCli.sandboxPersistDataHome("../x") }
+        assertThrows(IllegalArgumentException::class.java) { SbxCli.guestOpenCodeDataHome("../x") }
     }
 
     @Test
