@@ -910,42 +910,20 @@ class SbxOpenCodeServerBackendTest {
     }
 
     @Test
-    fun destroyReturnsOnEdtWithoutWaitingForCli() {
-        val entered = CountDownLatch(1)
-        val release = CountDownLatch(1)
-        behavior = { command ->
-            if (command[1] == "ls") listed() else {
-                entered.countDown()
-                assertTrue(release.await(5, TimeUnit.SECONDS))
-                SbxCommandResult(0, "")
-            }
-        }
-        lateinit var result: CompletableFuture<Boolean>
-        try {
-            SwingUtilities.invokeAndWait { result = backend.destroySandbox() }
-            assertTrue(entered.await(5, TimeUnit.SECONDS))
-            assertFalse(result.isDone)
-            assertNotNull(store.recordFor(directory))
-        } finally {
-            release.countDown()
-        }
-        assertTrue(result.get(5, TimeUnit.SECONDS))
-        assertNull(store.recordFor(directory))
-        assertEquals(listOf("ls", "rm"), calls.toList())
-    }
-
-    @Test
     fun failedRemovalKeepsOwnershipAndDoesNotStart() {
         behavior = { command -> if (command[1] == "ls") listed() else SbxCommandResult(9, "remove refused") }
-        assertThrows(ExecutionException::class.java) { backend.destroySandbox().get(5, TimeUnit.SECONDS) }
+        backend.resetSandbox(project, { false }, {}, {})
+        drain()
         assertEquals(record, store.recordFor(directory))
         assertEquals(listOf("ls", "rm"), calls.toList())
+        assertEquals(SbxFailureKind.COMMAND_FAILED, backend.lastFailure())
     }
 
     @Test
     fun malformedListCannotEraseOwnership() {
         behavior = { SbxCommandResult(0, "not JSON") }
-        assertThrows(ExecutionException::class.java) { backend.destroySandbox().get(5, TimeUnit.SECONDS) }
+        backend.resetSandbox(project, { false }, {}, {})
+        drain()
         assertEquals(record, store.recordFor(directory))
         assertEquals(listOf("ls"), calls.toList())
     }

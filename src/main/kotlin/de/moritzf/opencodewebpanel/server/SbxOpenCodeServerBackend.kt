@@ -25,12 +25,17 @@ import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 
-internal class SbxCommandFailure(stage: String, exitCode: Int, val output: String) :
-    Exception("$stage failed (exit $exitCode).")
+internal class SbxCommandFailure(
+    stage: String,
+    exitCode: Int,
+    val output: String,
+    /** False for OpenCode's own output, whose provider errors must not read as an sbx login problem. */
+    val fromSbx: Boolean = true,
+) : Exception("$stage failed (exit $exitCode).")
 
 internal fun checkSbxServeAlive(process: Process, output: () -> String) {
     if (!process.isAlive) {
-        throw SbxCommandFailure("OpenCode serve exited before health", process.exitValue(), output())
+        throw SbxCommandFailure("OpenCode serve exited before health", process.exitValue(), output(), fromSbx = false)
     }
 }
 
@@ -124,7 +129,6 @@ internal class SbxOpenCodeServerBackend(
     private var startupStage: String? = null
     private var pendingBinaryUpgrade: PendingBinaryUpgrade? = null
     private var lastRecovery: OpenCodeRecoveryNotice? = null
-    private var destruction: CompletableFuture<Boolean>? = null
     private var lastForeignSandbox: SbxSandboxListEntry? = null
     private var pendingCreateStaleReasons: List<String> = emptyList()
     private var warnedCreateSnapshot: String? = null
@@ -266,6 +270,7 @@ internal class SbxOpenCodeServerBackend(
             foreign = lastFailure() == SbxFailureKind.FOREIGN_SANDBOX || foreignSandbox() != null,
             serverUrl = getServerUrl(),
             version = getServerVersion(),
+            persistEnabled = SbxLaunchSpec.load(canonicalDirectory)?.persistSandboxSessions ?: true,
         )
     }
 
@@ -304,6 +309,9 @@ internal class SbxOpenCodeServerBackend(
                 finishStart(startId, success = true)
                 false
             } else {
+                // A RUNNING state that no longer answers restarts: say so, and let the RUNNING
+                // transition after it re-point the event stream at the new mapping.
+                setLifecycleState(OpenCodeServerLifecycleState.RESTARTING)
                 stopOwnedServe(stopVm = false)
                 true
             }
@@ -459,31 +467,6 @@ internal class SbxOpenCodeServerBackend(
         }
     }
 
-    fun destroySandbox(): CompletableFuture<Boolean> = synchronized(lock) {
-        destruction?.let { return it }
-        if (disposed) return CompletableFuture.completedFuture(false)
-        cancelPendingStarts()
-        disposed = true
-        allowHealthRestart = false
-        setLifecycleState(OpenCodeServerLifecycleState.STOPPED)
-        val result = CompletableFuture<Boolean>()
-        destruction = result
-        lifecycleExecutor.execute {
-            try {
-                stopOwnedServe(stopVm = false)
-                removeOwnedSandbox()
-                result.complete(true)
-            } catch (e: Exception) {
-                if (e is SbxCommandFailure) recordCommandFailure(e)
-                result.completeExceptionally(e)
-            } finally {
-                scheduler.shutdownNow()
-            }
-        }
-        lifecycleExecutor.shutdown()
-        result
-    }
-
     fun upgradeOpenCodeBinary(
         project: Project,
         callbackActive: () -> Boolean = { true },
@@ -542,7 +525,7 @@ internal class SbxOpenCodeServerBackend(
                 result.complete(false)
                 return result
             }
-            lifecycleExecutor.execute {
+            runOnLifecycle(onReject = { result.complete(false) }) {
                 try {
                     val executable = sbxExecutable()
                     val listed = requiredCommand("List templates", SbxCli.buildTemplateLsCommand(executable), 30_000L)
@@ -651,7 +634,6 @@ internal class SbxOpenCodeServerBackend(
             allowHealthRestart = true
             lastFailureDetails = null
             val startId = ++startSequence
-            serverGenerationStartedAtMillis = System.currentTimeMillis()
             runOnLifecycle(
                 onReject = {
                     starting = false
@@ -1074,7 +1056,7 @@ internal class SbxOpenCodeServerBackend(
                 return
             }
             recordCommandFailure(e)
-            fail(startId, if (looksUnauthenticated(e.output)) SbxFailureKind.NOT_AUTHENTICATED else SbxFailureKind.COMMAND_FAILED)
+            fail(startId, if (e.fromSbx && looksUnauthenticated(e.output)) SbxFailureKind.NOT_AUTHENTICATED else SbxFailureKind.COMMAND_FAILED)
         } catch (e: Exception) {
             if (looksLikeMissingSbx(e)) {
                 fail(startId, SbxFailureKind.SBX_NOT_FOUND)
@@ -1502,6 +1484,9 @@ internal class SbxOpenCodeServerBackend(
             serverPassword = password
             rememberBrowserAuth(password = password)
             serverGeneration++
+            // Interrupted-session recovery treats unfinished turns older than this as cut off;
+            // it must be the launch of this serve, not the latest (possibly healthy) start request.
+            serverGenerationStartedAtMillis = System.currentTimeMillis()
             true
         }
     }

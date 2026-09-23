@@ -26,7 +26,7 @@ internal data class SbxDiagnosticsSnapshot(
         }
         val persist = when {
             persistActive && !persistPath.isNullOrBlank() -> "sessions: $persistPath"
-            persistPath != null -> "sessions: VM-local (persist not mounted)"
+            persistPath != null -> "sessions: VM-local (persist store is mounted at Reset)"
             else -> "sessions: VM-local"
         }
         val url = serverUrl?.takeIf { it.isNotBlank() }?.let { "url: $it" } ?: "url: —"
@@ -41,9 +41,12 @@ internal data class SbxDiagnosticsSnapshot(
             foreign: Boolean,
             serverUrl: String?,
             version: String?,
+            persistEnabled: Boolean = true,
         ): SbxDiagnosticsSnapshot {
-            val persistPath = SbxCli.sandboxPersistDataHome(record?.name ?: specName)
-            val persistActive = record != null && SbxCli.recordHasPersistMount(record, persistPath)
+            val storePath = SbxCli.sandboxPersistDataHome(record?.name ?: specName)
+            val persistActive = record != null && SbxCli.recordHasPersistMount(record, storePath)
+            // A VM created with the store keeps it; with persistence off and no store it is VM-local.
+            val persistPath = storePath.takeIf { persistEnabled || persistActive }
             val ownership = when {
                 record == null && foreign -> SbxOwnership.FOREIGN
                 record == null -> SbxOwnership.NONE

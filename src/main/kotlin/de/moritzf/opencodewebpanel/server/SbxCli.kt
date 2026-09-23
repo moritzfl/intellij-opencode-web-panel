@@ -958,9 +958,10 @@ internal object SbxCli {
         val root = runCatching { JsonParser.parseString(json) }.getOrNull()
             ?.takeIf { it.isJsonObject }?.asJsonObject ?: return null
         val sandboxes = root.get("sandboxes")?.takeIf { it.isJsonArray }?.asJsonArray ?: return null
+        // An entry without name or id cannot be matched by ownership (id) or conflict (name)
+        // checks; skip it instead of discarding the whole inventory.
         return sandboxes.mapNotNull { element ->
-            val obj = element.takeIf { it.isJsonObject }?.asJsonObject ?: return null
-            parseSandboxListEntry(obj) ?: return null
+            element.takeIf { it.isJsonObject }?.asJsonObject?.let(::parseSandboxListEntry)
         }
     }
 

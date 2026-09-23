@@ -575,7 +575,11 @@ class SbxCliTest {
     fun malformedSandboxInventoryIsNotAnEmptyInventory() {
         assertNull(SbxCli.parseLsJsonOrNull("ERROR: daemon unavailable"))
         assertNull(SbxCli.parseLsJsonOrNull("{}"))
-        assertNull(SbxCli.parseLsJsonOrNull("""{"sandboxes":[{"name":"missing-id"}]}"""))
+        assertEquals(
+            "Entries without an id are skipped, not a reason to distrust the whole inventory",
+            emptyList<SbxSandboxListEntry>(),
+            SbxCli.parseLsJsonOrNull("""{"sandboxes":[{"name":"missing-id"}]}"""),
+        )
         assertEquals(emptyList<SbxSandboxListEntry>(), SbxCli.parseLsJsonOrNull("""{"sandboxes":[]}"""))
     }
 

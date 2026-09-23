@@ -289,6 +289,28 @@ internal data class SbxLaunchSpec(
                 ?: return SbxLaunchSpecInspection.Missing
             val path = projectSpecCandidates(directory).firstOrNull { Files.isRegularFile(it) }
                 ?: return SbxLaunchSpecInspection.Missing
+            // Backend selection and settings read the spec on every call (some on the EDT):
+            // reuse the parse while the file is unchanged.
+            val stamp = runCatching {
+                Files.getLastModifiedTime(path).toMillis() to Files.size(path)
+            }.getOrNull()
+            if (stamp != null) {
+                inspectionCache[path]?.takeIf { it.directory == directory && it.stamp == stamp }?.let { return it.result }
+            }
+            val result = inspectUncached(directory, path)
+            if (stamp != null) inspectionCache[path] = CachedInspection(directory, stamp, result)
+            return result
+        }
+
+        private data class CachedInspection(
+            val directory: String,
+            val stamp: Pair<Long, Long>,
+            val result: SbxLaunchSpecInspection,
+        )
+
+        private val inspectionCache = java.util.concurrent.ConcurrentHashMap<Path, CachedInspection>()
+
+        private fun inspectUncached(directory: String, path: Path): SbxLaunchSpecInspection {
             return runCatching {
                 val parsed = parseYamlResult(Files.readString(path))
                 val spec = parsed.spec
@@ -408,6 +430,7 @@ internal data class SbxLaunchSpec(
                 Files.createDirectories(projectPath.parent)
                 installLaunchers(projectControlDir(directory))
                 if (writeProjectSpec) {
+                    inspectionCache.clear()
                     val yaml = named.copy(canonicalDirectory = "./").toYaml()
                     val tmp = projectPath.resolveSibling("${projectPath.fileName}.tmp")
                     Files.writeString(tmp, yaml, StandardCharsets.UTF_8)
@@ -421,6 +444,7 @@ internal data class SbxLaunchSpec(
                     }.getOrElse {
                         Files.move(tmp, projectPath, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
                     }
+                    inspectionCache.clear()
                 }
                 removeLegacyProjectArtifacts(Path.of(directory))
                 val app = com.intellij.openapi.application.ApplicationManager.getApplication()

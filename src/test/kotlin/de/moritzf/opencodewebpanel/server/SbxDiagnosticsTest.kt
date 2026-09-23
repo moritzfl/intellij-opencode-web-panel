@@ -40,5 +40,7 @@ class SbxDiagnosticsTest {
         assertEquals(SbxOwnership.FOREIGN, foreign.ownership)
         val none = SbxDiagnosticsSnapshot.from("ide-ocwp-x", null, false, null, null)
         assertEquals(SbxOwnership.NONE, none.ownership)
+        val persistOff = SbxDiagnosticsSnapshot.from("ide-ocwp-x", null, false, null, null, persistEnabled = false)
+        assertTrue(persistOff.format().endsWith("sessions: VM-local"))
     }
 }
