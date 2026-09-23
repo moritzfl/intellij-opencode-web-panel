@@ -938,7 +938,17 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.0.0...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.4.0...HEAD
+[2.4.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.3.0...2.4.0
+[2.3.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.2.0...2.3.0
+[2.2.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.1.0...2.2.0
+[2.1.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.0.6...2.1.0
+[2.0.6]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.0.5...2.0.6
+[2.0.5]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.0.4...2.0.5
+[2.0.4]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.0.3...2.0.4
+[2.0.3]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.0.2...2.0.3
+[2.0.2]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.0.1...2.0.2
+[2.0.1]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.0.0...2.0.1
 [2.0.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.13.9...2.0.0
 [1.13.9]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.13.8...1.13.9
 [1.13.8]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/1.13.7...1.13.8
