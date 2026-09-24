@@ -110,7 +110,7 @@ internal class OpenCodeAddSelectionToChatAction : DumbAwareAction() {
 }
 
 private fun openCodeProjectDirectory(project: Project): String? {
-    return OpenCodeProjectSettingsState.getInstance(project).effectiveProjectDirectory(project.basePath)
+    return OpenCodeProjectSettingsState.getInstance(project).effectiveOpenCodeDirectory(project.basePath)
 }
 
 private fun sendToOpenCodeChat(project: Project, texts: List<String>) {

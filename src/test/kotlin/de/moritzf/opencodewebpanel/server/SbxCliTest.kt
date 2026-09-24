@@ -174,6 +174,13 @@ class SbxCliTest {
     }
 
     @Test
+    fun sandboxServerDirectoryUsesGuestSpellingButNativeKeepsHostSpelling() {
+        val host = "C:/work/sample-repo/app"
+        assertEquals("/c/work/sample-repo/app", OpenCodeHostPaths.serverDirectory("sbx:example", host))
+        assertEquals(host, OpenCodeHostPaths.serverDirectory(OpenCodeServerBackend.NATIVE_ID, host))
+    }
+
+    @Test
     fun sandboxProtectMountsCoverLocalKitDirectoriesNotFiles() {
         val root = java.nio.file.Path.of(System.getProperty("java.io.tmpdir")).resolve("ocwp-protect").toAbsolutePath().normalize()
         val control = root.resolve(SbxCli.PROJECT_CONTROL_DIR)
@@ -403,9 +410,9 @@ class SbxCliTest {
             ),
             SbxCli.buildExecServeCommand(name = "ide-ocwp-abc", workspace = "/tmp/project"),
         )
-        val windows = SbxCli.buildExecServeCommand(name = "ide-ocwp-abc", workspace = "C:\\Source\\WorkspacePosy")
-        assertEquals("/c/Source/WorkspacePosy", windows[windows.indexOf("-w") + 1])
-        assertFalse(windows.contains("C:/Source/WorkspacePosy"))
+        val windows = SbxCli.buildExecServeCommand(name = "ide-ocwp-abc", workspace = "C:\\work\\sample-repo\\app")
+        assertEquals("/c/work/sample-repo/app", windows[windows.indexOf("-w") + 1])
+        assertFalse(windows.contains("C:/work/sample-repo/app"))
     }
 
     @Test

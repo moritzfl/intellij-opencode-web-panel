@@ -20,6 +20,7 @@ import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.server.OpenCodeProtocolResult
 import de.moritzf.opencodewebpanel.server.OpenCodeUnifiedDiff
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
+import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsState
 
 /**
  * Opens the IDE's native diff viewer for a diff target the user Ctrl/Cmd+Clicked or Alt+Clicked in the OpenCode page
@@ -33,6 +34,7 @@ internal class OpenCodeDiffNavigation(
     private val browser: JBCefBrowser,
     private val serverManager: OpenCodeServerBackend,
     private val projectDirectory: () -> String?,
+    private val serverDirectory: () -> String? = projectDirectory,
 ) {
     fun openDiff(payload: String?) {
         val parts = (payload ?: return).split('\n')
@@ -42,7 +44,7 @@ internal class OpenCodeDiffNavigation(
         val vcsMode = parts.getOrNull(3)?.trim()?.ifBlank { null }
         val serverUrl = serverManager.getServerUrl() ?: return
         val password = serverManager.getServerPassword() ?: return
-        val directory = projectDirectory()?.takeIf { it.isNotBlank() } ?: return
+        val directory = serverDirectory()?.takeIf { it.isNotBlank() } ?: return
         val sessionID = if (vcsMode != null) {
             null
         } else {
@@ -205,7 +207,10 @@ internal class OpenCodeDiffNavigation(
         val target = OpenCodeServerProtocol.resolveFileLinkWithBases(
             filePath,
             listOf(directory),
-            guestToHostPrefixes = OpenCodeHostPaths.guestToHostPrefixes(serverManager.backendId, directory),
+            guestToHostPrefixes = OpenCodeHostPaths.guestToHostPrefixes(
+                serverManager.backendId, directory,
+                OpenCodeProjectSettingsState.getInstance(project).effectiveProjectDirectory(project.basePath),
+            ),
             home = OpenCodeHostPaths.pathHome(serverManager.backendId),
             guessIncomplete = false,
         ) ?: return null

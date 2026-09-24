@@ -51,12 +51,18 @@ internal data class SbxLaunchSpec(
     val hostPort: Int? = null,
     val protectSandboxFiles: Boolean = true,
     val persistSandboxSessions: Boolean = true,
+    val workingDirectory: String = "./",
 ) {
+    /** Host spelling of OpenCode's cwd; the primary sbx workspace remains [canonicalDirectory]. */
+    fun hostWorkingDirectory(): String = Path.of(canonicalDirectory).resolve(SbxCli.posixPath(workingDirectory))
+        .normalize().toString()
+
     fun toYaml(): String {
         val out = StringBuilder()
         out.append("schemaVersion: ").append(schemaVersion).append('\n')
         out.append("useSandbox: ").append(useSandbox).append('\n')
         out.append("canonicalDirectory: ").append(yamlScalar(canonicalDirectory)).append('\n')
+        out.append("workingDirectory: ").append(yamlScalar(workingDirectory)).append('\n')
         out.append("name: ").append(yamlScalar(name)).append('\n')
         out.append("memory: ").append(yamlScalar(memory)).append('\n')
         out.append("cpus: ").append(yamlScalar(cpus)).append('\n')
@@ -205,6 +211,18 @@ internal data class SbxLaunchSpec(
             }
             val directory = values["canonicalDirectory"]?.trim().orEmpty()
             if (directory.isEmpty()) return ParseResult(null, "canonicalDirectory is required")
+            val workingDirectory = values["workingDirectory"]?.trim() ?: "./"
+            if (workingDirectory.isBlank()) {
+                return ParseResult(null, "workingDirectory must be a relative path inside the workspace")
+            }
+            val relativeWorkdir = runCatching { Path.of(SbxCli.posixPath(workingDirectory)).normalize() }.getOrNull()
+                ?: return ParseResult(null, "workingDirectory must be a relative path inside the workspace")
+            if (relativeWorkdir.isAbsolute || workingDirectory.replace('\\', '/').startsWith('/') ||
+                relativeWorkdir.startsWith("..") ||
+                Regex("^[A-Za-z]:").containsMatchIn(workingDirectory) || workingDirectory.startsWith("~")
+            ) {
+                return ParseResult(null, "workingDirectory must be a relative path inside the workspace")
+            }
             val schema = values["schemaVersion"]?.let { it.trim().toIntOrNull() ?: -1 } ?: SCHEMA_VERSION
             if (schema != SCHEMA_VERSION) return ParseResult(null, "unsupported schemaVersion ${values["schemaVersion"]}")
             val name = values["name"]?.trim()?.ifBlank { null } ?: SbxCli.sandboxName(directory)
@@ -264,6 +282,7 @@ internal data class SbxLaunchSpec(
                     hostPort = hostPort,
                     protectSandboxFiles = flags.getValue("protectSandboxFiles"),
                     persistSandboxSessions = flags.getValue("persistSandboxSessions"),
+                    workingDirectory = workingDirectory,
                 ),
                 null,
             )
@@ -283,7 +302,7 @@ internal data class SbxLaunchSpec(
             "installOpenCodeV2" to false,
         )
         private val KNOWN_SCALAR_KEYS = setOf(
-            "schemaVersion", "canonicalDirectory", "name", "memory", "cpus", "openCodeVersion", "hostPort",
+            "schemaVersion", "canonicalDirectory", "workingDirectory", "name", "memory", "cpus", "openCodeVersion", "hostPort",
         ) + BOOLEAN_KEYS.map { it.first }
 
         /** Keys [toYaml] owns; any other top-level block in a hand-edited spec is kept as written. */
@@ -386,6 +405,11 @@ internal data class SbxLaunchSpec(
                 val resolved = OpenCodeServerProtocol.canonicalOpenCodeDirectory(
                     workspaceBaseForSpec(path).resolve(stored).toString(),
                 ) ?: return SbxLaunchSpecInspection.Invalid(path, "canonicalDirectory does not resolve.")
+                val root = Path.of(resolved).toRealPath()
+                val workdir = runCatching { root.resolve(SbxCli.posixPath(spec.workingDirectory)).toRealPath() }.getOrNull()
+                if (workdir == null || !workdir.startsWith(root) || !Files.isDirectory(workdir)) {
+                    return SbxLaunchSpecInspection.Invalid(path, "workingDirectory must be a directory inside the workspace.")
+                }
                 SbxLaunchSpecInspection.Valid(
                     spec.copy(
                         canonicalDirectory = resolved,

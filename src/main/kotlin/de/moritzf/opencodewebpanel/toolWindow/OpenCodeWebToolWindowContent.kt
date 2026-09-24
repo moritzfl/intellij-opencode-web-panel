@@ -167,8 +167,12 @@ internal class OpenCodeWebToolWindowContent(
     private var pageChannelsAttached = false
     private val browserCursorEpoch = AtomicLong()
     private val serverManager = OpenCodeServerBackendRegistry.getInstance().backendFor(project)
-    private val ideNavigation = OpenCodeIdeNavigation(project, browser, serverManager, ::openCodeProjectDirectory, this)
-    private val diffNavigation = OpenCodeDiffNavigation(project, browser, serverManager, ::openCodeProjectDirectory)
+    private val ideNavigation = OpenCodeIdeNavigation(
+        project, browser, serverManager, ::openCodeProjectDirectory, this, ::openCodeServerDirectory,
+    )
+    private val diffNavigation = OpenCodeDiffNavigation(
+        project, browser, serverManager, ::openCodeProjectDirectory, ::openCodeServerDirectory,
+    )
     private val localStorageBridge = OpenCodeLocalStorageBridge(
         browser,
         serverManager,
@@ -178,16 +182,16 @@ internal class OpenCodeWebToolWindowContent(
         project,
         browser,
         serverManager,
-        ::openCodeProjectDirectory,
+        ::openCodeServerDirectory,
         ::navigateFromNotification,
         panelIsInView = { browser.component.isShowing && host.isPanelInView() },
         activatePanel = host::activate,
         this,
     )
     private val requestHandler = OpenCodeBrowserRequestHandler(serverManager, ideNavigation, ::recoverFromRendererCrash)
-    private val interruptedSessionRecovery = OpenCodeInterruptedSessionRecovery(project, serverManager, ::openCodeProjectDirectory)
+    private val interruptedSessionRecovery = OpenCodeInterruptedSessionRecovery(project, serverManager, ::openCodeServerDirectory)
     private val permissionAutoResponder = OpenCodePermissionAutoResponder(
-        ::openCodeProjectDirectory,
+        ::openCodeServerDirectory,
         serverManager::getServerUrl,
         serverManager::getServerPassword,
         loadSession = { url, auth, directory, sessionID ->
@@ -220,7 +224,9 @@ internal class OpenCodeWebToolWindowContent(
         workspaceDirectory = ::openCodeProjectDirectory,
         loadSession = { sessionID -> loadDisplayedSession(sessionID) },
         guestToHostPrefixes = {
-            OpenCodeHostPaths.guestToHostPrefixes(serverManager.backendId, openCodeProjectDirectory())
+            OpenCodeHostPaths.guestToHostPrefixes(
+                serverManager.backendId, openCodeProjectDirectory(), sandboxWorkspaceDirectory(),
+            )
         },
         sandboxGuestPath = { workspace ->
             if (OpenCodeServerBackend.isNative(serverManager.backendId)) null else SbxCli.guestBindPath(workspace)
@@ -301,7 +307,7 @@ internal class OpenCodeWebToolWindowContent(
 
     private val openProjectSeedFeature = EarlyInjectedFeature(
         buildScript = { serverUrl ->
-            openCodeProjectDirectory()?.takeIf { it.isNotBlank() }?.let { projectDirectory ->
+            openCodeServerDirectory()?.takeIf { it.isNotBlank() }?.let { projectDirectory ->
                 // Pass the resolved boot target so OpenCode's own `lastProjectSession` pointer is
                 // already correct when the SPA bundle reads localStorage. Seeding it only after
                 // load lets the bundle bootstrap onto a stale pointer first, which shows the
@@ -386,7 +392,7 @@ internal class OpenCodeWebToolWindowContent(
         enabledInSettings = { OpenCodeSettingsState.getInstance().openFileLinksInIde },
         buildScript = {
             OpenCodeBrowserSnippets.buildFileLinkHandlerScript(
-                openCodeProjectDirectory(),
+                openCodeServerDirectory(),
                 enabled = true,
                 openFileCallback = openFileLinkQuery.inject("rawHref + '\\n' + directory + '\\n' + partID"),
             )
@@ -460,15 +466,16 @@ internal class OpenCodeWebToolWindowContent(
     )
     private val workspaceRefreshCoordinator = OpenCodeWorkspaceRefreshCoordinator(
         project,
-        ::openCodeProjectDirectory,
+        ::sandboxWorkspaceDirectory,
         parentDisposable = this,
         backendId = { serverManager.backendId },
+        serverDirectory = ::openCodeServerDirectory,
     )
     // The tracked state also feeds the renderer watchdog's busy stall timeout, so tracking runs
     // even when the badge itself is off; [onAgentStatusChanged] applies the badge only when its
     // own setting is enabled.
     private val agentStatusTracker = OpenCodeAgentStatusTracker(
-        projectDirectory = ::openCodeProjectDirectory,
+        projectDirectory = ::openCodeServerDirectory,
         enabled = { !isContentDisposed() },
         onStateChanged = ::onAgentStatusChanged,
         serverUrl = serverManager::getServerUrl,
@@ -700,7 +707,7 @@ internal class OpenCodeWebToolWindowContent(
                 override fun eventReceived(event: OpenCodeGlobalEvent) {
                     if (!OpenCodeBrowserSnippets.isInPlaceDialogRepaintEvent(event.type)) return
                     if (isContentDisposed()) return
-                    val directory = openCodeProjectDirectory() ?: return
+                    val directory = openCodeServerDirectory() ?: return
                     if (!OpenCodeServerProtocol.isSameFilesystemPath(event.directory, directory)) return
                     val serverUrl = serverManager.getServerUrl() ?: return
                     if (!isBrowserOnOpenCodeServerPage(serverUrl)) return
@@ -1165,7 +1172,7 @@ internal class OpenCodeWebToolWindowContent(
         pendingServerStartRequest = true
         serverManager.restartServer(
             project,
-            openCodeProjectDirectory(),
+            sandboxWorkspaceDirectory(),
             callbackActive = { !isContentDisposed() },
             onStarted = {
                 pendingServerStartRequest = false
@@ -1188,7 +1195,7 @@ internal class OpenCodeWebToolWindowContent(
         pendingServerStartRequest = true
         serverManager.ensureStarted(
             project,
-            openCodeProjectDirectory(),
+            sandboxWorkspaceDirectory(),
             callbackActive = { !isContentDisposed() },
             onStarted = {
                 pendingServerStartRequest = false
@@ -1620,7 +1627,7 @@ internal class OpenCodeWebToolWindowContent(
     private fun isOpenCodeProjectDestination(frameUrl: String?): Boolean {
         val serverUrl = serverManager.getServerUrl() ?: return false
         if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, frameUrl)) return false
-        val projectDirectory = openCodeProjectDirectory()?.takeIf { it.isNotBlank() } ?: return true
+        val projectDirectory = openCodeServerDirectory()?.takeIf { it.isNotBlank() } ?: return true
         // Directoryless routes (/server/<id>/session..., /new-session) do not reveal which
         // project they show, so they are NOT accepted as a destination here: the open-project
         // script must keep running and decide in-page against the SPA's own project state.
@@ -1644,7 +1651,7 @@ internal class OpenCodeWebToolWindowContent(
         if (OpenCodeServerProtocol.sessionIdFromUrl(frameUrl) != null) return false
         val path = runCatching { java.net.URI(frameUrl).path?.trimEnd('/') }.getOrNull().orEmpty()
         if (path.endsWith("/session") && path.contains("/server/")) return true
-        val projectDirectory = openCodeProjectDirectory()?.takeIf { it.isNotBlank() } ?: return false
+        val projectDirectory = openCodeServerDirectory()?.takeIf { it.isNotBlank() } ?: return false
         val projectUrl = OpenCodeServerProtocol.buildProjectUrl(serverUrl, projectDirectory)
         return frameUrl?.trimEnd('/') == projectUrl.trimEnd('/')
     }
@@ -1653,7 +1660,7 @@ internal class OpenCodeWebToolWindowContent(
         if (openProjectScriptScheduled) return
 
         val serverUrl = serverManager.getServerUrl() ?: return
-        val projectDirectory = openCodeProjectDirectory()?.takeIf { it.isNotBlank() } ?: return
+        val projectDirectory = openCodeServerDirectory()?.takeIf { it.isNotBlank() } ?: return
         openProjectScriptScheduled = true
         val script = OpenCodeBrowserSnippets.buildOpenProjectScript(projectDirectory, serverUrl) ?: return
         val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
@@ -1849,9 +1856,17 @@ internal class OpenCodeWebToolWindowContent(
     }
 
     private fun openCodeProjectDirectory(): String? {
-        val raw = OpenCodeProjectSettingsState.getInstance(project).effectiveProjectDirectory(project.basePath)
+        val raw = OpenCodeProjectSettingsState.getInstance(project).effectiveOpenCodeDirectory(project.basePath)
             ?: return null
         return OpenCodeServerProtocol.canonicalOpenCodeDirectory(raw) ?: raw
+    }
+
+    private fun sandboxWorkspaceDirectory(): String? {
+        return OpenCodeProjectSettingsState.getInstance(project).effectiveProjectDirectory(project.basePath)
+    }
+
+    private fun openCodeServerDirectory(): String? {
+        return OpenCodeHostPaths.serverDirectory(serverManager.backendId, openCodeProjectDirectory())
     }
 
     /** Opens Chromium's built-in DevTools window for this panel's browser (JBCef built-in). */
@@ -2078,7 +2093,7 @@ internal class OpenCodeWebToolWindowContent(
      */
     private fun loadDisplayedSession(sessionID: String): OpenCodeServerProtocol.SessionInfo? {
         val serverUrl = serverManager.getServerUrl() ?: return null
-        val directory = openCodeProjectDirectory() ?: return null
+        val directory = openCodeServerDirectory() ?: return null
         val password = serverManager.getServerPassword() ?: return null
         return OpenCodeServerProtocol.fetchSessionInfo(
             serverUrl,

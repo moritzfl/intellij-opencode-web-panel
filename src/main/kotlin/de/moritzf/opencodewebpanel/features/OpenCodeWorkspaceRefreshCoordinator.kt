@@ -34,6 +34,7 @@ internal class OpenCodeWorkspaceRefreshCoordinator(
     debounceMillis: Long = DEFAULT_DEBOUNCE_MILLIS,
     maxWaitMillis: Long = DEFAULT_MAX_WAIT_MILLIS,
     private val backendId: () -> String = { OpenCodeServerBackend.NATIVE_ID },
+    private val serverDirectory: () -> String? = projectDirectory,
 ) : OpenCodeGlobalEventListener {
 
     private val lock = Any()
@@ -50,7 +51,7 @@ internal class OpenCodeWorkspaceRefreshCoordinator(
 
     override fun eventReceived(event: OpenCodeGlobalEvent) {
         if (!triggersRefresh(event)) return
-        val directory = projectDirectory() ?: return
+        val directory = serverDirectory() ?: return
         if (!OpenCodeServerProtocol.isSameFilesystemPath(event.directory, directory)) return
         requestRefresh()
     }

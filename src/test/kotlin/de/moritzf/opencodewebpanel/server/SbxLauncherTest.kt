@@ -682,6 +682,7 @@ class SbxLauncherTest {
             """
             schemaVersion: 1
             canonicalDirectory: ./
+            workingDirectory: ./
             name: ${SbxCli.sandboxName(project.toString())}
             memory: 4g
             cpus: "2"

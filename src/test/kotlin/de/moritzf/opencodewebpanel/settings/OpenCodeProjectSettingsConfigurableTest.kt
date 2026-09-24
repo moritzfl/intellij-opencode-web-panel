@@ -136,6 +136,30 @@ class OpenCodeProjectSettingsConfigurableTest {
     }
 
     @Test
+    fun sandboxWorkingDirectoryHydratesAndRestartsWithoutChangingTheMountRoot() {
+        val workdir = Files.createDirectory(temp.root.toPath().resolve("app")).toRealPath()
+        SwingUtilities.invokeAndWait {
+            field<AbstractButton>("sbxRuntimeRadioButton").isSelected = true
+            configurable.apply()
+            PlatformTestUtil.waitWithEventsDispatching("Missing initial sandbox restart", { restarts == 1 }, 5)
+            field<JTextField>("sbxWorkingDirectoryField").text = "./app"
+            assertTrue(configurable.isModified())
+            configurable.apply()
+            PlatformTestUtil.waitWithEventsDispatching("Missing cwd-only restart", { restarts == 2 }, 5)
+            val spec = SbxLaunchSpec.load(project.basePath)!!
+            assertEquals(project.basePath, spec.canonicalDirectory)
+            assertEquals(workdir.toString(), spec.hostWorkingDirectory())
+            assertFalse(configurable.isModified())
+
+            field<JTextField>("sbxWorkingDirectoryField").text = "../elsewhere"
+            assertThrows(ConfigurationException::class.java) { configurable.apply() }
+            assertEquals("./app", SbxLaunchSpec.load(project.basePath)!!.workingDirectory)
+            configurable.reset()
+            assertEquals("./app", field<JTextField>("sbxWorkingDirectoryField").text)
+        }
+    }
+
+    @Test
     fun sharingFlagSurvivesApplyStartupAndReopeningSettings() {
         SwingUtilities.invokeAndWait {
             configurable.createComponent()

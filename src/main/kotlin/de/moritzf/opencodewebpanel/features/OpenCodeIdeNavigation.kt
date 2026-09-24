@@ -22,6 +22,7 @@ import de.moritzf.opencodewebpanel.server.OpenCodeProtocolResult
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.server.OpenCodeUnifiedDiff
+import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsState
 
 internal class OpenCodeIdeNavigation(
     private val project: Project,
@@ -29,6 +30,7 @@ internal class OpenCodeIdeNavigation(
     private val serverManager: OpenCodeServerBackend,
     private val projectDirectory: () -> String?,
     private val coalesceKey: Any,
+    private val serverDirectory: () -> String? = projectDirectory,
 ) {
     private val fileLinkRequestGeneration = AtomicLong()
 
@@ -113,7 +115,7 @@ internal class OpenCodeIdeNavigation(
         val serverUrl = serverManager.getServerUrl() ?: return null
         val password = serverManager.getServerPassword() ?: return null
         val sessionID = OpenCodeServerProtocol.sessionIdFromUrl(browser.cefBrowser.url) ?: return null
-        val directory = projectDirectory()?.takeIf { it.isNotBlank() } ?: return null
+        val directory = serverDirectory()?.takeIf { it.isNotBlank() } ?: return null
         val result = OpenCodeServerProtocol.fetchToolPartChange(
             serverUrl,
             OpenCodeServerProtocol.buildBasicAuthHeader(password),
@@ -196,6 +198,7 @@ internal class OpenCodeIdeNavigation(
     private fun pathHome(): String? = OpenCodeHostPaths.pathHome(serverManager.backendId)
 
     private fun guestToHostPrefixes(): List<Pair<String, String>> {
-        return OpenCodeHostPaths.guestToHostPrefixes(serverManager.backendId, projectDirectory())
+        val root = OpenCodeProjectSettingsState.getInstance(project).effectiveProjectDirectory(project.basePath)
+        return OpenCodeHostPaths.guestToHostPrefixes(serverManager.backendId, projectDirectory(), root)
     }
 }

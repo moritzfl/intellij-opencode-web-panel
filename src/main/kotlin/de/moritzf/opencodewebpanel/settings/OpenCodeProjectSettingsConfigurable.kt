@@ -162,6 +162,11 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         toolTipText = "Sandbox CPUs at create time"
         accessibleContext.accessibleName = "Sandbox CPUs"
     }
+    private val sbxWorkingDirectoryField = JBTextField().apply {
+        columns = 24
+        toolTipText = "OpenCode working directory relative to the mounted repository root"
+        accessibleContext.accessibleName = "Sandbox OpenCode working directory"
+    }
     private val sbxShareHostConfigCheckBox = JBCheckBox("Share host OpenCode config (read-only)")
     private val sbxProtectSandboxFilesCheckBox = JBCheckBox("Protect sandbox files")
     private val sbxPersistSandboxSessionsCheckBox = JBCheckBox("Persist sandbox sessions across Reset")
@@ -250,6 +255,10 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
     }
     private val sandboxOnlyPanel = panel {
         group("Docker Sandbox") {
+            row("OpenCode working directory:") {
+                cell(sbxWorkingDirectoryField)
+                    .comment("Relative to the mounted repository root (default ./). For a monorepo, use e.g. ./app. Changing this restarts OpenCode without recreating the VM.")
+            }
             row("Memory:") {
                 cell(sbxMemoryField)
                     .comment("Used when creating a sandbox (default ${SbxCli.DEFAULT_MEMORY}). An existing VM keeps its value until Reset Sandbox (gear menu).")
@@ -459,6 +468,14 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         }
         val spec = currentSpec()
             ?: throw ConfigurationException("Set an OpenCode project directory first.")
+        val validWorkingDirectory = SbxLaunchSpec.parseYaml(spec.toYaml()) != null && runCatching {
+            val root = java.nio.file.Path.of(spec.canonicalDirectory).toRealPath()
+            val workdir = java.nio.file.Path.of(spec.hostWorkingDirectory()).toRealPath()
+            workdir.startsWith(root) && java.nio.file.Files.isDirectory(workdir)
+        }.getOrDefault(false)
+        if (!validWorkingDirectory) {
+            throw ConfigurationException("OpenCode working directory must be an existing folder inside the mounted repository.")
+        }
         // The preview compares what will be written against the *destination's* current spec.
         // Diffing the old directory's spec on a directory switch would report kit/mount changes
         // that are really another project's settings, and offer "Recreate" for a write that only
@@ -760,6 +777,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         val canonical = OpenCodeServerProtocol.canonicalOpenCodeDirectory(directory) ?: directory
         return SbxLaunchSpec(
             canonicalDirectory = canonical,
+            workingDirectory = SbxCli.posixPath(sbxWorkingDirectoryField.text).ifBlank { "./" },
             name = SbxCli.sandboxName(canonical),
             memory = SbxCli.sanitizeMemory(sbxMemoryField.text),
             cpus = SbxCli.sanitizeCpus(sbxCpusField.text),
@@ -793,6 +811,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         if (sandbox) sbxRuntimeRadioButton.isSelected = true else hostRuntimeRadioButton.isSelected = true
         sbxMemoryField.text = spec?.memory ?: SbxCli.DEFAULT_MEMORY
         sbxCpusField.text = spec?.cpus ?: SbxCli.DEFAULT_CPUS
+        sbxWorkingDirectoryField.text = spec?.workingDirectory ?: "./"
         sbxShareHostConfigCheckBox.isSelected = spec?.shareHostOpencodeConfig ?: false
         if (spec?.openCodeVersion == SbxOpenCodeVersion.V2) {
             sbxOpenCodeV2RadioButton.isSelected = true

@@ -87,6 +87,9 @@ internal data class SbxApplyPreview(
                     SbxApplyEffect.RESTART,
                 )
             }
+            if (oldSpec.workingDirectory != newSpec.workingDirectory) {
+                changes += SbxApplyChange("OpenCode working directory", SbxApplyEffect.RESTART)
+            }
             val recreate = if (hasVm) SbxApplyEffect.RECREATE else SbxApplyEffect.NONE
             val atCreate = if (hasVm) "" else " (applies when the sandbox is created)"
             if (oldSpec.shareHostOpencodeConfig != newSpec.shareHostOpencodeConfig) {

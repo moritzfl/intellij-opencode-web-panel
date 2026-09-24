@@ -44,6 +44,16 @@ class SbxApplyPreviewTest {
     }
 
     @Test
+    fun changingTheSandboxWorkingDirectoryRestartsWithoutRecreatingTheVm() {
+        val preview = SbxApplyPreview.build(
+            "/tmp/p", base, base.copy(workingDirectory = "./app"), false, false, "sessions kept",
+        )
+        assertEquals(SbxApplyEffect.RESTART, preview.effect)
+        assertTrue(preview.message().contains("OpenCode working directory"))
+        assertFalse(preview.message().contains("recreate VM"))
+    }
+
+    @Test
     fun enablingSandboxFromMissingSpecRestarts() {
         val preview = SbxApplyPreview.build("/tmp/p", base.copy(useSandbox = false), base, false, false, "")
         assertEquals(SbxApplyEffect.RESTART, preview.effect)

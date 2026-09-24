@@ -312,8 +312,7 @@ internal class OpenCodeSystemNotifications(
         }
 
         private fun identityForDirectory(directory: String): OpenCodeNotificationServerIdentity? {
-            val serverManager = OpenCodeServerBackendRegistry.getInstance()
-                .backendForCanonicalDirectory(directory.takeIf { it.isNotBlank() })
+            val serverManager = targetFor(directory)?.serverManager ?: return null
             if (serverManager.getLifecycleState() != OpenCodeServerLifecycleState.RUNNING) return null
             val serverUrl = serverManager.getServerUrl() ?: return null
             val generation = serverManager.getServerGeneration().takeIf { it > 0L } ?: return null
@@ -329,7 +328,7 @@ internal class OpenCodeSystemNotifications(
             directory: String,
             sessionID: String
         ): OpenCodeServerProtocol.SessionInfo? {
-            val serverManager = OpenCodeServerBackendRegistry.getInstance().backendForCanonicalDirectory(directory)
+            val serverManager = targetFor(directory)?.serverManager ?: return null
             val serverUrl = serverManager.getServerUrl() ?: return null
             val password = serverManager.getServerPassword() ?: return null
             return OpenCodeServerProtocol.fetchSessionInfo(
@@ -346,7 +345,8 @@ internal class OpenCodeSystemNotifications(
             directory: String,
         ): OpenCodePendingNotificationLoad {
             if (identityForDirectory(directory) != identity) return OpenCodePendingNotificationLoad(emptyList(), false)
-            val serverManager = OpenCodeServerBackendRegistry.getInstance().backendForCanonicalDirectory(directory)
+            val serverManager = targetFor(directory)?.serverManager
+                ?: return OpenCodePendingNotificationLoad(emptyList(), false)
             val password = serverManager.getServerPassword()
                 ?: return OpenCodePendingNotificationLoad(emptyList(), false)
             val authHeader = OpenCodeServerProtocol.buildBasicAuthHeader(password)

@@ -254,6 +254,7 @@ yaml_unquote() {
 
 MEMORY="4g"
 CPUS="2"
+WORKDIR="./"
 SHARE_CONFIG="false"
 OPENCODE_VERSION=""
 PROTECT_FILES="true"
@@ -397,6 +398,7 @@ parse_spec() {
           case "$key" in
             schemaVersion) [[ "$val" == 1 ]] || spec_error "unsupported schemaVersion $val" ;;
             canonicalDirectory) CANONICAL="$val"; CANONICAL_SET=1 ;;
+            workingDirectory) WORKDIR="$val" ;;
             name) [[ -n "$val" ]] && NAME="$val" ;;
             memory)
               val="$(lower "$val")"
@@ -455,7 +457,7 @@ parse_spec() {
         set_mount_key "$g1" "$(yaml_unquote "$g3")"
         ;;
       setupCommands|networkAllows|networkAllowPresets|extraNetworkAllows) ;;
-      schemaVersion|canonicalDirectory|name|memory|cpus|openCodeVersion|hostPort|shareHostOpencodeConfig|protectSandboxFiles|persistSandboxSessions|useSandbox|enableIntellijMcp|installOpenCodeV2)
+      schemaVersion|canonicalDirectory|workingDirectory|name|memory|cpus|openCodeVersion|hostPort|shareHostOpencodeConfig|protectSandboxFiles|persistSandboxSessions|useSandbox|enableIntellijMcp|installOpenCodeV2)
         spec_error "$section must be a plain value"
         ;;
     esac
@@ -481,6 +483,7 @@ write_init_spec() {
   cat > "$CANONICAL/$CONTROL_DIR/$SPEC_NAME" <<EOF
 schemaVersion: 1
 canonicalDirectory: ./
+workingDirectory: ./
 name: $NAME
 memory: 4g
 cpus: "2"
@@ -529,6 +532,19 @@ else
     echo "opencode-sbx: note: $SPEC mounts $CANONICAL read-write as the workspace." >&2
   fi
 fi
+WORKDIR="${WORKDIR//\\//}"
+if [[ -z "$WORKDIR" || "$WORKDIR" == "~"* || "$WORKDIR" =~ ^[A-Za-z]: ]] || is_absolute "$WORKDIR"; then
+  spec_error "workingDirectory must be a relative path inside the workspace"
+fi
+if [[ ! -d "$CANONICAL/$WORKDIR" ]]; then
+  spec_error "workingDirectory does not exist inside the workspace: $WORKDIR"
+fi
+resolved_workdir="$(cd "$CANONICAL/$WORKDIR" && pwd -P)"
+resolved_workdir="$(identity_path "$resolved_workdir")"
+case "$resolved_workdir" in
+  "$CANONICAL"|"$CANONICAL/"*) WORKDIR="$resolved_workdir" ;;
+  *) spec_error "workingDirectory must be inside the workspace: $WORKDIR" ;;
+esac
 # NAME is joined into host paths below (persist, 2.x binary, --recreate cleanup).
 # Same rule as SbxCli.isValidSandboxName.
 case "$NAME" in
@@ -973,7 +989,7 @@ fi
 if [[ ${#serve_env[@]} -gt 0 ]]; then
   launch+=( "${serve_env[@]}" )
 fi
-launch+=( -w "$(guest_bind_path "$CANONICAL")" "$NAME" "${guest_opencode[@]}" ${opencode_cmd[@]+"${opencode_cmd[@]}"} )
+launch+=( -w "$(guest_bind_path "$WORKDIR")" "$NAME" "${guest_opencode[@]}" ${opencode_cmd[@]+"${opencode_cmd[@]}"} )
 if [[ "$MODE" == acp ]]; then
   exec 0<&3 1>&4 3<&- 4>&-
 fi

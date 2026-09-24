@@ -26,9 +26,11 @@ class SbxLaunchSpecTest {
             enableIntellijMcp = false,
             useSandbox = true,
             hostPort = 4096,
+            workingDirectory = "./app",
         )
         val parsed = SbxLaunchSpec.parseYaml(spec.toYaml())
         assertEquals(spec, parsed)
+        assertEquals(java.nio.file.Path.of("/tmp/project").resolve("app").toString(), parsed!!.hostWorkingDirectory())
         val ignoredLegacy = SbxLaunchSpec.parseYaml(
             """
             schemaVersion: 1
@@ -341,6 +343,51 @@ class SbxLaunchSpecTest {
             assertEquals(root.toString(), loaded.canonicalDirectory)
             assertEquals(SbxCli.sandboxName(root.toString()), loaded.name)
             assertEquals(root, SbxLaunchSpec.workspaceBaseForSpec(path))
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun nestedOpenCodeDirectoryLoadsWithinTheMountedWorkspace() {
+        val root = Files.createTempDirectory("opencode-sbx-working-dir").toRealPath()
+        try {
+            val workdir = Files.createDirectory(root.resolve("app")).toRealPath()
+            val spec = SbxLaunchSpec.fromSettings(OpenCodeSettingsState(), root.toString()).copy(
+                useSandbox = true, workingDirectory = "./app",
+            )
+            assertNotNull(SbxLaunchSpec.persist(spec))
+            val loaded = SbxLaunchSpec.load(root.toString())!!
+            assertEquals(root.toString(), loaded.canonicalDirectory)
+            assertEquals(workdir.toString(), loaded.hostWorkingDirectory())
+            val projectSettings = de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsState()
+            assertEquals(workdir.toString(), projectSettings.effectiveOpenCodeDirectory(root.toString()))
+            assertEquals(root.toString(), projectSettings.effectiveProjectDirectory(root.toString()))
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun workingDirectoryCannotEscapeTheMountedWorkspaceOrBeMissing() {
+        val root = Files.createTempDirectory("opencode-sbx-working-dir-check").toRealPath()
+        try {
+            val path = SbxLaunchSpec.projectSpecPath(root.toString())
+            Files.createDirectories(path.parent)
+            for (value in listOf("", "../other", "/tmp", "C:/outside", "C:relative", "~/other")) {
+                assertNull(value, SbxLaunchSpec.parseYaml("canonicalDirectory: ./\nworkingDirectory: '$value'\n"))
+            }
+            Files.writeString(path, "canonicalDirectory: ./\nworkingDirectory: ./missing\n")
+            assertTrue(SbxLaunchSpec.inspect(root.toString()) is SbxLaunchSpecInspection.Invalid)
+            val outside = Files.createTempDirectory("opencode-sbx-working-outside")
+            try {
+                if (runCatching { Files.createSymbolicLink(root.resolve("escape"), outside) }.isSuccess) {
+                    Files.writeString(path, "canonicalDirectory: ./\nworkingDirectory: ./escape\n")
+                    assertTrue(SbxLaunchSpec.inspect(root.toString()) is SbxLaunchSpecInspection.Invalid)
+                }
+            } finally {
+                outside.toFile().deleteRecursively()
+            }
         } finally {
             root.toFile().deleteRecursively()
         }

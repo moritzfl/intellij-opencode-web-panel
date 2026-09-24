@@ -941,7 +941,7 @@ internal class SbxOpenCodeServerBackend(
                 SbxCli.buildExecServeCommand(
                     sbx,
                     name,
-                    canonicalDirectory,
+                    spec.hostWorkingDirectory(),
                     extraEnvKeys = extraEnv.keys.toList(),
                     preferGuestV2 = spec.openCodeVersion.prefersGuestV2(),
                 ),
@@ -1531,7 +1531,8 @@ internal class SbxOpenCodeServerBackend(
                 OpenCodeServerProtocol.buildBasicAuthHeader(password),
                 backendId,
                 getWireProtocol(),
-                canonicalDirectory,
+                SbxLaunchSpec.load(canonicalDirectory)?.hostWorkingDirectory()?.let(SbxCli::guestBindPath)
+                    ?: SbxCli.guestBindPath(canonicalDirectory),
             )
         }
     }
