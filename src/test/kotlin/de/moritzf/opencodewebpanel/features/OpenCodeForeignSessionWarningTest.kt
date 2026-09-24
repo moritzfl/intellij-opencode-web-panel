@@ -1,12 +1,17 @@
 package de.moritzf.opencodewebpanel.features
 
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
+import de.moritzf.opencodewebpanel.server.SbxCli
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.Rule
+import org.junit.rules.TemporaryFolder
+import java.nio.file.Files
 
 class OpenCodeForeignSessionWarningTest {
+    @get:Rule val temp = TemporaryFolder()
     private val workspace = "/Users/me/web-ui"
     private var enabled = true
     private val sessions = mutableMapOf<String, OpenCodeServerProtocol.SessionInfo>()
@@ -90,6 +95,55 @@ class OpenCodeForeignSessionWarningTest {
                 guestToHostPrefixes = prefixes,
             ),
         )
+    }
+
+    @Test
+    fun windowsGuestPathMappingWithoutGitKeepsTheExactCwd() {
+        val root = temp.newFolder("outside-git").toPath().toRealPath()
+        val workdir = Files.createDirectory(root.resolve("app"))
+        Files.createDirectory(root.resolve("Other"))
+        val guestRoot = SbxCli.guestBindPath(root.toString())
+        val prefixes = listOf(guestRoot to root.toString())
+        assertFalse(OpenCodeForeignSessionPolicy.isForeign("$guestRoot/app", workdir.toString(), prefixes))
+        assertTrue(OpenCodeForeignSessionPolicy.isForeign(guestRoot, workdir.toString(), prefixes))
+        assertTrue(OpenCodeForeignSessionPolicy.isForeign("$guestRoot/Other", workdir.toString(), prefixes))
+    }
+
+    @Test
+    fun sandboxWorkspaceSessionDoesNotPaintARedBorderOnWindows() {
+        val root = temp.newFolder("repo").toPath().toRealPath()
+        Files.createDirectory(root.resolve(".git"))
+        val workdir = Files.createDirectory(root.resolve("app"))
+        val linked = Files.createDirectory(root.resolve("linked-worktree"))
+        Files.writeString(linked.resolve(".git"), "gitdir: ../.git/worktrees/linked-worktree\n")
+        val guestRoot = SbxCli.guestBindPath(root.toString())
+        val outlines = mutableListOf<String?>()
+        val local = OpenCodeForeignSessionWarning(
+            enabled = { true },
+            workspaceDirectory = { workdir.toString() },
+            loadSession = { id ->
+                val directory = when (id) {
+                    "ses_here" -> "$guestRoot/app"
+                    "ses_root" -> guestRoot
+                    else -> "$guestRoot/linked-worktree"
+                }
+                info(id, directory, id)
+            },
+            guestToHostPrefixes = { listOf(guestRoot to root.toString()) },
+            sandboxGuestPath = { "$guestRoot/app" },
+            executeAsync = { it.run() },
+            notify = { _, _ -> },
+            clearWarning = {},
+            onOutline = { outlines.add(it) },
+        )
+
+        local.onDisplayedSessionChanged("ses_here")
+        local.onDisplayedSessionChanged("ses_root")
+        local.onDisplayedSessionChanged("ses_linked")
+
+        assertEquals(listOf(null, null, null, "ses_linked"), outlines)
+        assertFalse(OpenCodeForeignSessionPolicy.isForeign("$guestRoot/app", root.toString(), listOf(guestRoot to root.toString())))
+        assertTrue(OpenCodeForeignSessionPolicy.isForeign("$guestRoot/linked-worktree", root.toString(), listOf(guestRoot to root.toString())))
     }
 
     @Test

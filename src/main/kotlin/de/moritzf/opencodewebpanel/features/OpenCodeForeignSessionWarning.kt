@@ -2,6 +2,8 @@ package de.moritzf.opencodewebpanel.features
 
 import com.intellij.openapi.diagnostic.thisLogger
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
+import java.nio.file.Files
+import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -9,8 +11,9 @@ import java.util.concurrent.atomic.AtomicLong
  *
  * Fires on a session change (SPA route, including a restored tab), not on every address
  * flicker of the same `ses_`. Does not block navigation. A missing directory or a failed
- * lookup is not a mismatch. Exact folder match only — a subdirectory is a different cwd.
- * Symlink spellings and sandbox guest paths count as the same folder.
+ * lookup is not a mismatch. Folders within the same Git worktree count as this workspace;
+ * a linked worktree is different even when nested inside the mounted repository.
+ * Symlink spellings and sandbox guest paths are resolved before this comparison.
  *
  * [onOutline] receives the foreign session id while that conversation is on screen, and
  * null as soon as it is not. A reload of the same `ses_` reapplies the panel border
@@ -111,8 +114,11 @@ internal object OpenCodeForeignSessionPolicy {
         val workspace = workspaceDirectory?.trim()?.takeIf { it.isNotBlank() } ?: return false
         if (sameFolder(session, workspace)) return false
         if (sandboxGuestPath != null && sameFolder(session, sandboxGuestPath)) return false
-        val translated = translateGuestPath(session, guestToHostPrefixes)
-        return translated == null || !sameFolder(translated, workspace)
+        val translated = translateGuestPath(session, guestToHostPrefixes) ?: session
+        if (sameFolder(translated, workspace)) return false
+        val sessionWorktree = gitWorktreeRoot(translated) ?: return true
+        val workspaceWorktree = gitWorktreeRoot(workspace) ?: return true
+        return !sameFolder(sessionWorktree.toString(), workspaceWorktree.toString())
     }
 
     fun message(sessionTitle: String, sessionDirectory: String, workspaceDirectory: String): String {
@@ -138,6 +144,17 @@ internal object OpenCodeForeignSessionPolicy {
 
     private fun sameFolder(first: String, second: String): Boolean {
         return OpenCodeServerProtocol.isSameFilesystemPath(first, second)
+    }
+
+    /** A linked worktree's `.git` is a file; stop there instead of finding the parent's `.git`. */
+    private fun gitWorktreeRoot(path: String): Path? {
+        var directory = runCatching { Path.of(path).toRealPath() }.getOrNull()
+            ?.takeIf(Files::isDirectory) ?: return null
+        while (true) {
+            val dotGit = directory.resolve(".git")
+            if (Files.isDirectory(dotGit) || Files.isRegularFile(dotGit)) return directory
+            directory = directory.parent ?: return null
+        }
     }
 
     private fun pathHasPrefix(path: String, prefix: String): Boolean {
