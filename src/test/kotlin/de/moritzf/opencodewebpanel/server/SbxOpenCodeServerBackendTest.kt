@@ -185,7 +185,7 @@ class SbxOpenCodeServerBackendTest {
         var stageDuringInstall: String? = null
         val original = behavior
         behavior = { command ->
-            if (command.any { SbxCli.V2_INSTALL_URL in it }) {
+            if (decodedGuestScript(command)?.contains(SbxCli.V2_INSTALL_URL) == true) {
                 stageDuringInstall = backend.startupStage()
                 SbxCommandResult(0, "Installing OpenCode version: 2.0.8")
             } else {
@@ -225,7 +225,7 @@ class SbxOpenCodeServerBackendTest {
                     workingDirectory: Path?,
                     onOutputLine: (String) -> Unit,
                 ): SbxCommandResult {
-                    if (command.any { SbxCli.V2_INSTALL_URL in it }) {
+                    if (decodedGuestScript(command)?.contains(SbxCli.V2_INSTALL_URL) == true) {
                         calls += command[1]
                         onOutputLine("## 2.8%")
                         stages += streaming.startupStage()
@@ -274,11 +274,11 @@ class SbxOpenCodeServerBackendTest {
             when (command[1]) {
                 "ls" -> listed("stopped")
                 "exec" -> when {
-                    command.any { SbxCli.V2_INSTALL_URL in it } -> {
+                    decodedGuestScript(command)?.contains(SbxCli.V2_INSTALL_URL) == true -> {
                         installed = true
                         SbxCommandResult(1, "install blocked")
                     }
-                    command.contains(SbxCli.GUEST_V2_VERSION_SCRIPT) -> {
+                    decodedGuestScript(command) == SbxCli.GUEST_V2_VERSION_SCRIPT -> {
                         probed = true
                         SbxCommandResult(SbxCli.GUEST_V2_MISSING_EXIT_CODE, "")
                     }
@@ -309,11 +309,11 @@ class SbxOpenCodeServerBackendTest {
             when (command[1]) {
                 "ls" -> listed("stopped")
                 "exec" -> when {
-                    command.any { SbxCli.V2_INSTALL_URL in it } -> {
+                    decodedGuestScript(command)?.contains(SbxCli.V2_INSTALL_URL) == true -> {
                         installed = true
                         SbxCommandResult(1, "should not install")
                     }
-                    command.contains(SbxCli.GUEST_V2_VERSION_SCRIPT) -> SbxCommandResult(0, "opencode v2.0.11")
+                    decodedGuestScript(command) == SbxCli.GUEST_V2_VERSION_SCRIPT -> SbxCommandResult(0, "opencode v2.0.11")
                     else -> SbxCommandResult(0, "")
                 }
                 else -> SbxCommandResult(0, "")
@@ -335,7 +335,7 @@ class SbxOpenCodeServerBackendTest {
             when (command[1]) {
                 "ls" -> listed("running")
                 "exec" -> {
-                    if (command.any { "pkill -TERM" in it }) pkills++
+                    if (decodedGuestScript(command)?.contains("pkill -TERM") == true) pkills++
                     SbxCommandResult(0, "")
                 }
                 else -> SbxCommandResult(0, "")
@@ -350,7 +350,7 @@ class SbxOpenCodeServerBackendTest {
     fun failedV2InstallKeepsSessionsAndDoesNotStartServe() {
         val original = behavior
         behavior = { command ->
-            if (command.any { SbxCli.V2_INSTALL_URL in it }) {
+            if (decodedGuestScript(command)?.contains(SbxCli.V2_INSTALL_URL) == true) {
                 SbxCommandResult(1, "curl: (22) The requested URL returned error: 403")
             } else {
                 original(command)
@@ -371,9 +371,9 @@ class SbxOpenCodeServerBackendTest {
         behavior = { command ->
             when {
                 command[1] == "ls" -> listed("stopped")
-                command.contains(SbxCli.GUEST_V2_VERSION_SCRIPT) -> SbxCommandResult(45, "Expected OpenCode 2.x; got 1.18.23")
-                command.any { SbxCli.V2_INSTALL_URL in it } -> error("An invalid installed binary must not be treated as absent")
-                command.contains("serve") -> error("Invalid binary must not serve")
+                decodedGuestScript(command) == SbxCli.GUEST_V2_VERSION_SCRIPT -> SbxCommandResult(45, "Expected OpenCode 2.x; got 1.18.23")
+                decodedGuestScript(command)?.contains(SbxCli.V2_INSTALL_URL) == true -> error("An invalid installed binary must not be treated as absent")
+                command.contains("serve") || decodedGuestScript(command)?.contains("'serve'") == true -> error("Invalid binary must not serve")
                 else -> SbxCommandResult(0, "")
             }
         }
@@ -390,8 +390,8 @@ class SbxOpenCodeServerBackendTest {
         val original = behavior
         behavior = { command ->
             when {
-                command.any { SbxCli.V2_INSTALL_URL in it } -> SbxCommandResult(0, "installer complete")
-                command.contains(SbxCli.GUEST_V2_VERSION_SCRIPT) -> SbxCommandResult(45, "version command failed")
+                decodedGuestScript(command)?.contains(SbxCli.V2_INSTALL_URL) == true -> SbxCommandResult(0, "installer complete")
+                decodedGuestScript(command) == SbxCli.GUEST_V2_VERSION_SCRIPT -> SbxCommandResult(45, "version command failed")
                 else -> original(command)
             }
         }

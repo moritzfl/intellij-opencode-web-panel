@@ -5,6 +5,8 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.nio.charset.StandardCharsets
+import java.util.Base64
 
 class SbxCliTest {
 
@@ -84,17 +86,12 @@ class SbxCliTest {
             "~/docs | /home/agent/docs\n/no/such/dir | /home/agent/missing",
             SbxCli.normalizeExtraMountText(" ~/docs | /home/agent/docs \n\n /no/such/dir | /home/agent/missing \n ~/docs | /home/agent/docs "),
         )
-        assertEquals(
-            listOf(
-                "sbx", "exec", "-w", "/", "ide-ocwp-abc", "sh", "-c",
-                SbxCli.extraMountLinkScript(replaceExistingDirectory = false),
-                SbxCli.LINK_ARGV0, "/Users/me/docs", "/home/agent/docs",
-            ),
-            SbxCli.buildLinkExtraMountCommand(
-                name = "ide-ocwp-abc",
-                mount = SbxExtraMount("/Users/me/docs", "/home/agent/docs"),
-            ),
+        val command = SbxCli.buildLinkExtraMountCommand(
+            name = "ide-ocwp-abc",
+            mount = SbxExtraMount("/Users/me/docs", "/home/agent/docs"),
         )
+        assertEquals(listOf("sbx", "exec", "-w", "/", "ide-ocwp-abc", "sh", "-c"), command.take(7))
+        assertEquals("set -- '/Users/me/docs' '/home/agent/docs'\n${SbxCli.extraMountLinkScript(false)}", decodedGuestScript(command))
         assertTrue(SbxCli.needsSandboxLink(SbxExtraMount("/Users/me/docs", "/home/agent/docs")))
         assertFalse(SbxCli.needsSandboxLink(SbxExtraMount("/tmp/docs", "/tmp/docs")))
         assertEquals("C:/Users/me/docs", SbxCli.posixPath("C:\\Users\\me\\docs"))
@@ -252,13 +249,19 @@ class SbxCliTest {
         assertEquals("/home/agent/.local/share/opencode", mount.sandboxPath)
         assertTrue(SbxCli.needsSandboxLink(mount))
         val replace = SbxCli.buildLinkExtraMountCommand(name = "ide-ocwp-abc", mount = mount, replaceExistingDirectory = true)
-        assertTrue(replace[7].contains("cp -a"))
-        assertTrue(replace[7].contains("rm -rf"))
-        assertEquals(listOf(SbxCli.LINK_ARGV0, SbxCli.guestBindPath(mount.hostPath), mount.sandboxPath), replace.takeLast(3))
+        val replaceScript = decodedGuestScript(replace)!!
+        assertTrue(replaceScript.contains("cp -a"))
+        assertTrue(replaceScript.contains("rm -rf"))
+        assertTrue(replaceScript.startsWith("set -- '${SbxCli.guestBindPath(mount.hostPath)}' '${mount.sandboxPath}'\n"))
         val windowsPersist = SbxExtraMount("C:/Users/me/AppData/Local/opencode-web-panel/sbx/ide-ocwp-abc", SbxCli.persistSandboxGuestPath())
         assertEquals(
-            "/c/Users/me/AppData/Local/opencode-web-panel/sbx/ide-ocwp-abc",
-            SbxCli.buildLinkExtraMountCommand(name = "ide-ocwp-abc", mount = windowsPersist).takeLast(2).first(),
+            "set -- '/c/Users/me/AppData/Local/opencode-web-panel/sbx/ide-ocwp-abc' '/home/agent/.local/share/opencode'\n${SbxCli.extraMountLinkScript(false)}",
+            decodedGuestScript(SbxCli.buildLinkExtraMountCommand(name = "ide-ocwp-abc", mount = windowsPersist)),
+        )
+        assertTrue(
+            decodedGuestScript(SbxCli.buildLinkExtraMountCommand(
+                name = "ide-ocwp-abc", mount = SbxExtraMount("C:/Users/O'Brien/docs #1", "/home/agent/O'Brien/docs"),
+            ))!!.startsWith("set -- '/c/Users/O'\\''Brien/docs #1' '/home/agent/O'\\''Brien/docs'\n"),
         )
         assertFalse(SbxCli.persistMountIsAttached(emptyList(), mount))
         assertTrue(SbxCli.persistMountIsAttached(listOf(mount.hostPath), mount))
@@ -372,30 +375,13 @@ class SbxCliTest {
             preferGuestV2 = true,
         )
         assertEquals(
-            listOf(
-                "sbx",
-                "exec",
-                "-e",
-                "OPENCODE_SERVER_PASSWORD",
-                "-e",
-                "OPENCODE_CONFIG_CONTENT",
-                "-e",
-                "OPENCODE_AUTH_CONTENT",
-                "-w",
-                "/tmp/project",
-                "ide-ocwp-abc",
-                "sh",
-                "-c",
-                SbxCli.GUEST_OPENCODE_DISPATCH,
-                "opencode",
-                "serve",
-                "--hostname",
-                "0.0.0.0",
-                "--port",
-                "4096",
-                "--print-logs",
-            ),
-            command,
+            listOf("sbx", "exec", "-e", "OPENCODE_SERVER_PASSWORD", "-e", "OPENCODE_CONFIG_CONTENT",
+                "-e", "OPENCODE_AUTH_CONTENT", "-w", "/tmp/project", "ide-ocwp-abc", "sh", "-c"),
+            command.take(13),
+        )
+        assertEquals(
+            "set -- 'serve' '--hostname' '0.0.0.0' '--port' '4096' '--print-logs'\n${SbxCli.GUEST_OPENCODE_DISPATCH}",
+            decodedGuestScript(command),
         )
         assertFalse(SbxCli.commandContainsBoundEnvAssignment(command))
         assertEquals(
@@ -442,24 +428,9 @@ class SbxCliTest {
 
     @Test
     fun execUpgradePrefersGuestOpenCodeBin() {
-        assertEquals(
-            listOf(
-                "sbx",
-                "exec",
-                "-w",
-                "/",
-                "ide-ocwp-abc",
-                "sh",
-                "-c",
-                SbxCli.GUEST_OPENCODE_DISPATCH,
-                "opencode",
-                "upgrade",
-                "--print-logs",
-                "--method",
-                "curl",
-            ),
-            SbxCli.buildExecUpgradeCommand(name = "ide-ocwp-abc", preferGuestV2 = true),
-        )
+        val v2 = SbxCli.buildExecUpgradeCommand(name = "ide-ocwp-abc", preferGuestV2 = true)
+        assertEquals(listOf("sbx", "exec", "-w", "/", "ide-ocwp-abc", "sh", "-c"), v2.take(7))
+        assertEquals("set -- 'upgrade' '--print-logs' '--method' 'curl'\n${SbxCli.GUEST_OPENCODE_DISPATCH}", decodedGuestScript(v2))
         assertEquals(
             listOf("sbx", "exec", "-w", "/", "ide-ocwp-abc", "opencode", "upgrade", "--print-logs"),
             SbxCli.buildExecUpgradeCommand(name = "ide-ocwp-abc"),
@@ -469,20 +440,15 @@ class SbxCliTest {
     @Test
     fun execInstallV2DownloadsOfficialInstaller() {
         val command = SbxCli.buildExecInstallV2Command(name = "ide-ocwp-abc")
-        assertEquals(
-            listOf("sbx", "exec", "-w", "/", "ide-ocwp-abc", "sh", "-c", SbxCli.V2_INSTALL_SCRIPT),
-            command,
-        )
+        assertEquals(listOf("sbx", "exec", "-w", "/", "ide-ocwp-abc", "sh", "-c"), command.take(7))
+        assertEquals(SbxCli.V2_INSTALL_SCRIPT, decodedGuestScript(command))
         assertTrue(SbxCli.V2_INSTALL_SCRIPT.contains(SbxCli.V2_INSTALL_URL))
         assertTrue(SbxCli.V2_INSTALL_SCRIPT.contains("--no-modify-path"))
         assertTrue(SbxCli.V2_INSTALL_SCRIPT.contains("--version"))
         assertTrue(SbxCli.V2_INSTALL_SCRIPT.contains("registry.npmjs.org"))
         assertTrue(SbxCli.GUEST_OPENCODE_DISPATCH.contains("\$HOME/.opencode/bin/opencode"))
         assertFalse(SbxCli.commandContainsBoundEnvAssignment(command))
-        assertEquals(
-            listOf("sbx", "exec", "-w", "/", "ide-ocwp-abc", "sh", "-c", SbxCli.GUEST_V2_VERSION_SCRIPT),
-            SbxCli.buildExecGuestV2VersionCommand(name = "ide-ocwp-abc"),
-        )
+        assertEquals(SbxCli.GUEST_V2_VERSION_SCRIPT, decodedGuestScript(SbxCli.buildExecGuestV2VersionCommand(name = "ide-ocwp-abc")))
     }
 
     @Test
@@ -521,8 +487,8 @@ class SbxCliTest {
         assertEquals("/", command[3])
         assertEquals("ide-ocwp-abc", command[4])
         assertEquals("sh", command[5])
-        assertEquals("-lc", command[6])
-        val script = command[7]
+        assertEquals("-c", command[6])
+        val script = decodedGuestScript(command)!!
         assertTrue(script.contains("pkill -TERM -f '[o]pencode serve --hostname 0.0.0.0 --port 4096 --print-logs'"))
         assertTrue(script.contains("pkill -KILL -f '[o]pencode serve --hostname 0.0.0.0 --port 4096 --print-logs'"))
         assertTrue(script.contains("pkill -0 -f"))
@@ -677,4 +643,14 @@ class SbxCliTest {
     private fun resource(name: String): String {
         return javaClass.getResource("/de/moritzf/opencodewebpanel/server/$name")!!.readText()
     }
+}
+
+internal fun decodedGuestScript(command: List<String>): String? {
+    val index = command.indexOf("-c")
+    val wrapper = command.getOrNull(index + 1) ?: return null
+    val prefix = "printf %s "
+    val suffix = " | base64 -d | sh"
+    if (!wrapper.startsWith(prefix) || !wrapper.endsWith(suffix)) return null
+    val payload = wrapper.substring(prefix.length, wrapper.length - suffix.length)
+    return String(Base64.getDecoder().decode(payload), StandardCharsets.UTF_8)
 }

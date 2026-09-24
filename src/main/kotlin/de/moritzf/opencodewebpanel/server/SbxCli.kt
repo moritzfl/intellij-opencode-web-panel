@@ -8,6 +8,7 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
+import java.util.Base64
 
 internal data class SbxExtraMount @JvmOverloads constructor(
     val hostPath: String,
@@ -606,8 +607,6 @@ internal object SbxCli {
             !OpenCodeServerProtocol.isSameFilesystemPath(mount.hostPath, mount.sandboxPath)
     }
 
-    const val LINK_ARGV0 = "opencode-link"
-
     /** Same guest scripts as `link_mount` in `opencode-sbx.sh`. */
     fun extraMountLinkScript(replaceExistingDirectory: Boolean): String {
         return if (replaceExistingDirectory) {
@@ -657,11 +656,20 @@ internal object SbxCli {
         mount: SbxExtraMount,
         replaceExistingDirectory: Boolean = false,
     ): List<String> {
-        return listOf(
-            executable, "exec", "-w", "/", name, "sh", "-c", extraMountLinkScript(replaceExistingDirectory),
-            LINK_ARGV0, guestBindPath(mount.hostPath), mount.sandboxPath,
+        return listOf(executable, "exec", "-w", "/", name) + guestScriptCommand(
+            extraMountLinkScript(replaceExistingDirectory),
+            listOf(guestBindPath(mount.hostPath), mount.sandboxPath),
         )
     }
+
+    /** sbx on Windows breaks quotes inside an argv script passed by ProcessBuilder. Decode inside the guest instead. */
+    private fun guestScriptCommand(script: String, args: List<String> = emptyList()): List<String> {
+        val body = if (args.isEmpty()) script else "set -- ${args.joinToString(" ") { shellQuote(it) }}\n$script"
+        val encoded = Base64.getEncoder().encodeToString(body.toByteArray(StandardCharsets.UTF_8))
+        return listOf("sh", "-c", "printf %s $encoded | base64 -d | sh")
+    }
+
+    private fun shellQuote(value: String): String = "'" + value.replace("'", "'\\''") + "'"
 
     fun normalizeExtraMountText(text: String?): String = serializeExtraMountRows(parseExtraMountRows(text))
 
@@ -745,7 +753,7 @@ internal object SbxCli {
         executable: String = DEFAULT_EXECUTABLE,
         name: String,
     ): List<String> {
-        return listOf(executable, "exec", "-w", "/", name, "sh", "-c", V2_INSTALL_SCRIPT)
+        return listOf(executable, "exec", "-w", "/", name) + guestScriptCommand(V2_INSTALL_SCRIPT)
     }
 
     fun buildNetworkProbeCommand(executable: String, name: String, url: String): List<String> = listOf(
@@ -764,7 +772,7 @@ internal object SbxCli {
         executable: String = DEFAULT_EXECUTABLE,
         name: String,
     ): List<String> {
-        return listOf(executable, "exec", "-w", "/", name, "sh", "-c", GUEST_V2_VERSION_SCRIPT)
+        return listOf(executable, "exec", "-w", "/", name) + guestScriptCommand(GUEST_V2_VERSION_SCRIPT)
     }
 
     private fun appendGuestOpenCode(
@@ -773,11 +781,11 @@ internal object SbxCli {
         preferGuestV2: Boolean,
     ) {
         if (preferGuestV2) {
-            command += listOf("sh", "-c", GUEST_OPENCODE_DISPATCH, "opencode")
+            command += guestScriptCommand(GUEST_OPENCODE_DISPATCH, args)
         } else {
             command += "opencode"
+            command += args
         }
-        command += args
     }
 
     fun buildAddKitCommand(executable: String = DEFAULT_EXECUTABLE, name: String, ref: String): List<String> =
@@ -787,14 +795,7 @@ internal object SbxCli {
         executable: String = DEFAULT_EXECUTABLE,
         name: String,
     ): List<String> {
-        return listOf(
-            executable,
-            "exec",
-            "-w",
-            "/",
-            name,
-            "sh",
-            "-lc",
+        return listOf(executable, "exec", "-w", "/", name) + guestScriptCommand(
             $$"""
             pkill -TERM -f '$${SERVE_PKILL_PATTERN}' || true
             i=0
