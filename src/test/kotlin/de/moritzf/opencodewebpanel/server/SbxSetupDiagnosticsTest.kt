@@ -21,7 +21,7 @@ class SbxSetupDiagnosticsTest {
             assertTrue(timeout <= 15_000L)
             if (command[1] == "ls") inventory() else {
                 probes += command
-                assertEquals(listOf("sbx", "exec", "sandbox", "curl"), command.take(4))
+                assertEquals(listOf("sbx", "exec", "-w", "/", "sandbox", "curl"), command.take(6))
                 assertTrue(command.contains("--max-time"))
                 SbxCommandResult(0, if (command.last().contains("models.opencode.ai")) "\nOCWP_HTTP=403\n" else "curl: note on stderr\nOCWP_HTTP=200\n")
             }

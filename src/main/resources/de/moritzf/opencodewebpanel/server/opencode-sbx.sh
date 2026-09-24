@@ -733,7 +733,7 @@ if [ -d "$2" ] && [ ! -L "$2" ]; then
 fi
 ln -sfn -- "$1" "$2"'
   fi
-  "$SBX" exec "$NAME" sh -c "$script" opencode-link "$host" "$sandbox"
+  "$SBX" exec -w / "$NAME" sh -c "$script" opencode-link "$host" "$sandbox"
 }
 
 # Resolve mounts like SbxCli.resolveExtraMounts: the same raw host and sandbox path means
@@ -926,7 +926,7 @@ print_url() {
 
 if [[ "$OPENCODE_VERSION" == "2.x" ]]; then
   guest_v2_version_script="$(v2_version_script)"
-  if "$SBX" exec "$NAME" sh -c "$guest_v2_version_script" >/dev/null; then
+  if "$SBX" exec -w / "$NAME" sh -c "$guest_v2_version_script" >/dev/null; then
     :
   else
     version_status=$?
@@ -936,8 +936,8 @@ if [[ "$OPENCODE_VERSION" == "2.x" ]]; then
     fi
     echo "opencode-sbx: installing OpenCode 2.x…" >&2
     guest_v2_install_script="$(v2_install_script)"
-    "$SBX" exec "$NAME" sh -c "$guest_v2_install_script"
-    "$SBX" exec "$NAME" sh -c "$guest_v2_version_script" >/dev/null || {
+    "$SBX" exec -w / "$NAME" sh -c "$guest_v2_install_script"
+    "$SBX" exec -w / "$NAME" sh -c "$guest_v2_version_script" >/dev/null || {
       echo "opencode-sbx: installer did not produce a runnable OpenCode 2.x binary." >&2
       exit 1
     }
@@ -973,7 +973,7 @@ fi
 if [[ ${#serve_env[@]} -gt 0 ]]; then
   launch+=( "${serve_env[@]}" )
 fi
-launch+=( -w "$CANONICAL" "$NAME" "${guest_opencode[@]}" ${opencode_cmd[@]+"${opencode_cmd[@]}"} )
+launch+=( -w "$(guest_bind_path "$CANONICAL")" "$NAME" "${guest_opencode[@]}" ${opencode_cmd[@]+"${opencode_cmd[@]}"} )
 if [[ "$MODE" == acp ]]; then
   exec 0<&3 1>&4 3<&- 4>&-
 fi

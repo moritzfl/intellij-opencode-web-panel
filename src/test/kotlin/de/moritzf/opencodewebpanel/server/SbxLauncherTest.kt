@@ -636,6 +636,7 @@ class SbxLauncherTest {
             """.trimIndent() + "\n",
         )
         val args = runLauncher(launcher(project), project, createExit = 0, resultCommand = "exec")
+        assertEquals(listOf("exec", "-w", "/", SbxCli.sandboxName(project.toString())), args.take(4))
         assertTrue(args.contains("opencode-link"))
         assertTrue(args.contains(docs.toString()))
         assertFalse(args.contains("./docs"))

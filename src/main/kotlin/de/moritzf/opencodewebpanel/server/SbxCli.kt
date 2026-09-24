@@ -658,7 +658,7 @@ internal object SbxCli {
         replaceExistingDirectory: Boolean = false,
     ): List<String> {
         return listOf(
-            executable, "exec", name, "sh", "-c", extraMountLinkScript(replaceExistingDirectory),
+            executable, "exec", "-w", "/", name, "sh", "-c", extraMountLinkScript(replaceExistingDirectory),
             LINK_ARGV0, guestBindPath(mount.hostPath), mount.sandboxPath,
         )
     }
@@ -719,7 +719,7 @@ internal object SbxCli {
         extraEnvKeys.distinct().filter { it.isNotBlank() && it != OPENCODE_SERVER_PASSWORD_ENV }.forEach { key ->
             command += listOf("-e", key)
         }
-        command += listOf("-w", workspace, name)
+        command += listOf("-w", guestBindPath(workspace), name)
         appendGuestOpenCode(command, SERVE_FLAGS, preferGuestV2)
         return command
     }
@@ -729,7 +729,7 @@ internal object SbxCli {
         name: String,
         preferGuestV2: Boolean = false,
     ): List<String> {
-        val command = mutableListOf(executable, "exec", name)
+        val command = mutableListOf(executable, "exec", "-w", "/", name)
         val args = mutableListOf("upgrade", "--print-logs")
         if (preferGuestV2) {
             // CLI 2.x curl-detect is path.resolve(execPath) == $HOME/.opencode/bin/opencode.
@@ -745,11 +745,11 @@ internal object SbxCli {
         executable: String = DEFAULT_EXECUTABLE,
         name: String,
     ): List<String> {
-        return listOf(executable, "exec", name, "sh", "-c", V2_INSTALL_SCRIPT)
+        return listOf(executable, "exec", "-w", "/", name, "sh", "-c", V2_INSTALL_SCRIPT)
     }
 
     fun buildNetworkProbeCommand(executable: String, name: String, url: String): List<String> = listOf(
-        executable, "exec", name, "curl", "--silent", "--show-error", "--location",
+        executable, "exec", "-w", "/", name, "curl", "--silent", "--show-error", "--location",
         "--connect-timeout", "5", "--max-time", "10", "--output", "/dev/null", "--write-out", "\n$NETWORK_PROBE_MARKER%{http_code}\n", url,
     )
 
@@ -764,7 +764,7 @@ internal object SbxCli {
         executable: String = DEFAULT_EXECUTABLE,
         name: String,
     ): List<String> {
-        return listOf(executable, "exec", name, "sh", "-c", GUEST_V2_VERSION_SCRIPT)
+        return listOf(executable, "exec", "-w", "/", name, "sh", "-c", GUEST_V2_VERSION_SCRIPT)
     }
 
     private fun appendGuestOpenCode(
@@ -790,6 +790,8 @@ internal object SbxCli {
         return listOf(
             executable,
             "exec",
+            "-w",
+            "/",
             name,
             "sh",
             "-lc",

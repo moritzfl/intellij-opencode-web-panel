@@ -86,7 +86,7 @@ class SbxCliTest {
         )
         assertEquals(
             listOf(
-                "sbx", "exec", "ide-ocwp-abc", "sh", "-c",
+                "sbx", "exec", "-w", "/", "ide-ocwp-abc", "sh", "-c",
                 SbxCli.extraMountLinkScript(replaceExistingDirectory = false),
                 SbxCli.LINK_ARGV0, "/Users/me/docs", "/home/agent/docs",
             ),
@@ -252,8 +252,8 @@ class SbxCliTest {
         assertEquals("/home/agent/.local/share/opencode", mount.sandboxPath)
         assertTrue(SbxCli.needsSandboxLink(mount))
         val replace = SbxCli.buildLinkExtraMountCommand(name = "ide-ocwp-abc", mount = mount, replaceExistingDirectory = true)
-        assertTrue(replace[5].contains("cp -a"))
-        assertTrue(replace[5].contains("rm -rf"))
+        assertTrue(replace[7].contains("cp -a"))
+        assertTrue(replace[7].contains("rm -rf"))
         assertEquals(listOf(SbxCli.LINK_ARGV0, SbxCli.guestBindPath(mount.hostPath), mount.sandboxPath), replace.takeLast(3))
         val windowsPersist = SbxExtraMount("C:/Users/me/AppData/Local/opencode-web-panel/sbx/ide-ocwp-abc", SbxCli.persistSandboxGuestPath())
         assertEquals(
@@ -417,6 +417,9 @@ class SbxCliTest {
             ),
             SbxCli.buildExecServeCommand(name = "ide-ocwp-abc", workspace = "/tmp/project"),
         )
+        val windows = SbxCli.buildExecServeCommand(name = "ide-ocwp-abc", workspace = "C:\\Source\\WorkspacePosy")
+        assertEquals("/c/Source/WorkspacePosy", windows[windows.indexOf("-w") + 1])
+        assertFalse(windows.contains("C:/Source/WorkspacePosy"))
     }
 
     @Test
@@ -443,6 +446,8 @@ class SbxCliTest {
             listOf(
                 "sbx",
                 "exec",
+                "-w",
+                "/",
                 "ide-ocwp-abc",
                 "sh",
                 "-c",
@@ -456,7 +461,7 @@ class SbxCliTest {
             SbxCli.buildExecUpgradeCommand(name = "ide-ocwp-abc", preferGuestV2 = true),
         )
         assertEquals(
-            listOf("sbx", "exec", "ide-ocwp-abc", "opencode", "upgrade", "--print-logs"),
+            listOf("sbx", "exec", "-w", "/", "ide-ocwp-abc", "opencode", "upgrade", "--print-logs"),
             SbxCli.buildExecUpgradeCommand(name = "ide-ocwp-abc"),
         )
     }
@@ -465,7 +470,7 @@ class SbxCliTest {
     fun execInstallV2DownloadsOfficialInstaller() {
         val command = SbxCli.buildExecInstallV2Command(name = "ide-ocwp-abc")
         assertEquals(
-            listOf("sbx", "exec", "ide-ocwp-abc", "sh", "-c", SbxCli.V2_INSTALL_SCRIPT),
+            listOf("sbx", "exec", "-w", "/", "ide-ocwp-abc", "sh", "-c", SbxCli.V2_INSTALL_SCRIPT),
             command,
         )
         assertTrue(SbxCli.V2_INSTALL_SCRIPT.contains(SbxCli.V2_INSTALL_URL))
@@ -475,7 +480,7 @@ class SbxCliTest {
         assertTrue(SbxCli.GUEST_OPENCODE_DISPATCH.contains("\$HOME/.opencode/bin/opencode"))
         assertFalse(SbxCli.commandContainsBoundEnvAssignment(command))
         assertEquals(
-            listOf("sbx", "exec", "ide-ocwp-abc", "sh", "-c", SbxCli.GUEST_V2_VERSION_SCRIPT),
+            listOf("sbx", "exec", "-w", "/", "ide-ocwp-abc", "sh", "-c", SbxCli.GUEST_V2_VERSION_SCRIPT),
             SbxCli.buildExecGuestV2VersionCommand(name = "ide-ocwp-abc"),
         )
     }
@@ -512,10 +517,12 @@ class SbxCliTest {
         val command = SbxCli.buildRemotePkillCommand(name = "ide-ocwp-abc")
         assertEquals("sbx", command[0])
         assertEquals("exec", command[1])
-        assertEquals("ide-ocwp-abc", command[2])
-        assertEquals("sh", command[3])
-        assertEquals("-lc", command[4])
-        val script = command[5]
+        assertEquals("-w", command[2])
+        assertEquals("/", command[3])
+        assertEquals("ide-ocwp-abc", command[4])
+        assertEquals("sh", command[5])
+        assertEquals("-lc", command[6])
+        val script = command[7]
         assertTrue(script.contains("pkill -TERM -f '[o]pencode serve --hostname 0.0.0.0 --port 4096 --print-logs'"))
         assertTrue(script.contains("pkill -KILL -f '[o]pencode serve --hostname 0.0.0.0 --port 4096 --print-logs'"))
         assertTrue(script.contains("pkill -0 -f"))
