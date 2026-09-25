@@ -26,7 +26,7 @@ import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 
 internal class SbxCommandFailure(
-    stage: String,
+    val stage: String,
     exitCode: Int,
     val output: String,
     /** False for OpenCode's own output, whose provider errors must not read as an sbx login problem. */
@@ -1266,7 +1266,20 @@ internal class SbxOpenCodeServerBackend(
         val output = error.output.takeLast(8192).let {
             if (password.isNullOrBlank()) it else it.replace(password, "[redacted]")
         }
-        val details = "${error.message}\n$output".trim()
+        val hint = if (error.stage == "Link extra mount") {
+            when {
+                output.contains("failed to start runtime", ignoreCase = true) ||
+                    output.contains("start sandbox: start runtime", ignoreCase = true) ->
+                    "Docker Sandboxes could not start the sandbox VM. The mount-link script did not run. " +
+                        "Check the daemon log (`sbx daemon status` shows its path). If it reports a locked task bundle, " +
+                        "restart the host operating system to release the lock, then Retry."
+                output.contains("Command timed out after", ignoreCase = true) ->
+                    "Docker Sandboxes did not respond while preparing sandbox mounts. This command can also start " +
+                        "a stopped VM; check the daemon log (`sbx daemon status` shows its path), then Retry."
+                else -> null
+            }
+        } else null
+        val details = listOfNotNull(hint, error.message, output).filter { it.isNotBlank() }.joinToString("\n")
         synchronized(lock) {
             lastFailure = SbxFailureKind.COMMAND_FAILED
             lastFailureDetails = details

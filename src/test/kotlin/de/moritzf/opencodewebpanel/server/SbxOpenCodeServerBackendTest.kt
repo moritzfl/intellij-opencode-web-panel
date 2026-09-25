@@ -629,6 +629,41 @@ class SbxOpenCodeServerBackendTest {
     }
 
     @Test
+    fun runtimeStartFailureExplainsThatMountLinkWasNotReached() {
+        val message = startWithLinkFailure(
+            SbxCommandResult(1, "error: failed to start sandbox: start runtime: request failed: 500 Internal Server Error"),
+        )
+
+        assertTrue(message.startsWith("Docker Sandboxes could not start the sandbox VM."))
+        assertTrue(message.contains("mount-link script did not run"))
+        assertTrue(message.contains("sbx daemon status"))
+        assertTrue(message.contains("locked task bundle"))
+        assertTrue(message.contains("restart the host operating system"))
+        assertTrue(message.contains("Link extra mount failed (exit 1)"))
+        assertTrue(message.contains("500 Internal Server Error"))
+    }
+
+    @Test
+    fun linkTimeoutExplainsThatStoppedVmMayBeStarting() {
+        val message = startWithLinkFailure(SbxCommandResult(-1, "\nCommand timed out after 30000ms"))
+
+        assertTrue(message.startsWith("Docker Sandboxes did not respond while preparing sandbox mounts."))
+        assertTrue(message.contains("stopped VM"))
+        assertTrue(message.contains("sbx daemon status"))
+        assertTrue(message.contains("Link extra mount failed (exit -1)"))
+        assertTrue(message.contains("Command timed out after 30000ms"))
+        assertFalse(message.contains("restart the host operating system"))
+    }
+
+    @Test
+    fun mountScriptFailureKeepsItsOriginalDetails() {
+        val output = "opencode-link: /home/agent/docs already exists as a directory"
+        val message = startWithLinkFailure(SbxCommandResult(1, output))
+
+        assertEquals("Link extra mount failed (exit 1).\n$output", message)
+    }
+
+    @Test
     fun readOnlyWorkspaceSuffixDoesNotRecreateExistingVm() {
         val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
         val mount = temp.newFolder("shared-config").toPath().toRealPath().toString()
@@ -1051,6 +1086,26 @@ class SbxOpenCodeServerBackendTest {
     }
 
     private fun drain() = executor.submit {}.get(10, TimeUnit.SECONDS)
+
+    private fun startWithLinkFailure(result: SbxCommandResult): String {
+        val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
+        val spec = SbxLaunchSpec.fromSettings(settings, directory).copy(useSandbox = true, enableIntellijMcp = false)
+        assertNotNull(SbxLaunchSpec.persist(spec))
+        store.save(directory, record.copy(kits = SbxCli.normalizeLineList(spec.kits.joinToString("\n"))))
+        val persist = SbxCli.sandboxPersistDataHome(record.name)
+        behavior = { command ->
+            when (command[1]) {
+                "ls" -> listed("stopped", listOf(directory, persist))
+                "exec" -> result
+                else -> SbxCommandResult(0, "")
+            }
+        }
+        backend.ensureStarted(project, directory, { false }, {}, {})
+        drain()
+        assertTrue(calls.contains("exec"))
+        assertEquals(SbxFailureKind.COMMAND_FAILED, backend.lastFailure())
+        return backend.startFailureMessage()!!
+    }
 
     private fun acknowledge(spec: SbxLaunchSpec) {
         store.acknowledgeExposure(directory, SbxExposure.of(SbxLaunchSpec.load(directory) ?: spec, directory).fingerprint)
