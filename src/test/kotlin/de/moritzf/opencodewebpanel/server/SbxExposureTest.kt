@@ -26,15 +26,16 @@ class SbxExposureTest {
     @Test
     fun outsideMountsSharedConfigAndKitsAreListed() {
         val project = temp.newFolder("project").toPath().toRealPath().toString()
+        val home = temp.newFolder("home").toPath().toRealPath().toString()
         val spec = base(project).copy(
             extraMounts = listOf(SbxExtraMount("~/data", "/home/agent/data"), SbxExtraMount("../other", "../other", readOnly = true)),
             shareHostOpencodeConfig = true,
             kits = listOf("git+https://example.com/kits.git#ref=v1"),
         )
-        val items = SbxExposure.of(spec, project, hostHome = "/home/user", hostConfigDir = Path.of("/cfg/opencode")).items
+        val items = SbxExposure.of(spec, project, hostHome = home, hostConfigDir = Path.of("/cfg/opencode")).items
         assertEquals(
             listOf(
-                "Host path mounted read-write: /home/user/data",
+                "Host path mounted read-write: ${SbxCli.posixPath(Path.of(home).resolve("data").toString())}",
                 "Host path mounted read-only: ${SbxCli.posixPath(Path.of(project).resolve("../other").normalize().toString())}",
                 "Host OpenCode config shared read-only: /cfg/opencode",
                 "Kit: git+https://example.com/kits.git#ref=v1",

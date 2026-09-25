@@ -1,5 +1,6 @@
 package de.moritzf.opencodewebpanel.server
 
+import com.google.gson.JsonArray
 import com.intellij.mock.MockProject
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
@@ -566,7 +567,7 @@ class SbxOpenCodeServerBackendTest {
         drain()
         assertFalse(calls.contains("create"))
         assertEquals(SbxFailureKind.EXPOSURE_UNCONFIRMED, backend.lastFailure())
-        assertTrue(backend.startFailureMessage()!!.contains("Host path mounted read-write: $outside"))
+        assertTrue(backend.startFailureMessage()!!.contains("Host path mounted read-write: ${SbxCli.posixPath(outside)}"))
 
         backend.acknowledgeExposure()
         backend.ensureStarted(project, directory, { false }, {}, {})
@@ -900,7 +901,7 @@ class SbxOpenCodeServerBackendTest {
             when (command[1]) {
                 "ls" -> SbxCommandResult(
                     0,
-                    """{"sandboxes":[{"id":"other-id","name":"ide-ocwp-other","agent":"opencode","status":"running","workspaces":["$other","$directory"]}]}""",
+                    """{"sandboxes":[{"id":"other-id","name":"ide-ocwp-other","agent":"opencode","status":"running","workspaces":${jsonWorkspaces(listOf(other, directory))}}]}""",
                 )
                 "create" -> SbxCommandResult(21, "stop after create")
                 else -> SbxCommandResult(0, "")
@@ -1056,10 +1057,12 @@ class SbxOpenCodeServerBackendTest {
     }
 
     private fun listed(status: String = "running", workspaces: List<String> = listOf(directory)): SbxCommandResult {
-        val listedWorkspaces = workspaces.joinToString(",") { "\"${it.replace("\\", "\\\\")}\"" }
         return SbxCommandResult(
             0,
-            """{"sandboxes":[{"id":"owned-id","name":"${record.name}","agent":"opencode","status":"$status","workspaces":[$listedWorkspaces]}]}""",
+            """{"sandboxes":[{"id":"owned-id","name":"${record.name}","agent":"opencode","status":"$status","workspaces":${jsonWorkspaces(workspaces)}}]}""",
         )
     }
+
+    private fun jsonWorkspaces(workspaces: List<String>): String =
+        JsonArray().apply { workspaces.forEach { add(it) } }.toString()
 }
