@@ -1064,8 +1064,9 @@ internal object OpenCodeBrowserSnippets {
      * timers with the same 2000ms delay (copy-state reset, typewriter cursor) are untouched;
       * the skip-window path uses 0 and is left alone. Home rows (`home-project-row` on 1.18,
       * `home-session-row` on CLI 2.x) do not put the worktree in the DOM. 1.18 maps row order
-      * onto `opencode.global.dat:server` `projects` and skips when counts do not match. CLI 2.x
-      * session rows expose a project-name span; overlay uses it only when that basename uniquely
+      * onto `opencode.global.dat:server` `projects` and skips when project-row counts do not match
+      * (the home page can also contain session rows). CLI 2.x session rows expose a project-name
+      * span; overlay uses it only when that basename uniquely
       * matches a stored worktree. The overlay reuses OpenCode's `session-tab-popover` slots so
       * it picks up the page CSS. Must be removable by reload (safeguard); the builder returns
       * null when disabled.
@@ -1082,7 +1083,8 @@ internal object OpenCodeBrowserSnippets {
               const TAB_DELAY = $tabDelay;
               const PREVIEW_DELAY = $previewDelay;
               const TAB_TRIGGER = '[data-component="session-tab-popover-trigger"]';
-              const PROJECT_ROW = '[data-component="home-project-row"], [data-component="home-session-row"]';
+              const PROJECT_ROW = '[data-component="home-project-row"]';
+              const HOVER_ROW = PROJECT_ROW + ', [data-component="home-session-row"]';
               const nativeSetTimeout = window.setTimeout.bind(window);
               const nativeClearTimeout = window.clearTimeout.bind(window);
               // Kobalte schedules its hover open-delay synchronously inside the trigger's
@@ -1189,6 +1191,7 @@ internal object OpenCodeBrowserSnippets {
                   const matches = storedWorktrees().filter((tree) => worktreeBasename(tree) === projectName);
                   if (matches.length === 1) return matches[0];
                 }
+                if (!row.matches(PROJECT_ROW)) return '';
                 const rows = document.querySelectorAll(PROJECT_ROW);
                 const trees = worktreesMatchingRowCount(rows.length);
                 if (!trees.length) return '';
@@ -1244,7 +1247,7 @@ internal object OpenCodeBrowserSnippets {
               };
               const projectRowFrom = (node) => {
                 if (!node || !node.closest) return null;
-                return node.closest(PROJECT_ROW);
+                return node.closest(HOVER_ROW);
               };
               let hoverTimer = 0;
               let hoverRow = null;

@@ -472,6 +472,12 @@ class OpenCodeBrowserSnippetsTest {
         assertTrue(script.contains("const TAB_DELAY = ${OpenCodeBrowserSnippets.OPENCODE_TAB_POPOVER_OPEN_DELAY_MILLIS}"))
         assertTrue(script.contains("const PREVIEW_DELAY = ${OpenCodeBrowserSnippets.PATH_HOVER_PREVIEW_DELAY_MILLIS}"))
         assertTrue(script.contains("data-opencode-intellij-path-preview"))
+        // Home also renders session rows: only project rows may participate in the worktree
+        // count/order fallback. Session rows instead require an unambiguous project name.
+        assertTrue(script.contains("const PROJECT_ROW = '[data-component=\"home-project-row\"]'"))
+        assertTrue(script.contains("const HOVER_ROW = PROJECT_ROW + ', [data-component=\"home-session-row\"]'"))
+        assertTrue(script.contains("if (!row.matches(PROJECT_ROW)) return ''"))
+        assertTrue(script.contains("return node.closest(HOVER_ROW)"))
         assertTrue(script.contains("querySelectorAll(PROJECT_ROW)"))
         // Only Kobalte's pointerenter-scheduled 2000ms timer is clamped; unrelated page timers
         // with the same delay (copy-state reset, typewriter cursor) must keep their timing.
