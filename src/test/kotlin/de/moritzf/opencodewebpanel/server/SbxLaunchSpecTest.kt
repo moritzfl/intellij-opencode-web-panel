@@ -369,6 +369,40 @@ class SbxLaunchSpecTest {
     }
 
     @Test
+    fun guestCodePathAndQualifiedClassResolveInsideHostIdeSubdirectory() {
+        val root = Files.createTempDirectory("ocwp-sample-repo").toRealPath()
+        try {
+            val source = "package org.example;\nclass SampleWidget {\n    void render() {}\n}\n"
+            val file = Files.writeString(
+                Files.createDirectories(root.resolve("app/src/org/example")).resolve("SampleWidget.java"), source,
+            ).toRealPath()
+            val spec = SbxLaunchSpec.fromSettings(OpenCodeSettingsState(), root.toString()).copy(
+                useSandbox = true, workingDirectory = "./app",
+            )
+            assertNotNull(SbxLaunchSpec.persist(spec))
+            val workdir = root.resolve("app")
+            val prefixes = OpenCodeHostPaths.guestToHostPrefixes("sbx:${spec.name}", workdir.toString(), root.toString())
+            val guestPath = SbxCli.guestBindPath(file.toString())
+            val fileRef = OpenCodeServerProtocol.parseCodeReference("$guestPath:3")!!
+            assertEquals(guestPath, fileRef.path)
+            assertEquals(2, fileRef.line)
+            val target = OpenCodeServerProtocol.resolveFileLinkWithBases(
+                "$guestPath:3", listOf(workdir.toString()), guestToHostPrefixes = prefixes,
+            )
+            assertEquals(file, target?.path)
+            assertEquals(2, target?.line)
+
+            val member = OpenCodeServerProtocol.parseCodeReference("org.example.SampleWidget.render()")!!
+            assertEquals("SampleWidget", member.fileName)
+            assertEquals("render", member.memberName)
+            assertEquals(file.toString(), OpenCodeServerProtocol.pickDistinctPath(listOf(file.toString()), member.path))
+            assertEquals(2, OpenCodeServerProtocol.findMemberLineIndex(source, member.memberName!!))
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
     fun workingDirectoryCannotEscapeTheMountedWorkspaceOrBeMissing() {
         val root = Files.createTempDirectory("opencode-sbx-working-dir-check").toRealPath()
         try {
