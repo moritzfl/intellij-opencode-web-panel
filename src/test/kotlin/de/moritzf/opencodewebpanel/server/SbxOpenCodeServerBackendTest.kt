@@ -146,6 +146,46 @@ class SbxOpenCodeServerBackendTest {
     }
 
     @Test
+    fun legacyDaemonFallbackIsUsedOnlyWhenDetachIsUnsupported() {
+        val daemonCommands = mutableListOf<List<String>>()
+        behavior = { command ->
+            when (command[1]) {
+                "daemon" -> {
+                    daemonCommands += command
+                    if (command.last() == "--detach") SbxCommandResult(2, "unknown flag: --detach") else SbxCommandResult(0, "started")
+                }
+                "ls" -> SbxCommandResult(19, "stop after daemon")
+                else -> SbxCommandResult(0, "")
+            }
+        }
+
+        backend.ensureStarted(project, directory, { false }, {}, {})
+        drain()
+
+        val executable = daemonCommands.first().first()
+        assertEquals(
+            listOf(SbxCli.buildDaemonStartCommand(executable), SbxCli.buildLegacyDaemonStartCommand(executable)),
+            daemonCommands,
+        )
+        assertEquals(SbxFailureKind.COMMAND_FAILED, backend.lastFailure())
+        assertFalse(calls.contains("create"))
+    }
+
+    @Test
+    fun daemonStartupErrorDoesNotRetryInForeground() {
+        behavior = { command ->
+            if (command[1] == "daemon") SbxCommandResult(-1, "Command timed out after 60000ms")
+            else SbxCommandResult(0, "")
+        }
+
+        backend.ensureStarted(project, directory, { false }, {}, {})
+        drain()
+
+        assertEquals(1, calls.count { it == "daemon" })
+        assertEquals(SbxFailureKind.COMMAND_FAILED, backend.lastFailure())
+    }
+
+    @Test
     fun upgradeRunsOpencodeUpgradeAndSurfacesCliOutputAsStage() {
         var stageDuringUpgrade: String? = null
         val original = behavior

@@ -736,7 +736,7 @@ internal class SbxOpenCodeServerBackend(
             }
             noteStartupStage("Starting sandbox daemon…")
             indicator?.text = "Starting sandbox daemon…"
-            requiredCommand("Start sandbox daemon", SbxCli.buildDaemonStartCommand(sbx), 60_000L)
+            startSandboxDaemon(sbx)
             val ls = requiredCommand("List sandboxes", SbxCli.buildLsCommand(sbx), 30_000L)
             if (!isCurrentStart(startId)) return
             val settings = OpenCodeSettingsState.getInstance()
@@ -1250,6 +1250,16 @@ internal class SbxOpenCodeServerBackend(
     private fun parseSandboxList(result: SbxCommandResult): List<SbxSandboxListEntry> =
         SbxCli.parseLsJsonOrNull(result.stdout)
             ?: throw SbxCommandFailure("Read sandbox list", result.exitCode, "Invalid sbx ls JSON; sandbox ownership is unknown.")
+
+    private fun startSandboxDaemon(sbx: String) {
+        val result = commandRunner.run(SbxCli.buildDaemonStartCommand(sbx), emptyMap(), 60_000L)
+        if (result.exitCode == 0) return
+        if (SbxCli.daemonDetachUnsupported(result.output)) {
+            requiredCommand("Start sandbox daemon", SbxCli.buildLegacyDaemonStartCommand(sbx), 60_000L)
+            return
+        }
+        throw SbxCommandFailure("Start sandbox daemon", result.exitCode, result.output)
+    }
 
     private fun recordCommandFailure(error: SbxCommandFailure) {
         val password = getServerPassword()

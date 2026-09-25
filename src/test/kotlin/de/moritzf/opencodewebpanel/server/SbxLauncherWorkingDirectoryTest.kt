@@ -55,7 +55,9 @@ class SbxLauncherWorkingDirectoryTest {
             #!/usr/bin/env bash
             set -euo pipefail
             case "${'$'}1" in
-              daemon) exit 0 ;;
+              daemon)
+                [[ "${'$'}2" == start && "${'$'}3" == --detach ]] || exit 97
+                exit 0 ;;
               ls) printf '{"sandboxes":[{"name":"%s","workspaces":["%s"]}]}\n' "${'$'}OCWP_TEST_NAME" "${'$'}OCWP_TEST_WORKSPACE" ;;
               exec) printf '<%s>\n' "${'$'}@"; exit 19 ;;
               *) printf 'Unexpected sbx command: %s\n' "${'$'}1" >&2; exit 97 ;;

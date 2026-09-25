@@ -9,6 +9,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
 import java.util.Base64
+import java.util.Locale
 
 internal data class SbxExtraMount @JvmOverloads constructor(
     val hostPath: String,
@@ -862,7 +863,17 @@ internal object SbxCli {
     }
 
     fun buildDaemonStartCommand(executable: String = DEFAULT_EXECUTABLE): List<String> {
-        return listOf(executable, "daemon", "start")
+        return listOf(executable, "daemon", "start", "--detach")
+    }
+
+    /** Older sbx versions returned from bare `daemon start`; newer CLIs keep it in the foreground. */
+    fun buildLegacyDaemonStartCommand(executable: String = DEFAULT_EXECUTABLE): List<String> =
+        listOf(executable, "daemon", "start")
+
+    fun daemonDetachUnsupported(output: String): Boolean {
+        val message = output.lowercase(Locale.ROOT)
+        return "detach" in message &&
+            ("unknown flag" in message || "flag provided but not defined" in message || "unrecognized option" in message)
     }
 
     fun buildDiagnoseJsonCommand(executable: String = DEFAULT_EXECUTABLE): List<String> {

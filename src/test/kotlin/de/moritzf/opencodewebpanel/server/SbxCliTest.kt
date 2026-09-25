@@ -374,6 +374,16 @@ class SbxCliTest {
     }
 
     @Test
+    fun daemonStartsDetachedAndOnlyFallsBackForAnUnsupportedFlag() {
+        assertEquals(listOf("sbx", "daemon", "start", "--detach"), SbxCli.buildDaemonStartCommand())
+        assertEquals(listOf("sbx", "daemon", "start"), SbxCli.buildLegacyDaemonStartCommand())
+        assertTrue(SbxCli.daemonDetachUnsupported("error: unknown flag: --detach"))
+        assertTrue(SbxCli.daemonDetachUnsupported("flag provided but not defined: --detach"))
+        assertFalse(SbxCli.daemonDetachUnsupported("daemon failed to start: container missing"))
+        assertFalse(SbxCli.daemonDetachUnsupported("command timed out after 60000ms"))
+    }
+
+    @Test
     fun execServeUsesBareEnvKeysAndInVmBind() {
         val command = SbxCli.buildExecServeCommand(
             name = "ide-ocwp-abc",

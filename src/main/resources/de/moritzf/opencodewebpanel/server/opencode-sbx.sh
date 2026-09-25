@@ -559,7 +559,16 @@ fi
 cd "$CANONICAL"
 
 # Inventory reads below need a running daemon; a stopped one is not proof of absence.
-"$SBX" daemon start >/dev/null 2>&1 || true
+if daemon_start_output="$("$SBX" daemon start --detach 2>&1)"; then
+  :
+elif [[ "$daemon_start_output" == *"detach"* &&
+        ( "$daemon_start_output" == *"unknown flag"* || "$daemon_start_output" == *"flag provided but not defined"* ||
+          "$daemon_start_output" == *"unrecognized option"* ) ]]; then
+  "$SBX" daemon start >/dev/null 2>&1 || true
+else
+  echo "opencode-sbx: could not start sandbox daemon: $daemon_start_output" >&2
+  exit 1
+fi
 
 sandbox_json() {
   "$SBX" ls --json 2>/dev/null || true
