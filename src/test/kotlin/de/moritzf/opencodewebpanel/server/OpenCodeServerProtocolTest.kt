@@ -6,6 +6,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeFalse
 import org.junit.Test
 import java.io.File
 import java.net.InetAddress
@@ -1014,6 +1015,7 @@ class OpenCodeServerProtocolTest {
 
     @Test
     fun resolveFileLinkKeepsTrailingColonWhenItIsPartOfTheName() {
+        assumeFalse("Windows filenames cannot contain a colon", File.separatorChar == '\\')
         val base = tempDir("opencode-colon")
         Files.createDirectories(base.resolve("src"))
         val literal = Files.writeString(base.resolve("src/Main.kt:42"), "x")
@@ -1028,6 +1030,17 @@ class OpenCodeServerProtocolTest {
         val lineTarget = OpenCodeServerProtocol.resolveFileLink("src/Main.kt:42", base.toString(), null)
         assertEquals(stripped.normalize(), lineTarget?.path)
         assertEquals(41, lineTarget?.line)
+    }
+
+    @Test
+    fun resolveFileLinkUsesTrailingLineNumberWhenTheFileExists() {
+        val base = tempDir("opencode-line-locator")
+        Files.createDirectories(base.resolve("src"))
+        val file = Files.writeString(base.resolve("src/Main.kt"), "x")
+
+        val target = OpenCodeServerProtocol.resolveFileLink("src/Main.kt:42", base.toString(), null)
+        assertEquals(file.normalize(), target?.path)
+        assertEquals(41, target?.line)
     }
 
     @Test

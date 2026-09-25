@@ -450,7 +450,7 @@ class OpenCodePathAndMemberMatchingTest {
             assertEquals(foo, resolve("main/kotlin/Foo.kt")?.path)
             assertEquals(foo, resolve("\u202Asrc/main/kotlin/Foo.kt\u202C")?.path)
 
-            assertEquals(absFoo.replace('\\', '/'), OpenCodeServerProtocol.normalizeNavigablePath("$absFoo:"))
+            assertEquals(absFoo, OpenCodeServerProtocol.normalizeNavigablePath("$absFoo:"))
             assertEquals("Foo.kt:12", OpenCodeServerProtocol.normalizeNavigablePath("at com.example.Foo.bar(Foo.kt:12)"))
             assertEquals("src/Foo.kt:10:5", OpenCodeServerProtocol.normalizeNavigablePath("src/Foo.kt:10:5:"))
             assertEquals("/tmp/x.py:8", OpenCodeServerProtocol.normalizeNavigablePath("File \"/tmp/x.py\", line 8"))
