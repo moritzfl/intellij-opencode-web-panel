@@ -44,6 +44,16 @@ internal object OpenCodeBrowserSnippets {
         };
     """.trimIndent()
 
+    /** Initial scan once; MutationObservers pass only added subtrees thereafter. */
+    @Language("JavaScript")
+    private val VISIT_MATCHING_ELEMENTS_JS = """
+        const visitMatchingElements = (root, selector, visit) => {
+          if (!root || (root.nodeType !== 1 && root.nodeType !== 9)) return;
+          if (root.nodeType === 1 && root.matches(selector)) visit(root);
+          root.querySelectorAll(selector).forEach(visit);
+        };
+    """.trimIndent()
+
     /**
      * Hovered interactive elements get the pointer cursor; the cursor mirror reads computed
      * styles, so the embedded panel cursor follows automatically. Callers wire their own
@@ -1376,38 +1386,42 @@ internal object OpenCodeBrowserSnippets {
               // contain the same words when a user types or pastes them — a reload out of a healthy
               // session. Only readOnly fields can be the error page.
               const isReadOnlyField = (el) => !!(el && (el.readOnly === true || el.hasAttribute('readonly') || el.disabled === true));
-              const scanErrorPage = () => {
-                if (notified) return;
-                const fields = document.querySelectorAll('textarea, input, [data-slot="input-input"]');
-                for (let i = 0; i < fields.length; i += 1) {
-                  const el = fields[i];
-                  if (!isReadOnlyField(el)) continue;
-                  const value = fieldText(el);
-                  if (isChunkFailure(value)) {
-                    notify(value);
-                    return;
-                  }
+              $VISIT_MATCHING_ELEMENTS_JS
+              const errorFieldSelector = 'textarea, input, [data-slot="input-input"]';
+              const scanErrorField = (el) => {
+                if (notified || !el.isConnected || !isReadOnlyField(el)) return;
+                const value = fieldText(el);
+                if (isChunkFailure(value)) notify(value);
+              };
+              const pendingFields = new WeakSet();
+              const queueScan = (el) => {
+                if (notified || !el.isConnected || !isReadOnlyField(el) || pendingFields.has(el)) return;
+                pendingFields.add(el);
+                // value assignments do not emit mutations; retry just the newly rendered field.
+                for (const delay of [0, 50, 250, 1000]) {
+                  setTimeout(() => {
+                    if (delay === 1000) pendingFields.delete(el);
+                    scanErrorField(el);
+                  }, delay);
                 }
               };
-              let scanQueued = false;
-              const queueScan = () => {
-                if (notified || scanQueued) return;
-                scanQueued = true;
-                setTimeout(scanErrorPage, 0);
-                setTimeout(scanErrorPage, 50);
-                setTimeout(() => {
-                  scanQueued = false;
-                  scanErrorPage();
-                }, 250);
-                setTimeout(scanErrorPage, 1000);
-              };
-              observer = new MutationObserver(queueScan);
-              const root = document.documentElement || document;
-              observer.observe(root, { childList: true, subtree: true });
-              document.addEventListener('visibilitychange', () => {
-                if (!document.hidden) scanErrorPage();
+              observer = new MutationObserver((mutations) => {
+                for (const mutation of mutations) {
+                  const target = mutation.target.nodeType === 1 ? mutation.target : mutation.target.parentElement;
+                  const field = target && target.closest(errorFieldSelector);
+                  if (field) queueScan(field);
+                  mutation.addedNodes.forEach(node => visitMatchingElements(node, errorFieldSelector, queueScan));
+                }
               });
-              queueScan();
+              const root = document.documentElement || document;
+              observer.observe(root, {
+                childList: true, subtree: true, characterData: true,
+                attributes: true, attributeFilter: ['readonly', 'disabled'],
+              });
+              document.addEventListener('visibilitychange', () => {
+                if (!document.hidden) visitMatchingElements(document, errorFieldSelector, queueScan);
+              });
+              visitMatchingElements(document, errorFieldSelector, queueScan);
             })();
         """
         return script.trimIndent()
@@ -2041,9 +2055,9 @@ internal object OpenCodeBrowserSnippets {
                 const el = node && node.closest ? node.closest('[data-timeline-part-id]') : null;
                 return el ? (el.getAttribute('data-timeline-part-id') || '') : '';
               };
-              const insertToolOpenIcons = () => {
-                const roots = document.querySelectorAll(toolOpenRootSelector);
+              const insertToolOpenIcons = (roots) => {
                 for (const root of roots) {
+                  if (!root.isConnected) continue;
                   const href = pathFromToolRoot(root);
                   if (!href) continue;
                   const actions = root.querySelector('[data-slot="message-part-actions"], [data-slot="apply-patch-trigger-actions"], [data-slot="session-turn-diff-meta"]');
@@ -2078,17 +2092,29 @@ internal object OpenCodeBrowserSnippets {
                   actions.insertBefore(icon, actions.firstChild);
                 }
               };
+              $$VISIT_MATCHING_ELEMENTS_JS
+              const dirtyToolRoots = new Set();
               let insertQueued = false;
-              const queueInsertToolOpenIcons = () => {
+              const queueInsertToolOpenIcons = (root) => {
+                if (!root.isConnected) return;
+                dirtyToolRoots.add(root);
                 if (insertQueued) return;
                 insertQueued = true;
                 queueMicrotask(() => {
                   insertQueued = false;
-                  insertToolOpenIcons();
+                  const roots = Array.from(dirtyToolRoots);
+                  dirtyToolRoots.clear();
+                  insertToolOpenIcons(roots);
                 });
               };
-              new MutationObserver(queueInsertToolOpenIcons).observe(document.documentElement, { childList: true, subtree: true });
-              queueInsertToolOpenIcons();
+              new MutationObserver((mutations) => {
+                for (const mutation of mutations) {
+                  const root = closestElement(mutation.target, toolOpenRootSelector);
+                  if (root) queueInsertToolOpenIcons(root);
+                  mutation.addedNodes.forEach(node => visitMatchingElements(node, toolOpenRootSelector, queueInsertToolOpenIcons));
+                }
+              }).observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+              visitMatchingElements(document, toolOpenRootSelector, queueInsertToolOpenIcons);
               const handleFileOpenEvent = (event, changedButtonOnly) => {
                 const icon = closestElement(event.target, toolOpenIconSelector);
                 if (icon) {
@@ -2170,21 +2196,39 @@ internal object OpenCodeBrowserSnippets {
               const isMac = /Mac|iPhone|iPod|iPad/.test(navigator.platform);
               const isDiffGesture = (event) => event.altKey || (isMac ? event.metaKey : event.ctrlKey);
               const REVIEW_MODE_ATTR = 'data-opencode-intellij-review-mode';
-              const syncReviewMode = () => {
-                const items = document.querySelectorAll('[data-slot="select-v2-listbox"] [data-key]');
-                let selectedKey = '';
-                items.forEach((el) => {
-                  if (el.hasAttribute('data-selected') || el.getAttribute('aria-selected') === 'true') {
-                    selectedKey = el.getAttribute('data-key') || '';
-                  }
-                });
-                if (selectedKey !== 'git' && selectedKey !== 'branch' && selectedKey !== 'turn') return;
-                document.querySelectorAll('[data-slot="session-review-v2-sidebar-header"] [data-component="select-v2"]').forEach((el) => {
-                  el.setAttribute(REVIEW_MODE_ATTR, selectedKey);
-                });
+              const reviewModeTriggerSelector = '[data-slot="session-review-v2-sidebar-header"] [data-component="select-v2"]';
+              const listboxSelector = '[data-slot="select-v2-listbox"]';
+              const listboxTriggers = new WeakMap();
+              const syncReviewMode = (listbox) => {
+                // Cache while open: aria-controls disappears when selection closes the popup,
+                // before the observer delivers its final data-selected mutation.
+                let trigger = listboxTriggers.get(listbox);
+                if (!trigger) {
+                  trigger = Array.from(document.querySelectorAll(reviewModeTriggerSelector)).find(el => {
+                    const ids = (el.getAttribute('aria-controls') || '').split(/\s+/);
+                    return ids.some(id => document.getElementById(id)?.contains(listbox));
+                  });
+                  if (trigger) listboxTriggers.set(listbox, trigger);
+                }
+                if (!trigger || !trigger.isConnected) return;
+                const selected = listbox.querySelector('[data-key][data-selected], [data-key][aria-selected="true"]');
+                const key = selected && selected.getAttribute('data-key');
+                if (key === 'git' || key === 'branch' || key === 'turn') trigger.setAttribute(REVIEW_MODE_ATTR, key);
               };
-              document.addEventListener('click', syncReviewMode, true);
-              new MutationObserver(syncReviewMode).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-selected', 'aria-selected'] });
+              $$VISIT_MATCHING_ELEMENTS_JS
+              new MutationObserver((mutations) => {
+                const listboxes = new Set();
+                for (const mutation of mutations) {
+                  const target = mutation.target.nodeType === 1 ? mutation.target : mutation.target.parentElement;
+                  const listbox = target && target.closest(listboxSelector);
+                  if (listbox) listboxes.add(listbox);
+                  for (const node of mutation.addedNodes) {
+                    visitMatchingElements(node, listboxSelector, el => listboxes.add(el));
+                  }
+                }
+                listboxes.forEach(syncReviewMode);
+              }).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-selected', 'aria-selected'] });
+              visitMatchingElements(document, listboxSelector, syncReviewMode);
               const changesSidebarOf = (node) => {
                 if (!node || !node.closest) return null;
                 // The preview header is a sibling of the sidebar, not its descendant.

@@ -76,9 +76,12 @@ try {
   await writeFile(path.join(root, 'config/opencode/opencode.json'), '{}');
   await writeFile(path.join(workspace, 'README.md'), '# Browser contract\n\nOriginal.\n');
   await writeFile(path.join(workspace, 'src/Main.kt'), 'fun main() = Unit\n');
-  run('git', ['init', '-q'], { cwd: workspace });
+  run('git', ['init', '-q', '-b', 'main'], { cwd: workspace });
   run('git', ['add', '.'], { cwd: workspace });
   run('git', ['-c', 'user.name=Contract test', '-c', 'user.email=contract@example.invalid', 'commit', '-qm', 'Fixture'], { cwd: workspace });
+  run('git', ['checkout', '-qb', 'fixture-branch'], { cwd: workspace });
+  await writeFile(path.join(workspace, 'README.md'), '# Browser contract\n\nCommitted change.\n');
+  run('git', ['-c', 'user.name=Contract test', '-c', 'user.email=contract@example.invalid', 'commit', '-qam', 'Branch fixture'], { cwd: workspace });
   await writeFile(path.join(workspace, 'README.md'), '# Browser contract\n\nChanged.\n\n[Relative file](src/Main.kt)\n\n[Absolute file](/src/Main.kt)\n');
   server = spawn(process.argv[2] || 'opencode', ['serve', '--hostname', '127.0.0.1', '--port', '0', '--print-logs'], {
     cwd: workspace, stdio: ['ignore', 'pipe', 'pipe'],

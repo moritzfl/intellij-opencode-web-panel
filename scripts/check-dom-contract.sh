@@ -171,6 +171,8 @@ MARKERS_V2=(
   'opencode-v2-icon'
   'file-tree-v2-row'
   'select-v2'
+  'select-v2-listbox'
+  'session-review-v2-sidebar-header'
 )
 
 # 2.0.12 introduced inert local Markdown links. Older CLI 2.x uses href/target instead.

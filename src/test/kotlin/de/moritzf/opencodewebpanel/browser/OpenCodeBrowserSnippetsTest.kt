@@ -640,7 +640,7 @@ class OpenCodeBrowserSnippetsTest {
         assertTrue(script.contains("addEventListener('unhandledrejection'"))
         assertTrue(script.contains("target.tagName === 'SCRIPT'"))
         assertTrue(script.contains("failed to fetch dynamically imported module"))
-        assertTrue(script.contains("querySelectorAll('textarea, input, [data-slot=\"input-input\"]')"))
+        assertTrue(script.contains("textarea, input, [data-slot=\"input-input\"]"))
         assertTrue(script.contains("isReadOnlyField"))
         assertTrue(script.contains("setTimeout"))
         assertTrue(script.contains("visibilitychange"))

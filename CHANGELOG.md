@@ -8,6 +8,8 @@
 
 - OpenCode 2 uses its native stalled-connection recovery instead of a plugin
   patch to the browser's network API. OpenCode 1.18 retains the safeguard.
+- File icons and chunk-error detection inspect changed page elements instead of
+  repeatedly scanning the whole document. Diff-mode tracking follows its own dropdown.
 
 ### Fixed
 
