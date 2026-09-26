@@ -108,6 +108,9 @@ jobs:
           cache-read-only: true
 
       # Run tests
+      - name: Smoke Test Sandbox Launcher
+        run: bash scripts/check-sbx-launcher.sh
+
       - name: Run Tests
         run: ./gradlew check
 

@@ -113,7 +113,7 @@ Open <kbd>Settings/Preferences</kbd> > <kbd>Tools</kbd> > <kbd>OpenCode Web Pane
 
 ### OpenCode Server Setup
 
-- Per project (**OpenCode Web Panel (Project)**): **Runtime** Host or Docker Sandbox, this project's server status/restart/log/port, plus mounts and kits. Stored in `opencode-sbx/opencode-sbx.yaml` (source of truth; the panel hydrates from it). Apply also writes `opencode-sbx/opencode-sbx.sh` so a teammate can run `./opencode-sbx/opencode-sbx.sh` (web), `./opencode-sbx/opencode-sbx.sh --cli` (TUI), or `./opencode-sbx/opencode-sbx.sh --acp` (ACP stdio) without the plugin. On Windows, run the `.sh` from Git Bash.
+- Per project (**OpenCode Web Panel (Project)**): **Runtime** Host or Docker Sandbox, this project's server status/restart/log/port, plus mounts and kits. Stored in `opencode-sbx/opencode-sbx.yaml` (source of truth; the panel hydrates from it). Apply also writes `opencode-sbx/opencode-sbx.sh`: run it with no arguments for the TUI, `--web` for the published browser server, or `acp` for ACP stdio, without the plugin. On Windows, run the `.sh` from Git Bash.
 - For monorepos, keep the project directory on the repository root and set **OpenCode working directory** to a relative subdirectory, for example `workingDirectory: ./app` in the project YAML. The whole repository stays mounted; OpenCode starts in that subdirectory. Changing it restarts OpenCode without recreating the sandbox or deleting its conversations. The foreign-session warning maps Windows sandbox paths back to the host and treats folders in one Git worktree as the same project; a separate linked worktree stays distinct.
 - Application settings: Host CLI binary, password, HTTP proxy, `sbx` path, and network-policy consent.
 - **Share host OpenCode config (read-only)** mounts the host config directory, including JSON/JSONC, skills, agents, commands, and plugins. The sandbox can read any credentials embedded in those files, but cannot change them. Host `auth.json` and the host credential database are not shared. Sandbox sessions and browser preferences remain separate.
@@ -149,21 +149,54 @@ credential proxy; OpenCode owns accounts created inside the sandbox.
    `anthropic`, `mistral`, or `xai`. Sandbox-scoped changes apply immediately.
    Global secrets (`sbx secret set openai`) apply when a sandbox is created.
 3. For an independent OpenCode 2 account, launch
-   `./opencode-sbx/opencode-sbx.sh --cli`, enter `/connect`, and select the provider
+   `./opencode-sbx/opencode-sbx.sh`, enter `/connect`, and select the provider
    and authentication method. ChatGPT **headless** and SuperGrok **device** login
    avoid callbacks to a port inside the VM. Alternatively, run
-   `./opencode-sbx/opencode-sbx.sh --cli --oc-args auth login`.
+   `./opencode-sbx/opencode-sbx.sh auth login`.
    Complete sign-in yourself in the browser. Do not combine this with an `sbx`
    secret for the same provider: Docker's proxy can replace the account's header.
    With `sbx` 0.39.0, removing a secret did not clear its injected value even
    after a VM Stop/Start. Remove the secret and recreate the sandbox when
    switching from native key injection to a sandbox-owned account; keep
    **Persist sandbox sessions across Reset** enabled to retain OpenCode data.
-4. Stop the IDE-managed server before handing ownership to the launcher. Run
-   `./opencode-sbx/opencode-sbx.sh --web` to use the browser, `--cli` for the TUI,
-   or `--acp` for another editor. Export `OPENCODE_SERVER_PASSWORD` yourself if
-   you want web authentication; the launcher does not read IntelliJ Password Safe.
-   Reuse the same project, sandbox, and persisted data to continue conversations.
+4. Run `./opencode-sbx/opencode-sbx.sh` to open a TUI in the same sandbox, even
+   while the IDE-managed server is running. The launcher attaches with `sbx exec`
+   and keeps the configured project working directory; it never creates another
+   sandbox for that project. OpenCode flags and commands pass through, for example
+   `./opencode-sbx/opencode-sbx.sh --continue` or
+   `./opencode-sbx/opencode-sbx.sh run "Summarize this change"`. A positional
+   project path is resolved against the caller's directory and mapped into the VM.
+   Use `--sbx-directory DIR` to select another project's sandbox and `--sbx-help`
+   for launcher-only options. Stop the IDE-managed server before starting another
+   server with `--web`; use `acp` for another editor. Export
+   `OPENCODE_SERVER_PASSWORD` yourself for standalone web authentication; the
+   launcher does not read IntelliJ Password Safe. Reuse the same sandbox and
+   persisted data to continue conversations.
+
+Launcher options must precede OpenCode arguments. For example:
+
+```bash
+./opencode-sbx/opencode-sbx.sh                              # TUI alongside the IDE
+./opencode-sbx/opencode-sbx.sh --continue                    # resume in the TUI
+./opencode-sbx/opencode-sbx.sh --model provider/model ./app  # native project argument
+./opencode-sbx/opencode-sbx.sh session list                  # native CLI command
+./opencode-sbx/opencode-sbx.sh --print-logs acp              # ACP, including piped initialize
+./opencode-sbx/opencode-sbx.sh --sbx-directory ../other --version
+./opencode-sbx/opencode-sbx.sh --web                         # published browser server
+./opencode-sbx/opencode-sbx.sh --sbx-help                    # launcher help
+```
+
+`--help` and `--version` show the selected guest OpenCode's output. The older
+`--cli`, `--acp`, and `--oc-args` forms still work. For scripts using the old
+positional **sandbox directory**, replace that argument with `--sbx-directory DIR`.
+Setup diagnostics go to stderr; piped stdin and command stdout belong to OpenCode.
+TTY allocation requires both stdin and stdout to be terminals; ACP never gets a TTY.
+`--web` reserves guest `0.0.0.0:4096`; set YAML `hostPort` for its host port.
+Native `serve`/`web` commands forward their own flags, with ports inside the VM.
+
+Launcher regression smoke checks: `bash scripts/check-sbx-launcher.sh`. They use
+a fake `sbx`, including pipe and argument checks, plus PTY checks when util-linux
+`script` is available; no sandbox or provider call is made.
 
 Network permission is separate from credentials. OpenCode 2 installation needs
 `opencode.ai` and `registry.npmjs.org`; the model catalog needs

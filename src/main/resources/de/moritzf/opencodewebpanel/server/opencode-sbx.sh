@@ -6,22 +6,24 @@
 # (never sbx run).
 #
 # Usage:
-#   ./opencode-sbx/opencode-sbx.sh [--web] [directory]   Start opencode serve
-#   ./opencode-sbx/opencode-sbx.sh --cli [directory]     Start the OpenCode TUI
-#   ./opencode-sbx/opencode-sbx.sh --acp [directory]     Start OpenCode ACP (stdio JSON-RPC)
-#   ./opencode-sbx/opencode-sbx.sh --init [directory]    Write the spec, then start
-#   ./opencode-sbx/opencode-sbx.sh --recreate [--web|--cli|--acp] [directory]
-#   ./opencode-sbx/opencode-sbx.sh --rm [directory]      Delete the sandbox
-#   ./opencode-sbx/opencode-sbx.sh --web|--cli|--acp --oc-args [opencode-args...]
+#   ./opencode-sbx/opencode-sbx.sh [project] [opencode-args...]  Start the TUI
+#   ./opencode-sbx/opencode-sbx.sh run 'prompt'                 Forward a CLI command
+#   ./opencode-sbx/opencode-sbx.sh --web                        Start published serve
+#   ./opencode-sbx/opencode-sbx.sh acp                          Start ACP (stdio JSON-RPC)
+#   ./opencode-sbx/opencode-sbx.sh --sbx-directory DIR [opencode-args...]
+#   ./opencode-sbx/opencode-sbx.sh --recreate [--web|--cli|--acp]
+#   ./opencode-sbx/opencode-sbx.sh --rm                         Delete the sandbox
 #
-# Default is --web. Extra args after --oc-args are passed to opencode.
-# Web prints http://127.0.0.1:<port> when healthy.
+# Default is the TUI; other OpenCode commands and flags pass through unchanged.
+# Web (--web) prints http://127.0.0.1:<port> when healthy.
 # ACP is for editor/agent hosts (stdin/stdout JSON-RPC; no TTY).
 # Optional: export OPENCODE_SERVER_PASSWORD for --web basic auth (user opencode).
 # No password means OpenCode's default unauthenticated serve.
 # Requires Docker Sandboxes (sbx) on PATH, or set OCWP_SBX.
 # Provider credentials belong to sbx secret or a separate OpenCode login in the sandbox.
 #
+# Literal tilde patterns are intentional: YAML/argv home paths are expanded below.
+# shellcheck disable=SC2088
 set -euo pipefail
 
 case "$(uname -s 2>/dev/null || true)" in
@@ -81,17 +83,28 @@ printf '%s\n' "$version"
 OCWP_V2_VERSION
 }
 
+print_usage() {
+  cat <<'USAGE'
+Usage: opencode-sbx.sh [launcher-options] [project|opencode-command] [opencode-args...]
+  No arguments: start the OpenCode TUI in the existing sandbox (sbx exec, not sbx run).
+  --web            Start published opencode serve; print its healthy host URL.
+  --cli            Explicit TUI mode (also the default).
+  --acp            Start ACP over stdin/stdout (sbx exec -i, no TTY).
+  --sbx-directory DIR  Select another project's sandbox (not an OpenCode project argument).
+  --init           Write opencode-sbx/opencode-sbx.yaml if missing, then start.
+  --recreate       Delete and recreate the sandbox, then start.
+  --rm             Delete the sandbox and exit.
+  --sbx-help       Show launcher help without starting a sandbox.
+  -- or --oc-args  Pass remaining arguments directly to OpenCode.
+OpenCode flags and commands such as --help, --version, --continue, run and acp
+are forwarded. --web is the managed browser mode; plain serve runs inside the VM.
+USAGE
+}
+
 usage() {
-  echo "Usage: opencode-sbx.sh [--web|--cli|--acp] [--init] [--recreate] [--rm] [directory]" >&2
-  echo "  --web   Start opencode serve for the browser (default)." >&2
-  echo "  --cli   Start the OpenCode TUI in the sandbox (sbx exec, not sbx run)." >&2
-  echo "  --acp   Start OpenCode ACP over stdin/stdout (sbx exec -i, no TTY)." >&2
-  echo "  --init  Write opencode-sbx/opencode-sbx.yaml if missing, then start." >&2
-  echo "  --recreate  Delete and recreate the sandbox, then start." >&2
-  echo "  --rm    Delete the sandbox and exit." >&2
-  echo "  --oc-args  Extra arguments for opencode (everything after this flag)." >&2
-  echo "Optional directory: project path (default: parent of opencode-sbx/, this script's directory, or cwd)." >&2
-  exit 2
+  local status="${1:-2}"
+  if [[ "$status" -eq 0 ]]; then print_usage; else print_usage >&2; fi
+  exit "$status"
 }
 
 INIT=0
@@ -100,6 +113,7 @@ REMOVE=0
 MODE=""
 DIR=""
 OPENCODE_ARGS=()
+CALLER_CWD="$(pwd -P)"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --init) INIT=1 ;;
@@ -109,21 +123,75 @@ while [[ $# -gt 0 ]]; do
       [[ -z "$MODE" || "$MODE" == "${1#--}" ]] || usage
       MODE="${1#--}"
       ;;
-    -h|--help) usage ;;
-    --oc-args) shift; OPENCODE_ARGS=("$@"); break ;;
-    -*) usage ;;
-    *) DIR="$1" ;;
+    --sbx-directory)
+      shift
+      [[ $# -gt 0 && -n "$1" && -z "$DIR" ]] || usage
+      DIR="$1"
+      ;;
+    --sbx-directory=*)
+      [[ -n "${1#*=}" && -z "$DIR" ]] || usage
+      DIR="${1#*=}"
+      ;;
+    --sbx-help) usage 0 ;;
+    --oc-args|--) shift; OPENCODE_ARGS=("$@"); break ;;
+    --sbx-*) echo "opencode-sbx: unknown launcher option: $1" >&2; usage ;;
+    *) OPENCODE_ARGS=("$@"); break ;;
   esac
   shift
 done
 
-MODE="${MODE:-web}"
+# Locate OpenCode's command/project after known global options without rewriting
+# their values. Unknown options still pass through; never guess whether their
+# next argument is a value or a project. OpenCode remains the argument validator.
+NATIVE_INDEX=-1
+for ((arg_index = 0; arg_index < ${#OPENCODE_ARGS[@]}; arg_index++)); do
+  case "${OPENCODE_ARGS[$arg_index]}" in
+    --log-level|--model|-m|--session|-s|--prompt|--agent|--port|--hostname|--mdns-domain|--replay-limit)
+      arg_index=$((arg_index + 1)) ;;
+    --help|-h|--version|-v|--print-logs|--pure|--continue|-c|--fork|--mdns|--auto|--mini|--no-replay) ;;
+    --*=*|-m?*|-s?*) ;;
+    --) NATIVE_INDEX=$((arg_index + 1)); break ;;
+    -*) break ;;
+    *) NATIVE_INDEX=$arg_index; break ;;
+  esac
+done
+NATIVE_COMMAND=""
+PROJECT_INDEX=-1
+if [[ "$NATIVE_INDEX" -ge 0 && "$NATIVE_INDEX" -lt ${#OPENCODE_ARGS[@]} ]]; then
+  case "${OPENCODE_ARGS[$NATIVE_INDEX]}" in
+    completion|acp|mcp|attach|run|debug|providers|auth|agent|upgrade|uninstall|serve|web|models|stats|export|import|github|pr|session|plugin|plug|db)
+      NATIVE_COMMAND="${OPENCODE_ARGS[$NATIVE_INDEX]}" ;;
+    *) PROJECT_INDEX=$NATIVE_INDEX ;;
+  esac
+fi
+if [[ "$NATIVE_COMMAND" == acp ]]; then
+  [[ -z "$MODE" || "$MODE" == cli || "$MODE" == acp ]] || usage
+  MODE=acp
+elif [[ "$MODE" == web && "$NATIVE_COMMAND" == serve ]]; then
+  # --web already supplies the serve subcommand.
+  OPENCODE_ARGS=("${OPENCODE_ARGS[@]:0:$NATIVE_INDEX}" "${OPENCODE_ARGS[@]:$((NATIVE_INDEX + 1))}")
+elif [[ "$MODE" != web && ( "$NATIVE_COMMAND" == serve || "$NATIVE_COMMAND" == web ) ]]; then
+  [[ "$MODE" != acp ]] || usage
+  MODE="command"
+fi
+MODE="${MODE:-cli}"
+if [[ "$REMOVE" -eq 1 && ${#OPENCODE_ARGS[@]} -gt 0 ]]; then usage; fi
+if [[ "$MODE" == web && ${#OPENCODE_ARGS[@]} -gt 0 ]]; then
+  for arg in "${OPENCODE_ARGS[@]}"; do
+    case "$arg" in
+      --port|--port=*|--hostname|--hostname=*)
+        echo "opencode-sbx: --web uses guest 0.0.0.0:4096. Set hostPort in the project YAML for the published port, or use native 'serve' for custom guest flags." >&2
+        exit 2 ;;
+    esac
+  done
+fi
 
-if [[ "$MODE" == acp ]]; then
-  # Preserve the editor's first JSON-RPC request. sbx setup commands can read
-  # stdin even without -i; provisioning output must not enter the protocol stream.
-  exec 3<&0 4>&1
-  exec </dev/null 1>&2
+# Preserve pipes for run/import and ACP, not just interactive input. sbx setup
+# can consume stdin even without -i. Reserve stdout for OpenCode's own output.
+exec 3<&0 4>&1
+exec 1>&2
+if [[ "$MODE" == acp || ! -t 3 ]]; then
+  exec </dev/null
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -152,7 +220,8 @@ identity_path() {
   case "$os" in
     MINGW*|MSYS*|CYGWIN*)
       if command -v cygpath >/dev/null 2>&1; then
-        p="$(cygpath -u "$p" 2>/dev/null || printf '%s' "$p")"
+        # Git Bash HOME can use an 8.3 alias; sbx/IDE report the long Unicode path.
+        p="$(cygpath -a -m -l -C UTF8 "$p" 2>/dev/null || cygpath -u "$p" 2>/dev/null || printf '%s' "$p")"
       fi
       p="${p//\\//}"
       if [[ "$p" =~ ^/([a-zA-Z])(/.*)$ ]]; then
@@ -545,6 +614,22 @@ case "$resolved_workdir" in
   "$CANONICAL"|"$CANONICAL/"*) WORKDIR="$resolved_workdir" ;;
   *) spec_error "workingDirectory must be inside the workspace: $WORKDIR" ;;
 esac
+# OpenCode's positional [project] is relative to the caller, not the launcher's
+# location or the sandbox's configured working directory. Subcommands and flags
+# stay untouched; existing host directories get their in-guest spelling.
+if [[ "$MODE" == cli && "$PROJECT_INDEX" -ge 0 ]]; then
+  project_arg="${OPENCODE_ARGS[$PROJECT_INDEX]}"
+  if [[ "$project_arg" == "~" || "$project_arg" == "~/"* ]]; then
+    project_arg="${HOME}${project_arg:1}"
+  elif [[ "$project_arg" == [A-Za-z]:* ]] && command -v cygpath >/dev/null 2>&1; then
+    project_arg="$(cygpath -u "$project_arg")"
+  elif ! is_absolute "$project_arg"; then
+    project_arg="$CALLER_CWD/$project_arg"
+  fi
+  if [[ -d "$project_arg" ]]; then
+    OPENCODE_ARGS[$PROJECT_INDEX]="$(guest_bind_path "$(identity_path "$(cd "$project_arg" && pwd -P)")")"
+  fi
+fi
 # NAME is joined into host paths below (persist, 2.x binary, --recreate cleanup).
 # Same rule as SbxCli.isValidSandboxName.
 case "$NAME" in
@@ -564,14 +649,20 @@ if daemon_start_output="$("$SBX" daemon start --detach 2>&1)"; then
 elif [[ "$daemon_start_output" == *"detach"* &&
         ( "$daemon_start_output" == *"unknown flag"* || "$daemon_start_output" == *"flag provided but not defined"* ||
           "$daemon_start_output" == *"unrecognized option"* ) ]]; then
-  "$SBX" daemon start >/dev/null 2>&1 || true
+  "$SBX" daemon start >/dev/null
 else
   echo "opencode-sbx: could not start sandbox daemon: $daemon_start_output" >&2
   exit 1
 fi
 
 sandbox_json() {
-  "$SBX" ls --json 2>/dev/null || true
+  local inventory
+  inventory="$("$SBX" ls --json)" || return 2
+  if [[ ! "$inventory" =~ \"sandboxes\"[[:space:]]*:[[:space:]]*\[ ]]; then
+    echo "opencode-sbx: invalid sandbox inventory; refusing to create or remove a VM." >&2
+    return 2
+  fi
+  printf '%s' "$inventory"
 }
 
 json_sandbox_objects() {
@@ -616,7 +707,7 @@ json_sandbox_objects() {
 
 sandbox_entry_for_name() {
   local name="$1" json obj needle
-  if [[ $# -ge 2 ]]; then json="$2"; else json="$(sandbox_json)"; fi
+  if [[ $# -ge 2 ]]; then json="$2"; else json="$(sandbox_json)" || return 2; fi
   needle="\"$name\""
   while IFS= read -r obj; do
     [[ -z "$obj" ]] && continue
@@ -693,7 +784,11 @@ if [[ "$MODE" == web && -n "$PASSWORD" ]]; then
   serve_env+=( -e OPENCODE_SERVER_PASSWORD )
 fi
 HOST_CONFIG_DIR="${XDG_CONFIG_HOME:-${HOME}/.config}/opencode"
+if [[ "$MODE" == command && -n "${OPENCODE_SERVER_PASSWORD:-}" ]]; then
+  serve_env+=( -e OPENCODE_SERVER_PASSWORD )
+fi
 HOST_CONFIG_DIR="${HOST_CONFIG_DIR//\\//}"
+HOST_CONFIG_DIR="$(identity_path "$HOST_CONFIG_DIR")"
 PERSIST_GUEST="/home/agent/.local/share/opencode"
 GUEST_OPENCODE_GUEST="/home/agent/.opencode"
 uname_s="$(uname -s 2>/dev/null || true)"
@@ -787,6 +882,12 @@ if EXISTING_ENTRY="$(sandbox_entry_for_name "$NAME")"; then
     echo "opencode-sbx: sandbox $NAME exists for another workspace; refusing to use it." >&2
     exit 1
   fi
+else
+  inventory_status=$?
+  if [[ "$inventory_status" -ne 1 ]]; then
+    echo "opencode-sbx: could not read sandbox inventory; existing sandbox state is unknown." >&2
+    exit 1
+  fi
 fi
 
 CREATED=0
@@ -857,10 +958,11 @@ elif [[ "$SHARE_CONFIG" == "true" ]] && {
 }; then
   SHARE_MOUNTED=1
 elif [[ "$SHARE_CONFIG" == "true" ]]; then
-  echo "opencode-sbx: this sandbox was created without the shared OpenCode config; run with --recreate to mount it." >&2
+  echo "opencode-sbx: this sandbox was created without the shared OpenCode config at $HOST_CONFIG_DIR; run with --recreate to mount it." >&2
 fi
 if [[ "$SHARE_MOUNTED" -eq 1 ]]; then
-  export XDG_CONFIG_HOME="$(guest_bind_path "${HOST_CONFIG_DIR%/opencode}")"
+  XDG_CONFIG_HOME="$(guest_bind_path "${HOST_CONFIG_DIR%/opencode}")"
+  export XDG_CONFIG_HOME
   serve_env+=( -e XDG_CONFIG_HOME )
 fi
 
@@ -928,8 +1030,10 @@ healthy() {
 }
 
 print_url() {
-  local i json port
+  local i json port owner_pid="$$"
   for ((i = 0; i < 90; i++)); do
+    # The parent execs sbx below. Do not linger after a failed/closed serve.
+    kill -0 "$owner_pid" 2>/dev/null || return 0
     json="$("$SBX" ports "$NAME" --json 2>/dev/null || true)"
     for port in $(printf '%s' "$json" | tr ',' '\n' | sed -n 's/.*"host_port"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p'); do
       if healthy "http://127.0.0.1:${port}/global/health" ||
@@ -979,7 +1083,7 @@ fi
 opencode_cmd=()
 if [[ "$MODE" == web ]]; then
   opencode_cmd+=( serve --hostname 0.0.0.0 --port "$IN_VM_PORT" --print-logs )
-elif [[ "$MODE" == acp ]]; then
+elif [[ "$MODE" == acp && "$NATIVE_COMMAND" != acp ]]; then
   opencode_cmd+=( acp )
 fi
 if [[ ${#OPENCODE_ARGS[@]} -gt 0 ]]; then
@@ -988,10 +1092,19 @@ fi
 
 launch=( "$SBX" exec )
 if [[ "$MODE" == web ]]; then
-  print_url &
-else
+  # A help/version request exits without listening; do not leave the health poller behind.
+  web_info=0
+  if [[ ${#OPENCODE_ARGS[@]} -gt 0 ]]; then
+    for arg in "${OPENCODE_ARGS[@]}"; do
+      case "$arg" in -h|--help|-v|--version) web_info=1 ;; esac
+    done
+  fi
+  if [[ "$web_info" -eq 0 ]]; then
+    print_url &
+  fi
+elif [[ "$MODE" == cli || "$MODE" == acp ]]; then
   launch+=( -i )
-  if [[ "$MODE" == cli && -t 1 ]]; then
+  if [[ "$MODE" == cli && -t 3 && -t 4 ]]; then
     launch+=( -t )
   fi
 fi
@@ -999,7 +1112,5 @@ if [[ ${#serve_env[@]} -gt 0 ]]; then
   launch+=( "${serve_env[@]}" )
 fi
 launch+=( -w "$(guest_bind_path "$WORKDIR")" "$NAME" "${guest_opencode[@]}" ${opencode_cmd[@]+"${opencode_cmd[@]}"} )
-if [[ "$MODE" == acp ]]; then
-  exec 0<&3 1>&4 3<&- 4>&-
-fi
+exec 0<&3 1>&4 3<&- 4>&-
 exec "${launch[@]}"
