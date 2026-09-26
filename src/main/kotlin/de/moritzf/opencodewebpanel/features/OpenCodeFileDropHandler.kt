@@ -62,10 +62,6 @@ internal class OpenCodeFileDropHandler(
         private const val MAX_DROPPED_FILES_TOTAL_BYTES = 10L * 1024L * 1024L
         private const val BROWSER_PASTE_SUPPRESSION_MILLIS = 1_500L
 
-        // Bound for text clipboard/drop flavors: beyond this the payload cannot be a sane chat
-        // input, and reading it fully would allocate without limit.
-        internal const val MAX_DROPPED_TEXT_CHARS = 2_000_000
-
         // Bound for clipboard images before decoding into an ARGB buffer (4 bytes per pixel):
         // covers even large retina screenshots while keeping the transient buffer ~100 MB.
         internal const val MAX_IMAGE_PIXELS = 25_000_000L
@@ -534,7 +530,7 @@ internal class OpenCodeFileDropHandler(
     }
 
     private fun supportsText(transferable: Transferable): Boolean {
-        return transferable.transferDataFlavors.any { it.isFlavorTextType }
+        return OpenCodeClipboardText.supports(transferable)
     }
 
     private fun supportsImageDrop(support: TransferHandler.TransferSupport): Boolean {
@@ -542,30 +538,7 @@ internal class OpenCodeFileDropHandler(
     }
 
     private fun droppedTextPayload(transferable: Transferable): String? {
-        return transferable.transferDataFlavors
-            .filter { it.isFlavorTextType }
-            .firstNotNullOfOrNull { flavor ->
-                runCatching {
-                    flavor.getReaderForText(transferable).use { readTextBounded(it) }
-                }.getOrNull()?.takeIf { it.isNotBlank() }
-            }
-    }
-
-    /**
-     * Reads clipboard/drop text up to [MAX_DROPPED_TEXT_CHARS]; oversized payloads yield null
-     * so the paste falls through to the browser's native handling instead of allocating an
-     * arbitrarily large string here.
-     */
-    private fun readTextBounded(reader: java.io.Reader): String? {
-        val buffer = StringBuilder()
-        val chunk = CharArray(8_192)
-        while (true) {
-            val read = reader.read(chunk)
-            if (read < 0) break
-            if (buffer.length + read > MAX_DROPPED_TEXT_CHARS) return null
-            buffer.append(chunk, 0, read)
-        }
-        return buffer.toString()
+        return OpenCodeClipboardText.read(transferable)
     }
 
     private fun showFileDropWarning(rejectionMessages: List<String>) {
