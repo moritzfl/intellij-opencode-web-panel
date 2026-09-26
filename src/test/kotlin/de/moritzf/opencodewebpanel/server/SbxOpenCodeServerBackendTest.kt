@@ -530,6 +530,44 @@ class SbxOpenCodeServerBackendTest {
     }
 
     @Test
+    fun sandboxCreateStreamsProgressBeforeCommandReturnsWithoutDiskLogging() {
+        store.remove(directory)
+        val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
+        assertFalse(settings.enableServerLogs)
+        assertNotNull(SbxLaunchSpec.persist(SbxLaunchSpec.fromSettings(settings, directory).copy(
+            useSandbox = true, enableIntellijMcp = false,
+        )))
+        lateinit var subject: SbxOpenCodeServerBackend
+        var observedDuringCreate: OpenCodeStartupProgress? = null
+        val runner = object : SbxCommandRunner {
+            override fun run(command: List<String>, env: Map<String, String>, timeoutMillis: Long, workingDirectory: Path?) =
+                if (command[1] == "ls") SbxCommandResult(0, """{"sandboxes":[]}""") else SbxCommandResult(0, "")
+
+            override fun run(command: List<String>, env: Map<String, String>, timeoutMillis: Long, workingDirectory: Path?, onOutputLine: (String) -> Unit): SbxCommandResult {
+                if (command[1] != "create") return run(command, env, timeoutMillis, workingDirectory)
+                onOutputLine("Downloaded base image layer")
+                observedDuringCreate = subject.getStartupProgress()
+                assertEquals("Creating sandbox…", ProgressManager.getGlobalProgressIndicator()?.text)
+                assertEquals(0L, subject.getServerGenerationStartedAtMillis())
+                return SbxCommandResult(21, "stop after progress probe")
+            }
+        }
+        val worker = Executors.newSingleThreadExecutor()
+        subject = SbxOpenCodeServerBackend(directory, runner, { store }, worker, trustCheck = { _, _ -> true })
+        try {
+            subject.ensureStarted(project, directory, { false }, {}, {})
+            worker.submit {}.get(10, TimeUnit.SECONDS)
+            val progress = checkNotNull(observedDuringCreate)
+            assertTrue(progress.stage.contains("Creating sandbox"))
+            assertTrue(progress.recentOutput.contains("Downloaded base image layer"))
+            assertTrue(progress.elapsedMillis < 10_000)
+        } finally {
+            subject.dispose()
+            assertTrue(worker.awaitTermination(10, TimeUnit.SECONDS))
+        }
+    }
+
+    @Test
     fun untrustedProjectNeverCreatesASandbox() {
         store.remove(directory)
         trusted = false

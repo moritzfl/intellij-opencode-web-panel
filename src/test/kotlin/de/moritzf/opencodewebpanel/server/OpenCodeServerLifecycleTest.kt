@@ -128,7 +128,7 @@ class OpenCodeServerLifecycleTest {
     }
 
     @Test
-    fun startingStripIncludesStageElapsedAndRecovery() {
+    fun startingStripFocusesOnCurrentStageRatherThanElapsedAndOldRecovery() {
         val html = formatOpenCodeLifecycleStrip(
             OpenCodeLifecycleStripModel(
                 OpenCodeServerLifecycleState.STARTING,
@@ -139,9 +139,9 @@ class OpenCodeServerLifecycleTest {
             nowMillis = 4_000,
         )
         assertTrue(html.contains("Creating sandbox"))
-        assertTrue(html.contains("1m 05s"))
-        assertTrue(html.contains("Last recovery"))
-        assertTrue(html.contains("sandbox serve was not responding"))
+        assertFalse(html.contains("1m 05s"))
+        assertFalse(html.contains("Last recovery"))
+        assertFalse(html.contains("sandbox serve was not responding"))
     }
 
     @Test
@@ -181,7 +181,7 @@ class OpenCodeServerLifecycleTest {
         )
         assertTrue(html.contains("Restarting"))
         assertTrue(html.contains("Upgrading OpenCode"))
-        assertTrue(html.contains("12s"))
+        assertFalse(html.contains("12s"))
         assertTrue(
             isOpenCodeLifecycleStripVisible(
                 OpenCodeLifecycleStripModel(
@@ -197,6 +197,7 @@ class OpenCodeServerLifecycleTest {
         assertEquals("0s", formatElapsedMillis(0))
         assertEquals("12s", formatElapsedMillis(12_400))
         assertEquals("1m 05s", formatElapsedMillis(65_000))
+        assertEquals("15h 14m", formatElapsedMillis(914 * 60_000))
     }
 
     @Test

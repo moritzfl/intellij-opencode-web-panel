@@ -100,6 +100,9 @@ class SharedOpenCodeServerManager(
         Thread(runnable, "OpenCode-Server-Stop-$backendId").apply { isDaemon = true }
     }
     private val serverLogBuffer = OpenCodeServerLogBuffer()
+    private val startupProgress = OpenCodeStartupProgressTracker()
+
+    override fun getStartupProgress(): OpenCodeStartupProgress? = startupProgress.snapshot()
 
     override fun getServerLogFile(): Path? {
         return serverLogBuffer.currentOrLatestFile()
@@ -126,7 +129,7 @@ class SharedOpenCodeServerManager(
                 if (starting) return
                 starting = true
                 allowHealthRestart = true
-                ++startSequence
+                (++startSequence).also { startupProgress.begin(it) }
             }
             // Keep RUNNING while merely validating a healthy server; flipping to STARTING here
             // would flash the status strip in every open panel on each tool-window load.
@@ -144,7 +147,7 @@ class SharedOpenCodeServerManager(
             if (starting) return
             starting = true
             allowHealthRestart = true
-            ++startSequence
+            (++startSequence).also { startupProgress.begin(it) }
         }
 
         setLifecycleState(OpenCodeServerLifecycleState.STARTING)
@@ -157,6 +160,7 @@ class SharedOpenCodeServerManager(
             destroyCurrentProcess()
             val backoffMillis = remainingStartBackoffMillis()
             if (backoffMillis > 0) {
+                startupProgress.step(startId, "Waiting before retry…", "Pausing briefly after the last failed start. OpenCode will retry automatically.", backoffMillis)
                 thisLogger().warn("Delaying OpenCode server start after recent failure by ${backoffMillis}ms")
                 scheduler.schedule(
                     {
@@ -333,6 +337,7 @@ class SharedOpenCodeServerManager(
         try {
             val callbacks: List<StartCallback>
             val resources = synchronized(lock) {
+                startupProgress.finish(startSequence)
                 startSequence++
                 starting = false
                 allowHealthRestart = false
@@ -372,7 +377,7 @@ class SharedOpenCodeServerManager(
             starting = true
             allowHealthRestart = true
             resources = detachServerResources()
-            ++startSequence
+            (++startSequence).also { startupProgress.begin(it) }
         }
 
         setLifecycleState(OpenCodeServerLifecycleState.RESTARTING)
@@ -567,6 +572,7 @@ class SharedOpenCodeServerManager(
             if (starting || disposed || !allowHealthRestart || serverUrl != url) return@synchronized null
             starting = true
             val startId = ++startSequence
+            startupProgress.begin(startId)
             val resources = detachServerResources()
             // Keep the outer lock through publication. Otherwise stopServer can publish STOPPED
             // between reservation and this call, leaving the final visible state RESTARTING.
@@ -605,6 +611,7 @@ class SharedOpenCodeServerManager(
         var process: Process? = null
         var capturedDescendants: List<ProcessHandle> = emptyList()
         try {
+            if (!isCurrentStart(startId)) return
             if (!waitForIntellijMcpServerIfNeeded(startId)) {
                 // MCP wait CANCELLED covers both supersession and thread interrupt. Only the
                 // still-current case must finishStart — otherwise starting stays true forever.
@@ -622,6 +629,8 @@ class SharedOpenCodeServerManager(
             }
             val password = OpenCodePasswordStore.getInstance().ensurePasswordBlocking()
             val settings = OpenCodeSettingsState.getInstance()
+            indicator?.text = "Starting OpenCode…"
+            startupProgress.step(startId, "Starting OpenCode…", startupStageExplanation("Starting OpenCode"), SERVER_START_TIMEOUT_MILLIS)
             val port = portArgumentFor(project)
             val executable = settings.executablePath()
             val processBuilder = OpenCodeServerProtocol.createProcessBuilder(
@@ -648,8 +657,10 @@ class SharedOpenCodeServerManager(
                         lines.forEach { line ->
                             // Server output goes to the dedicated log file; keep the IDE log
                             // at debug so idea.log does not mirror every server line.
-                            thisLogger().debug(line)
-                            serverLogBuffer.append(line)
+                            val safeLine = line.replace(password, "[redacted]")
+                            thisLogger().debug(safeLine)
+                            serverLogBuffer.append(safeLine)
+                            startupProgress.output(startId, safeLine)
                             OpenCodeServerProtocol.parseServerUrl(line)?.let { url ->
                                 if (setServerUrlForStart(startId, url)) {
                                     urlLatch.countDown()
@@ -769,6 +780,8 @@ class SharedOpenCodeServerManager(
         }
 
         thisLogger().info("Waiting for ${initialStatus.message} before starting OpenCode")
+        startupProgress.step(startId, "Waiting for IntelliJ MCP…", startupStageExplanation("MCP"))
+        ProgressManager.getGlobalProgressIndicator()?.text = "Waiting for IntelliJ MCP…"
         return when (
             IntellijMcpServerStartup.waitUntilReady(
                 stillWaiting = {
@@ -793,6 +806,7 @@ class SharedOpenCodeServerManager(
         val callbacks = synchronized(lock) {
             if (startId != startSequence) return
             starting = false
+            startupProgress.finish(startId)
             pendingStarts.toList().also { pendingStarts.clear() }
         }
 

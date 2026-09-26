@@ -146,6 +146,9 @@ internal class SbxOpenCodeServerBackend(
     private val globalEventStream = OpenCodeGlobalEventStream()
     private val processTerminator = OpenCodeProcessTerminator()
     private val serverLogBuffer = OpenCodeServerLogBuffer()
+    private val startupProgress = OpenCodeStartupProgressTracker()
+
+    override fun getStartupProgress(): OpenCodeStartupProgress? = startupProgress.snapshot()
     private val scheduler = Executors.newSingleThreadScheduledExecutor { runnable ->
         Thread(runnable, "OpenCode-Sbx-Checker").apply { isDaemon = true }
     }
@@ -591,6 +594,7 @@ internal class SbxOpenCodeServerBackend(
 
     private fun cancelPendingStarts() {
         if (starting) lastFailure = SbxFailureKind.CANCELLED
+        startupProgress.finish(startSequence)
         startSequence++
         activeIndicator?.cancel()
         starting = false
@@ -634,6 +638,8 @@ internal class SbxOpenCodeServerBackend(
             allowHealthRestart = true
             lastFailureDetails = null
             val startId = ++startSequence
+            startupProgress.begin(startId)
+            startupStage = null
             runOnLifecycle(
                 onReject = {
                     starting = false
@@ -723,7 +729,7 @@ internal class SbxOpenCodeServerBackend(
                 fail(startId, SbxFailureKind.SBX_NOT_FOUND)
                 return
             }
-            val diagnose = commandRunner.run(SbxCli.buildDiagnoseJsonCommand(sbx), emptyMap(), 30_000L)
+            val diagnose = runStartupCommand("Checking Docker Sandboxes", SbxCli.buildDiagnoseJsonCommand(sbx), 30_000L)
             if (SbxCli.diagnoseReportsUnsupported(diagnose.stdout) ||
                 SbxCli.looksUnsupportedHost(
                     System.getProperty("os.name").orEmpty(),
@@ -972,6 +978,7 @@ internal class SbxOpenCodeServerBackend(
                             }
                             thisLogger().debug(safeLine)
                             serverLogBuffer.append(safeLine)
+                            startupProgress.output(startId, safeLine)
                         }
                     }
                 } catch (e: Exception) {
@@ -1242,9 +1249,49 @@ internal class SbxOpenCodeServerBackend(
         timeoutMillis: Long,
         workingDirectory: Path? = null,
     ): SbxCommandResult {
-        val result = commandRunner.run(command, emptyMap(), timeoutMillis, workingDirectory)
+        val result = runStartupCommand(stage, command, timeoutMillis, workingDirectory)
         if (result.exitCode != 0) throw SbxCommandFailure(stage, result.exitCode, result.output)
         return result
+    }
+
+    private fun runStartupCommand(
+        stage: String,
+        command: List<String>,
+        timeoutMillis: Long,
+        workingDirectory: Path? = null,
+    ): SbxCommandResult {
+        val id = synchronized(lock) { startSequence.takeIf { starting } }
+        if (id != null) {
+            val title = when (stage) {
+                "Create sandbox" -> "Creating sandbox…"
+                "List sandboxes" -> "Finding this project's sandbox…"
+                "Link extra mount" -> "Preparing sandbox folders…"
+                "Add sandbox kit" -> "Installing sandbox tools…"
+                "Allow IntelliJ MCP connection" -> "Connecting IntelliJ tools…"
+                else -> "$stage…"
+            }
+            startupProgress.step(id, title, startupStageExplanation(stage), timeoutMillis)
+            ProgressManager.getGlobalProgressIndicator()?.text = title
+            serverLogBuffer.append("[$stage]")
+        }
+        // JSON inventory/diagnostics belong to parsers, not the human activity feed.
+        val streamOutput = command.getOrNull(1) in setOf("create", "kit", "exec", "daemon") && "--json" !in command
+        val result = commandRunner.run(command, emptyMap(), timeoutMillis, workingDirectory) { line ->
+            if (id != null && streamOutput) recordStartupOutput(id, line)
+        }
+        if (id != null) {
+            val outcome = if (result.exitCode == 0) "$stage completed" else "$stage exited (${result.exitCode})"
+            startupProgress.output(id, outcome)
+            serverLogBuffer.append(outcome)
+        }
+        return result
+    }
+
+    private fun recordStartupOutput(startId: Long, line: String) {
+        val password = getAuthPassword()
+        val safeLine = if (password.isNullOrBlank()) line else line.replace(password, "[redacted]")
+        startupProgress.output(startId, safeLine)
+        serverLogBuffer.append(safeLine)
     }
 
     private fun parseSandboxList(result: SbxCommandResult): List<SbxSandboxListEntry> =
@@ -1252,7 +1299,7 @@ internal class SbxOpenCodeServerBackend(
             ?: throw SbxCommandFailure("Read sandbox list", result.exitCode, "Invalid sbx ls JSON; sandbox ownership is unknown.")
 
     private fun startSandboxDaemon(sbx: String) {
-        val result = commandRunner.run(SbxCli.buildDaemonStartCommand(sbx), emptyMap(), 60_000L)
+        val result = runStartupCommand("Starting sandbox daemon", SbxCli.buildDaemonStartCommand(sbx), 60_000L)
         if (result.exitCode == 0) return
         if (SbxCli.daemonDetachUnsupported(result.output)) {
             requiredCommand("Start sandbox daemon", SbxCli.buildLegacyDaemonStartCommand(sbx), 60_000L)
@@ -1325,6 +1372,7 @@ internal class SbxOpenCodeServerBackend(
         if (!IntellijMcpServerStartup.shouldWaitFor(initialStatus, settings.waitForIntellijMcpServer)) {
             return true
         }
+        noteStartupStage("Waiting for IntelliJ MCP…")
         return when (
             IntellijMcpServerStartup.waitUntilReady(
                 stillWaiting = {
@@ -1347,6 +1395,7 @@ internal class SbxOpenCodeServerBackend(
             if (startId != startSequence) return
             starting = false
             startupStage = null
+            startupProgress.finish(startId)
             if (success) lastFailure = SbxFailureKind.NONE
             val callbacks = pendingStarts.toList().also { pendingStarts.clear() }
             setLifecycleState(if (success) OpenCodeServerLifecycleState.RUNNING else OpenCodeServerLifecycleState.FAILED)
@@ -1616,7 +1665,7 @@ internal class SbxOpenCodeServerBackend(
         if (!isCurrentStart(startId)) return false
         val installingV2 = pending.installV2
         val headline = if (installingV2) "Installing OpenCode 2.x…" else "Upgrading OpenCode…"
-        noteStartupStage(headline)
+        noteStartupStage(headline, if (installingV2) INSTALL_V2_TIMEOUT_MILLIS else UPGRADE_TIMEOUT_MILLIS)
         indicator?.text = headline
         val command = if (installingV2) {
             SbxCli.buildExecInstallV2Command(sbxExecutable(), pending.sandboxName)
@@ -1635,11 +1684,11 @@ internal class SbxOpenCodeServerBackend(
             timeout,
             null,
         ) { line ->
-            serverLogBuffer.append(line)
+            recordStartupOutput(startId, line)
             val parsed = parseCliProgress(line)
             val stage = nextCliProgressStage(synchronized(lock) { startupStage } ?: headline, parsed)
                 .take(STAGE_MAX_CHARS)
-            noteStartupStage(stage)
+            synchronized(lock) { if (startId == startSequence) startupStage = stage }
             indicator?.text = stage
             val fraction = parsed.fraction
             if (indicator != null && fraction != null) {
@@ -1665,8 +1714,11 @@ internal class SbxOpenCodeServerBackend(
         return true
     }
 
-    private fun noteStartupStage(stage: String) {
-        synchronized(lock) { startupStage = stage }
+    private fun noteStartupStage(stage: String, quietBudgetMillis: Long = 60_000L) {
+        synchronized(lock) {
+            startupStage = stage
+            if (starting) startupProgress.step(startSequence, stage, startupStageExplanation(stage), quietBudgetMillis)
+        }
     }
 
     /** Caller holds [lock]. Live URL/password may be nulled on stop; this snapshot must not. */

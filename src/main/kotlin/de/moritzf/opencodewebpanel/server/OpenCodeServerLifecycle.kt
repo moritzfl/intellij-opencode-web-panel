@@ -41,13 +41,20 @@ internal data class OpenCodeLifecycleStripModel(
     val stage: String? = null,
     val elapsedMillis: Long? = null,
     val recovery: OpenCodeRecoveryNotice? = null,
+    val progress: OpenCodeStartupProgress? = null,
+    val logAvailable: Boolean = true,
 )
 
 internal fun formatElapsedMillis(elapsedMillis: Long): String {
     val totalSeconds = (elapsedMillis / 1000L).coerceAtLeast(0L)
+    val hours = totalSeconds / 3600L
     val minutes = totalSeconds / 60L
     val seconds = totalSeconds % 60L
-    return if (minutes == 0L) "${seconds}s" else "${minutes}m ${seconds.toString().padStart(2, '0')}s"
+    return when {
+        hours > 0 -> "${hours}h ${minutes % 60}m"
+        minutes > 0 -> "${minutes}m ${seconds.toString().padStart(2, '0')}s"
+        else -> "${seconds}s"
+    }
 }
 
 internal fun formatOpenCodeRecoveryLine(notice: OpenCodeRecoveryNotice, nowMillis: Long): String {
@@ -67,25 +74,25 @@ internal fun formatOpenCodeLifecycleStrip(model: OpenCodeLifecycleStripModel, no
     val label = if (model.cancelled) "Cancelled" else state.displayLabel
     val color = if (model.cancelled) OpenCodeServerLifecycleState.STOPPED.colorHex else state.colorHex
     val extra = buildString {
-        val stage = model.stage?.trim()?.takeIf { it.isNotEmpty() }
+        val stage = (model.progress?.stage ?: model.stage)?.trim()?.takeIf { it.isNotEmpty() }
         if (stage != null && (model.state == OpenCodeServerLifecycleState.STARTING || model.state == OpenCodeServerLifecycleState.RESTARTING)) {
             append(" — ")
             append(stage)
         }
-        val elapsed = model.elapsedMillis
-        if (elapsed != null && (model.state == OpenCodeServerLifecycleState.STARTING || model.state == OpenCodeServerLifecycleState.RESTARTING)) {
-            append(" (")
-            append(formatElapsedMillis(elapsed))
-            append(")")
-        }
         val recovery = model.recovery
-        if (recovery != null) {
+        if (recovery != null && model.state == OpenCodeServerLifecycleState.RUNNING) {
             append(". ")
             append(formatOpenCodeRecoveryLine(recovery, nowMillis))
         }
     }
     return "<html><span style=\"color: $color\">&#9679;</span>&nbsp;" +
         "OpenCode server: ${StringUtil.escapeXmlEntities(label)}${StringUtil.escapeXmlEntities(extra)}</html>"
+}
+
+internal fun formatStartupActivity(progress: OpenCodeStartupProgress): String = when {
+    progress.takingLonger -> "No new activity for ${formatElapsedMillis(progress.quietMillis)}. Check the log or cancel and retry."
+    progress.quietMillis >= 15_000L -> "Waiting for the next update · no new output for ${formatElapsedMillis(progress.quietMillis)}"
+    else -> "Activity received ${formatElapsedMillis(progress.quietMillis)} ago"
 }
 
 internal const val RECOVERY_BANNER_MILLIS = 15_000L

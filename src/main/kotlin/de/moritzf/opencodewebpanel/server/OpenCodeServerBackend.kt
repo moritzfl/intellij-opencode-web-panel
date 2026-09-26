@@ -45,6 +45,8 @@ interface OpenCodeServerBackend {
     fun getLifecycleState(): OpenCodeServerLifecycleState
     fun getServerGeneration(): Long
     fun getServerGenerationStartedAtMillis(): Long
+    /** Current attempt's elapsed time and output, not the previous process's uptime. */
+    fun getStartupProgress(): OpenCodeStartupProgress? = null
     fun isServerReadyForAuth(): Boolean
     fun verifyServerNow(callbackActive: () -> Boolean = { true }, onHealthy: () -> Unit)
     fun getServerLogFile(): Path?
