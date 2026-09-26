@@ -215,7 +215,15 @@ class SbxLauncherWorkingDirectoryTest {
                 environment()["OCWP_TEST_WORKSPACE"] = SbxCli.sandboxIdentityPath(fixture.project.toString())
                 environment()["OCWP_CONFIG_DIR"] = SbxCli.guestBindPath(temp.root.toPath().resolve("config").toString())
                 environment()["OCWP_DATA_DIR"] = SbxCli.guestBindPath(temp.root.toPath().resolve("data").toString())
-                environment()["HOME"] = SbxCli.guestBindPath(temp.root.toPath().resolve("home").toString())
+                // GitHub-hosted Ubuntu sets XDG_CONFIG_HOME to an absolute /home/runner/.config.
+                // The launcher prefers that over HOME, so an inherited value hides the fixture.
+                environment().remove("XDG_CONFIG_HOME")
+                environment().remove("XDG_DATA_HOME")
+                environment().remove("BASH_ENV")
+                environment().remove("ENV")
+                environment().remove("OPENCODE_SERVER_PASSWORD")
+                val home = temp.root.toPath().resolve("home").toRealPath()
+                environment()["HOME"] = SbxCli.guestBindPath(home.toString())
                 if (sharedConfig != null) environment()["OCWP_TEST_SHARED"] = SbxCli.posixPath(sharedConfig.toString())
                 environment()["OCWP_TEST_ACP"] = (acpInput != null).toString()
                 environment()["OCWP_TEST_DIR"] = SbxCli.guestBindPath(temp.root.toPath().toString())
