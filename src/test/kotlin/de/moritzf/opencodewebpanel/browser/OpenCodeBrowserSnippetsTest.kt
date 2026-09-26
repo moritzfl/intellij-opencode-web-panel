@@ -849,6 +849,8 @@ class OpenCodeBrowserSnippetsTest {
         assertTrue(script.contains("fileLocAtEvent"))
         assertTrue(script.contains("fileLocWithDir"))
         assertTrue(script.contains("fileLocBare"))
+        assertTrue(script.contains("bareFileName.exec(cleaned)"))
+        assertTrue(script.contains("xml|xsd|xsl|xslt|wsdl"))
         assertTrue(script.contains("bash-pre"))
         assertTrue(script.contains("tool-output"))
         assertTrue(script.contains("tool-loaded-file"))

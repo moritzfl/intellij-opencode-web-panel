@@ -551,12 +551,15 @@ internal object OpenCodeBrowserSnippets {
               const fileLocWithDir = /(?:[A-Za-z]:)?(?:[^\s<>"'`()]+[\/\\])+[^\s\/\\():]+\.[A-Za-z][A-Za-z0-9]{0,8}(?::L?\d+(?:-L?\d+)?|:\d+:\d+|#L?\d+(?:-L?\d+)?|\(L?\d+(?:\s*,\s*\d+)?\))?/i;
               const fileLocBare = /[^\s\/\\():]+\.[A-Za-z][A-Za-z0-9]{0,8}(?::L?\d+(?:-L?\d+)?|:\d+:\d+|#L?\d+(?:-L?\d+)?|\(L?\d+(?:\s*,\s*\d+)?\))/i;
               const locatorAtStart = /^\s*(:L?\d+(?:-L?\d+)?|:\d+:\d+|#L?\d+(?:-L?\d+)?|\(L?\d+(?:\s*,\s*\d+)?\))/i;
+              // A bare filename in prose has no locator. Restrict it to known extensions so
+              // dotted identifiers and domains do not steal clicks.
+              const bareFileName = /^[^\s\/\\().:]+\.(?:kt|kts|java|ts|tsx|js|jsx|py|xml|xsd|xsl|xslt|wsdl|yml|yaml|json|md|sql|properties|gradle)(?=$|[),;!?])/i;
               const isUrl = /^[a-z][a-z0-9+.-]*:\/\//i;
               const isPascalCase = /^[A-Z][a-zA-Z0-9_]*$/;
               const isQualifiedClass = /^(?:[a-zA-Z_][a-zA-Z0-9_]*\.)+[A-Z][a-zA-Z0-9_]*$/;
               const isTypeMember = /^(?:[a-zA-Z_][a-zA-Z0-9_]*\.)*[A-Z][a-zA-Z0-9_]*(?:[.#][a-z_][a-zA-Z0-9_]*)?\(.*\)$/;
               const isTypeMemberBare = /^(?:[a-zA-Z_][a-zA-Z0-9_]*\.)*[A-Z][a-zA-Z0-9_]*[.#][a-z_][a-zA-Z0-9_]*$/;
-              const fileExt = /\.(kt|kts|java|ts|tsx|js|jsx|mjs|cjs|py|rb|go|rs|c|h|cc|cpp|hpp|cs|swift|md|json|yml|yaml|xml|toml|txt)$/i;
+              const fileExt = /\.(kt|kts|java|ts|tsx|js|jsx|mjs|cjs|py|rb|go|rs|c|h|cc|cpp|hpp|cs|swift|md|json|yml|yaml|xml|xsd|xsl|xslt|wsdl|toml|txt)$/i;
               const isSnakeCase = /^[a-z][a-z0-9]*_[a-z0-9_]+$/;
               const looksLikeCodeRef = (text) => {
                 const t = text.trim();
@@ -674,7 +677,7 @@ internal object OpenCodeBrowserSnippets {
                 };
                 const pick = (value) => {
                   const cleaned = (value || '').replace(/:+$/, '');
-                  return (fileLocWithDir.exec(cleaned) || fileLocBare.exec(cleaned) || [])[0] || '';
+                  return (fileLocWithDir.exec(cleaned) || fileLocBare.exec(cleaned) || bareFileName.exec(cleaned) || [])[0] || '';
                 };
                 const candidate = pick(token) ? token : glueAfter();
                 return pick(candidate) || pick(glueBefore());
