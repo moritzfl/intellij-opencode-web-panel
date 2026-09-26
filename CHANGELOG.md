@@ -2,6 +2,61 @@
 
 # OpenCode Web Panel Changelog
 
+## [2.6.0] - 2026-09-26
+
+### Added
+
+- Monorepos can set **OpenCode working directory** to a folder inside the
+  mounted repository. OpenCode starts there; the sandbox, kits, and persisted
+  sessions stay on the repository root. Changing it restarts OpenCode without
+  recreating the VM or deleting conversations.
+- Extra-mount host paths accept a leading `${NAME}` or `${NAME:-fallback}`
+  from the host environment, expanded literally. For example,
+  `${GRADLE_USER_HOME:-~/.gradle}` can share each developer's Gradle
+  configuration read-only. The mounted directory is readable in the sandbox;
+  keep writable guest caches separate.
+- During startup and restart, the waiting view names the current step and
+  streams recent command output. Elapsed time belongs to the current attempt.
+  A quiet step offers log and cancel guidance. Recent activity is kept even
+  when file logging is off.
+
+### Changed
+
+- `opencode-sbx.sh` follows the OpenCode CLI. No arguments opens the TUI in
+  the same sandbox, including while the IDE server is running. Flags and
+  subcommands pass through (`--continue`, `run`, `auth login`). Use `--web`
+  for the published server and `acp` for ACP. `--sbx-directory` selects
+  another project sandbox; `--sbx-help` is launcher help. The older `--cli`,
+  `--acp`, and `--oc-args` forms still work. Setup stays off OpenCode's
+  stdout, and piped stdin is preserved.
+- The foreign-session warning treats folders in the same Git worktree as one
+  project, including a sandbox working directory that is not the mount root.
+  A linked worktree stays distinct. Windows guest paths are translated to
+  host paths first.
+
+### Fixed
+
+- On Windows, sandbox commands use the guest spelling of the working
+  directory, and guest scripts are passed so quotes survive `sbx` argument
+  conversion. Install, upgrade, serve, and extra-mount linking no longer
+  fail for that reason.
+- sbx 0.45+ keeps `daemon start` in the foreground. The plugin and launcher
+  pass `--detach`, so a startup timeout does not kill a daemon that just
+  became healthy. An older CLI that rejects `--detach` still uses the
+  previous command.
+- When Docker Sandboxes cannot start the VM, the failure says the mount step
+  never ran. A locked task bundle and a timeout while a stopped VM is
+  starting are called out, with a pointer to `sbx daemon status`.
+- Home project path previews still appear when the home page also lists
+  session rows.
+- File and code links also resolve against the IDE project directory, so a
+  reference outside the OpenCode directory can still open.
+- Code navigation recognizes schema files (`.xsd`, `.xsl`, `.xslt`, `.wsdl`)
+  and a bare filename with a known extension.
+- A Windows path written as `/C:/...` opens in the IDE.
+- Pasting into chat reads bounded plain text before HTML or RTF. The IDE
+  Paste shortcut and the browser context-menu Paste use the same path.
+
 ## [2.5.0] - 2026-09-23
 
 ### Security
@@ -981,7 +1036,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.5.0...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.6.0...HEAD
+[2.6.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.5.0...2.6.0
 [2.5.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.4.1...2.5.0
 [2.4.1]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.4.0...2.4.1
 [2.4.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.3.0...2.4.0
