@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 // Provider-free, isolated real-server browser regression gate. Requires Node and playwright-cli.
 // Usage: node scripts/check-browser-contract.mjs [/path/to/opencode]
-import { spawn, spawnSync } from 'node:child_process';
+import { execFile, spawn, spawnSync } from 'node:child_process';
+import { createServer, request } from 'node:http';
 import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
+import { promisify } from 'node:util';
 
 const repo = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const base = path.join(tmpdir(), 'opencode');
@@ -19,6 +21,45 @@ const session = `ocwp-contract-${process.pid}`;
 let server;
 let browserOpened = false;
 let serverLog = '';
+let stallProxy;
+const execFileAsync = promisify(execFile);
+const browser = args => execFileAsync('playwright-cli', ['--session=' + session, ...args], {
+  cwd: root, timeout: 180_000, maxBuffer: 2 * 1024 * 1024,
+});
+
+async function stallingProxy(origin) {
+  const target = new URL(origin);
+  const streams = [];
+  stallProxy = createServer((incoming, outgoing) => {
+    if (incoming.url === '/__contract/streams') {
+      outgoing.setHeader('Content-Type', 'application/json');
+      outgoing.end(JSON.stringify(streams));
+      return;
+    }
+    const event = ['/global/event', '/api/event'].includes(new URL(incoming.url, origin).pathname);
+    const stream = event ? { started: Date.now(), firstByte: null, closed: null } : null;
+    if (stream) streams.push(stream);
+    const upstream = request({ hostname: target.hostname, port: target.port, path: incoming.url, method: incoming.method,
+      headers: { ...incoming.headers, host: target.host } }, response => {
+      outgoing.writeHead(response.statusCode, response.headers);
+      if (!stream) { response.pipe(outgoing); return; }
+      response.on('data', chunk => {
+        if (stream.firstByte !== null) return;
+        stream.firstByte = Date.now();
+        outgoing.write(chunk);
+      });
+      // Intentionally keep the client socket open but silent after server.connected.
+    });
+    upstream.on('error', () => outgoing.destroy());
+    outgoing.on('close', () => {
+      if (stream) stream.closed = Date.now();
+      upstream.destroy();
+    });
+    incoming.pipe(upstream);
+  });
+  await new Promise(resolve => stallProxy.listen(0, '127.0.0.1', resolve));
+  return `http://127.0.0.1:${stallProxy.address().port}`;
+}
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, { cwd: repo, encoding: 'utf8', timeout: 180_000, ...options });
@@ -65,14 +106,14 @@ try {
   run('./gradlew', ['exportBrowserContract', `-PbrowserContractDirectory=${workspace}`, `-PbrowserContractOrigin=${origin}`, '--console=plain']);
   const snippets = JSON.parse(await readFile(path.join(repo, 'build/browser-contract/snippets.json'), 'utf8'));
   const scenario = await readFile(path.join(repo, 'scripts/browser-contract.js'), 'utf8');
+  const stallOrigin = await stallingProxy(origin);
   const serverKey = Buffer.from(origin).toString('base64url');
-  const code = `async (page) => { await (${scenario})(page, ${JSON.stringify({ origin, serverKey, workspace, authorization, snippets })}); return 'OCWP_BROWSER_CONTRACT_OK'; }`;
+  const code = `async (page) => { await (${scenario})(page, ${JSON.stringify({ origin, serverKey, workspace, authorization, snippets, stallOrigin })}); return 'OCWP_BROWSER_CONTRACT_OK'; }`;
   const filename = path.join(root, 'scenario.js');
   await writeFile(filename, code);
-  const cli = ['--session=' + session];
-  run('playwright-cli', [...cli, 'open'], { cwd: root });
+  await browser(['open']);
   browserOpened = true;
-  const output = run('playwright-cli', [...cli, '--raw', 'run-code', '--filename', filename], { cwd: root });
+  const { stdout: output } = await browser(['--raw', 'run-code', '--filename', filename]);
   // The CLI can return exit 0 for a failed browser command. Only a completed scenario emits this.
   if (!output.includes('OCWP_BROWSER_CONTRACT_OK')) throw new Error(output || 'Browser scenario did not complete');
   console.log('OK: real-page navigation and browser behavior contracts');
@@ -80,7 +121,11 @@ try {
   console.error(error.message);
   process.exitCode = 1;
 } finally {
-  if (browserOpened) spawnSync('playwright-cli', ['--session=' + session, 'close'], { cwd: root, timeout: 15_000, stdio: 'ignore' });
+  if (browserOpened) await browser(['close']).catch(() => {});
+  if (stallProxy) {
+    stallProxy.closeAllConnections();
+    await new Promise(resolve => stallProxy.close(resolve));
+  }
   if (server?.pid && server.exitCode === null) {
     const exited = new Promise(resolve => server.once('exit', resolve));
     server.kill('SIGTERM');

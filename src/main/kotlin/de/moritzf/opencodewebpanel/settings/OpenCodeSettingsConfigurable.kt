@@ -397,7 +397,7 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
                 }
                 row {
                     cell(recoverStalledEventStreamCheckBox)
-                        .comment("Reopen the panel's connection to OpenCode when it goes silent, which happens when sleep or a network change severs it without closing it. Without this the panel keeps showing answered permission prompts and refuses new messages until you reload it.")
+                        .comment("On OpenCode 1.18, reconnect when sleep or a network change leaves the panel's connection silent. This prevents answered permission prompts and new messages from getting stuck. OpenCode 2 handles this natively; no connection patch is injected there.")
                 }
                 row {
                     cell(recoverFailedChunkLoadsCheckBox)

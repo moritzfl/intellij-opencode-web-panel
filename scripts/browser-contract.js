@@ -1,4 +1,4 @@
-async (page, { origin, serverKey, workspace, authorization, snippets }) => {
+async (page, { origin, serverKey, workspace, authorization, snippets, stallOrigin }) => {
   const assert = (condition, message) => { if (!condition) throw new Error(message); };
   await page.setExtraHTTPHeaders({ Authorization: authorization });
   const identity = await page.request.get(`${origin}/api/info`, { headers: { Authorization: authorization } });
@@ -66,4 +66,19 @@ async (page, { origin, serverKey, workspace, authorization, snippets }) => {
   });
   for (const href of ['/src/Main.kt', '/src/Main.kt:42', 'src/Main.kt']) assert(links[href], `Legacy file href rejected: ${href}`);
   for (const href of ['/future-page', '/server/key/session/ses_test', 'custom:thing']) assert(!links[href], `Non-file link intercepted: ${href}`);
+
+  // Exercise the real SPA's reconnect loop; merely finding watchdog text in a bundle is insufficient.
+  const stalled = await page.context().newPage();
+  await stalled.setExtraHTTPHeaders({ Authorization: authorization });
+  await stalled.addInitScript(() => { window.__originalFetch = window.fetch; });
+  const watchdog = v2 ? snippets.nativeWatchdog : snippets.watchdog;
+  if (watchdog) await stalled.addInitScript(watchdog);
+  await stalled.goto(stallOrigin);
+  assert(await stalled.evaluate(() => window.fetch === window.__originalFetch) === v2, 'Wrong protocol owns the fetch watchdog');
+  await stalled.waitForFunction(async () => {
+    const streams = await fetch('/__contract/streams').then(response => response.json());
+    return streams.some((stream, index) => stream.closed && stream.firstByte &&
+      stream.closed - stream.firstByte >= 40_000 && streams[index + 1]?.firstByte);
+  }, null, { timeout: 65_000, polling: 1000 });
+  await stalled.close();
 }

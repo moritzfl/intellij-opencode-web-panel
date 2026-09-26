@@ -2,6 +2,7 @@ package de.moritzf.opencodewebpanel.browser
 
 import org.intellij.lang.annotations.Language
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
+import de.moritzf.opencodewebpanel.server.OpenCodeWireProtocol
 
 internal object OpenCodeBrowserSnippets {
 
@@ -840,8 +841,14 @@ internal object OpenCodeBrowserSnippets {
      *
      * Must run before the SPA bundle captures `window.fetch` (`onLoadStart`).
      */
-    fun buildEventStreamWatchdogScript(enabled: Boolean, stallTimeoutMillis: Int = EVENT_STREAM_STALL_TIMEOUT_MILLIS): String? {
-        if (!enabled) return null
+    fun buildEventStreamWatchdogScript(
+        enabled: Boolean,
+        stallTimeoutMillis: Int = EVENT_STREAM_STALL_TIMEOUT_MILLIS,
+        wireProtocol: OpenCodeWireProtocol = OpenCodeWireProtocol.UNKNOWN,
+    ): String? {
+        // CLI 2.x ships createClientConnection's byte-idle watchdog and foreground/network
+        // resync. Keep fetch native there; 1.18 (including embedded-v2) still needs our patch.
+        if (!enabled || wireProtocol == OpenCodeWireProtocol.V2_CLI) return null
         val timeout = stallTimeoutMillis.coerceAtLeast(MIN_EVENT_STREAM_STALL_TIMEOUT_MILLIS)
         @Language("JavaScript")
         val script = """

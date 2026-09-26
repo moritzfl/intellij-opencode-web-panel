@@ -52,6 +52,7 @@ import de.moritzf.opencodewebpanel.server.visibleRecoveryNotice
 import de.moritzf.opencodewebpanel.server.OpenCodeRecoveryNotice
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
+import de.moritzf.opencodewebpanel.server.OpenCodeWireProtocol
 import de.moritzf.opencodewebpanel.server.OpenCodeSuspendResumeListener
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
@@ -351,8 +352,15 @@ internal class OpenCodeWebToolWindowContent(
         buildScript = { OpenCodeBrowserSnippets.buildPathHoverPreviewScript(enabled = true) },
     )
     private val eventStreamWatchdogFeature = EarlyInjectedFeature(
-        enabledInSettings = { OpenCodeSettingsState.getInstance().recoverStalledEventStream },
-        buildScript = { OpenCodeBrowserSnippets.buildEventStreamWatchdogScript(enabled = true) },
+        enabledInSettings = {
+            OpenCodeSettingsState.getInstance().recoverStalledEventStream &&
+                serverManager.getWireProtocol() != OpenCodeWireProtocol.V2_CLI
+        },
+        buildScript = {
+            OpenCodeBrowserSnippets.buildEventStreamWatchdogScript(
+                enabled = true, wireProtocol = serverManager.getWireProtocol(),
+            )
+        },
     )
     private val chunkLoadRecoveryFeature = EarlyInjectedFeature(
         enabledInSettings = { OpenCodeSettingsState.getInstance().recoverFailedChunkLoads },
@@ -1953,7 +1961,7 @@ internal class OpenCodeWebToolWindowContent(
     }
 
     private fun forceEventStreamReconnect() {
-        if (!OpenCodeSettingsState.getInstance().recoverStalledEventStream) return
+        if (!eventStreamWatchdogFeature.enabledInSettings()) return
         val serverUrl = serverManager.getServerUrl() ?: return
         ApplicationManager.getApplication().invokeLater {
             if (isContentDisposed()) return@invokeLater
@@ -1967,6 +1975,8 @@ internal class OpenCodeWebToolWindowContent(
     }
 
     private fun applyEventStreamWatchdog() {
+        // CLI 2.x owns recovery and has no injected patch to install/remove.
+        if (serverManager.getWireProtocol() == OpenCodeWireProtocol.V2_CLI) return
         // Off → reload so the patched window.fetch is replaced by the untouched original.
         // On → reload so the patch is in place before the SPA bundle captures window.fetch.
         reloadForEarlyFeatureToggle(eventStreamWatchdogFeature)

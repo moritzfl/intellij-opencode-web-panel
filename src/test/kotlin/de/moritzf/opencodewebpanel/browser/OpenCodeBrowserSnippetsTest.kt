@@ -6,6 +6,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
+import de.moritzf.opencodewebpanel.server.OpenCodeWireProtocol
 
 class OpenCodeBrowserSnippetsTest {
 
@@ -489,7 +490,17 @@ class OpenCodeBrowserSnippetsTest {
 
     @Test
     fun buildEventStreamWatchdogScriptIsMissingWhenDisabled() {
-        assertNull(OpenCodeBrowserSnippets.buildEventStreamWatchdogScript(enabled = false))
+        for (protocol in OpenCodeWireProtocol.entries) {
+            assertNull(OpenCodeBrowserSnippets.buildEventStreamWatchdogScript(enabled = false, wireProtocol = protocol))
+        }
+    }
+
+    @Test
+    fun buildEventStreamWatchdogScriptDefersOnlyToTheNativeCliV2Watchdog() {
+        for (protocol in OpenCodeWireProtocol.entries) {
+            val script = OpenCodeBrowserSnippets.buildEventStreamWatchdogScript(enabled = true, wireProtocol = protocol)
+            assertEquals(protocol == OpenCodeWireProtocol.V2_CLI, script == null)
+        }
     }
 
     @Test

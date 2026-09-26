@@ -1,6 +1,7 @@
 package de.moritzf.opencodewebpanel.browser
 
 import com.google.gson.GsonBuilder
+import de.moritzf.opencodewebpanel.server.OpenCodeWireProtocol
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -23,6 +24,9 @@ object OpenCodeBrowserContractExport {
                 enabled = true, fatalCallback = "window.__chunkCalls.push(message)",
             ),
             "watchdog" to OpenCodeBrowserSnippets.buildEventStreamWatchdogScript(enabled = true),
+            "nativeWatchdog" to OpenCodeBrowserSnippets.buildEventStreamWatchdogScript(
+                enabled = true, wireProtocol = OpenCodeWireProtocol.V2_CLI,
+            ),
         )
         val target = Path.of(output)
         Files.createDirectories(target.parent)

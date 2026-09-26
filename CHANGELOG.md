@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+### Changed
+
+- OpenCode 2 uses its native stalled-connection recovery instead of a plugin
+  patch to the browser's network API. OpenCode 1.18 retains the safeguard.
+
 ### Fixed
 
 - File-tree clicks keep native preview and folder expansion. Alt/Ctrl/Cmd-click

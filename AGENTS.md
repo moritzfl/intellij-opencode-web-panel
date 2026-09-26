@@ -105,6 +105,8 @@ OpenCode's session-tab popover waits 2000ms (`titlebar-tab-popover` `OPEN_DELAY`
 
 ### Page event-stream watchdog (`recoverStalledEventStream`)
 
+**1.18-only injection.** CLI 2.x has `createClientConnection` in `packages/client/src/solid/connection.ts`: a 45s byte-idle watchdog plus foreground/online resync (upstream #47571, present from 2.0.0; verified live on 2.0.18 behind a stalling proxy). `V2_CLI` generates/schedules no fetch patch or force-reconnect script. Keep the patch for 1.18, embedded-v2, and unknown protocols. On V2 the setting does not reload the page; on 1.18 toggle-off still reloads to remove the wrapper. The browser gate verifies reconnection with native V2 fetch and the patched 1.18 reader.
+
 OpenCode's page-side reader (`packages/app/src/context/server-sdk.tsx`) reconnects **only when its response iterator ends or throws**. It has no read timeout, and its only resume hook is `pageshow` with `event.persisted` — which never fires for a live JCEF page. A socket the OS severed without resetting it (sleep, VPN/adapter change; routinely half-open on Windows) therefore delivers neither bytes nor an error and `for await` blocks forever. Verified live against 1.18.10 behind a stalling proxy: the page issues **one** `/global/event` request and then ignores every server-side change until reloaded.
 
 Two user-visible bugs share this single root cause, so treat them as one:
