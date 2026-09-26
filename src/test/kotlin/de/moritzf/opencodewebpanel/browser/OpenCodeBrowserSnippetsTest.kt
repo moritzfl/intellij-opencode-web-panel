@@ -933,6 +933,7 @@ class OpenCodeBrowserSnippetsTest {
         assertTrue(script.contains("event.ctrlKey"))
         assertTrue(script.contains("filesBrowserRow"))
         assertTrue(script.contains("file-tree-v2-row"))
-        assertTrue(script.contains("if (!filesBrowserRow(event.target)) return"))
+        assertTrue(script.contains("if (filesRow && !modified) return"))
+        assertTrue(script.contains("if (modified && !filesRow) return"))
     }
 }

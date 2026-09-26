@@ -1949,8 +1949,8 @@ internal object OpenCodeBrowserSnippets {
               };
               const lastSegmentLooksLikeFile = (value) => {
                 const path = String(value || '').split('?')[0].split('#')[0].replace(/[\\/]+$/, '');
-                const last = (path.split(/[\\/]/).filter(Boolean).pop() || '').replace(/:\\d+(?::\\d+)?$/, '');
-                return /\\.[a-zA-Z0-9]{1,8}$/.test(last);
+                const last = (path.split(/[\\/]/).filter(Boolean).pop() || '').replace(/:\d+(?::\d+)?$/, '');
+                return /\.[a-zA-Z0-9]{1,8}$/.test(last);
               };
               const isLocalFileLink = (href) => {
                 if (!href || href.startsWith('#')) return false;
@@ -1998,7 +1998,8 @@ internal object OpenCodeBrowserSnippets {
               };
               const filesBrowserRow = (node) => {
                 const row = closestElement(node, '[data-slot="file-tree-v2-row"]');
-                if (!row) return null;
+                // Directory rows own expansion, including modified clicks.
+                if (!row || row.hasAttribute('aria-expanded')) return null;
                 const path = row.getAttribute('data-path') || '';
                 if (!path) return null;
                 const sidebar = row.closest('[data-slot="session-review-v2-sidebar"]');
@@ -2018,8 +2019,11 @@ internal object OpenCodeBrowserSnippets {
                 const reviewV2Href = changedFileHref ? '' : reviewV2FileLink(target);
                 if (changedButtonOnly && !changedFileHref && !reviewV2Href) return null;
                 const link = !changedFileHref && !reviewV2Href && target && target.closest ? target.closest('a') : null;
-                if (link && (!link.closest('[data-component="markdown"]') || link.target !== '_blank')) return null;
-                const rawHref = changedFileHref || reviewV2Href || (link ? (link.getAttribute('href') || inferredFileLink(link)) : '');
+                // V2's Markdown sanitizer makes local links inert and records their path in
+                // data-local-link. Older pages expose outbound href/target="_blank" links.
+                const localHref = link ? link.getAttribute('data-local-link') : '';
+                if (link && (!link.closest('[data-component="markdown"]') || (!localHref && link.target !== '_blank'))) return null;
+                const rawHref = changedFileHref || reviewV2Href || localHref || (link ? (link.getAttribute('href') || inferredFileLink(link)) : '');
                 if (!isLocalFileLink(rawHref)) return null;
                 const element = changedFileHref
                   ? target.closest(changedFileButtonSelector)
@@ -2093,9 +2097,10 @@ internal object OpenCodeBrowserSnippets {
                 if (event.defaultPrevented) return;
                 // Alt and Ctrl/Cmd+Click are reserved for the IDE diff gesture
                 // (buildDiffNavigationScript), except Files-tab tree rows (open the file).
-                if (event.altKey || (/Mac|iPhone|iPod|iPad/.test(navigator.platform) ? event.metaKey : event.ctrlKey)) {
-                  if (!filesBrowserRow(event.target)) return;
-                }
+                const filesRow = filesBrowserRow(event.target);
+                const modified = event.altKey || (/Mac|iPhone|iPod|iPad/.test(navigator.platform) ? event.metaKey : event.ctrlKey);
+                if (filesRow && !modified) return;
+                if (modified && !filesRow) return;
                 const resolved = resolveFileOpenTarget(event.target, changedButtonOnly);
                 if (!resolved) return;
                 event.preventDefault();
@@ -2105,6 +2110,11 @@ internal object OpenCodeBrowserSnippets {
               window.addEventListener('pointerdown', (event) => handleFileOpenEvent(event, true), true);
               window.addEventListener('mousedown', (event) => handleFileOpenEvent(event, true), true);
               window.addEventListener('click', (event) => handleFileOpenEvent(event, false), true);
+              window.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter' && closestElement(event.target, 'a[data-local-link]')) {
+                  handleFileOpenEvent(event, false);
+                }
+              }, true);
               $$POINTER_CURSOR_KIT_JS
               document.addEventListener('mouseover', (event) => {
                 const target = event.target && event.target.nodeType === 1 ? event.target : null;
@@ -2170,7 +2180,10 @@ internal object OpenCodeBrowserSnippets {
               new MutationObserver(syncReviewMode).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-selected', 'aria-selected'] });
               const changesSidebarOf = (node) => {
                 if (!node || !node.closest) return null;
-                const sidebar = node.closest('[data-slot="session-review-v2-sidebar"]');
+                // The preview header is a sibling of the sidebar, not its descendant.
+                const panel = node.closest('[data-component="session-review-v2"]');
+                const sidebar = node.closest('[data-slot="session-review-v2-sidebar"]') ||
+                  (panel && panel.querySelector('[data-slot="session-review-v2-sidebar"]'));
                 if (!sidebar || !sidebar.querySelector('[data-component="select-v2"]')) return null;
                 return sidebar;
               };

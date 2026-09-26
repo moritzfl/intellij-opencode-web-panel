@@ -109,6 +109,8 @@ MARKERS_COMMON=(
   'session-review-v2-file-title'
   'session-review-v2-file-name'
   'session-review-v2-file-path'
+  'session-review-v2-sidebar'
+  'session-review-v2-file-header'
   'toast-icon'
   'toast-v2-icon'
   'toast-v2-actions'
@@ -170,6 +172,20 @@ MARKERS_V2=(
   'file-tree-v2-row'
   'select-v2'
 )
+
+# 2.0.12 introduced inert local Markdown links. Older CLI 2.x uses href/target instead.
+if [ "$CLI2X" = 1 ]; then
+  if curl -fsu "$AUTH" "$BASE_URL/api/info" | python3 -c '
+import json, re, sys
+try:
+    version = re.search(r"(\d+)\.(\d+)\.(\d+)", json.load(sys.stdin).get("version", ""))
+    sys.exit(0 if version and tuple(map(int, version.groups())) >= (2, 0, 12) else 1)
+except (ValueError, AttributeError):
+    sys.exit(1)
+'; then
+    MARKERS_V2+=('data-local-link')
+  fi
+fi
 
 marker_present() {
   local marker="$1"

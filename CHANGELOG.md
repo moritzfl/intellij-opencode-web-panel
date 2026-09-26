@@ -2,6 +2,16 @@
 
 # OpenCode Web Panel Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- File-tree clicks keep native preview and folder expansion. Alt/Ctrl/Cmd-click
+  on files still opens them in the IDE.
+- OpenCode 2 Markdown file links open in the IDE, including keyboard activation.
+  Slash-prefixed file links are recognized correctly.
+- Alt/Ctrl/Cmd-click on the Changes preview header opens the selected IDE diff.
+
 ## [2.6.0] - 2026-09-26
 
 ### Added
