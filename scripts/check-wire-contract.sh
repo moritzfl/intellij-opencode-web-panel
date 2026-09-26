@@ -10,6 +10,7 @@ PASSWORD="${OPENCODE_SERVER_PASSWORD:?set OPENCODE_SERVER_PASSWORD}"
 AUTH="opencode:${PASSWORD}"
 WORKDIR="$(mktemp -d)"
 trap 'rm -rf "$WORKDIR"' EXIT
+ENCODED_DIRECTORY="$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$DIRECTORY")"
 
 cli_identity_ok() {
   local path="$1"
@@ -40,8 +41,9 @@ if [ "$PROTOCOL" = "v2" ]; then
   curl -fsu "$AUTH" "$BASE_URL/api/session/active" -o "$WORKDIR/active.json"
   curl -fsu "$AUTH" "$BASE_URL/api/permission/request" -o "$WORKDIR/permission.json"
   curl -fsu "$AUTH" "$BASE_URL/api/form" -o "$WORKDIR/form.json"
+  curl -fsu "$AUTH" "$BASE_URL/api/vcs/diff?mode=working&directory=$ENCODED_DIRECTORY" -o "$WORKDIR/vcs-diff.json"
   python3 - "$WORKDIR" "$IDENTITY" <<'PY'
-import json, pathlib, sys
+import copy, json, pathlib, sys
 root = pathlib.Path(sys.argv[1])
 identity = sys.argv[2]
 doc = json.loads((root / "doc.json").read_text())
@@ -55,13 +57,26 @@ ops = {
     ("/api/session/{sessionID}", "get"): None,
     ("/api/session/{sessionID}/message", "get"): None,
     ("/api/session/{sessionID}/diff", "get"): None,
+    ("/api/vcs/diff", "get"): None,
     ("/api/session/{sessionID}/prompt", "post"): None,
     ("/api/permission/request", "get"): None,
     ("/api/session/{sessionID}/permission/{requestID}/reply", "post"): None,
 }
-for (path, method), _ in ops.items():
-    if not (doc.get("paths") or {}).get(path, {}).get(method):
-        failures.append(f"missing {method.upper()} {path}")
+def operation_failures(candidate):
+    result = []
+    for path, method in ops:
+        operation = (candidate.get("paths") or {}).get(path, {}).get(method)
+        if not operation:
+            result.append(f"missing {method.upper()} {path}")
+        elif operation.get("deprecated") is True:
+            result.append(f"{method.upper()} {path}: deprecated")
+    return result
+failures.extend(operation_failures(doc))
+for path, method in ops:
+    mutated = copy.deepcopy(doc)
+    mutated.get("paths", {}).get(path, {}).pop(method, None)
+    if f"missing {method.upper()} {path}" not in operation_failures(mutated):
+        failures.append(f"checker self-test did not reject missing {method.upper()} {path}")
 if not isinstance(status.get("pid"), int) or not isinstance(status.get("version"), str):
     failures.append(f"{identity} shape changed")
 active = json.loads((root / "active.json").read_text())
@@ -73,18 +88,20 @@ if not isinstance(perm, dict) or not isinstance(perm.get("data"), list):
 form = json.loads((root / "form.json").read_text())
 if not isinstance(form, dict) or not isinstance(form.get("data"), list):
     failures.append("/api/form envelope changed")
+vcs_diff = json.loads((root / "vcs-diff.json").read_text())
+if not isinstance(vcs_diff, dict) or not isinstance(vcs_diff.get("data"), list):
+    failures.append("/api/vcs/diff envelope changed")
 if failures:
     for f in failures:
         print(f"FAIL: {f}", file=sys.stderr)
     raise SystemExit(1)
-print(f"OK: CLI 2.x {len(ops)} operations; OpenCode {status['version']}")
+print(f"OK: CLI 2.x {len(ops)} operations, 5 live response roots; OpenCode {status['version']}")
 PY
   exit 0
 fi
 
 curl -fsu "$AUTH" "$BASE_URL/doc" -o "$WORKDIR/doc.json"
 curl -fsu "$AUTH" "$BASE_URL/global/health" -o "$WORKDIR/health.json"
-ENCODED_DIRECTORY="$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$DIRECTORY")"
 curl -fsu "$AUTH" "$BASE_URL/session/status?directory=$ENCODED_DIRECTORY" -o "$WORKDIR/status.json"
 curl -fsu "$AUTH" "$BASE_URL/permission?directory=$ENCODED_DIRECTORY" -o "$WORKDIR/permission.json"
 curl -fsu "$AUTH" "$BASE_URL/question?directory=$ENCODED_DIRECTORY" -o "$WORKDIR/question.json"

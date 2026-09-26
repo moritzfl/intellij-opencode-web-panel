@@ -118,6 +118,18 @@ kover {
 }
 
 tasks {
+    // Export the actual Kotlin-built injections for the opt-in real-server Playwright gate.
+    register<JavaExec>("exportBrowserContract") {
+        dependsOn(testClasses)
+        classpath = sourceSets.test.get().runtimeClasspath + sourceSets.test.get().compileClasspath
+        mainClass = "de.moritzf.opencodewebpanel.browser.OpenCodeBrowserContractExport"
+        args(
+            providers.gradleProperty("browserContractDirectory").getOrElse("/ocwp-contract"),
+            providers.gradleProperty("browserContractOrigin").getOrElse("http://127.0.0.1:4096"),
+            layout.buildDirectory.file("browser-contract/snippets.json").get().asFile.absolutePath,
+        )
+    }
+
     wrapper {
         gradleVersion = providers.gradleProperty("gradleVersion").get()
     }
