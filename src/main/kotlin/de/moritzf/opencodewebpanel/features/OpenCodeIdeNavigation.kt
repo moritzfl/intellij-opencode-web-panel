@@ -40,7 +40,7 @@ internal class OpenCodeIdeNavigation(
         val partID = payload?.partID
         val routeBasePath = OpenCodeServerProtocol.routeDirectoryFromUrl(browser.cefBrowser.url)
         val projectBasePath = projectDirectory()
-        val baseCandidates = listOfNotNull(basePath, payload?.basePath, routeBasePath, projectBasePath).distinct()
+        val baseCandidates = listOfNotNull(basePath, payload?.basePath, routeBasePath, projectBasePath, project.basePath).distinct()
         val requestGeneration = fileLinkRequestGeneration.incrementAndGet()
         // Resolution hits the filesystem and may fall back to a bounded project search, so it
         // must not run on the browser callback thread. Neither caller uses the result.
@@ -86,7 +86,7 @@ internal class OpenCodeIdeNavigation(
         val text = ref?.trim()?.ifBlank { null } ?: return
         val parsed = OpenCodeServerProtocol.parseCodeReference(text) ?: return
         val routeBasePath = OpenCodeServerProtocol.routeDirectoryFromUrl(browser.cefBrowser.url)
-        val bases = listOfNotNull(routeBasePath, projectDirectory()).distinct()
+        val bases = listOfNotNull(routeBasePath, projectDirectory(), project.basePath).distinct()
         // Path resolve hits the filesystem and may best-guess an incomplete subpath; keep it
         // off the browser JS-query callback thread.
         ApplicationManager.getApplication().executeOnPooledThread {

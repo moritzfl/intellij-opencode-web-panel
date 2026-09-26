@@ -366,6 +366,7 @@ internal object OpenCodeServerProtocol {
         "py", "rb", "go", "rs", "c", "h", "cc", "cpp", "hpp", "cs", "swift",
         "m", "mm", "scala", "groovy", "gradle", "xml", "json", "yml", "yaml",
         "md", "txt", "toml", "properties", "sql", "sh", "bash", "zsh",
+        "xsd", "xsl", "xslt", "wsdl",
         "html", "css", "scss", "vue", "svelte", "proto",
     )
     private val SOURCE_FILE_EXTENSIONS = setOf(

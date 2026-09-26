@@ -59,6 +59,27 @@ class OpenCodePathAndMemberMatchingTest {
     }
 
     @Test
+    fun navigationBasesPreserveTheOpenCodeDirectoryAndReachSiblingModulesInTheIdeProject() {
+        withTree(
+            "client-app/src/Main.java",
+            "shared-library/src/DocumentMapper.java",
+            "shared-library/resources/Document.xsd",
+        ) { root ->
+            val selected = root.resolve("client-app").toString()
+            val bases = listOf(selected, root.toString())
+            fun resolve(ref: String) = OpenCodeServerProtocol.resolveFileLinkWithBases(ref, bases)
+
+            assertEquals(root.file("client-app/src/Main.java"), resolve("src/Main.java")?.path)
+            assertEquals(
+                root.file("shared-library/src/DocumentMapper.java"),
+                resolve("shared-library/src/DocumentMapper.java:42")?.path,
+            )
+            assertEquals(41, resolve("shared-library/src/DocumentMapper.java:42")?.line)
+            assertEquals(root.file("shared-library/resources/Document.xsd"), resolve("shared-library/resources/Document.xsd")?.path)
+        }
+    }
+
+    @Test
     fun resolveFileLinkPrefersTheLongestMatchingSubpath() {
         withTree("a/src/Main.kt", "b/other/Main.kt", "c/src/nested/Main.kt") { root ->
             assertEquals(
@@ -188,6 +209,17 @@ class OpenCodePathAndMemberMatchingTest {
         assertEquals("src\\Main.kt", backslash.path)
         assertTrue(backslash.hasPath)
         assertEquals(2, backslash.line)
+    }
+
+    @Test
+    fun parseCodeReferenceTreatsSchemaNamesAsFilesRatherThanTypeMembers() {
+        val schema = OpenCodeServerProtocol.parseCodeReference("Document.xsd:L1063")!!
+        assertEquals("Document.xsd", schema.path)
+        assertEquals("Document.xsd", schema.fileName)
+        assertEquals("xsd", schema.extension)
+        assertNull(schema.memberName)
+        assertEquals(1062, schema.line)
+        assertEquals(listOf("Document.xsd"), OpenCodeServerProtocol.codeReferenceFileNames(schema))
     }
 
     @Test
