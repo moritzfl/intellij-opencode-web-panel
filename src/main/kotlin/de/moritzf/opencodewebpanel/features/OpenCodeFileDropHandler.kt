@@ -8,9 +8,11 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.ide.CopyPasteManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
+import com.intellij.openapi.util.SystemInfo
 import com.intellij.ui.jcef.JBCefBrowser
 import com.intellij.ui.jcef.JBCefBrowserBase
 import com.intellij.util.concurrency.AppExecutorUtil
+import com.intellij.util.Alarm
 import de.moritzf.opencodewebpanel.browser.OpenCodeBrowserSnippets
 import de.moritzf.opencodewebpanel.browser.OpenCodeJsQuery
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
@@ -18,11 +20,9 @@ import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
 import java.awt.Image
 import java.awt.KeyboardFocusManager
-import java.awt.KeyEventDispatcher
 import java.awt.Toolkit
 import java.awt.datatransfer.DataFlavor
 import java.awt.datatransfer.Transferable
-import java.awt.event.KeyEvent
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -33,11 +33,6 @@ import javax.imageio.ImageIO
 import javax.swing.JComponent
 import javax.swing.TransferHandler
 import org.cef.handler.CefDragHandler
-import org.cef.handler.CefKeyboardHandler.CefKeyEvent
-import org.cef.handler.CefKeyboardHandler.CefKeyEvent.EventType
-import org.cef.handler.CefKeyboardHandlerAdapter
-import org.cef.misc.BoolRef
-import org.cef.misc.EventFlags
 
 internal fun createOpenCodeDropPreparationExecutor() = AppExecutorUtil.createBoundedApplicationPoolExecutor(
     "OpenCode File Drop Preparation",
@@ -56,11 +51,12 @@ internal class OpenCodeFileDropHandler(
     private val dropResultQuery = OpenCodeJsQuery.create(browser as JBCefBrowserBase)
     private val preparationExecutor = createOpenCodeDropPreparationExecutor()
     private val nextDropID = AtomicLong()
+    private val pasteAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, parentDisposable)
+    private val pendingPastes = mutableMapOf<String, PendingPaste>()
 
     internal companion object {
         private const val MAX_DROPPED_FILE_BYTES = 5L * 1024L * 1024L
         private const val MAX_DROPPED_FILES_TOTAL_BYTES = 10L * 1024L * 1024L
-        private const val BROWSER_PASTE_SUPPRESSION_MILLIS = 1_500L
 
         // Bound for clipboard images before decoding into an ARGB buffer (4 bytes per pixel):
         // covers even large retina screenshots while keeping the transient buffer ~100 MB.
@@ -72,14 +68,6 @@ internal class OpenCodeFileDropHandler(
             focusInsideBrowser: Boolean,
             focusOwnerMissing: Boolean,
         ): Boolean = focusOwnerMissing || focusInsideBrowser
-
-        fun isPasteShortcut(keyCode: Int, modifiers: Int, character: Char = 0.toChar(), unmodifiedCharacter: Char = 0.toChar()): Boolean {
-            val hasCommand = modifiers and EventFlags.EVENTFLAG_COMMAND_DOWN != 0
-            val hasControl = modifiers and EventFlags.EVENTFLAG_CONTROL_DOWN != 0
-            val hasAlt = modifiers and EventFlags.EVENTFLAG_ALT_DOWN != 0
-            val key = listOf(character, unmodifiedCharacter).any { it.lowercaseChar() == 'v' }
-            return (keyCode == KeyEvent.VK_V || key) && hasCommand != hasControl && !hasAlt
-        }
 
         internal fun shouldUseDroppedImageFlavor(droppedFiles: List<File>, projectDirectory: String?): Boolean {
             if (droppedFiles.isEmpty()) return true
@@ -140,17 +128,28 @@ internal class OpenCodeFileDropHandler(
         }
     }
 
-    @Volatile
-    private var suppressNextBrowserPasteAtMillis = 0L
-
     init {
-        Disposer.register(parentDisposable) { preparationExecutor.shutdownNow() }
+        Disposer.register(parentDisposable) {
+            preparationExecutor.shutdownNow()
+            pendingPastes.clear()
+        }
         dropResultQuery.addHandler { payload ->
-            if (payload.lineSequence().drop(1).firstOrNull() != "1") {
-                ApplicationManager.getApplication().invokeLater {
-                    if (!isDisposed()) {
-                        showFileDropWarning(listOf("Open a conversation and close any dialog before adding files."))
+            val fields = payload.split('\n')
+            ApplicationManager.getApplication().invokeLater {
+                if (isDisposed()) return@invokeLater
+                val id = fields.firstOrNull().orEmpty()
+                val result = fields.getOrNull(1)
+                if (id.startsWith("paste-")) {
+                    val pending = pendingPastes.remove(id) ?: return@invokeLater
+                    pasteAlarm.cancelRequest(pending.timeout)
+                    if (!pending.isCurrent()) return@invokeLater
+                    when (result) {
+                        "native" -> nativePaste()
+                        "stale" -> showFileDropWarning(listOf("The paste destination changed before the clipboard was ready."))
+                        "rejected" -> showFileDropWarning(listOf("The clipboard could not be inserted into this field."))
                     }
+                } else if (result != "1") {
+                    showFileDropWarning(listOf("Open a conversation and close any dialog before adding files."))
                 }
             }
             null
@@ -210,8 +209,6 @@ internal class OpenCodeFileDropHandler(
         }
         installTransferHandler(browser.component, handler)
         (browser.browserComponent as? JComponent)?.let { installTransferHandler(it, handler) }
-        installPasteDispatcher()
-        installPasteKeyboardHandler()
     }
 
     private fun installTransferHandler(component: JComponent, handler: TransferHandler) {
@@ -235,55 +232,6 @@ internal class OpenCodeFileDropHandler(
         }
     }
 
-    private fun installPasteKeyboardHandler() {
-        val handler = object : CefKeyboardHandlerAdapter() {
-            override fun onPreKeyEvent(
-                browser: org.cef.browser.CefBrowser?,
-                event: CefKeyEvent?,
-                isKeyboardShortcut: BoolRef?,
-            ): Boolean {
-                if (event?.type != EventType.KEYEVENT_RAWKEYDOWN && event?.type != EventType.KEYEVENT_KEYDOWN) return false
-                if (!isPasteShortcut(event.windows_key_code, event.modifiers, event.character, event.unmodified_character)) return false
-                if (isDisposed()) return false
-                if (!OpenCodeSettingsState.getInstance().enableChatFileDrop) return false
-                if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverManager.getServerUrl(), this@OpenCodeFileDropHandler.browser.cefBrowser.url)) {
-                    return false
-                }
-                return shouldSuppressBrowserPaste()
-            }
-        }
-        browser.jbCefClient.addKeyboardHandler(handler, browser.cefBrowser)
-        Disposer.register(parentDisposable) {
-            browser.jbCefClient.removeKeyboardHandler(handler, browser.cefBrowser)
-        }
-    }
-
-    private fun installPasteDispatcher() {
-        val focusManager = KeyboardFocusManager.getCurrentKeyboardFocusManager()
-        val dispatcher = KeyEventDispatcher { event ->
-            if (event.id != KeyEvent.KEY_PRESSED) return@KeyEventDispatcher false
-            if (!isPasteShortcut(event)) return@KeyEventDispatcher false
-            if (isDisposed()) return@KeyEventDispatcher false
-            if (!OpenCodeSettingsState.getInstance().enableChatFileDrop) return@KeyEventDispatcher false
-            if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverManager.getServerUrl(), browser.cefBrowser.url)) return@KeyEventDispatcher false
-            if (!isFocusInsideBrowser()) return@KeyEventDispatcher false
-            if (!pasteClipboardData()) return@KeyEventDispatcher false
-            scheduleRestoreInputAfterExternalDrop()
-
-            suppressNextBrowserPasteAtMillis = System.currentTimeMillis()
-            event.consume()
-            true
-        }
-        focusManager.addKeyEventDispatcher(dispatcher)
-        Disposer.register(parentDisposable) {
-            focusManager.removeKeyEventDispatcher(dispatcher)
-        }
-    }
-
-    private fun isPasteShortcut(event: KeyEvent): Boolean {
-        return event.keyCode == KeyEvent.VK_V && (event.isMetaDown || event.isControlDown) && !event.isAltDown
-    }
-
     private fun isFocusInsideBrowser(): Boolean {
         val focusOwner = currentFocusOwner() ?: return false
         return isBrowserFocusOwner(focusOwner)
@@ -304,7 +252,7 @@ internal class OpenCodeFileDropHandler(
         }
     }
 
-    private fun restoreInputAfterExternalDrop() {
+    private fun restoreInputAfterExternalDrop(onRestored: () -> Unit = {}) {
         if (isDisposed()) return
         // Always detach JCEF IME first. Reading image/text flavors from a screenshot
         // drop or paste can leave macOS without a key window; a still-bound IME then
@@ -326,12 +274,14 @@ internal class OpenCodeFileDropHandler(
                     if (isDisposed()) return@invokeLater
                     browser.component.requestFocusInWindow()
                     browser.cefBrowser.setFocus(true)
+                    onRestored()
                 }
             } else {
                 browser.component.requestFocusInWindow()
                 browser.cefBrowser.setFocus(true)
+                onRestored()
             }
-        }
+        } else onRestored()
     }
 
     /**
@@ -347,10 +297,17 @@ internal class OpenCodeFileDropHandler(
         return browser.component.topLevelAncestor?.takeIf { it.isShowing }
     }
 
-    private fun shouldSuppressBrowserPaste(): Boolean {
-        val suppress = System.currentTimeMillis() - suppressNextBrowserPasteAtMillis <= BROWSER_PASTE_SUPPRESSION_MILLIS
-        if (suppress) suppressNextBrowserPasteAtMillis = 0L
-        return suppress
+    /** Single entry point for the IDE Paste action and Chromium's context-menu Paste. EDT only. */
+    fun paste() {
+        if (isDisposed()) return
+        if (!canBridgePaste() || !pasteClipboardData()) nativePaste()
+    }
+
+    fun canBridgePaste(): Boolean = !isDisposed() && OpenCodeSettingsState.getInstance().enableChatFileDrop &&
+        dropResultQuery.isAvailable && OpenCodeServerProtocol.isOpenCodeServerPage(serverManager.getServerUrl(), browser.cefBrowser.url)
+
+    private fun nativePaste() {
+        if (!isDisposed()) (browser.cefBrowser.focusedFrame ?: browser.cefBrowser.mainFrame)?.paste()
     }
 
     private fun pasteClipboardData(): Boolean {
@@ -363,25 +320,53 @@ internal class OpenCodeFileDropHandler(
         } else {
             emptyList()
         }
-        val text = transferables.firstNotNullOfOrNull { droppedTextPayload(it) }
-        val fileReferenceText = text?.takeIf { it.startsWith("file:") }
-        if (files.isEmpty() && pendingImages.isEmpty() && fileReferenceText == null) return false
-        // When a pasted image is forwarded, ignore any incidental text flavor that is not a file reference.
-        val textToDispatch = if (pendingImages.isNotEmpty()) fileReferenceText else text
-        return dispatchDroppedData(files, textToDispatch, pendingImages)
+        // File/image owners advertise incidental text (paths, HTML captions). Read only one payload.
+        val text = if (files.isEmpty() && pendingImages.isEmpty()) {
+            transferables.firstNotNullOfOrNull { droppedTextPayload(it) }
+        } else null
+        if (files.isEmpty() && pendingImages.isEmpty() && text == null) return false
+        return dispatchDroppedData(files, text, pendingImages, clipboardPaste = true)
     }
 
     private fun dispatchDroppedData(
         files: List<File>,
         textPlain: String?,
         pendingImages: List<PendingDroppedImage> = emptyList(),
+        clipboardPaste: Boolean = false,
     ): Boolean {
-        if (files.isEmpty() && textPlain.isNullOrBlank() && pendingImages.isEmpty()) return false
+        if (files.isEmpty() && textPlain.isNullOrEmpty() && pendingImages.isEmpty()) return false
         val projectDirectory = openCodeProjectDirectory()
         val serverUrl = serverManager.getServerUrl() ?: return false
         val serverGeneration = serverManager.getServerGeneration()
         val documentRevision = browserDocumentRevision()
-        val batchID = "drop-${nextDropID.incrementAndGet()}"
+        val batchID = "${if (clipboardPaste) "paste" else "drop"}-${nextDropID.incrementAndGet()}"
+        val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
+        val contextIsCurrent = {
+            !isDisposed() && OpenCodeSettingsState.getInstance().enableChatFileDrop && dispatchContextMatches(
+                initialDocumentRevision = documentRevision,
+                currentDocumentRevision = browserDocumentRevision(),
+                initialServerGeneration = serverGeneration,
+                currentServerGeneration = serverManager.getServerGeneration(),
+                initialServerUrl = serverUrl,
+                currentServerUrl = serverManager.getServerUrl(),
+                initialDirectory = projectDirectory,
+                currentDirectory = openCodeProjectDirectory(),
+                browserUrl = browser.cefBrowser.url,
+            )
+        }
+        if (clipboardPaste) {
+            val timeout = Runnable {
+                if (pendingPastes.remove(batchID) != null && contextIsCurrent()) {
+                    // Never retry a timed-out acknowledgement: the page may already have inserted it.
+                    showFileDropWarning(listOf("The paste could not be confirmed. Check the field before trying again."))
+                }
+            }
+            pendingPastes[batchID] = PendingPaste(contextIsCurrent, timeout)
+            pasteAlarm.addRequest(timeout, 30_000)
+            browser.cefBrowser.executeJavaScript(
+                OpenCodeBrowserSnippets.buildCaptureClipboardPasteScript(batchID, enabled = true)!!, rootUrl, 0,
+            )
+        }
 
         preparationExecutor.execute {
             if (isDisposed()) return@execute
@@ -389,7 +374,7 @@ internal class OpenCodeFileDropHandler(
                 file to OpenCodeServerProtocol.localFileDropText(file, projectDirectory)
             }
             val fileTextDrops = classifiedFiles.mapNotNull { it.second }
-            val textDrops = fileTextDrops.ifEmpty { droppedTextPlainItems(files, textPlain) }
+            val textDrops = if (clipboardPaste) fileTextDrops else fileTextDrops.ifEmpty { droppedTextPlainItems(files, textPlain) }
             val filesToForward = classifiedFiles.filter { it.second == null }.map { it.first }
             val selection = selectDroppedFiles(filesToForward)
             val preparedImages = if (pendingImages.isNotEmpty() && shouldUseDroppedImageFlavor(files, projectDirectory)) {
@@ -399,25 +384,23 @@ internal class OpenCodeFileDropHandler(
             }
             val warnings = selection.rejectionMessages + preparedImages.rejectionMessages
             if (warnings.isNotEmpty()) showFileDropWarning(warnings)
-            val payloads = selection.acceptedFiles.mapNotNull { droppedFilePayload(it) } + preparedImages.payloads
-            if (textDrops.isEmpty() && payloads.isEmpty()) return@execute
-            val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
+            val payloads = selection.acceptedFiles.mapNotNull {
+                droppedFilePayload(it).also { payload ->
+                    if (payload == null) showFileDropWarning(listOf("${it.name} could not be read or exceeds the file size limit."))
+                }
+            } + preparedImages.payloads
+            if (!clipboardPaste && textDrops.isEmpty() && payloads.isEmpty()) return@execute
             ApplicationManager.getApplication().invokeLater {
-                val contextIsCurrent = !isDisposed() &&
-                    OpenCodeSettingsState.getInstance().enableChatFileDrop &&
-                    dispatchContextMatches(
-                        initialDocumentRevision = documentRevision,
-                        currentDocumentRevision = browserDocumentRevision(),
-                        initialServerGeneration = serverGeneration,
-                        currentServerGeneration = serverManager.getServerGeneration(),
-                        initialServerUrl = serverUrl,
-                        currentServerUrl = serverManager.getServerUrl(),
-                        initialDirectory = projectDirectory,
-                        currentDirectory = openCodeProjectDirectory(),
-                        browserUrl = browser.cefBrowser.url,
-                    )
-                if (contextIsCurrent) {
-                    val script = OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(
+                if (clipboardPaste && batchID !in pendingPastes) return@invokeLater
+                if (contextIsCurrent()) {
+                    val script = if (clipboardPaste) OpenCodeBrowserSnippets.buildClipboardPasteScript(
+                        files = payloads,
+                        text = textPlain,
+                        fileReferences = textDrops,
+                        batchId = batchID,
+                        resultCallback = dropResultQuery.inject("batchId + '\\n' + result"),
+                        enabled = true,
+                    ) else OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(
                         payloads,
                         textPlain = textDrops,
                         enabled = OpenCodeSettingsState.getInstance().enableChatFileDrop,
@@ -426,9 +409,17 @@ internal class OpenCodeFileDropHandler(
                         focusPrompt = isFocusInsideBrowser(),
                     )
                     if (script != null) {
-                        browser.cefBrowser.executeJavaScript(script, rootUrl, 0)
+                        val dispatch = {
+                            if (contextIsCurrent()) browser.cefBrowser.executeJavaScript(script, rootUrl, 0)
+                        }
+                        // Keep the screenshot IME workaround, but finish its focus round trip before
+                        // dispatch. Ordinary text and Linux/Wayland pastes must not reset focus.
+                        if (clipboardPaste && SystemInfo.isMac && (files.isNotEmpty() || pendingImages.isNotEmpty())) {
+                            restoreInputAfterExternalDrop(dispatch)
+                        } else dispatch()
                     }
                 } else if (!isDisposed()) {
+                    pendingPastes.remove(batchID)?.let { pasteAlarm.cancelRequest(it.timeout) }
                     showFileDropWarning(listOf("The OpenCode page changed before the files were ready."))
                 }
             }
@@ -453,8 +444,11 @@ internal class OpenCodeFileDropHandler(
     }
 
     private fun transferableImage(transferable: Transferable): Image? {
-        if (!transferable.isDataFlavorSupported(DataFlavor.imageFlavor)) return null
-        return runCatching { transferable.getTransferData(DataFlavor.imageFlavor) as? Image }.getOrNull()
+        return runCatching {
+            if (transferable.isDataFlavorSupported(DataFlavor.imageFlavor)) {
+                transferable.getTransferData(DataFlavor.imageFlavor) as? Image
+            } else null
+        }.getOrNull()
     }
 
     private fun prepareDroppedImages(images: List<PendingDroppedImage>): PreparedDroppedImages {
@@ -555,7 +549,7 @@ internal class OpenCodeFileDropHandler(
         val remaining = rejectionMessages.size - visibleMessages.size
         val suffix = if (remaining > 0) "; $remaining more skipped" else ""
         group.createNotification(
-            "Some files were not added to OpenCode",
+            "Could not add clipboard or dropped content to OpenCode",
             notificationText(visibleMessages.joinToString("; ") + suffix),
             NotificationType.WARNING,
         ).notify(project)
@@ -569,6 +563,8 @@ internal class OpenCodeFileDropHandler(
         val acceptedFiles: List<File>,
         val rejectionMessages: List<String>,
     )
+
+    private data class PendingPaste(val isCurrent: () -> Boolean, val timeout: Runnable)
 
     private data class PendingDroppedImage(
         val image: Image,

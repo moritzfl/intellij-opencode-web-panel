@@ -16,6 +16,7 @@ import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
 import java.net.URI
 import org.cef.browser.CefFrame
+import javax.swing.JComponent
 
 internal const val OPEN_CODE_ZOOM_IN_ACTION_ID = "OpenCodeWebPanel.ZoomIn"
 internal const val OPEN_CODE_ZOOM_OUT_ACTION_ID = "OpenCodeWebPanel.ZoomOut"
@@ -87,6 +88,7 @@ internal class OpenCodeBrowserShortcutHandler(
     private val browser: JBCefBrowser,
     private val serverManager: OpenCodeServerBackend,
     private val parentDisposable: Disposable,
+    private val paste: () -> Unit,
 ) {
     fun install() {
         // JBCefBrowser already installs these native edit actions on macOS. Mirror that support on
@@ -94,11 +96,21 @@ internal class OpenCodeBrowserShortcutHandler(
         if (!SystemInfo.isMac) {
             registerEditAction(IdeActions.ACTION_CUT) { it.cut() }
             registerEditAction(IdeActions.ACTION_COPY) { it.copy() }
-            registerEditAction(IdeActions.ACTION_PASTE) { it.paste() }
             registerEditAction(IdeActions.ACTION_SELECT_ALL) { it.selectAll() }
             registerEditAction(IdeActions.ACTION_UNDO) { it.undo() }
             registerEditAction(IdeActions.ACTION_REDO) { it.redo() }
         }
+
+        // The native browser child wins over JBCefBrowser's macOS Paste action on its parent.
+        // Use the live IDE keymap (including Shift+Insert/remaps), never an AWT key dispatcher.
+        val pasteAction = object : DumbAwareAction() {
+            override fun actionPerformed(e: AnActionEvent) = paste()
+        }
+        pasteAction.registerCustomShortcutSet(
+            checkNotNull(ActionManager.getInstance().getAction(IdeActions.ACTION_PASTE)).shortcutSet,
+            browser.browserComponent as? JComponent ?: browser.component,
+            parentDisposable,
+        )
 
         OpenCodeBrowserCommand.entries.forEach(::registerOpenCodeCommand)
         registerZoomAction(OPEN_CODE_ZOOM_IN_ACTION_ID) { OpenCodeZoom.apply(OpenCodeZoom::zoomedIn) }

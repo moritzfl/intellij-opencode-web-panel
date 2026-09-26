@@ -23,6 +23,15 @@ class OpenCodeInjectedFeaturePolicyTest {
     }
 
     @Test
+    fun disablingOnDemandClipboardScriptsStillReloadsToDiscardCapturedTargets() {
+        val decision = OpenCodeInjectedFeaturePolicy.decide(
+            enabled = false, enabledInSettings = false, onOpenCodePage = true, script = null,
+        )
+        assertEquals(OpenCodeInjectedFeaturePolicy.Action.RELOAD, decision.action)
+        assertNull(decision.script)
+    }
+
+    @Test
     fun enableInjectsScriptWhenOnOpenCodePage() {
         val decision = OpenCodeInjectedFeaturePolicy.decide(
             enabled = true,

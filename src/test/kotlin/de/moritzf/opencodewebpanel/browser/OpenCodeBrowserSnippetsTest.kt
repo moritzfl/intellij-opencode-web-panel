@@ -799,21 +799,14 @@ class OpenCodeBrowserSnippetsTest {
     }
 
     @Test
-    fun buildFilePasteSuppressionScriptIsMissingWhenDisabled() {
-        assertNull(OpenCodeBrowserSnippets.buildFilePasteSuppressionScript(enabled = false))
+    fun clipboardScriptsAreMissingWhenDisabled() {
+        assertNull(OpenCodeBrowserSnippets.buildCaptureClipboardPasteScript("paste-1", enabled = false))
+        assertNull(OpenCodeBrowserSnippets.buildClipboardPasteScript(emptyList(), "text", emptyList(), "paste-1", "callback(result)", enabled = false))
     }
 
     @Test
-    fun buildFilePasteSuppressionScriptCancelsFilePasteEvents() {
-        val script = OpenCodeBrowserSnippets.buildFilePasteSuppressionScript(enabled = true)!!
-
-        assertTrue(script.contains("window.__opencodeIntellijFilePasteSuppressionInstalled"))
-        assertTrue(script.contains("document.addEventListener('paste'"))
-        assertFalse(script.contains("__opencodeIntellijSuppressNativeFilePasteUntil"))
-        assertTrue(script.contains("item.kind === 'file'"))
-        assertTrue(script.contains("includes('Files')"))
-        assertTrue(script.contains("event.preventDefault()"))
-        assertTrue(script.contains("event.stopImmediatePropagation()"))
+    fun clipboardBridgeRequiresResultChannelForNativeFallback() {
+        assertNull(OpenCodeBrowserSnippets.buildClipboardPasteScript(emptyList(), "text", emptyList(), "paste-1", null, enabled = true))
     }
 
     @Test

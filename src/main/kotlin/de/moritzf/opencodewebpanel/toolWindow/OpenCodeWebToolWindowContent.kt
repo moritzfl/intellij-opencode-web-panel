@@ -429,10 +429,6 @@ internal class OpenCodeWebToolWindowContent(
             )
         },
     )
-    private val filePasteSuppressionFeature = InjectedFeature(
-        enabledInSettings = { OpenCodeSettingsState.getInstance().enableChatFileDrop },
-        buildScript = { OpenCodeBrowserSnippets.buildFilePasteSuppressionScript(enabled = true) },
-    )
     private val projectSwitchPromptSuppressionFeature = InjectedFeature(
         enabledInSettings = { OpenCodeSettingsState.getInstance().suppressProjectSwitchPrompts },
         buildScript = { OpenCodeBrowserSnippets.buildProjectSwitchPromptSuppressionScript(enabled = true) },
@@ -463,7 +459,6 @@ internal class OpenCodeWebToolWindowContent(
         fileLinkFeature,
         externalLinkFeature,
         codeNavigationFeature,
-        filePasteSuppressionFeature,
         projectSwitchPromptSuppressionFeature,
         cursorMirrorFeature,
         rendererHeartbeatFeature,
@@ -643,7 +638,6 @@ internal class OpenCodeWebToolWindowContent(
         })
         browser.jbCefClient.addRequestHandler(requestHandler, browser.cefBrowser)
         browser.jbCefClient.addLoadHandler(loadHandler, browser.cefBrowser)
-        browser.jbCefClient.addContextMenuHandler(OpenCodeBrowserContextMenuHandler(), browser.cefBrowser)
         // onAddressChange also fires for the SPA's history-API route changes, which full-load
         // handlers never see.
         browser.jbCefClient.addDisplayHandler(
@@ -668,7 +662,6 @@ internal class OpenCodeWebToolWindowContent(
             browser.cefBrowser,
         )
         OpenCodeCefFileDialogHandler(project, browser, this)
-        OpenCodeBrowserShortcutHandler(browser, serverManager, this).install()
         ApplicationManager.getApplication().messageBus.connect(this).subscribe(
             AppLifecycleListener.TOPIC,
             object : AppLifecycleListener {
@@ -776,7 +769,12 @@ internal class OpenCodeWebToolWindowContent(
                             if (!enabled) {
                                 OpenCodeChatInputService.getInstance(project).discardPending()
                             }
-                            applyFeature(filePasteSuppressionFeature, enabled)
+                            val serverUrl = serverManager.getServerUrl()
+                            val decision = OpenCodeInjectedFeaturePolicy.decide(
+                                enabled, OpenCodeSettingsState.getInstance().enableChatFileDrop,
+                                serverUrl != null && isBrowserOnOpenCodeServerPage(serverUrl), script = null,
+                            )
+                            if (decision.action == OpenCodeInjectedFeaturePolicy.Action.RELOAD) reloadOpenCodePageOrLoad()
                             if (enabled) scheduleFlushPendingChatInput(delayMillis = 0)
                         }
                         OpenCodeUiSetting.COMPACT_LAYOUT -> applyCompactLayout()
@@ -932,6 +930,10 @@ internal class OpenCodeWebToolWindowContent(
             this,
         )
         fileDropHandler.install()
+        OpenCodeBrowserShortcutHandler(browser, serverManager, this, fileDropHandler::paste).install()
+        browser.jbCefClient.addContextMenuHandler(
+            OpenCodeBrowserContextMenuHandler(fileDropHandler::paste, fileDropHandler::canBridgePaste), browser.cefBrowser,
+        )
         rendererHeartbeatQuery.addHandler { visibility ->
             rendererWatchdog.handleHeartbeat(visibility)
             if (lastPanelRecovery != null) {

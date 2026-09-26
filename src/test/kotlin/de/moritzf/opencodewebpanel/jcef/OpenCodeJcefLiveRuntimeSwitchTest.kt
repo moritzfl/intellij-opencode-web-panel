@@ -3,13 +3,23 @@ package de.moritzf.opencodewebpanel.jcef
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.intellij.ide.impl.OpenProjectTask
+import com.intellij.ide.IdeEventQueue
+import com.intellij.ide.DataManager
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.actionSystem.ActionManager
+import com.intellij.openapi.actionSystem.IdeActions
+import com.intellij.openapi.actionSystem.KeyboardShortcut
+import com.intellij.openapi.actionSystem.ex.ActionUtil
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.ComponentManagerEx
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.impl.FileEditorManagerImpl
 import com.intellij.openapi.project.ex.ProjectManagerEx
 import com.intellij.openapi.project.impl.ProjectImpl
+import com.intellij.openapi.project.ProjectManager
+import com.intellij.openapi.ide.CopyPasteManager
+import com.intellij.openapi.keymap.KeymapManager
+import com.intellij.openapi.keymap.impl.ActionProcessor
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.wm.impl.IdeGlassPaneImpl
 import com.intellij.platform.util.coroutines.childScope
@@ -22,6 +32,9 @@ import de.moritzf.opencodewebpanel.browser.OpenCodeDocumentStartInjector
 import de.moritzf.opencodewebpanel.browser.OpenCodeJsQuery
 import de.moritzf.opencodewebpanel.browser.createOpenCodeBrowserBeforeReplacement
 import de.moritzf.opencodewebpanel.features.OpenCodeChatInputService
+import de.moritzf.opencodewebpanel.features.OpenCodeFileDropHandler
+import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
+import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
 import de.moritzf.opencodewebpanel.server.OpenCodeProcessTerminator
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.server.OpenCodeWireProtocol
@@ -29,6 +42,9 @@ import de.moritzf.opencodewebpanel.server.SbxCli
 import de.moritzf.opencodewebpanel.server.SbxProcessRunner
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodePanel
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodePanelController
+import de.moritzf.opencodewebpanel.toolWindow.OpenCodeBrowserShortcutHandler
+import de.moritzf.opencodewebpanel.toolWindow.OpenCodeBrowserContextMenuHandler
+import org.cef.callback.CefMenuModel
 import org.cef.browser.CefBrowser
 import org.cef.browser.CefFrame
 import org.cef.handler.CefLoadHandlerAdapter
@@ -45,6 +61,14 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.net.HttpURLConnection
+import java.awt.datatransfer.DataFlavor
+import java.awt.datatransfer.StringSelection
+import java.awt.datatransfer.Transferable
+import java.awt.datatransfer.UnsupportedFlavorException
+import java.awt.image.BufferedImage
+import java.awt.event.KeyEvent
+import java.awt.event.InputEvent
+import java.lang.reflect.Proxy
 import java.net.URI
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
@@ -55,6 +79,8 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import javax.swing.JFrame
+import javax.swing.JComponent
+import javax.swing.KeyStroke
 import javax.swing.SwingUtilities
 
 /** Opt-in, against two isolated real `opencode serve` processes, never the synthetic HTML fixture. */
@@ -176,6 +202,175 @@ class OpenCodeJcefLiveRuntimeSwitchTest {
             evaluate(browser, "!!document.querySelector('main [contenteditable=true]')") == "true"
         }
         assertTrue(browser.cefBrowser.url.contains("/session/$nativeSession"))
+    }
+
+    @Test
+    fun clipboardPasteUsesIdeActionAndContextMenuWithCaretUndoAndImages() {
+        val clipboard = CopyPasteManager.getInstance()
+        val originalClipboard = clipboard.contents
+        val settings = OpenCodeSettingsState.getInstance()
+        val wasEnabled = settings.enableChatFileDrop
+        settings.enableChatFileDrop = true
+        val backend = Proxy.newProxyInstance(OpenCodeServerBackend::class.java.classLoader, arrayOf(OpenCodeServerBackend::class.java)) { _, method, _ ->
+            when (method.name) {
+                "getServerUrl" -> origins[0]
+                "getServerGeneration" -> 1L
+                "getBackendId" -> "clipboard-test"
+                else -> error("Unexpected clipboard backend call: ${method.name}")
+            }
+        } as OpenCodeServerBackend
+        lateinit var pasteHandler: OpenCodeFileDropHandler
+        lateinit var menu: OpenCodeBrowserContextMenuHandler
+        val browser = open(origins[0], OpenCodeServerProtocol.buildServerSessionUrl(origins[0], nativeSession), onBrowserCreated = {
+            pasteHandler = OpenCodeFileDropHandler(
+                ProjectManager.getInstance().defaultProject, it, backend, { workspace }, { 0L },
+                { Disposer.isDisposed(disposable.disposable) }, disposable.disposable,
+            )
+            assertTrue(pasteHandler.isResultChannelAvailable())
+            pasteHandler.install()
+            OpenCodeBrowserShortcutHandler(it, backend, disposable.disposable, pasteHandler::paste).install()
+            menu = OpenCodeBrowserContextMenuHandler(pasteHandler::paste)
+            it.jbCefClient.addContextMenuHandler(menu, it.cefBrowser)
+        })
+        val keymap = KeymapManager.getInstance().activeKeymap
+        val remapped = KeyboardShortcut(KeyStroke.getKeyStroke("ctrl alt shift V"), null)
+        try {
+            OpenCodeJcefTestHelper.awaitCondition("clipboard composer") {
+                evaluate(browser, "!!document.querySelector('main [contenteditable=true]')") == "true"
+            }
+            ApplicationManager.getApplication().invokeAndWait {
+                val frame = SwingUtilities.getWindowAncestor(browser.component) as JFrame
+                frame.glassPane = IdeGlassPaneImpl(frame.rootPane)
+                browser.browserComponent?.requestFocusInWindow()
+                browser.cefBrowser.setFocus(true)
+                keymap.addShortcut(IdeActions.ACTION_PASTE, remapped)
+            }
+            val component = browser.browserComponent as? JComponent ?: browser.component
+            assertEquals(1, ActionUtil.getActions(component).count {
+                it.shortcutSet.shortcuts.contains(remapped)
+            })
+            assertTrue(ActionManager.getInstance().getAction(IdeActions.ACTION_PASTE).shortcutSet.shortcuts.contains(remapped))
+            fun paste(value: Transferable, viaMenu: Boolean = false, shortcut: KeyboardShortcut = remapped) {
+                ApplicationManager.getApplication().invokeAndWait {
+                    clipboard.setContents(value)
+                    if (viaMenu) {
+                        assertTrue(menu.onContextMenuCommand(browser.cefBrowser, browser.cefBrowser.mainFrame, null, CefMenuModel.MenuId.MENU_ID_PASTE, 0))
+                    } else {
+                        // ApplicationRule's JFrame cannot acquire OS focus reliably. Supply that
+                        // component to the real IDE shortcut resolver, then run its selected action.
+                        val event = KeyEvent(
+                            component, KeyEvent.KEY_PRESSED, System.currentTimeMillis(),
+                            shortcut.firstKeyStroke.modifiers, shortcut.firstKeyStroke.keyCode, KeyEvent.CHAR_UNDEFINED,
+                        )
+                        val dispatcher = IdeEventQueue.getInstance().keyEventDispatcher
+                        dispatcher.context.inputEvent = event
+                        dispatcher.context.dataContext = DataManager.getInstance().getDataContext(component)
+                        try {
+                            dispatcher.updateCurrentContext(component, shortcut)
+                            assertSame(component, dispatcher.context.foundComponent)
+                            assertTrue("IDE resolves the remapped Paste shortcut", dispatcher.processAction(event, object : ActionProcessor() {}))
+                        } finally {
+                            dispatcher.context.clear()
+                        }
+                    }
+                }
+            }
+            fun draft() = evaluate(browser, "document.querySelector('main [contenteditable=true]').textContent.replace(/\\u200b/g, '')")
+            evaluate(browser, """(() => {
+                const input = document.querySelector('main [contenteditable=true]');
+                input.focus(); document.execCommand('insertText', false, 'before OLD after');
+                const range = document.createRange(); range.setStart(input.firstChild, 7); range.setEnd(input.firstChild, 10);
+                const selection = getSelection(); selection.removeAllRanges(); selection.addRange(range);
+                window.__pasteEvents = 0;
+                input.addEventListener('paste', () => window.__pasteEvents++);
+                return true;
+            })()""")
+            paste(StringSelection("NEW"))
+            OpenCodeJcefTestHelper.awaitCondition("paste replaces selection once") { draft() == "before NEW after" }
+            assertEquals("1", evaluate(browser, "window.__pasteEvents"))
+            evaluate(browser, "document.execCommand('undo')")
+            OpenCodeJcefTestHelper.awaitCondition("paste undo") { draft() == "before OLD after" }
+            evaluate(browser, "document.execCommand('redo')")
+            OpenCodeJcefTestHelper.awaitCondition("paste redo") { draft() == "before NEW after" }
+
+            // Two rapid requests keep order and do not suppress the second paste with a timer.
+            evaluate(browser, """(() => {
+                const input = document.querySelector('main [contenteditable=true]');
+                const range = document.createRange(); range.selectNodeContents(input); range.collapse(false);
+                getSelection().removeAllRanges(); getSelection().addRange(range); return true;
+            })()""")
+            val defaultPaste = KeyboardShortcut(KeyStroke.getKeyStroke(
+                KeyEvent.VK_V, if (com.intellij.openapi.util.SystemInfo.isMac) InputEvent.META_DOWN_MASK else InputEvent.CTRL_DOWN_MASK,
+            ), null)
+            paste(StringSelection("A"), shortcut = defaultPaste)
+            paste(StringSelection("B"), viaMenu = true)
+            OpenCodeJcefTestHelper.awaitCondition("ordered shortcut and menu pastes") { draft() == "before NEW afterAB" }
+            assertEquals("3", evaluate(browser, "window.__pasteEvents"))
+
+            val image = BufferedImage(4, 3, BufferedImage.TYPE_INT_ARGB).apply { setRGB(1, 1, 0xffff0000.toInt()) }
+            paste(object : Transferable {
+                override fun getTransferDataFlavors() = arrayOf(DataFlavor.imageFlavor, DataFlavor.stringFlavor)
+                override fun isDataFlavorSupported(flavor: DataFlavor) = flavor in transferDataFlavors
+                override fun getTransferData(flavor: DataFlavor): Any = when (flavor) {
+                    DataFlavor.imageFlavor -> image
+                    DataFlavor.stringFlavor -> "incidental caption"
+                    else -> throw UnsupportedFlavorException(flavor)
+                }
+            }, viaMenu = true)
+            OpenCodeJcefTestHelper.awaitCondition("screenshot clipboard attachment") {
+                evaluate(browser, "document.querySelectorAll('img[alt^=\"pasted-image-\"]').length") == "1"
+            }
+            assertEquals("before NEW afterAB", draft())
+            assertEquals("4", evaluate(browser, "window.__pasteEvents"))
+
+            // A copied image file outside the project is attached rather than inserted as its path.
+            val imageFile = temp.newFile("copied-image.png")
+            javax.imageio.ImageIO.write(image, "png", imageFile)
+            paste(object : Transferable {
+                override fun getTransferDataFlavors() = arrayOf(DataFlavor.javaFileListFlavor)
+                override fun isDataFlavorSupported(flavor: DataFlavor) = flavor == DataFlavor.javaFileListFlavor
+                override fun getTransferData(flavor: DataFlavor): Any {
+                    if (flavor != DataFlavor.javaFileListFlavor) throw UnsupportedFlavorException(flavor)
+                    return listOf(imageFile)
+                }
+            })
+            OpenCodeJcefTestHelper.awaitCondition("copied image file attachment") {
+                evaluate(browser, "document.querySelectorAll('img[alt=\"copied-image.png\"]').length") == "1"
+            }
+            assertEquals("before NEW afterAB", draft())
+            assertEquals("5", evaluate(browser, "window.__pasteEvents"))
+        } finally {
+            ApplicationManager.getApplication().invokeAndWait {
+                keymap.removeShortcut(IdeActions.ACTION_PASTE, remapped)
+                clipboard.setContents(originalClipboard ?: StringSelection(""))
+                settings.enableChatFileDrop = wasEnabled
+            }
+        }
+    }
+
+    @Test
+    fun clipboardScriptsRejectChangedDestinationAndRequestNativeFallback() {
+        val browser = open(origins[0], OpenCodeServerProtocol.buildServerSessionUrl(origins[0], nativeSession))
+        OpenCodeJcefTestHelper.awaitCondition("clipboard script composer") {
+            evaluate(browser, "!!document.querySelector('main [contenteditable=true]')") == "true"
+        }
+        val capture = OpenCodeBrowserSnippets.buildCaptureClipboardPasteScript("clipboard", true)!!
+        val dispatch = OpenCodeBrowserSnippets.buildClipboardPasteScript(
+            emptyList(), "must not reach the composer", emptyList(), "clipboard", "window.__pasteResult = result", true,
+        )!!
+        evaluate(browser, "document.querySelector('main [contenteditable=true]').focus()")
+        browser.cefBrowser.executeJavaScript(capture, origins[0], 0)
+        evaluate(browser, "document.activeElement.blur()")
+        browser.cefBrowser.executeJavaScript(dispatch, origins[0], 0)
+        OpenCodeJcefTestHelper.awaitCondition("stale destination rejected") { evaluate(browser, "window.__pasteResult") == "stale" }
+        assertEquals("", evaluate(browser, "document.querySelector('main [contenteditable=true]').textContent"))
+
+        // Starting on a non-editable target requests native handling instead of finding an
+        // unrelated composer. A stale destination above must never request that fallback.
+        browser.cefBrowser.executeJavaScript(capture, origins[0], 0)
+        browser.cefBrowser.executeJavaScript(dispatch, origins[0], 0)
+        OpenCodeJcefTestHelper.awaitCondition("unsupported target native fallback") { evaluate(browser, "window.__pasteResult") == "native" }
+        assertEquals("", evaluate(browser, "document.querySelector('main [contenteditable=true]').textContent"))
     }
 
     @Test
