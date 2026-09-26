@@ -61,7 +61,7 @@ case "$1" in
     if [[ "${SMOKE_LS_FAIL:-0}" == 1 ]]; then echo 'inventory unavailable' >&2; exit 9; fi
     printf '%s\n' "$SMOKE_INVENTORY"
     ;;
-  create) echo 'create failed' >&2; exit 23 ;;
+  create) printf '%s\0' "$@" > "$SMOKE_LOG/create-argv"; echo 'create failed' >&2; exit 23 ;;
   exec)
     printf '%s\0' "$@" > "$SMOKE_LOG/argv"
     for arg in "$@"; do
@@ -238,6 +238,40 @@ export SMOKE_LS_FAIL=1
 invoke
 result failed-inventory test "$STATUS" -ne 0
 result inventory-no-create test "$(cat "$SMOKE_LOG/calls")" = $'daemon\nls'
+
+# Host mount interpolation is literal, portable and read-only for configuration.
+for mount_case in unset empty custom literal; do
+  fixture "mount-$mount_case"
+  export SMOKE_INVENTORY='{"sandboxes":[]}'
+  unset OCWP_SMOKE_GRADLE_HOME
+  expected="$HOME/.gradle"
+  case "$mount_case" in
+    empty) export OCWP_SMOKE_GRADLE_HOME='' ;;
+    custom) expected="$CASE/Gradle home ä"; export OCWP_SMOKE_GRADLE_HOME="$(host_path "$expected")" ;;
+    literal) expected="$CASE/\$(touch SHOULD_NOT_EXIST)"; export OCWP_SMOKE_GRADLE_HOME="$(host_path "$expected")" ;;
+  esac
+  mkdir -p "$expected"
+  cat >> "$PROJECT/opencode-sbx/opencode-sbx.yaml" <<'YAML'
+extraMounts:
+  - host: '${OCWP_SMOKE_GRADLE_HOME:-~/.gradle}'
+    sandbox: /home/agent/.gradle-host
+    readOnly: true
+YAML
+  invoke --version
+  result "mount-$mount_case-create" test "$STATUS" -eq 23
+  result "mount-$mount_case-path" grep -aqF -- "$(host_path "$expected"):ro" "$SMOKE_LOG/create-argv"
+  result "mount-$mount_case-no-eval" test ! -e "$PROJECT/SHOULD_NOT_EXIST"
+done
+fixture mount-missing-variable
+unset OCWP_SMOKE_GRADLE_HOME
+cat >> "$PROJECT/opencode-sbx/opencode-sbx.yaml" <<'YAML'
+extraMounts:
+  - host: '${OCWP_SMOKE_GRADLE_HOME}'
+    sandbox: /home/agent/.gradle-host
+YAML
+invoke
+result mount-missing-variable test "$STATUS" -ne 0
+result mount-missing-no-create test ! -e "$SMOKE_LOG/create-argv"
 
 # Use a real PTY for the launcher while keeping sbx fake. GNU/util-linux script
 # supports -e (return child exit); macOS/Git Bash still run all non-PTY cases.

@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertThrows
 import org.junit.Test
 import java.nio.charset.StandardCharsets
 import java.util.Base64
@@ -26,6 +27,40 @@ class SbxCliTest {
                 workspace.toString(), home.toString(),
             ),
         )
+    }
+
+    @Test
+    fun hostMountVariableUsesEachDevelopersEnvironmentOrHomeFallback() {
+        val root = java.nio.file.Path.of(System.getProperty("java.io.tmpdir")).toAbsolutePath().normalize()
+        val home = root.resolve("user")
+        val custom = root.resolve("Gradle home ä")
+        val mount = SbxExtraMount("\${GRADLE_USER_HOME:-~/.gradle}", "/home/agent/.gradle-host", readOnly = true)
+        for (environment in listOf(emptyMap(), mapOf("GRADLE_USER_HOME" to ""), mapOf("GRADLE_USER_HOME" to custom.toString()))) {
+            val expected = if (environment["GRADLE_USER_HOME"].isNullOrEmpty()) home.resolve(".gradle") else custom
+            assertEquals(
+                listOf(mount.copy(hostPath = SbxCli.posixPath(expected.toString()))),
+                SbxCli.resolveExtraMounts(listOf(mount), root.toString(), home.toString(), environment),
+            )
+        }
+    }
+
+    @Test
+    fun hostMountVariablesAreLiteralAndSupportSubdirectories() {
+        assertEquals("/data/Gradle home/config", SbxCli.expandHostMountPath(
+            "\${TOOLS}/config", "/home/user", mapOf("TOOLS" to "/data/Gradle home"),
+        ))
+        assertEquals("/data/\$(touch untouched)/config", SbxCli.expandHostMountPath(
+            "\${TOOLS}/config", "/home/user", mapOf("TOOLS" to "/data/\$(touch untouched)"),
+        ))
+        assertEquals("/data/\${OTHER}", SbxCli.expandHostMountPath(
+            "\${TOOLS}", "/home/user", mapOf("TOOLS" to "/data/\${OTHER}", "OTHER" to "not-expanded"),
+        ))
+        assertThrows(IllegalArgumentException::class.java) {
+            SbxCli.expandHostMountPath("\${MISSING}", "/home/user", emptyMap())
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            SbxCli.expandHostMountPath("\${TOOLS:=unsupported}", "/home/user", emptyMap())
+        }
     }
 
     @Test

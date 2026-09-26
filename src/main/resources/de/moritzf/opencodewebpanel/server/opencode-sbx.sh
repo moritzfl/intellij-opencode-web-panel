@@ -813,8 +813,8 @@ if [[ "$OPENCODE_VERSION" == "2.x" ]]; then
 fi
 
 resolve_host_path() {
-  local host="$1"
-  if [[ "$host" == "~"* ]]; then
+  local host="${1//\\//}"
+  if [[ "$host" == "~" || "$host" == "~/"* ]]; then
     host="${HOME}${host:1}"
   fi
   if ! is_absolute "$host"; then
@@ -826,6 +826,34 @@ resolve_host_path() {
     host="$(identity_path "$(cd "$(dirname -- "$host")" && pwd -P)/$(basename -- "$host")")"
   fi
   printf '%s' "$host"
+}
+
+# Portable host mounts, e.g. ${GRADLE_USER_HOME:-~/.gradle}. Match only a leading
+# variable and never eval the YAML, fallback or value (which can contain spaces).
+expand_host_mount_path() {
+  local raw="$1" variable fallback has_fallback suffix value
+  local pattern='^\$\{([A-Za-z_][A-Za-z0-9_]*)(:-([^{}]*))?\}(.*)$'
+  if [[ "$raw" == '${'* ]]; then
+    if [[ ! "$raw" =~ $pattern ]]; then
+      echo 'opencode-sbx: invalid host mount variable; use ${NAME} or ${NAME:-fallback}' >&2
+      return 1
+    fi
+    variable="${BASH_REMATCH[1]}"
+    has_fallback="${BASH_REMATCH[2]}"
+    fallback="${BASH_REMATCH[3]}"
+    suffix="${BASH_REMATCH[4]}"
+    value="${!variable-}"
+    if [[ -z "$value" ]]; then
+      if [[ -z "$has_fallback" ]]; then
+        echo "opencode-sbx: host environment variable $variable is not set for a sandbox mount" >&2
+        return 1
+      fi
+      value="$fallback"
+    fi
+    raw="$value$suffix"
+    [[ "$raw" == *[![:space:]]* ]] || { echo 'opencode-sbx: host mount path must not be empty' >&2; return 1; }
+  fi
+  printf '%s' "$raw"
 }
 
 # Same guest scripts as SbxCli.extraMountLinkScript. The persist/2.x replace variant copies
@@ -861,7 +889,8 @@ ln -sfn -- "$1" "$2"'
 for ((i = 0; i < ${#MOUNT_HOSTS[@]}; i++)); do
   raw_host="${MOUNT_HOSTS[$i]}"
   raw_sandbox="${MOUNT_SANDBOXES[$i]}"
-  host="$(resolve_host_path "$raw_host")"
+  expanded_host="$(expand_host_mount_path "$raw_host")" || exit 1
+  host="$(resolve_host_path "$expanded_host")"
   if [[ -z "$raw_sandbox" || "$raw_sandbox" == "$raw_host" ]]; then
     sandbox="$host"
   else

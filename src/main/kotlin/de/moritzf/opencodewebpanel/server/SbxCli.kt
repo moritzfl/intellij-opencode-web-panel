@@ -591,8 +591,9 @@ internal object SbxCli {
         mounts: List<SbxExtraMount>,
         workspace: String,
         hostHome: String = System.getProperty("user.home").orEmpty(),
+        environment: Map<String, String> = System.getenv(),
     ): List<SbxExtraMount> = mounts.map { mount ->
-        val host = posixPath(Path.of(workspace).resolve(expandUserHome(mount.hostPath, hostHome)).normalize().toString())
+        val host = posixPath(Path.of(workspace).resolve(expandHostMountPath(mount.hostPath, hostHome, environment)).normalize().toString())
         val sandbox = if (mount.sandboxPath.isBlank() || mount.sandboxPath == mount.hostPath) {
             host
         } else {
@@ -716,6 +717,22 @@ internal object SbxCli {
         if (path.startsWith("~/") || path.startsWith("~\\")) return home + path.substring(1)
         return path
     }
+
+    /** A leading host variable is data, never shell code; values are not expanded recursively. */
+    fun expandHostMountPath(path: String, home: String, environment: Map<String, String> = System.getenv()): String {
+        if (!path.startsWith("\${")) return expandUserHome(path, home)
+        val match = HOST_MOUNT_VARIABLE.matchEntire(path)
+            ?: throw IllegalArgumentException("Invalid host mount variable; use \${NAME} or \${NAME:-fallback}")
+        val name = match.groupValues[1]
+        val value = environment[name]?.takeIf { it.isNotEmpty() }
+            ?: match.groups[2]?.value
+            ?: throw IllegalArgumentException("Host environment variable $name is not set for a sandbox mount")
+        val expanded = value + match.groupValues[3]
+        require(expanded.isNotBlank()) { "Host mount path must not be empty" }
+        return expandUserHome(expanded, home)
+    }
+
+    private val HOST_MOUNT_VARIABLE = Regex("""^\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^{}]*))?}(.*)$""")
 
     fun buildExecServeCommand(
         executable: String = DEFAULT_EXECUTABLE,

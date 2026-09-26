@@ -113,6 +113,42 @@ class SbxLauncherWorkingDirectoryTest {
         }
     }
 
+    @Test
+    fun hostVariableMountsMatchPluginCreateArguments() {
+        val fixture = fixture()
+        val home = temp.root.toPath().resolve("home").toRealPath()
+        Files.createDirectories(home.resolve(".gradle/config"))
+        val custom = temp.newFolder("Gradle home ä").toPath().toRealPath()
+        Files.createDirectory(custom.resolve("config"))
+        val mount = SbxExtraMount("\${OCWP_TEST_GRADLE_HOME:-~/.gradle}/config", "/home/agent/.gradle-host", readOnly = true)
+        Files.writeString(fixture.spec, """
+            canonicalDirectory: ./
+            protectSandboxFiles: false
+            persistSandboxSessions: false
+            extraMounts:
+              - host: '${mount.hostPath}'
+                sandbox: '${mount.sandboxPath}'
+                readOnly: true
+        """.trimIndent() + "\n")
+
+        for (value in listOf(null, "", custom.toString())) {
+            val environment = value?.let { mapOf("OCWP_TEST_GRADLE_HOME" to it) }.orEmpty()
+            val (exitCode, output) = runLauncher(fixture, createSandbox = true, mountEnvironment = environment)
+            assertEquals(output, 23, exitCode)
+            val argv = output.lineSequence().filter { it.startsWith("<") }
+                .map { it.removeSurrounding("<", ">") }.toList()
+            val workspace = SbxCli.posixPath(fixture.project.toString())
+            val resolved = SbxCli.resolveExtraMounts(listOf(mount), workspace, home.toString(), environment)
+            assertEquals(
+                SbxCli.buildCreateCommand(
+                    name = SbxCli.sandboxName(workspace), workspace = workspace,
+                    extraWorkspaces = SbxCli.extraMountCreateArgs(resolved, workspace),
+                ).drop(1),
+                argv,
+            )
+        }
+    }
+
     private data class Fixture(val project: Path, val app: Path, val spec: Path, val launcher: Path, val sbx: Path)
 
     private fun fixture(): Fixture {
@@ -132,11 +168,14 @@ class SbxLauncherWorkingDirectoryTest {
                 if [[ "${'$'}{OCWP_TEST_ACP:-false}" == true ]]; then cat > "${'$'}OCWP_TEST_DIR/setup-input"; fi
                 exit 0 ;;
               ls)
-                if [[ -n "${'$'}{OCWP_TEST_SHARED:-}" ]]; then
+                if [[ "${'$'}{OCWP_TEST_CREATE:-false}" == true ]]; then
+                  printf '{"sandboxes":[]}\n'
+                elif [[ -n "${'$'}{OCWP_TEST_SHARED:-}" ]]; then
                   printf '{"sandboxes":[{"name":"%s","workspaces":["%s","%s:ro"]}]}\n' "${'$'}OCWP_TEST_NAME" "${'$'}OCWP_TEST_WORKSPACE" "${'$'}OCWP_TEST_SHARED"
                 else
                   printf '{"sandboxes":[{"name":"%s","workspaces":["%s"]}]}\n' "${'$'}OCWP_TEST_NAME" "${'$'}OCWP_TEST_WORKSPACE"
-                fi ;;
+                 fi ;;
+              create) printf '<%s>\n' "${'$'}@"; exit 23 ;;
               exec)
                 if [[ "${'$'}{OCWP_TEST_ACP:-false}" == true ]]; then
                   printf '%s\0' "${'$'}@" > "${'$'}OCWP_TEST_DIR/acp-args"
@@ -158,6 +197,8 @@ class SbxLauncherWorkingDirectoryTest {
         sharedConfig: Path? = null,
         acpInput: String? = null,
         mergeErrorStream: Boolean = true,
+        createSandbox: Boolean = false,
+        mountEnvironment: Map<String, String> = emptyMap(),
     ): Pair<Int, String> {
         val bash = if (System.getProperty("os.name").startsWith("Windows")) {
             Path.of(System.getenv("ProgramFiles") ?: "C:/Program Files", "Git", "bin", "bash.exe")
@@ -178,6 +219,9 @@ class SbxLauncherWorkingDirectoryTest {
                 if (sharedConfig != null) environment()["OCWP_TEST_SHARED"] = SbxCli.posixPath(sharedConfig.toString())
                 environment()["OCWP_TEST_ACP"] = (acpInput != null).toString()
                 environment()["OCWP_TEST_DIR"] = SbxCli.guestBindPath(temp.root.toPath().toString())
+                environment()["OCWP_TEST_CREATE"] = createSandbox.toString()
+                environment().remove("OCWP_TEST_GRADLE_HOME")
+                environment().putAll(mountEnvironment)
             }.start()
         process.outputStream.use { input -> acpInput?.let { input.write(it.toByteArray()) } }
         try {
