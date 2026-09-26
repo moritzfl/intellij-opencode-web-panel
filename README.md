@@ -133,6 +133,7 @@ Open <kbd>Settings/Preferences</kbd> > <kbd>Tools</kbd> > <kbd>OpenCode Web Pane
 - Choose how the OpenCode server reaches the network: the IDE HTTP Proxy, environment
   variables, or no proxy.
 - Restart this project's OpenCode server from the tool window or **OpenCode Web Panel (Project)**.
+- During startup/restart, the waiting view explains the current step and streams recent command output. Image downloads and kit installation can take several minutes. Elapsed time belongs to the current attempt, and a quiet step offers log/cancel guidance rather than an estimated countdown. Recent activity is available even with file logging disabled.
 - View recent OpenCode server output from **OpenCode Web Panel (Project)**.
 - An optional lightning-bolt action indicates a newer same-major OpenCode release. Click it to upgrade this project's sandbox or view a copyable Host CLI upgrade command. Disable it in application settings.
 

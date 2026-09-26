@@ -14,6 +14,7 @@ import de.moritzf.opencodewebpanel.server.formatOpenCodeLifecycleStrip
 import de.moritzf.opencodewebpanel.server.isOpenCodeLifecycleStripVisible
 import de.moritzf.opencodewebpanel.server.isOpenCodeServerRetryVisible
 import de.moritzf.opencodewebpanel.server.openCodeServerRetryLabel
+import de.moritzf.opencodewebpanel.server.formatElapsedMillis
 
 internal class OpenCodeLifecycleStatusPanel(
     onRetry: () -> Unit,
@@ -84,7 +85,11 @@ internal class OpenCodeLifecycleStatusPanel(
         val logBefore = viewLogButton.isVisible
         val cancelBefore = cancelButton.isVisible
         lifecycleStatusLabel.text = formatOpenCodeLifecycleStrip(model, nowMillis)
-        lifecycleStatusLabel.toolTipText = lifecycleStatusLabel.text.replace(Regex("<[^>]+>"), "")
+        lifecycleStatusLabel.toolTipText = buildString {
+            append(model.progress?.explanation ?: "OpenCode server: ${model.state.displayLabel}")
+            (model.progress?.elapsedMillis ?: model.elapsedMillis)?.let { append(" Elapsed ${formatElapsedMillis(it)}.") }
+            model.recovery?.let { append(" Recovery reason: ${it.reason}") }
+        }
         val starting = model.state == OpenCodeServerLifecycleState.STARTING ||
             model.state == OpenCodeServerLifecycleState.RESTARTING
         val retryVisible = isOpenCodeServerRetryVisible(model.state) || model.cancelled
@@ -94,7 +99,9 @@ internal class OpenCodeLifecycleStatusPanel(
         retryServerButton.text = if (model.cancelled) "Retry" else openCodeServerRetryLabel(model.state)
         retryServerButton.icon = if (startLabel) AllIcons.Actions.Execute else AllIcons.Actions.Restart
         viewLogButton.isVisible = starting || model.state == OpenCodeServerLifecycleState.FAILED || model.cancelled
-        viewLogButton.isEnabled = viewLogButton.isVisible
+        viewLogButton.isEnabled = viewLogButton.isVisible && model.logAvailable
+        viewLogButton.toolTipText = if (model.logAvailable) "Open the full server log in the editor"
+            else "File logging is disabled. Recent activity is still available in the startup view."
         cancelButton.isVisible = starting && !model.cancelled
         cancelButton.isEnabled = cancelButton.isVisible
         component.isVisible = isOpenCodeLifecycleStripVisible(model)

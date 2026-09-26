@@ -144,7 +144,11 @@ internal class OpenCodeWebToolWindowContent(
     private var lastPanelRecovery: OpenCodeRecoveryNotice? = null
     private val startupErrorPanel = OpenCodeStartupErrorPanel(project, ::restartOpenCodeServer)
     private val centerCardLayout = CardLayout()
-    private val idleCard = OpenCodeIdleCard(::restartOpenCodeServer)
+    private val idleCard = OpenCodeIdleCard(
+        onStart = ::restartOpenCodeServer,
+        onCancel = { serverManager.stopServer() },
+        onViewLog = { openOpenCodeServerLogInEditor(project) },
+    )
     private val centerCardPanel = JPanel(centerCardLayout).apply {
         add(browser.component, BROWSER_CARD)
         add(startupErrorPanel.component, ERROR_CARD)
@@ -739,7 +743,6 @@ internal class OpenCodeWebToolWindowContent(
         when (parkedEmbeddedCenterCard(initialState)) {
             ERROR_CARD -> showErrorInBrowser()
             IDLE_CARD -> {
-                idleCard.show(initialState)
                 showCenterCard(IDLE_CARD)
             }
         }
@@ -1057,12 +1060,16 @@ internal class OpenCodeWebToolWindowContent(
             resetAgentStatusTracking()
         }
         val sbx = serverManager as? SbxOpenCodeServerBackend
-        if (shouldHideEmbeddedPage(state)) {
-            idleCard.show(state, stage = sbx?.startupStage())
-        }
         val starting = state == OpenCodeServerLifecycleState.STARTING ||
             state == OpenCodeServerLifecycleState.RESTARTING
-        val startedAt = serverManager.getServerGenerationStartedAtMillis()
+        val progress = serverManager.getStartupProgress()
+        val logAvailable = OpenCodeSettingsState.getInstance().enableServerLogs
+        if (starting || state == OpenCodeServerLifecycleState.STOPPED) {
+            idleCard.show(state, stage = sbx?.startupStage(), progress = progress, logAvailable = logAvailable)
+            showCenterCard(IDLE_CARD)
+        } else {
+            idleCard.stopProgressAnimation()
+        }
         val now = System.currentTimeMillis()
         val storedRecovery = lastPanelRecovery ?: sbx?.lastRecoveryNotice()
         val recovery = visibleRecoveryNotice(
@@ -1077,9 +1084,11 @@ internal class OpenCodeWebToolWindowContent(
             state = state,
             pageOpening = shouldShowPageOpeningStatus(pageLoadInProgress, openCodePagePainted),
             cancelled = sbx?.lastFailure() == SbxFailureKind.CANCELLED,
-            stage = sbx?.startupStage(),
-            elapsedMillis = if (starting && startedAt > 0L) now - startedAt else null,
+            stage = progress?.stage ?: sbx?.startupStage(),
+            elapsedMillis = if (starting) progress?.elapsedMillis else null,
             recovery = recovery,
+            progress = if (starting) progress else null,
+            logAvailable = logAvailable,
         )
         val relayout = lifecycleStatusPanel.update(model, now)
         stripTickAlarm.cancelAllRequests()
