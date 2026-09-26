@@ -811,13 +811,25 @@ internal object OpenCodeServerProtocol {
     private fun withPercentDecoded(value: String): List<String> {
         val trimmed = value.trim()
         if (trimmed.isBlank()) return emptyList()
-        if (!trimmed.contains('%')) return listOf(stripBidiMarks(trimmed)).filter { it.isNotBlank() }
         // `+` is a literal in a path segment, so decode percent escapes only. A malformed escape
         // (`%zz`, a trailing `%`) throws, leaving just the raw spelling.
-        val decoded = runCatching {
-            URLDecoder.decode(trimmed.replace("+", "%2B"), StandardCharsets.UTF_8)
-        }.getOrNull()?.let(::stripBidiMarks)?.takeIf { it.isNotBlank() && it != trimmed }
-        return listOfNotNull(decoded, trimmed)
+        val decoded = if (trimmed.contains('%')) {
+            runCatching { URLDecoder.decode(trimmed.replace("+", "%2B"), StandardCharsets.UTF_8) }
+                .getOrNull()?.let(::stripBidiMarks)?.takeIf { it.isNotBlank() && it != trimmed }
+        } else {
+            null
+        }
+        return listOfNotNull(decoded, stripBidiMarks(trimmed)).flatMap { path ->
+            // Markdown can render a Windows absolute path as `/C:/...`. Normalize it before
+            // Path.of rejects the colon; keep ordinary `/src/...` and Unix paths unchanged.
+            val drivePath = if (SystemInfo.isWindows && path.length >= 4 && path[0] == '/' &&
+                path[1].isLetter() && path[2] == ':' && (path[3] == '/' || path[3] == '\\')) {
+                path.drop(1)
+            } else {
+                null
+            }
+            listOfNotNull(drivePath, path)
+        }.filter { it.isNotBlank() }.distinct()
     }
 
     private fun parseLineColumn(fragment: String): Pair<Int?, Int?>? {

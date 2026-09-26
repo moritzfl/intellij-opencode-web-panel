@@ -7,6 +7,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeFalse
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import java.io.File
 import java.net.InetAddress
@@ -985,6 +986,24 @@ class OpenCodeServerProtocolTest {
             outsideFile.normalize(),
             OpenCodeServerProtocol.resolveFileLink(outsideFile.toString(), base.toString(), null)?.path,
         )
+    }
+
+    @Test
+    fun resolveFileLinkOpensRootRelativeWindowsDriveFromMarkdownOutsideTheProject() {
+        assumeTrue("Windows drive paths only exist on Windows", File.separatorChar == '\\')
+        val project = tempDir("opencode-drive-link-project")
+        val outside = tempDir("opencode-drive-link-outside")
+        val file = Files.writeString(outside.resolve("Überblick.md"), "x")
+        val href = "/${file.toString().replace('\\', '/')}"
+        val encoded = href.replace("Ü", "%C3%9C")
+
+        val target = OpenCodeServerProtocol.resolveFileLink("$encoded#L12", project.toString(), null)
+        assertEquals(file.normalize(), target?.path)
+        assertEquals(11, target?.line)
+        assertEquals(file.normalize(), OpenCodeServerProtocol.resolveFileLink(href, project.toString(), null)?.path)
+        assertEquals(file.normalize(), OpenCodeServerProtocol.resolveFileLink(encoded.drop(1), project.toString(), null)?.path)
+        assertEquals(file.normalize(), OpenCodeServerProtocol.resolveFileLink("file://$href", project.toString(), null)?.path)
+        assertEquals(file.normalize(), OpenCodeServerProtocol.resolveFileLink("file://$encoded", project.toString(), null)?.path)
     }
 
     @Test
