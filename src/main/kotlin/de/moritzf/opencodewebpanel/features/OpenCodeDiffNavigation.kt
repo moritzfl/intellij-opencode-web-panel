@@ -1,16 +1,13 @@
 package de.moritzf.opencodewebpanel.features
 
-import com.intellij.diff.DiffContentFactory
 import com.intellij.diff.DiffDialogHints
 import com.intellij.diff.DiffManager
 import com.intellij.diff.chains.SimpleDiffRequestChain
 import com.intellij.diff.requests.DiffRequest
-import com.intellij.diff.requests.SimpleDiffRequest
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
-import com.intellij.openapi.fileTypes.FileTypeManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.openapi.vfs.LocalFileSystem
@@ -19,7 +16,6 @@ import com.intellij.ui.jcef.JBCefBrowser
 import de.moritzf.opencodewebpanel.server.OpenCodeHostPaths
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.server.OpenCodeProtocolResult
-import de.moritzf.opencodewebpanel.server.OpenCodeUnifiedDiff
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsState
 
@@ -196,25 +192,8 @@ internal class OpenCodeDiffNavigation(
         private fun normalizePath(path: String?): String? = path?.replace('\\', '/')?.trim(' ', '/')
     }
 
-    private fun buildDiffRequest(diff: OpenCodeServerProtocol.SnapshotFileDiff): DiffRequest? {
-        val sides = OpenCodeUnifiedDiff.sides(diff.patch) ?: return null
-        val name = diff.file?.takeIf { it.isNotBlank() } ?: "diff"
-        val factory = DiffContentFactory.getInstance()
-        val highlightFile = resolveHighlightFile(diff.file)
-        val after = if (highlightFile != null) {
-            factory.create(project, sides.after, highlightFile)
-        } else {
-            val fileName = name.substringAfterLast('/').substringAfterLast('\\')
-            factory.create(project, sides.after, FileTypeManager.getInstance().getFileTypeByFileName(fileName))
-        }
-        return SimpleDiffRequest(
-            name,
-            factory.create(project, sides.before, after),
-            after,
-            "Before",
-            "After",
-        )
-    }
+    private fun buildDiffRequest(diff: OpenCodeServerProtocol.SnapshotFileDiff): DiffRequest? =
+        createOpenCodeDiffRequest(project, diff, resolveHighlightFile(diff.file))
 
     private fun resolveHighlightFile(filePath: String?): VirtualFile? {
         val directory = projectDirectory()?.takeIf { it.isNotBlank() } ?: return null

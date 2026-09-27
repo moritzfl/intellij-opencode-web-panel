@@ -7,6 +7,7 @@
 ### Fixed
 
 - Alt/Ctrl/Cmd-click on an untracked file in Git changes opens that file in the IDE.
+- Jump to Source (F4) from either side of a conversation diff selects the source text editor and preserves caret translation to the current file.
 
 ## [2.6.1] - 2026-09-27
 
