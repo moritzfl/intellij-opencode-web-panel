@@ -42,6 +42,38 @@ async (page, { origin, serverKey, workspace, authorization, snippets, stallOrigi
   await page.setViewportSize({ width: 1500, height: 1000 });
   await page.goto(`${origin}/server/${serverKey}/session/${session.id}`);
   await page.locator('main [contenteditable=true]').waitFor();
+  const composer = page.locator('main [contenteditable=true]').first();
+  await composer.evaluate(input => {
+    input.focus(); document.execCommand('insertText', false, 'before OLD after');
+    const range = document.createRange(); range.setStart(input.firstChild, 7); range.setEnd(input.firstChild, 10);
+    getSelection().removeAllRanges(); getSelection().addRange(range);
+  });
+  await page.evaluate(snippets.capturePaste);
+  await page.evaluate(snippets.paste);
+  assert(await page.evaluate(() => window.__pasteResult) === 'accepted', 'Clipboard paste was not acknowledged');
+  assert((await composer.textContent()).replace(/\u200b/g, '') === 'before NEW after', 'Clipboard paste lost its selection');
+  await page.evaluate(snippets.capturePaste);
+  await composer.evaluate(input => input.blur());
+  await page.evaluate(snippets.nativePaste);
+  assert(await page.evaluate(() => window.__pasteResult) === 'stale', 'Unavailable clipboard replayed into a changed destination');
+  await composer.focus();
+  await page.evaluate(snippets.capturePaste);
+  await page.evaluate(snippets.nativePaste);
+  assert(await page.evaluate(() => window.__pasteResult) === 'native', 'Unavailable clipboard did not request native fallback');
+  if (v2) {
+    const home = await page.context().newPage();
+    await home.setExtraHTTPHeaders({ Authorization: authorization });
+    await home.goto(origin);
+    const search = home.locator('input[aria-controls="home-session-search-results"]');
+    await search.fill('before OLD after');
+    await search.evaluate(input => input.setSelectionRange(7, 10));
+    await home.evaluate(snippets.capturePaste);
+    await home.evaluate(snippets.paste);
+    assert(await search.inputValue() === 'before NEW after', 'Plain input swallowed synthetic paste');
+    await home.evaluate(() => document.execCommand('undo'));
+    assert(await search.inputValue() === 'before OLD after', 'Plain input paste lost native undo');
+    await home.close();
+  }
   await page.evaluate(() => { window.__fileCalls = []; window.__diffCalls = []; window.__chunkCalls = []; });
   await page.evaluate(snippets.diffs);
   await page.evaluate(snippets.files);
@@ -68,6 +100,8 @@ async (page, { origin, serverKey, workspace, authorization, snippets, stallOrigi
     await page.locator('[data-slot="session-review-v2-file-name"]').click({ modifiers: ['Alt'] });
     assert(await page.evaluate(() => window.__diffCalls.at(-1)?.vcsMode === 'branch'), 'Selected branch mode was lost');
     await mode.press('Enter');
+    // Kobalte transfers focus after opening; sending Home before that loses the key.
+    await page.waitForFunction(() => document.querySelector('[data-slot="select-v2-listbox"]')?.contains(document.activeElement));
     await page.keyboard.press('Home');
     await page.keyboard.press('Enter');
     await page.waitForFunction(() => document.querySelector('[data-opencode-intellij-review-mode="git"]'))

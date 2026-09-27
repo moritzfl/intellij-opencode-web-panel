@@ -48,14 +48,15 @@ jobs:
             --tests '*OpenCodeJcefLiveRuntimeSwitchTest.firstDocumentDeliversRendererHeartbeatsWithoutReload' \
             --tests '*OpenCodeJcefLiveRuntimeSwitchTest.homeRouteSurvivesRepeatedBackendBrowserReplacement' \
             --tests '*OpenCodeJcefLiveRuntimeSwitchTest.editorTransfersKeepRealComposerDraftAndCallbacksWithoutReload' \
-            --tests '*OpenCodeJcefLiveRuntimeSwitchTest.clipboardPasteUsesIdeActionAndContextMenuWithCaretUndoAndImages'
+            --tests '*OpenCodeJcefLiveRuntimeSwitchTest.clipboardPasteUsesIdeActionAndContextMenuWithCaretUndoAndImages' \
+            --tests '*OpenCodeJcefLiveRuntimeSwitchTest.waylandPasteSharesDestinationGuardsAndPlainInputFallback'
       - name: Reject skipped integration tests
         run: |
           node --input-type=module <<'JS'
           import { readFileSync } from 'node:fs';
           const xml = readFileSync('build/test-results/test/TEST-de.moritzf.opencodewebpanel.jcef.OpenCodeJcefLiveRuntimeSwitchTest.xml', 'utf8');
           const suite = xml.match(/<testsuite\b[^>]*>/)?.[0] ?? '';
-          for (const [key, expected] of Object.entries({ tests: 4, skipped: 0, failures: 0, errors: 0 })) {
+          for (const [key, expected] of Object.entries({ tests: 5, skipped: 0, failures: 0, errors: 0 })) {
             const actual = suite.match(new RegExp(`\\b${key}="(\\d+)"`))?.[1];
             if (Number(actual) !== expected) throw new Error(`${key}: expected ${expected}, got ${actual}`);
           }

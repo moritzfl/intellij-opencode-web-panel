@@ -12,6 +12,14 @@ object OpenCodeBrowserContractExport {
         val (directory, origin, output) = args
         val snippets = mapOf(
             "seed" to OpenCodeBrowserSnippets.buildOpenProjectScript(directory, origin),
+            "capturePaste" to OpenCodeBrowserSnippets.buildCaptureClipboardPasteScript("paste-contract", enabled = true),
+            "paste" to OpenCodeBrowserSnippets.buildClipboardPasteScript(
+                emptyList(), "NEW", emptyList(), "paste-contract", "window.__pasteResult = result", enabled = true,
+            ),
+            "nativePaste" to OpenCodeBrowserSnippets.buildClipboardPasteScript(
+                emptyList(), null, emptyList(), "paste-contract", "window.__pasteResult = result",
+                enabled = true, nativeFallback = true,
+            ),
             "files" to OpenCodeBrowserSnippets.buildFileLinkHandlerScript(
                 directory, enabled = true,
                 openFileCallback = "window.__fileCalls.push({href: rawHref, partID})",

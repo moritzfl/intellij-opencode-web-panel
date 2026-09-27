@@ -33,6 +33,7 @@ import de.moritzf.opencodewebpanel.browser.OpenCodeJsQuery
 import de.moritzf.opencodewebpanel.browser.createOpenCodeBrowserBeforeReplacement
 import de.moritzf.opencodewebpanel.features.OpenCodeChatInputService
 import de.moritzf.opencodewebpanel.features.OpenCodeFileDropHandler
+import de.moritzf.opencodewebpanel.features.OpenCodeWaylandClipboard
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
 import de.moritzf.opencodewebpanel.server.OpenCodeProcessTerminator
@@ -78,6 +79,7 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 import javax.swing.JFrame
 import javax.swing.JComponent
 import javax.swing.KeyStroke
@@ -206,6 +208,7 @@ class OpenCodeJcefLiveRuntimeSwitchTest {
 
     @Test
     fun clipboardPasteUsesIdeActionAndContextMenuWithCaretUndoAndImages() {
+        val lifetime = Disposer.newCheckedDisposable().also { Disposer.register(disposable.disposable, it) }
         val clipboard = CopyPasteManager.getInstance()
         val originalClipboard = clipboard.contents
         val settings = OpenCodeSettingsState.getInstance()
@@ -224,7 +227,7 @@ class OpenCodeJcefLiveRuntimeSwitchTest {
         val browser = open(origins[0], OpenCodeServerProtocol.buildServerSessionUrl(origins[0], nativeSession), onBrowserCreated = {
             pasteHandler = OpenCodeFileDropHandler(
                 ProjectManager.getInstance().defaultProject, it, backend, { workspace }, { 0L },
-                { Disposer.isDisposed(disposable.disposable) }, disposable.disposable,
+                { lifetime.isDisposed }, disposable.disposable,
             )
             assertTrue(pasteHandler.isResultChannelAvailable())
             pasteHandler.install()
@@ -307,6 +310,22 @@ class OpenCodeJcefLiveRuntimeSwitchTest {
             OpenCodeJcefTestHelper.awaitCondition("ordered shortcut and menu pastes") { draft() == "before NEW afterAB" }
             assertEquals("3", evaluate(browser, "window.__pasteEvents"))
 
+            // Replace a selection: Chromium may coalesce consecutive end-of-field inserts
+            // into one undo step, so an append would not isolate the whitespace paste.
+            evaluate(browser, """(() => {
+                const range = document.createRange(); range.selectNodeContents(document.querySelector('main [contenteditable=true]'));
+                getSelection().removeAllRanges(); getSelection().addRange(range); return true;
+            })()""")
+            paste(StringSelection("  "))
+            OpenCodeJcefTestHelper.awaitCondition("whitespace-only paste") { draft() == "  " }
+            assertEquals("4", evaluate(browser, "window.__pasteEvents"))
+            evaluate(browser, "document.execCommand('undo')")
+            OpenCodeJcefTestHelper.awaitCondition("whitespace paste undo") { draft() == "before NEW afterAB" }
+            evaluate(browser, """(() => {
+                const range = document.createRange(); range.selectNodeContents(document.querySelector('main [contenteditable=true]')); range.collapse(false);
+                getSelection().removeAllRanges(); getSelection().addRange(range); return true;
+            })()""")
+
             val image = BufferedImage(4, 3, BufferedImage.TYPE_INT_ARGB).apply { setRGB(1, 1, 0xffff0000.toInt()) }
             paste(object : Transferable {
                 override fun getTransferDataFlavors() = arrayOf(DataFlavor.imageFlavor, DataFlavor.stringFlavor)
@@ -321,7 +340,7 @@ class OpenCodeJcefLiveRuntimeSwitchTest {
                 evaluate(browser, "document.querySelectorAll('img[alt^=\"pasted-image-\"]').length") == "1"
             }
             assertEquals("before NEW afterAB", draft())
-            assertEquals("4", evaluate(browser, "window.__pasteEvents"))
+            assertEquals("5", evaluate(browser, "window.__pasteEvents"))
 
             // A copied image file outside the project is attached rather than inserted as its path.
             val imageFile = temp.newFile("copied-image.png")
@@ -338,10 +357,111 @@ class OpenCodeJcefLiveRuntimeSwitchTest {
                 evaluate(browser, "document.querySelectorAll('img[alt=\"copied-image.png\"]').length") == "1"
             }
             assertEquals("before NEW afterAB", draft())
-            assertEquals("5", evaluate(browser, "window.__pasteEvents"))
+            assertEquals("6", evaluate(browser, "window.__pasteEvents"))
         } finally {
             ApplicationManager.getApplication().invokeAndWait {
                 keymap.removeShortcut(IdeActions.ACTION_PASTE, remapped)
+                clipboard.setContents(originalClipboard ?: StringSelection(""))
+                settings.enableChatFileDrop = wasEnabled
+            }
+        }
+    }
+
+    @Test
+    fun waylandPasteSharesDestinationGuardsAndPlainInputFallback() {
+        val lifetime = Disposer.newCheckedDisposable().also { Disposer.register(disposable.disposable, it) }
+        val clipboard = CopyPasteManager.getInstance()
+        val originalClipboard = clipboard.contents
+        val settings = OpenCodeSettingsState.getInstance()
+        val wasEnabled = settings.enableChatFileDrop
+        settings.enableChatFileDrop = true
+        val backend = Proxy.newProxyInstance(OpenCodeServerBackend::class.java.classLoader, arrayOf(OpenCodeServerBackend::class.java)) { _, method, _ ->
+            when (method.name) {
+                "getServerUrl" -> origins[0]
+                "getServerGeneration" -> 1L
+                else -> error("Unexpected clipboard backend call: ${method.name}")
+            }
+        } as OpenCodeServerBackend
+        val reads = AtomicInteger()
+        val readOnEdt = AtomicReference(false)
+        val result = AtomicReference<OpenCodeWaylandClipboard.Result>(OpenCodeWaylandClipboard.Result.Text("NEW"))
+        val blocked = AtomicReference<CountDownLatch?>()
+        val started = CountDownLatch(1)
+        lateinit var pasteHandler: OpenCodeFileDropHandler
+        lateinit var menu: OpenCodeBrowserContextMenuHandler
+        val browser = open(origins[0], OpenCodeServerProtocol.buildServerSessionUrl(origins[0], nativeSession), onBrowserCreated = {
+            pasteHandler = OpenCodeFileDropHandler(
+                ProjectManager.getInstance().defaultProject, it, backend, { workspace }, { 0L },
+                { lifetime.isDisposed }, disposable.disposable,
+                waylandClipboardReader = {
+                    reads.incrementAndGet()
+                    readOnEdt.set(readOnEdt.get() || ApplicationManager.getApplication().isDispatchThread)
+                    blocked.get()?.let { gate -> started.countDown(); gate.await(10, TimeUnit.SECONDS) }
+                    result.get()
+                },
+            )
+            pasteHandler.install()
+            menu = OpenCodeBrowserContextMenuHandler(pasteHandler::paste)
+        })
+        try {
+            OpenCodeJcefTestHelper.awaitCondition("Wayland paste composer") {
+                evaluate(browser, "!!document.querySelector('main [contenteditable=true]')") == "true"
+            }
+            ApplicationManager.getApplication().invokeAndWait { clipboard.setContents(StringSelection("stale X11 text")) }
+            evaluate(browser, """(() => {
+                const input = document.querySelector('main [contenteditable=true]'); input.focus();
+                document.execCommand('insertText', false, 'before OLD after');
+                const range = document.createRange(); range.setStart(input.firstChild, 7); range.setEnd(input.firstChild, 10);
+                getSelection().removeAllRanges(); getSelection().addRange(range); return true;
+            })()""")
+            ApplicationManager.getApplication().invokeAndWait {
+                menu.onContextMenuCommand(browser.cefBrowser, browser.cefBrowser.mainFrame, null, CefMenuModel.MenuId.MENU_ID_PASTE, 0)
+            }
+            fun draft() = evaluate(browser, "document.querySelector('main [contenteditable=true]').textContent.replace(/\\u200b/g, '')")
+            OpenCodeJcefTestHelper.awaitCondition("Wayland text supersedes stale AWT snapshot") { draft() == "before NEW after" }
+            assertFalse(readOnEdt.get())
+
+            // Changing focus while the native source is blocked must not select another composer.
+            val gate = CountDownLatch(1)
+            blocked.set(gate)
+            result.set(OpenCodeWaylandClipboard.Result.Text("WRONG DESTINATION"))
+            ApplicationManager.getApplication().invokeAndWait { pasteHandler.paste() }
+            assertTrue(started.await(10, TimeUnit.SECONDS))
+            evaluate(browser, "document.activeElement.blur()")
+            gate.countDown()
+            blocked.set(null)
+            OpenCodeJcefTestHelper.awaitCondition("stale Wayland paste acknowledged") {
+                evaluate(browser, "window.__opencodeIntellijPasteTargets.size") == "0"
+            }
+            assertEquals("before NEW after", draft())
+
+            evaluate(browser, "document.querySelector('main [contenteditable=true]').focus()")
+            var fieldText = "document.querySelector('main [contenteditable=true]').textContent"
+            if (OpenCodeServerProtocol.detectWireProtocol(origins[0], "Basic b3BlbmNvZGU6cHJvYmUtb25seQ==") == OpenCodeWireProtocol.V2_CLI) {
+                // V2's real Home search is an ordinary input, without a custom paste handler.
+                browser.loadURL(origins[0] + "/")
+                val input = "document.querySelector('[data-component=home-session-search] input, input[aria-controls=home-session-search-results]')"
+                OpenCodeJcefTestHelper.awaitCondition("editable Home search") { evaluate(browser, "!!($input)") == "true" }
+                evaluate(browser, """(() => { const input = $input; input.focus(); document.execCommand('insertText', false, 'before OLD after'); input.setSelectionRange(7, 10); return true; })()""")
+                result.set(OpenCodeWaylandClipboard.Result.Text("NEW"))
+                ApplicationManager.getApplication().invokeAndWait { pasteHandler.paste() }
+                fieldText = "($input).value"
+                OpenCodeJcefTestHelper.awaitCondition("Wayland paste into ordinary input") { evaluate(browser, fieldText) == "before NEW after" }
+                evaluate(browser, "document.execCommand('undo')")
+                OpenCodeJcefTestHelper.awaitCondition("Wayland plain input undo") { evaluate(browser, fieldText) == "before OLD after" }
+            }
+
+            // Missing wl-paste still uses the captured IDE text through the same insertion path.
+            result.set(OpenCodeWaylandClipboard.Result.Unavailable)
+            ApplicationManager.getApplication().invokeAndWait { pasteHandler.paste() }
+            OpenCodeJcefTestHelper.awaitCondition("Wayland fallback to AWT") { evaluate(browser, fieldText).contains("stale X11 text") }
+            val beforeDisable = reads.get()
+            settings.enableChatFileDrop = false
+            ApplicationManager.getApplication().invokeAndWait { pasteHandler.paste() }
+            assertEquals(beforeDisable, reads.get())
+        } finally {
+            blocked.get()?.countDown()
+            ApplicationManager.getApplication().invokeAndWait {
                 clipboard.setContents(originalClipboard ?: StringSelection(""))
                 settings.enableChatFileDrop = wasEnabled
             }
