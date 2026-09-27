@@ -144,6 +144,9 @@ tasks {
     test {
         if (providers.gradleProperty("jcef").isPresent) {
             include("**/jcef/**")
+            // Gradle flattens IDE module loaders. The charts module bundles an incompatible
+            // jsvg copy; prefer the platform's patched copy when headful tests render icons.
+            classpath = files(classpath.filter { it.name == "module-intellij.libraries.jsvg.jar" }, classpath)
             systemProperty("java.awt.headless", "false")
             systemProperty("ide.browser.jcef.testMode.enabled", "true")
             systemProperty("openCode.jcefTests", "true")

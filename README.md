@@ -96,6 +96,9 @@ The tool window title bar and editor toolbar offer quick controls (also availabl
 
 Choose **Move to Editor** from the panel title bar or gear menu. The editor tab can move between splits and IDE windows like other tabs; each project keeps one live OpenCode panel. Closing the tab returns that panel to the tool window without stopping the server. Choose **Move to Tool Window** to return and show it immediately.
 
+Closing a project window also leaves its server running until it is explicitly stopped or
+the IDE exits. Server ownership is application-wide, so reopening the project can reuse it.
+
 Use **Find Action → Move OpenCode Panel** to toggle between the two hosts. To assign a keyboard shortcut, open **Settings/Preferences → Keymap** and search for **Move OpenCode Panel**. No shortcut is assigned by default.
 
 While the panel is in an editor, reopening the tool window offers **Show in Editor** and **Move to Tool Window**. Chat context actions and **Show in OpenCode** notifications activate the current host.
@@ -295,6 +298,12 @@ Useful development commands:
 - `test` runs JVM and IntelliJ Platform tests.
 - `runIde` launches a sandbox IDE with the plugin installed.
 - `runIdeForUiTests` launches the sandbox IDE with the JetBrains Robot Server enabled.
+
+The **JCEF integration** GitHub Actions workflow runs weekly and supports manual runs.
+It checks real Chromium callbacks, browser replacement, editor transfers, and IDE clipboard
+delivery against OpenCode 1.18.31 and 2.0.18. Skipped checks fail the workflow. Ordinary
+`check` stays headless; run `./gradlew test -Pjcef` locally with a display and OpenCode installed.
+Use `-PlocalIdePath="/path/to/IntelliJ IDEA"` to test an installed IDE/JCEF version.
 
 Repository: https://github.com/moritzfl/intellij-opencode-web-panel
 

@@ -1,0 +1,72 @@
+name: JCEF integration
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 5 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  jcef:
+    name: JCEF (${{ matrix.version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - version: 1.18.31
+            package: opencode-ai@1.18.31
+          - version: 2.0.18
+            package: '@opencode/cli@2.0.18'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: zulu
+          java-version: 21
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - uses: gradle/actions/setup-gradle@v5
+      - name: Install display dependencies and OpenCode
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libnss3 libatk-bridge2.0-0 libgbm1 libasound2t64
+          npm install --global '${{ matrix.package }}'
+          opencode --version
+          echo "OPENCODE_JCEF_EXECUTABLE=$(command -v opencode)" >> "$GITHUB_ENV"
+      - name: Exercise real JCEF callbacks, replacement, editor transfers, and clipboard
+        run: |
+          xvfb-run --auto-servernum ./gradlew test --rerun -Pjcef \
+            --tests '*OpenCodeJcefLiveRuntimeSwitchTest.firstDocumentDeliversRendererHeartbeatsWithoutReload' \
+            --tests '*OpenCodeJcefLiveRuntimeSwitchTest.homeRouteSurvivesRepeatedBackendBrowserReplacement' \
+            --tests '*OpenCodeJcefLiveRuntimeSwitchTest.editorTransfersKeepRealComposerDraftAndCallbacksWithoutReload' \
+            --tests '*OpenCodeJcefLiveRuntimeSwitchTest.clipboardPasteUsesIdeActionAndContextMenuWithCaretUndoAndImages'
+      - name: Reject skipped integration tests
+        run: |
+          node --input-type=module <<'JS'
+          import { readFileSync } from 'node:fs';
+          const xml = readFileSync('build/test-results/test/TEST-de.moritzf.opencodewebpanel.jcef.OpenCodeJcefLiveRuntimeSwitchTest.xml', 'utf8');
+          const suite = xml.match(/<testsuite\b[^>]*>/)?.[0] ?? '';
+          for (const [key, expected] of Object.entries({ tests: 4, skipped: 0, failures: 0, errors: 0 })) {
+            const actual = suite.match(new RegExp(`\\b${key}="(\\d+)"`))?.[1];
+            if (Number(actual) !== expected) throw new Error(`${key}: expected ${expected}, got ${actual}`);
+          }
+          JS
+      - name: Upload JCEF diagnostics
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: jcef-${{ matrix.version }}
+          path: |
+            build/reports/tests/test
+            build/test-results/test
+            .intellijPlatform/sandbox/**/log*/**
+          include-hidden-files: true
