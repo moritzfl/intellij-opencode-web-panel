@@ -1779,6 +1779,7 @@ internal object OpenCodeBrowserSnippets {
         batchId: String,
         resultCallback: String?,
         enabled: Boolean,
+        nativeFallback: Boolean = false,
     ): String? {
         if (!enabled || resultCallback == null) return null
         val entries = files.joinToString(",") { file ->
@@ -1797,6 +1798,10 @@ internal object OpenCodeBrowserSnippets {
               const target = captured?.target;
               if (!target?.isConnected || captured.href !== location.href || document.activeElement !== target) {
                 report('stale');
+                return;
+              }
+              if ($nativeFallback) {
+                report('native');
                 return;
               }
               const composer = target.matches(
@@ -1850,52 +1855,6 @@ internal object OpenCodeBrowserSnippets {
                 // An exception after dispatch cannot prove that nothing was inserted.
                 report('rejected');
               }
-            })();
-        """
-        return script.trimIndent()
-    }
-
-    /**
-     * Injects plain text read from the Wayland clipboard into the focused field. Used only by the
-     * native-paste fallback when JCEF's Chromium (under XWayland) would otherwise read the stale
-     * X11 clipboard. A synthetic paste lets the page insert the text with its own undo/IME
-     * handling; an unhandled plain-text paste falls back to `execCommand('insertText')` so
-     * selection and undo still work.
-     */
-    fun buildWaylandPasteScript(text: String?, resultCallback: String? = null): String? {
-        if (text.isNullOrBlank()) return null
-        val textLiteral = "'${escapeJavaScript(text)}'"
-        val report = resultCallback?.let { "const report = (result) => { $it; };" } ?: "const report = () => {};"
-        @Language("JavaScript")
-        val script = """
-            (() => {
-              $report
-              const target = document.activeElement;
-              const editable = target && (
-                target.isContentEditable ||
-                ((target instanceof HTMLTextAreaElement ||
-                  (target instanceof HTMLInputElement && /^(text|search|url|tel|email|password)$/.test(target.type))) &&
-                  !target.readOnly && !target.disabled)
-              );
-              const text = $textLiteral;
-              if (!editable || typeof ClipboardEvent !== 'function' || typeof DataTransfer !== 'function') {
-                report('native');
-                return;
-              }
-              let handled = false;
-              try {
-                const transfer = new DataTransfer();
-                transfer.setData('text/plain', text);
-                const event = new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: transfer });
-                target.dispatchEvent(event);
-                if (event.defaultPrevented) handled = true;
-                else if (document.activeElement === target) {
-                  handled = document.execCommand('insertText', false, text) || handled;
-                }
-              } catch (_) {
-                handled = false;
-              }
-              report(handled ? 'accepted' : 'native');
             })();
         """
         return script.trimIndent()

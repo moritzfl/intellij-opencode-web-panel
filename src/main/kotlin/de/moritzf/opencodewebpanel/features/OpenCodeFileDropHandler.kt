@@ -5,7 +5,6 @@ import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.ide.CopyPasteManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
@@ -29,7 +28,6 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.file.Files
 import java.util.Base64
-import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 import javax.imageio.ImageIO
 import javax.swing.JComponent
@@ -49,6 +47,8 @@ internal class OpenCodeFileDropHandler(
     private val browserDocumentRevision: () -> Long,
     private val isDisposed: () -> Boolean,
     private val parentDisposable: Disposable,
+    private val waylandClipboardReader: (() -> OpenCodeWaylandClipboard.Result)? =
+        if (OpenCodeWaylandClipboard.isWaylandSession()) OpenCodeWaylandClipboard::read else null,
 ) {
     private val dropResultQuery = OpenCodeJsQuery.create(browser as JBCefBrowserBase)
     private val preparationExecutor = createOpenCodeDropPreparationExecutor()
@@ -63,62 +63,6 @@ internal class OpenCodeFileDropHandler(
         // Bound for clipboard images before decoding into an ARGB buffer (4 bytes per pixel):
         // covers even large retina screenshots while keeping the transient buffer ~100 MB.
         internal const val MAX_IMAGE_PIXELS = 25_000_000L
-
-        /**
-         * True when running natively on Wayland, where JCEF's Chromium (under XWayland) reads the
-         * stale X11 clipboard and the native `frame.paste()` inserts empty or outdated content.
-         */
-        internal fun isWaylandSession(waylandDisplay: String?): Boolean {
-            return !SystemInfo.isMac && waylandDisplay != null && waylandDisplay.isNotBlank()
-        }
-
-        /**
-         * wl-paste invocation forms, in order of preference. The negotiated form (no --type) is
-         * primary: wl-clipboard matches MIME types exactly, and the IDE's native Wayland AWT
-         * (sun.awt.wl.WLClipboard) offers text as "text/plain;charset=utf-8", so requesting
-         * exactly "text/plain" exits 1 empty even though the clipboard holds the text. The
-         * explicit text/plain form stays as a fallback for clipboards that only offer the bare type.
-         */
-        internal val WLPASTE_READ_ORDER: List<List<String>> = listOf(
-            listOf("wl-paste", "--no-newline"),
-            listOf("wl-paste", "--no-newline", "--type", "text/plain"),
-        )
-
-        /**
-         * Reads the Wayland clipboard as text, trying each [WLPASTE_READ_ORDER] form in turn.
-         * As a last resort it falls back to the IDE's own AWT clipboard: on native Wayland
-         * (sun.awt.wl.WLToolkit) that is the Wayland clipboard itself, so IDE-internal copies
-         * stay recoverable even when the wl-clipboard binary is missing or broken.
-         */
-        internal fun readWaylandClipboardText(): String? {
-            for (args in WLPASTE_READ_ORDER) {
-                try {
-                    val process = ProcessBuilder(args).redirectErrorStream(false).start()
-                    if (!process.waitFor(2, TimeUnit.SECONDS)) {
-                        thisLogger().warn("WaylandPaste: wl-paste ${args.joinToString(" ")} timed out")
-                        process.destroyForcibly()
-                        continue
-                    }
-                    val output = process.inputStream.bufferedReader().readText()
-                    if (process.exitValue() == 0 && output.isNotBlank()) {
-                        return output
-                    }
-                } catch (e: Exception) {
-                    thisLogger().warn("WaylandPaste: wl-paste ${args.joinToString(" ")} failed: ${e.message}")
-                }
-            }
-            return try {
-                val contents = Toolkit.getDefaultToolkit().systemClipboard.getContents(null)
-                if (contents != null && contents.isDataFlavorSupported(DataFlavor.stringFlavor)) {
-                    (contents.getTransferData(DataFlavor.stringFlavor) as? String)?.takeIf { it.isNotBlank() }
-                } else {
-                    null
-                }
-            } catch (e: Exception) {
-                thisLogger().warn("WaylandPaste: AWT clipboard fallback failed: ${e.message}")
-                null
-            }
-        }
 
         internal fun shouldReadNonFileDropFlavors(droppedFiles: List<File>): Boolean = droppedFiles.isEmpty()
 
@@ -364,38 +308,8 @@ internal class OpenCodeFileDropHandler(
     fun canBridgePaste(): Boolean = !isDisposed() && OpenCodeSettingsState.getInstance().enableChatFileDrop &&
         dropResultQuery.isAvailable && OpenCodeServerProtocol.isOpenCodeServerPage(serverManager.getServerUrl(), browser.cefBrowser.url)
 
-    /**
-     * Native `frame.paste()` fallback. On Wayland JCEF's Chromium (under XWayland) reads the stale
-     * X11 clipboard, so a native paste inserts empty or outdated content. Instead, read the
-     * Wayland clipboard via `wl-paste` (falling back to the IDE AWT clipboard) off the EDT and
-     * inject it into the page as a synthetic paste event. When nothing is available, or off
-     * Wayland, fall back to the native paste.
-     */
     private fun nativePaste() {
-        if (isDisposed()) return
-        val frame = browser.cefBrowser.focusedFrame ?: browser.cefBrowser.mainFrame ?: return
-        if (!isWaylandSession(System.getenv("WAYLAND_DISPLAY"))) {
-            frame.paste()
-            return
-        }
-        // Read the clipboard off the EDT so a stalled wl-paste cannot freeze the UI thread.
-        AppExecutorUtil.getAppExecutorService().execute {
-            val text = readWaylandClipboardText()
-            ApplicationManager.getApplication().invokeLater {
-                if (isDisposed()) return@invokeLater
-                val script = OpenCodeBrowserSnippets.buildWaylandPasteScript(text, null)
-                val serverUrl = serverManager.getServerUrl()
-                if (script == null || serverUrl == null) {
-                    frame.paste()
-                    return@invokeLater
-                }
-                browser.cefBrowser.executeJavaScript(
-                    script,
-                    OpenCodeServerProtocol.buildServerRootUrl(serverUrl),
-                    0,
-                )
-            }
-        }
+        if (!isDisposed()) (browser.cefBrowser.focusedFrame ?: browser.cefBrowser.mainFrame)?.paste()
     }
 
     private fun pasteClipboardData(): Boolean {
@@ -412,7 +326,7 @@ internal class OpenCodeFileDropHandler(
         val text = if (files.isEmpty() && pendingImages.isEmpty()) {
             transferables.firstNotNullOfOrNull { droppedTextPayload(it) }
         } else null
-        if (files.isEmpty() && pendingImages.isEmpty() && text == null) return false
+        if (files.isEmpty() && pendingImages.isEmpty() && text == null && waylandClipboardReader == null) return false
         return dispatchDroppedData(files, text, pendingImages, clipboardPaste = true)
     }
 
@@ -422,7 +336,8 @@ internal class OpenCodeFileDropHandler(
         pendingImages: List<PendingDroppedImage> = emptyList(),
         clipboardPaste: Boolean = false,
     ): Boolean {
-        if (files.isEmpty() && textPlain.isNullOrEmpty() && pendingImages.isEmpty()) return false
+        if (files.isEmpty() && textPlain.isNullOrEmpty() && pendingImages.isEmpty() &&
+            !(clipboardPaste && waylandClipboardReader != null)) return false
         val projectDirectory = openCodeProjectDirectory()
         val serverUrl = serverManager.getServerUrl() ?: return false
         val serverGeneration = serverManager.getServerGeneration()
@@ -458,15 +373,34 @@ internal class OpenCodeFileDropHandler(
 
         preparationExecutor.execute {
             if (isDisposed()) return@execute
-            val classifiedFiles = files.map { file ->
+            // Capture above precedes this slow read. Keep the same ordered worker, destination
+            // checks and acknowledgement for shortcut/menu paste on every platform.
+            val wayland = if (clipboardPaste) waylandClipboardReader?.invoke() else null
+            if (wayland === OpenCodeWaylandClipboard.Result.TooLarge ||
+                (wayland is OpenCodeWaylandClipboard.Result.Text && wayland.value.isEmpty())) {
+                ApplicationManager.getApplication().invokeLater {
+                    pendingPastes.remove(batchID)?.let { pasteAlarm.cancelRequest(it.timeout) }
+                    if (wayland === OpenCodeWaylandClipboard.Result.TooLarge && contextIsCurrent()) {
+                        showFileDropWarning(listOf("The clipboard text exceeds the ${OpenCodeClipboardText.MAX_CHARS} character limit."))
+                    }
+                }
+                return@execute
+            }
+            val data = when (wayland) {
+                is OpenCodeWaylandClipboard.Result.Text -> PendingDroppedData(emptyList(), wayland.value, emptyList())
+                else -> PendingDroppedData(files, textPlain, pendingImages)
+            }
+            val nativeFallback = wayland === OpenCodeWaylandClipboard.Result.Unavailable &&
+                data.files.isEmpty() && data.images.isEmpty() && data.text == null
+            val classifiedFiles = data.files.map { file ->
                 file to OpenCodeServerProtocol.localFileDropText(file, projectDirectory)
             }
             val fileTextDrops = classifiedFiles.mapNotNull { it.second }
-            val textDrops = if (clipboardPaste) fileTextDrops else fileTextDrops.ifEmpty { droppedTextPlainItems(files, textPlain) }
+            val textDrops = if (clipboardPaste) fileTextDrops else fileTextDrops.ifEmpty { droppedTextPlainItems(data.files, data.text) }
             val filesToForward = classifiedFiles.filter { it.second == null }.map { it.first }
             val selection = selectDroppedFiles(filesToForward)
-            val preparedImages = if (pendingImages.isNotEmpty() && shouldUseDroppedImageFlavor(files, projectDirectory)) {
-                prepareDroppedImages(pendingImages)
+            val preparedImages = if (data.images.isNotEmpty() && shouldUseDroppedImageFlavor(data.files, projectDirectory)) {
+                prepareDroppedImages(data.images)
             } else {
                 PreparedDroppedImages(emptyList(), emptyList())
             }
@@ -483,11 +417,12 @@ internal class OpenCodeFileDropHandler(
                 if (contextIsCurrent()) {
                     val script = if (clipboardPaste) OpenCodeBrowserSnippets.buildClipboardPasteScript(
                         files = payloads,
-                        text = textPlain,
+                        text = data.text,
                         fileReferences = textDrops,
                         batchId = batchID,
                         resultCallback = dropResultQuery.inject("batchId + '\\n' + result"),
                         enabled = true,
+                        nativeFallback = nativeFallback,
                     ) else OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(
                         payloads,
                         textPlain = textDrops,
@@ -502,7 +437,7 @@ internal class OpenCodeFileDropHandler(
                         }
                         // Keep the screenshot IME workaround, but finish its focus round trip before
                         // dispatch. Ordinary text and Linux/Wayland pastes must not reset focus.
-                        if (clipboardPaste && SystemInfo.isMac && (files.isNotEmpty() || pendingImages.isNotEmpty())) {
+                        if (clipboardPaste && SystemInfo.isMac && (data.files.isNotEmpty() || data.images.isNotEmpty())) {
                             restoreInputAfterExternalDrop(dispatch)
                         } else dispatch()
                     }
@@ -569,6 +504,12 @@ internal class OpenCodeFileDropHandler(
     }
 
     private fun clipboardTransferables(): List<Transferable> {
+        // Native Wayland AWT can have fresher contents than the IDE clipboard-history cache.
+        // Keep macOS on CopyPasteManager: incidental native flavor reads can disturb JCEF IME.
+        if (waylandClipboardReader != null) {
+            val systemClipboard = runCatching { Toolkit.getDefaultToolkit().systemClipboard.getContents(null) }.getOrNull()
+            if (systemClipboard != null) return listOf(systemClipboard)
+        }
         val ideClipboard = runCatching { CopyPasteManager.getInstance().contents }.getOrNull()
         if (ideClipboard != null) return listOf(ideClipboard)
         return listOfNotNull(runCatching { Toolkit.getDefaultToolkit().systemClipboard.getContents(null) }.getOrNull())
@@ -653,6 +594,8 @@ internal class OpenCodeFileDropHandler(
     )
 
     private data class PendingPaste(val isCurrent: () -> Boolean, val timeout: Runnable)
+
+    private data class PendingDroppedData(val files: List<File>, val text: String?, val images: List<PendingDroppedImage>)
 
     private data class PendingDroppedImage(
         val image: Image,

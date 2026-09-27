@@ -821,22 +821,6 @@ class OpenCodeBrowserSnippetsTest {
     }
 
     @Test
-    fun waylandPasteScriptIsMissingForBlankText() {
-        assertNull(OpenCodeBrowserSnippets.buildWaylandPasteScript(null))
-        assertNull(OpenCodeBrowserSnippets.buildWaylandPasteScript(""))
-        assertNull(OpenCodeBrowserSnippets.buildWaylandPasteScript("   "))
-    }
-
-    @Test
-    fun waylandPasteScriptInjectsTextIntoTheFocusedField() {
-        val script = OpenCodeBrowserSnippets.buildWaylandPasteScript("hello", null)!!
-        assertTrue(script.contains("document.activeElement"))
-        assertTrue(script.contains("ClipboardEvent('paste'"))
-        assertTrue(script.contains("execCommand('insertText'"))
-        assertTrue(script.contains("'hello'"))
-    }
-
-    @Test
     fun buildCodeNavigationScriptIsMissingWhenDisabled() {
         assertNull(OpenCodeBrowserSnippets.buildCodeNavigationScript(enabled = false, openCodeCallback = "callback(ref)"))
     }

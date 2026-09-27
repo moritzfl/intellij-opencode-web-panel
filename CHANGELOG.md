@@ -4,6 +4,17 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- On Linux/Wayland, keyboard and context-menu Paste can read current plain text
+  directly through `wl-paste` when installed, avoiding a stale XWayland clipboard.
+  Reads run off the UI thread with time and size limits, preserve the original
+  destination, and keep images/files on the attachment path. Adapted from
+  [@nvandamme](https://github.com/nvandamme)'s [PR #16](https://github.com/moritzfl/intellij-opencode-web-panel/pull/16).
+- The Wayland workaround is Linux-only, and disabling clipboard/file-drop
+  integration restores native paste. Whitespace-only pastes retain their content
+  and undo behavior.
+
 ## [2.6.2] - 2026-09-27
 
 ### Fixed

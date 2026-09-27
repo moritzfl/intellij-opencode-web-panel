@@ -101,32 +101,6 @@ class OpenCodeFileDropHandlerTest {
     }
 
     @Test
-    fun isWaylandSessionDetectsWaylandDisplay() {
-        assertFalse(OpenCodeFileDropHandler.isWaylandSession(null))
-        assertFalse(OpenCodeFileDropHandler.isWaylandSession(""))
-        assertFalse(OpenCodeFileDropHandler.isWaylandSession("   "))
-        if (!com.intellij.openapi.util.SystemInfo.isMac) {
-            assertTrue(OpenCodeFileDropHandler.isWaylandSession("wayland-0"))
-            assertTrue(OpenCodeFileDropHandler.isWaylandSession("wayland-1"))
-        }
-    }
-
-    @Test
-    fun waylandClipboardReadTriesNegotiatedTypeBeforeExplicit() {
-        // The negotiated form (no --type) must come first: wl-clipboard matches MIME types
-        // exactly, and the IDE's native Wayland AWT offers text as "text/plain;charset=utf-8",
-        // so requesting exactly "text/plain" exits 1 empty even though the clipboard holds text.
-        assertTrue(OpenCodeFileDropHandler.WLPASTE_READ_ORDER.isNotEmpty())
-        assertEquals(listOf("wl-paste", "--no-newline"), OpenCodeFileDropHandler.WLPASTE_READ_ORDER.first())
-        // An explicit text/plain form stays as a fallback for clipboards that only offer the bare type.
-        assertTrue(
-            OpenCodeFileDropHandler.WLPASTE_READ_ORDER.any {
-                it == listOf("wl-paste", "--no-newline", "--type", "text/plain")
-            },
-        )
-    }
-
-    @Test
     fun shouldUseDroppedImageFlavorWhenDropHasNoFiles() {
         assertTrue(OpenCodeFileDropHandler.shouldUseDroppedImageFlavor(emptyList(), null))
     }
