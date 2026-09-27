@@ -204,7 +204,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         object : ColumnInfo<ExtraMountRow, Boolean>("Read-only") {
             override fun valueOf(item: ExtraMountRow): Boolean = item.readOnly
             override fun isCellEditable(item: ExtraMountRow): Boolean = true
-            override fun getColumnClass(): Class<*> = java.lang.Boolean::class.java
+            override fun getColumnClass(): Class<*> = Boolean::class.javaObjectType
             override fun setValue(item: ExtraMountRow, value: Boolean?) {
                 item.readOnly = value == true
             }
@@ -497,8 +497,25 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
             historyNote = sandboxSessionRetentionSummary(spec.canonicalDirectory),
             hasVm = SbxSandboxRecordStore.getInstance().recordFor(spec.canonicalDirectory) != null,
         )
-        val exposure = SbxExposure.of(spec, spec.canonicalDirectory)
-        val exposureUnacknowledged = spec.useSandbox && !exposure.isEmpty &&
+        var exposure = SbxExposure(emptyList(), "")
+        if (spec.useSandbox) {
+            var failure: Exception? = null
+            val completed = com.intellij.openapi.progress.ProgressManager.getInstance().runProcessWithProgressSynchronously(
+                Runnable {
+                    try {
+                        exposure = SbxExposure.of(spec, spec.canonicalDirectory)
+                    } catch (cancelled: com.intellij.openapi.progress.ProcessCanceledException) {
+                        throw cancelled
+                    } catch (error: Exception) {
+                        failure = error
+                    }
+                },
+                "Checking sandbox access", true, project,
+            )
+            if (!completed) throw ConfigurationException("Cancelled.")
+            failure?.let { throw ConfigurationException("Could not verify sandbox kit contents: ${it.message}") }
+        }
+        val exposureUnacknowledged = !exposure.isEmpty &&
             !SbxSandboxRecordStore.getInstance().isExposureAcknowledged(spec.canonicalDirectory, exposure.fingerprint)
         if ((preview.changes.isNotEmpty() || exposureUnacknowledged) &&
             !ApplicationManager.getApplication().isUnitTestMode
@@ -527,7 +544,9 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
             throw ConfigurationException("Could not save ${SbxLaunchSpec.PROJECT_SPEC_NAME}. Check the project directory permissions and IDE log.")
         }
         // The user reviewed these values in the form (and the dialog above when they grant host access).
-        SbxSandboxRecordStore.getInstance().acknowledgeExposure(spec.canonicalDirectory, exposure.fingerprint)
+        if (spec.useSandbox) {
+            SbxSandboxRecordStore.getInstance().acknowledgeExposure(spec.canonicalDirectory, exposure.fingerprint)
+        }
         settings.projectDirectoryMode = nextMode.name
         settings.openCodeProjectDirectory = nextDirectory
         settings.portMode = selectedPortMode().name

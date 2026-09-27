@@ -2039,8 +2039,9 @@ internal class OpenCodeWebToolWindowContent(
                 "Allow and Start",
                 "Allow the host access listed above for this project's sandbox, then start it",
             ) {
-                if (confirmOpenCodeSandboxExposure(project, sbx.pendingExposure())) {
-                    sbx.acknowledgeExposure()
+                val exposure = sbx.pendingExposure()
+                if (confirmOpenCodeSandboxExposure(project, exposure)) {
+                    sbx.acknowledgeExposure(exposure)
                     restartOpenCodeServer()
                 }
             }

@@ -607,6 +607,13 @@ class SbxOpenCodeServerBackendTest {
         assertEquals(SbxFailureKind.EXPOSURE_UNCONFIRMED, backend.lastFailure())
         assertTrue(backend.startFailureMessage()!!.contains("Host path mounted read-write: ${SbxCli.posixPath(outside)}"))
 
+        // A spec edited while the consent dialog is open must not inherit its acknowledgement.
+        assertNotNull(SbxLaunchSpec.persist(spec.copy(shareHostOpencodeConfig = true)))
+        backend.acknowledgeExposure()
+        backend.ensureStarted(project, directory, { false }, {}, {})
+        drain()
+        assertFalse(calls.contains("create"))
+        assertEquals(SbxFailureKind.EXPOSURE_UNCONFIRMED, backend.lastFailure())
         backend.acknowledgeExposure()
         backend.ensureStarted(project, directory, { false }, {}, {})
         drain()
@@ -614,7 +621,7 @@ class SbxOpenCodeServerBackendTest {
 
         calls.clear()
         store.remove(directory)
-        assertNotNull(SbxLaunchSpec.persist(spec.copy(shareHostOpencodeConfig = true)))
+        assertNotNull(SbxLaunchSpec.persist(spec))
         backend.ensureStarted(project, directory, { false }, {}, {})
         drain()
         assertFalse("A changed grant asks again", calls.contains("create"))
@@ -935,7 +942,7 @@ class SbxOpenCodeServerBackendTest {
                 else -> SbxCommandResult(0, "")
             }
         }
-        store.acknowledgeExposure(directory, SbxExposure.of(SbxLaunchSpec.load(directory)!!, directory).fingerprint)
+        acknowledge(SbxLaunchSpec.load(directory)!!)
         backend.resetSandbox(project, { false }, {}, {}, dropGuestOpenCode = false)
         drain()
         assertTrue(calls.indexOf("rm") < calls.indexOf("create"))
@@ -1146,6 +1153,10 @@ class SbxOpenCodeServerBackendTest {
     }
 
     private fun acknowledge(spec: SbxLaunchSpec) {
+        spec.kits.filter(SbxCli::isLocalKitRef).forEach { ref ->
+            val kit = java.nio.file.Files.createDirectories(java.nio.file.Path.of(directory).resolve(ref))
+            java.nio.file.Files.writeString(kit.resolve("spec.yaml"), "kind: mixin\n")
+        }
         store.acknowledgeExposure(directory, SbxExposure.of(SbxLaunchSpec.load(directory) ?: spec, directory).fingerprint)
     }
 

@@ -56,4 +56,53 @@ class SbxExposureTest {
     }
 
     private fun base(project: String) = SbxLaunchSpec.fromSettings(OpenCodeSettingsState(), project)
+
+    @Test
+    fun deepAndLateFilesAreIncluded() {
+        val project = temp.newFolder("deep").toPath()
+        val kit = Files.createDirectories(project.resolve("kit/a/b/c/d/e"))
+        repeat(260) { Files.writeString(kit.resolve("file$it"), "initial") }
+        val spec = base(project.toString()).copy(kits = listOf("./kit"))
+        val before = SbxExposure.of(spec, project.toString()).fingerprint
+        Files.writeString(kit.resolve("zz-last"), "new grant")
+        assertNotEquals(before, SbxExposure.of(spec, project.toString()).fingerprint)
+    }
+
+    @Test
+    fun missingInputsAndExceededBudgetsFailInsteadOfProducingConsent() {
+        val project = temp.newFolder("limits").toPath()
+        org.junit.Assert.assertThrows(java.io.IOException::class.java) {
+            SbxExposure.localKitDigest("./missing", project.toString(), "")
+        }
+        val kit = Files.createDirectories(project.resolve("kit"))
+        Files.writeString(kit.resolve("spec.yaml"), "12345")
+        org.junit.Assert.assertThrows(java.io.IOException::class.java) {
+            SbxExposure.localKitDigest("./kit", project.toString(), "", maxEntries = 1)
+        }
+        org.junit.Assert.assertThrows(java.io.IOException::class.java) {
+            SbxExposure.localKitDigest("./kit", project.toString(), "", maxBytes = 4)
+        }
+    }
+
+    @Test
+    fun linkedDirectoryContentsAreIncludedAndBrokenLinksFail() {
+        val project = temp.newFolder("links").toPath()
+        val kit = Files.createDirectories(project.resolve("kit"))
+        val target = temp.newFolder("target").toPath()
+        val file = Files.writeString(target.resolve("setup.sh"), "before")
+        try {
+            Files.createSymbolicLink(kit.resolve("linked"), target)
+        } catch (error: Exception) {
+            org.junit.Assume.assumeNoException("Symlinks unavailable", error)
+        }
+        val spec = base(project.toString()).copy(kits = listOf("./kit"))
+        val before = SbxExposure.of(spec, project.toString()).fingerprint
+        Files.writeString(file, "after")
+        assertNotEquals(before, SbxExposure.of(spec, project.toString()).fingerprint)
+        Files.delete(file)
+        Files.delete(target)
+        org.junit.Assert.assertThrows(java.io.IOException::class.java) {
+            SbxExposure.of(spec, project.toString())
+        }
+    }
 }

@@ -81,7 +81,7 @@ class OpenCodeProjectSettingsConfigurableTest {
 
     @Test
     fun runtimeSwitchStopsPreviousBackendAndPublishesRestartInBothDirections() {
-        SwingUtilities.invokeAndWait {
+        ApplicationManager.getApplication().invokeAndWait {
             val native = registry.backendFor(project) as SharedOpenCodeServerManager
             native.setServerRunning(true) // No actual process or server is launched by this test.
             field<AbstractButton>("sbxRuntimeRadioButton").isSelected = true
@@ -120,7 +120,7 @@ class OpenCodeProjectSettingsConfigurableTest {
 
     @Test
     fun sandboxPortChangeDoesNotStopOrRestart() {
-        SwingUtilities.invokeAndWait {
+        ApplicationManager.getApplication().invokeAndWait {
             field<AbstractButton>("sbxRuntimeRadioButton").isSelected = true
             configurable.apply()
             PlatformTestUtil.waitWithEventsDispatching("Missing Host to Sandbox restart", { restarts == 1 }, 5)
@@ -136,9 +136,26 @@ class OpenCodeProjectSettingsConfigurableTest {
     }
 
     @Test
+    fun unreadableKitBlocksApplyBeforeSavingOrAcknowledging() {
+        val spec = SbxLaunchSpec.fromSettings(appSettings, project.basePath!!).copy(
+            useSandbox = true, kits = listOf("./missing-kit"),
+        )
+        assertNotNull(SbxLaunchSpec.persist(spec))
+        ApplicationManager.getApplication().invokeAndWait {
+            configurable.reset()
+            field<JTextField>("sbxMemoryField").text = "8g"
+            val error = assertThrows(ConfigurationException::class.java) { configurable.apply() }
+            assertTrue(error.messageHtml.toString().contains("Could not verify sandbox kit contents"))
+            assertEquals(spec.memory, SbxLaunchSpec.load(project.basePath)!!.memory)
+            assertTrue(SbxSandboxRecordStore.getInstance().state.acknowledgedExposure.isEmpty())
+            assertEquals(0, restarts)
+        }
+    }
+
+    @Test
     fun sandboxWorkingDirectoryHydratesAndRestartsWithoutChangingTheMountRoot() {
         val workdir = Files.createDirectory(temp.root.toPath().resolve("app")).toRealPath()
-        SwingUtilities.invokeAndWait {
+        ApplicationManager.getApplication().invokeAndWait {
             field<AbstractButton>("sbxRuntimeRadioButton").isSelected = true
             configurable.apply()
             PlatformTestUtil.waitWithEventsDispatching("Missing initial sandbox restart", { restarts == 1 }, 5)

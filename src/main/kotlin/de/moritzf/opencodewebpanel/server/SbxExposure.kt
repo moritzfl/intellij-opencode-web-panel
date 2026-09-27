@@ -1,8 +1,12 @@
 package de.moritzf.opencodewebpanel.server
 
+import com.intellij.openapi.progress.ProgressManager
+import java.io.IOException
 import java.nio.charset.StandardCharsets
+import java.nio.file.FileVisitOption
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.attribute.BasicFileAttributes
 import java.security.MessageDigest
 
 /**
@@ -60,30 +64,55 @@ internal data class SbxExposure(
             return candidateKey.startsWith("$rootKey/")
         }
 
-        private fun localKitDigest(ref: String, workspace: String, hostHome: String): String {
+        internal fun localKitDigest(
+            ref: String,
+            workspace: String,
+            hostHome: String,
+            maxEntries: Int = 10_000,
+            maxBytes: Long = 64L * 1024 * 1024,
+        ): String {
             if (!SbxCli.isLocalKitRef(ref)) return ""
-            return runCatching {
-                val base = Path.of(workspace).resolve(SbxCli.expandUserHome(ref, hostHome)).normalize()
-                val files = if (Files.isDirectory(base)) {
-                    Files.walk(base, 4).use { stream ->
-                        stream.filter { Files.isRegularFile(it) }.sorted().toList()
+            val base = Path.of(workspace).resolve(SbxCli.expandUserHome(ref, hostHome)).normalize()
+            val files = ArrayList<Path>()
+            // Follow links because sbx can consume their targets. Cycles, missing targets and
+            // unreadable inputs must fail, never produce a reusable partial consent digest.
+            Files.walk(base, FileVisitOption.FOLLOW_LINKS).use { stream ->
+                val iterator = stream.iterator()
+                var entries = 0
+                while (iterator.hasNext()) {
+                    ProgressManager.checkCanceled()
+                    if (++entries > maxEntries) throw IOException("Kit $ref exceeds $maxEntries entries; cannot verify consent.")
+                    val path = iterator.next()
+                    val attributes = Files.readAttributes(path, BasicFileAttributes::class.java)
+                    when {
+                        attributes.isRegularFile -> files.add(path)
+                        attributes.isDirectory -> Unit
+                        else -> throw IOException("Unsupported kit input: $path")
                     }
-                } else if (Files.isRegularFile(base)) {
-                    listOf(base)
-                } else {
-                    emptyList()
                 }
-                val digest = MessageDigest.getInstance("SHA-256")
-                files.take(MAX_KIT_FILES).forEach { file ->
-                    digest.update(base.relativize(file).toString().toByteArray(StandardCharsets.UTF_8))
-                    digest.update(0)
-                    digest.update(Files.readAllBytes(file))
-                    digest.update(0)
+            }
+            val digest = MessageDigest.getInstance("SHA-256")
+            val buffer = ByteArray(8192)
+            var bytes = 0L
+            files.sorted().forEach { file ->
+                digest.update(base.relativize(file).toString().toByteArray(StandardCharsets.UTF_8))
+                digest.update(0)
+                // Hash each file separately so embedded delimiters cannot alias file boundaries.
+                val content = MessageDigest.getInstance("SHA-256")
+                Files.newInputStream(file).use { input ->
+                    while (true) {
+                        ProgressManager.checkCanceled()
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        bytes += count
+                        if (bytes > maxBytes) throw IOException("Kit $ref exceeds $maxBytes bytes; cannot verify consent.")
+                        content.update(buffer, 0, count)
+                    }
                 }
-                digest.digest().joinToString("") { "%02x".format(it) }
-            }.getOrDefault("unreadable")
+                digest.update(content.digest())
+                digest.update(0)
+            }
+            return digest.digest().joinToString("") { "%02x".format(it) }
         }
-
-        private const val MAX_KIT_FILES = 256
     }
 }

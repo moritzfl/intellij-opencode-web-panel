@@ -249,11 +249,11 @@ internal class SbxOpenCodeServerBackend(
     fun pendingExposure(): SbxExposure? = synchronized(lock) { pendingExposure }
 
     /**
-     * Records the user's consent to the grants in the current project spec. Called from the
-     * failure card and from settings Apply (the user edited those values themselves).
+     * Records exactly the exposure shown by the failure card. Start recomputes the fingerprint
+     * on its worker, so edits while the dialog is open require another acknowledgement.
      */
-    fun acknowledgeExposure(spec: SbxLaunchSpec? = SbxLaunchSpec.load(canonicalDirectory)) {
-        val exposure = spec?.let { SbxExposure.of(it, canonicalDirectory) } ?: return
+    fun acknowledgeExposure(exposure: SbxExposure? = pendingExposure()) {
+        if (exposure == null) return
         recordStore().acknowledgeExposure(canonicalDirectory, exposure.fingerprint)
         synchronized(lock) {
             pendingExposure = null
@@ -817,7 +817,7 @@ internal class SbxOpenCodeServerBackend(
             val desiredHostPort = spec.hostPort
             var listedWorkspaces = owned?.workspaces.orEmpty()
             val desiredKits = SbxCli.parseLineList(kitsText)
-            if (owned != null && record != null) {
+            if (owned != null) {
                 // Plugin-owned stores count as known even when their option is off now.
                 val pluginMounts = protectMounts + listOf(
                     SbxExtraMount(SbxCli.sandboxPersistDataHome(name), SbxCli.persistSandboxGuestPath()),
