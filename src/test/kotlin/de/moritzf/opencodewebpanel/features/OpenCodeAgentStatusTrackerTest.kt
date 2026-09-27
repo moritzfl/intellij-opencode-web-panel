@@ -132,6 +132,32 @@ class OpenCodeAgentStatusTrackerTest {
     }
 
     @Test
+    fun foreignBackendCannotSetOrClearStatusInTheSameDirectory() {
+        val transitions = mutableListOf<String>()
+        val tracker = OpenCodeAgentStatusTracker(
+            projectDirectory = { "/project" },
+            enabled = { true },
+            onStateChanged = { state, _ -> transitions.add(state) },
+            serverUrl = { null },
+            serverPassword = { null },
+            serverGeneration = { 1L },
+            backendId = { "owned" },
+        )
+        val busy = OpenCodeGlobalEvent(
+            "/project", "session.status", "evt_busy",
+            properties("""{"sessionID":"ses_a","status":{"type":"busy"}}"""), backendId = "owned",
+        )
+        tracker.eventReceived(busy.copy(backendId = "foreign"))
+        assertTrue(transitions.isEmpty())
+        tracker.eventReceived(busy)
+        tracker.eventReceived(busy.copy(
+            properties = properties("""{"sessionID":"ses_a","status":{"type":"idle"}}"""),
+            backendId = "foreign",
+        ))
+        assertEquals(listOf(OpenCodeAgentStatusState.BUSY), transitions)
+    }
+
+    @Test
     fun partialPendingSnapshotDoesNotClearEventDerivedAttention() {
         val tasks = mutableListOf<() -> Unit>()
         val transitions = mutableListOf<String>()

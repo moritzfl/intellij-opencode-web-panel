@@ -130,6 +130,7 @@ internal class OpenCodeAgentStatusTracker(
     }
 
     override fun eventReceived(event: OpenCodeGlobalEvent) {
+        if (event.backendId != backendId()) return
         if (!enabled()) return
         val directory = projectDirectory() ?: return
         if (!OpenCodeServerProtocol.isSameFilesystemPath(event.directory, directory)) return

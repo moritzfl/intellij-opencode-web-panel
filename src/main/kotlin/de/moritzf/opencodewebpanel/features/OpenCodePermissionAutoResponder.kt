@@ -168,13 +168,14 @@ internal class OpenCodePermissionAutoResponder(
 
     override fun eventReceived(event: OpenCodeGlobalEvent) {
         if (disposed.get()) return
+        if (event.backendId != backendId()) return
+        val directory = projectDirectory() ?: return
+        if (!OpenCodeServerProtocol.isSameFilesystemPath(event.directory, directory)) return
         if (event.type == "session.created") {
             rememberCreated(event)
             return
         }
         if (event.type != "permission.asked") return
-        val directory = projectDirectory() ?: return
-        if (!OpenCodeServerProtocol.isSameFilesystemPath(event.directory, directory)) return
         val request = OpenCodeServerProtocol.PendingRequestSummary(
             id = event.properties.stringMember("id")?.takeIf(OpenCodeServerProtocol::isPermissionId) ?: return,
             sessionID = event.properties.stringMember("sessionID")?.takeIf(OpenCodeServerProtocol::isSessionId) ?: return,

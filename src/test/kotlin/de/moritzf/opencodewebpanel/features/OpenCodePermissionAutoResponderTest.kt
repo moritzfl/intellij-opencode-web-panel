@@ -97,6 +97,28 @@ class OpenCodePermissionAutoResponderTest {
     }
 
     @Test
+    fun foreignEventsCannotReplyOrSeedPermissionLineage() {
+        val fixture = fixture()
+        fixture.responder.setSessionEnabled("ses_a", true)
+        fixture.drain()
+        fixture.responder.eventReceived(permissionEvent("/tmp/project", "ses_a", "per_foreign").copy(backendId = "foreign"))
+        val created = OpenCodeGlobalEvent(
+            "/tmp/project", "session.created", "evt_child",
+            JsonParser.parseString("""{"info":{"id":"ses_child","parentID":"ses_a"}}""").asJsonObject,
+        )
+        fixture.responder.eventReceived(created.copy(backendId = "foreign"))
+        fixture.responder.eventReceived(created.copy(directory = "/tmp/other"))
+        fixture.responder.eventReceived(permissionEvent("/tmp/project", "ses_child", "per_child"))
+        fixture.drain()
+        assertTrue(fixture.replies.isEmpty())
+
+        fixture.responder.eventReceived(created)
+        fixture.responder.eventReceived(permissionEvent("/tmp/project", "ses_child", "per_owned"))
+        fixture.drain()
+        assertEquals(listOf("per_owned"), fixture.replies.map(Reply::requestID))
+    }
+
+    @Test
     fun reconnectReseedsAllEnabledSessions() {
         val fixture = fixture(
             pending = listOf(
