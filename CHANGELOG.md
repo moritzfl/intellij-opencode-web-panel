@@ -4,10 +4,19 @@
 
 ## [Unreleased]
 
+## [2.6.2] - 2026-09-27
+
 ### Fixed
 
 - Alt/Ctrl/Cmd-click on an untracked file in Git changes opens that file in the IDE.
 - Jump to Source (F4) from either side of a conversation diff selects the source text editor and preserves caret translation to the current file.
+- Agent status and automatic permission responses ignore events from other server backends, including session-parent relationships.
+- Sandbox consent checks include deep local-kit files and symlink targets. Missing, unreadable, or oversized inputs fail verification instead of producing a partial fingerprint.
+- Settings Apply verifies kit contents with cancellable background progress. Allow and Start acknowledges the displayed grants, so changes made while the dialog is open require another confirmation.
+
+### Changed
+
+- Weekly and manually triggered JCEF integration checks cover the latest stable OpenCode 1.x and 2.x releases.
 
 ## [2.6.1] - 2026-09-27
 
@@ -1060,7 +1069,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.6.1...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.6.2...HEAD
+[2.6.2]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.6.1...2.6.2
 [2.6.1]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.6.0...2.6.1
 [2.6.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.5.0...2.6.0
 [2.5.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.4.1...2.5.0
