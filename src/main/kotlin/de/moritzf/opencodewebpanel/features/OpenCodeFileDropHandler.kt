@@ -5,6 +5,7 @@ import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.ide.CopyPasteManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
@@ -28,6 +29,7 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.file.Files
 import java.util.Base64
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 import javax.imageio.ImageIO
 import javax.swing.JComponent
@@ -61,6 +63,62 @@ internal class OpenCodeFileDropHandler(
         // Bound for clipboard images before decoding into an ARGB buffer (4 bytes per pixel):
         // covers even large retina screenshots while keeping the transient buffer ~100 MB.
         internal const val MAX_IMAGE_PIXELS = 25_000_000L
+
+        /**
+         * True when running natively on Wayland, where JCEF's Chromium (under XWayland) reads the
+         * stale X11 clipboard and the native `frame.paste()` inserts empty or outdated content.
+         */
+        internal fun isWaylandSession(waylandDisplay: String?): Boolean {
+            return !SystemInfo.isMac && waylandDisplay != null && waylandDisplay.isNotBlank()
+        }
+
+        /**
+         * wl-paste invocation forms, in order of preference. The negotiated form (no --type) is
+         * primary: wl-clipboard matches MIME types exactly, and the IDE's native Wayland AWT
+         * (sun.awt.wl.WLClipboard) offers text as "text/plain;charset=utf-8", so requesting
+         * exactly "text/plain" exits 1 empty even though the clipboard holds the text. The
+         * explicit text/plain form stays as a fallback for clipboards that only offer the bare type.
+         */
+        internal val WLPASTE_READ_ORDER: List<List<String>> = listOf(
+            listOf("wl-paste", "--no-newline"),
+            listOf("wl-paste", "--no-newline", "--type", "text/plain"),
+        )
+
+        /**
+         * Reads the Wayland clipboard as text, trying each [WLPASTE_READ_ORDER] form in turn.
+         * As a last resort it falls back to the IDE's own AWT clipboard: on native Wayland
+         * (sun.awt.wl.WLToolkit) that is the Wayland clipboard itself, so IDE-internal copies
+         * stay recoverable even when the wl-clipboard binary is missing or broken.
+         */
+        internal fun readWaylandClipboardText(): String? {
+            for (args in WLPASTE_READ_ORDER) {
+                try {
+                    val process = ProcessBuilder(args).redirectErrorStream(false).start()
+                    if (!process.waitFor(2, TimeUnit.SECONDS)) {
+                        thisLogger().warn("WaylandPaste: wl-paste ${args.joinToString(" ")} timed out")
+                        process.destroyForcibly()
+                        continue
+                    }
+                    val output = process.inputStream.bufferedReader().readText()
+                    if (process.exitValue() == 0 && output.isNotBlank()) {
+                        return output
+                    }
+                } catch (e: Exception) {
+                    thisLogger().warn("WaylandPaste: wl-paste ${args.joinToString(" ")} failed: ${e.message}")
+                }
+            }
+            return try {
+                val contents = Toolkit.getDefaultToolkit().systemClipboard.getContents(null)
+                if (contents != null && contents.isDataFlavorSupported(DataFlavor.stringFlavor)) {
+                    (contents.getTransferData(DataFlavor.stringFlavor) as? String)?.takeIf { it.isNotBlank() }
+                } else {
+                    null
+                }
+            } catch (e: Exception) {
+                thisLogger().warn("WaylandPaste: AWT clipboard fallback failed: ${e.message}")
+                null
+            }
+        }
 
         internal fun shouldReadNonFileDropFlavors(droppedFiles: List<File>): Boolean = droppedFiles.isEmpty()
 
@@ -306,8 +364,38 @@ internal class OpenCodeFileDropHandler(
     fun canBridgePaste(): Boolean = !isDisposed() && OpenCodeSettingsState.getInstance().enableChatFileDrop &&
         dropResultQuery.isAvailable && OpenCodeServerProtocol.isOpenCodeServerPage(serverManager.getServerUrl(), browser.cefBrowser.url)
 
+    /**
+     * Native `frame.paste()` fallback. On Wayland JCEF's Chromium (under XWayland) reads the stale
+     * X11 clipboard, so a native paste inserts empty or outdated content. Instead, read the
+     * Wayland clipboard via `wl-paste` (falling back to the IDE AWT clipboard) off the EDT and
+     * inject it into the page as a synthetic paste event. When nothing is available, or off
+     * Wayland, fall back to the native paste.
+     */
     private fun nativePaste() {
-        if (!isDisposed()) (browser.cefBrowser.focusedFrame ?: browser.cefBrowser.mainFrame)?.paste()
+        if (isDisposed()) return
+        val frame = browser.cefBrowser.focusedFrame ?: browser.cefBrowser.mainFrame ?: return
+        if (!isWaylandSession(System.getenv("WAYLAND_DISPLAY"))) {
+            frame.paste()
+            return
+        }
+        // Read the clipboard off the EDT so a stalled wl-paste cannot freeze the UI thread.
+        AppExecutorUtil.getAppExecutorService().execute {
+            val text = readWaylandClipboardText()
+            ApplicationManager.getApplication().invokeLater {
+                if (isDisposed()) return@invokeLater
+                val script = OpenCodeBrowserSnippets.buildWaylandPasteScript(text, null)
+                val serverUrl = serverManager.getServerUrl()
+                if (script == null || serverUrl == null) {
+                    frame.paste()
+                    return@invokeLater
+                }
+                browser.cefBrowser.executeJavaScript(
+                    script,
+                    OpenCodeServerProtocol.buildServerRootUrl(serverUrl),
+                    0,
+                )
+            }
+        }
     }
 
     private fun pasteClipboardData(): Boolean {
