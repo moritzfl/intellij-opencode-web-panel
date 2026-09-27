@@ -21,10 +21,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - version: 1.18.31
-            package: opencode-ai@1.18.31
-          - version: 2.0.18
-            package: '@opencode/cli@2.0.18'
+          - version: 1.x
+            package: opencode-ai@1
+          - version: 2.x
+            package: '@opencode/cli@2'
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-java@v5

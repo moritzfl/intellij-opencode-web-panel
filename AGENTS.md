@@ -271,7 +271,7 @@ If a shape changed, fix the matching parser and its unit test, then update this 
 ## Verification
 
 - Primary: `./gradlew check` (use `rtk ./gradlew check` in this environment). Run after Kotlin, Gradle, plugin-descriptor, settings, protocol, or lifecycle changes.
-- `.github/workflows/jcef.yml` runs weekly and on manual dispatch against 1.18.31 / 2.0.18 with Xvfb and the platform JCEF runtime. Four live tests cover first-document callbacks, replacement, editor transfers, and clipboard delivery; skipped tests fail this lane. The headful Gradle classpath puts the platform's patched `module-intellij.libraries.jsvg.jar` before the charts module's incompatible embedded copy (baseline 2025.3.5 otherwise throws `IllegalAccessError` rendering editor-tab icons). Installed-IDE and Windows/Wayland validation remain separate.
+- `.github/workflows/jcef.yml` runs weekly and on manual dispatch against the latest stable 1.x / 2.x (`opencode-ai@1` / `@opencode/cli@2`, installed versions logged) with Xvfb and the platform JCEF runtime. Four live tests cover first-document callbacks, replacement, editor transfers, and clipboard delivery; skipped tests fail this lane. The headful Gradle classpath puts the platform's patched `module-intellij.libraries.jsvg.jar` before the charts module's incompatible embedded copy (baseline 2025.3.5 otherwise throws `IllegalAccessError` rendering editor-tab icons). Installed-IDE and Windows/Wayland validation remain separate.
 - README-only changes need no Gradle check unless they touch the plugin-description block between the `<!-- Plugin description -->` markers.
 
 ## Git

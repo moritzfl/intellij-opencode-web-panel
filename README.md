@@ -301,7 +301,8 @@ Useful development commands:
 
 The **JCEF integration** GitHub Actions workflow runs weekly and supports manual runs.
 It checks real Chromium callbacks, browser replacement, editor transfers, and IDE clipboard
-delivery against OpenCode 1.18.31 and 2.0.18. Skipped checks fail the workflow. Ordinary
+delivery against the latest stable OpenCode 1.x and 2.x releases, logging the installed
+versions on each run. Skipped checks fail the workflow. Ordinary
 `check` stays headless; run `./gradlew test -Pjcef` locally with a display and OpenCode installed.
 Use `-PlocalIdePath="/path/to/IntelliJ IDEA"` to test an installed IDE/JCEF version.
 
