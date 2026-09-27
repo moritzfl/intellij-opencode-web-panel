@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Alt/Ctrl/Cmd-click on an untracked file in Git changes opens that file in the IDE.
+
 ## [2.6.1] - 2026-09-27
 
 ### Changed

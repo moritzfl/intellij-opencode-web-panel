@@ -9,6 +9,7 @@ import com.intellij.diff.requests.SimpleDiffRequest
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.fileTypes.FileTypeManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.SystemInfo
@@ -63,12 +64,18 @@ internal class OpenCodeDiffNavigation(
                     return@executeOnPooledThread
                 }
             val requests = diffs.mapNotNull(::buildDiffRequest)
+            // Git status lists untracked files, but `git diff` omits them. Open the workspace
+            // file instead of reporting that a visible Git change has no diff. A returned patch
+            // that cannot be reconstructed is still a diff failure, not an untracked file.
+            val untrackedFile = workspaceFileFallback(vcsMode, filePath, diffs)
+                ?.let(::resolveHighlightFile)
+                ?.takeIf { it.isValid && !it.isDirectory }
             ApplicationManager.getApplication().invokeLater {
                 if (project.isDisposed) return@invokeLater
-                if (requests.isEmpty()) {
-                    notifyNoDiff()
-                } else {
-                    showDiffRequests(requests)
+                when {
+                    requests.isNotEmpty() -> showDiffRequests(requests)
+                    untrackedFile != null -> OpenFileDescriptor(project, untrackedFile).navigate(true)
+                    else -> notifyNoDiff()
                 }
             }
         }
@@ -136,6 +143,13 @@ internal class OpenCodeDiffNavigation(
     }
 
     companion object {
+        /** Working-tree clicks whose file Git status lists but `git diff` omits. */
+        internal fun workspaceFileFallback(
+            vcsMode: String?,
+            filePath: String?,
+            diffs: List<OpenCodeServerProtocol.SnapshotFileDiff>,
+        ): String? = filePath?.takeIf { vcsMode == "working" && diffs.isEmpty() }
+
         internal fun resolvePartDiffs(
             diffs: List<OpenCodeServerProtocol.SnapshotFileDiff>,
             filePath: String?,

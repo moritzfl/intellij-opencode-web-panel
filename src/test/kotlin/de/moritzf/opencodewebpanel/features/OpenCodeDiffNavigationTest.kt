@@ -3,6 +3,7 @@ package de.moritzf.opencodewebpanel.features
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -57,6 +58,25 @@ class OpenCodeDiffNavigationTest {
                 caseSensitive = true,
             ),
         )
+    }
+
+    @Test
+    fun missingWorkingTreeDiffOpensTheWorkspaceFileButOtherModesStayDiffs() {
+        assertEquals(
+            "src/New.kt",
+            OpenCodeDiffNavigation.workspaceFileFallback("working", "src/New.kt", emptyList()),
+        )
+        assertNull(OpenCodeDiffNavigation.workspaceFileFallback("working", "src/Main.kt", listOf(diff("src/Main.kt"))))
+        assertNull(
+            OpenCodeDiffNavigation.workspaceFileFallback(
+                "working",
+                "src/Broken.kt",
+                listOf(diff("src/Broken.kt").copy(patch = "not a unified diff")),
+            ),
+        )
+        assertNull(OpenCodeDiffNavigation.workspaceFileFallback("branch", "src/New.kt", emptyList()))
+        assertNull(OpenCodeDiffNavigation.workspaceFileFallback(null, "src/New.kt", emptyList()))
+        assertNull(OpenCodeDiffNavigation.workspaceFileFallback("working", null, emptyList()))
     }
 
     @Test
