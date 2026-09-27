@@ -287,6 +287,17 @@ jobs:
           RELEASE_NOTE="./build/tmp/release_note.txt"
           ./gradlew getChangelog --project-version="$VERSION" --no-header --quiet --console=plain --output-file=$RELEASE_NOTE
 
+          cat >> "$RELEASE_NOTE" <<EOF
+
+          <!-- marketplace-downloads -->
+          ## Downloads
+
+          - [Download ${VERSION} ZIP](https://plugins.jetbrains.com/plugin/download?pluginId=de.moritzf.opencodewebpanel&version=${VERSION})
+          - [JetBrains Marketplace versions](https://plugins.jetbrains.com/plugin/32384/versions)
+
+          Downloads become available after JetBrains Marketplace approval.
+          EOF
+
           gh release create $VERSION \
             --draft \
             --title $VERSION \
