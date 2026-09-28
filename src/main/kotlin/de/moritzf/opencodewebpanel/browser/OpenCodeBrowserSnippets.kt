@@ -1631,6 +1631,11 @@ internal object OpenCodeBrowserSnippets {
                   return;
                 }
                 if (row.matches('[data-slot="titlebar-tab-item"]') && row.closest('[data-slot="mobile-drawer-content"]')) {
+                  // The drawer's Kobalte popover is suppressed today; if a future OpenCode
+                  // enables it again, the trigger reports data-open/data-expanded and our
+                  // synthetic card must yield or both would stack at the same delay.
+                  const nativeTrigger = row.closest(TAB_TRIGGER);
+                  if (nativeTrigger && (nativeTrigger.hasAttribute('data-open') || nativeTrigger.hasAttribute('data-expanded'))) return;
                   const preview = mobileDrawerTabPreview(row);
                   showPopover(row, preview.title, preview.path, preview.context);
                   return;

@@ -493,6 +493,9 @@ class OpenCodeBrowserSnippetsTest {
         assertTrue(script.contains("row.querySelector('[data-slot=\"tab-link\"][href]')"))
         assertTrue(script.contains("href.match(/\\/session\\/(ses_[^/?#]+)/)"))
         assertTrue(script.contains("row.querySelector('[data-slot=\"tab-title\"]')"))
+        // If a future OpenCode re-enables the native popover inside the drawer (trigger reports
+        // data-open/data-expanded), the synthetic card must yield instead of stacking.
+        assertTrue(script.contains("nativeTrigger.hasAttribute('data-open') || nativeTrigger.hasAttribute('data-expanded')"))
         // Search rows keep their trimmed title inside a wrapper (no row-level span) — fall back
         // to the cached session title, with timestamped defaults stripped like the SPA does.
         assertTrue(script.contains("sessionTitleFromRow(row) || (cached ? displaySessionTitle(cached) : '')"))
