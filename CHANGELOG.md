@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Recover IDE-wide typing when dragging a macOS screenshot thumbnail into chat
+  in full screen leaves Swing without window focus.
+
 ## [2.7.0] - 2026-09-28
 
 ### Added

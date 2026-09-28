@@ -181,8 +181,8 @@ internal class OpenCodeFileDropHandler(
             }
 
             override fun importData(support: TransferSupport): Boolean {
+                if (!canImport(support)) return false
                 try {
-                    if (!canImport(support)) return false
                     val droppedFiles = runCatching {
                         @Suppress("UNCHECKED_CAST")
                         support.transferable.getTransferData(DataFlavor.javaFileListFlavor) as? List<File>
@@ -251,6 +251,11 @@ internal class OpenCodeFileDropHandler(
     private fun scheduleRestoreInputAfterExternalDrop() {
         ApplicationManager.getApplication().invokeLater {
             restoreInputAfterExternalDrop()
+            if (!isDisposed() && SystemInfo.isMac && OpenCodeSettingsState.getInstance().enableChatFileDrop) {
+                OpenCodeMacDropWindowFocus.afterDrop(browser.component, pasteAlarm) {
+                    !isDisposed() && OpenCodeSettingsState.getInstance().enableChatFileDrop
+                }
+            }
         }
     }
 
