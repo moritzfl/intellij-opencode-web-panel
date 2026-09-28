@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+## [2.7.0] - 2026-09-28
+
+### Added
+
+- Hovering a Home session or search result previews its owning project, session
+  title, and full directory path. OpenCode 2's compact titlebar and tabs drawer
+  also show the current session path; ambiguous sessions show no preview.
+
 ## [2.6.3] - 2026-09-27
 
 ### Fixed
@@ -1082,7 +1090,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.6.3...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.7.0...HEAD
+[2.7.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.6.3...2.7.0
 [2.6.3]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.6.2...2.6.3
 [2.6.2]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.6.1...2.6.2
 [2.6.1]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.6.0...2.6.1
