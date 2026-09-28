@@ -147,6 +147,11 @@ MARKERS_COMMON=(
   'https://opencode.ai'
   'session-tab-popover-trigger'
   'home-project-row'
+  'home-session-row'
+  'home-session-search'
+  'home-session-search-row'
+  'data-session-id'
+  'location.directory'
 )
 
 # 1.18-only. Absent on CLI 2.x (composer-editor, toast-v2 / opencode-v2-icon, window tabs).
@@ -163,14 +168,11 @@ MARKERS_V1=(
 )
 
 # CLI 2.x-only. Dual-selector injections already cover these alongside the 1.18 names.
+# `home-session-project-name` has no 1.18 counterpart (that title span only exists on CLI 2.x
+# Home rows); the shared session/search rows and 1.18 sidebar `data-session-id` live in COMMON.
 MARKERS_V2=(
   'composer-editor'
-  'home-session-row'
-  'home-session-search'
-  'home-session-search-row'
   'home-session-project-name'
-  'data-session-id'
-  'location.directory'
   'opencode-v2-icon'
   'file-tree-v2-row'
   'select-v2'
