@@ -1522,8 +1522,8 @@ internal object OpenCodeBrowserSnippets {
                 const path = prettyPath(directory);
                 if (!path) return { title: '', path: '', context: '' };
                 const titleEl = row.querySelector('[data-slot="tab-title"]');
-                const sessionTitle = ((titleEl && titleEl.textContent) || (session && session.title) || '')
-                  .replace(/\s+/g, ' ').trim();
+                const sessionTitle = (((titleEl && titleEl.textContent) || '').replace(/\s+/g, ' ').trim())
+                  || (session ? displaySessionTitle(session) : '');
                 const root = owningProjectRoot(directory, session && session.projectID);
                 const label = worktreeBasename(root || directory);
                 return { title: sessionTitle || label, path: path, context: sessionTitle ? label : '' };
@@ -1534,8 +1534,8 @@ internal object OpenCodeBrowserSnippets {
                 const path = prettyPath(directory);
                 if (!path) return { title: '', path: '', context: '' };
                 const titleEl = trigger.querySelector('[data-slot="mobile-tab-title"]');
-                const sessionTitle = ((titleEl && titleEl.textContent) || (session && session.title) || '')
-                  .replace(/\s+/g, ' ').trim();
+                const sessionTitle = (((titleEl && titleEl.textContent) || '').replace(/\s+/g, ' ').trim())
+                  || (session ? displaySessionTitle(session) : '');
                 const root = owningProjectRoot(directory, session && session.projectID);
                 const label = worktreeBasename(root || directory);
                 return { title: sessionTitle || label, path: path, context: sessionTitle ? label : '' };
@@ -1544,8 +1544,10 @@ internal object OpenCodeBrowserSnippets {
                 const directory = pathForSessionRow(row);
                 const path = prettyPath(directory);
                 if (!path) return { title: '', path: '', context: '' };
-                const sessionTitle = sessionTitleFromRow(row);
                 const cached = sessions.get(sessionIdFromRow(row));
+                // Search rows keep the title inside a wrapper, not in a row-level span; the
+                // cached session title (timestamp defaults stripped) is the fallback.
+                const sessionTitle = sessionTitleFromRow(row) || (cached ? displaySessionTitle(cached) : '');
                 const root = owningProjectRoot(directory, cached && cached.projectID);
                 const label = worktreeBasename(root || directory);
                 return { title: sessionTitle || label, path: path, context: sessionTitle ? label : '' };

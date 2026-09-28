@@ -493,6 +493,9 @@ class OpenCodeBrowserSnippetsTest {
         assertTrue(script.contains("row.querySelector('[data-slot=\"tab-link\"][href]')"))
         assertTrue(script.contains("href.match(/\\/session\\/(ses_[^/?#]+)/)"))
         assertTrue(script.contains("row.querySelector('[data-slot=\"tab-title\"]')"))
+        // Search rows keep their trimmed title inside a wrapper (no row-level span) — fall back
+        // to the cached session title, with timestamped defaults stripped like the SPA does.
+        assertTrue(script.contains("sessionTitleFromRow(row) || (cached ? displaySessionTitle(cached) : '')"))
         assertTrue(script.contains("if (!row.matches(PROJECT_ROW)) return ''"))
         assertTrue(script.contains("data-session-id"))
         assertTrue(script.contains("location.directory"))
