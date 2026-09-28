@@ -473,11 +473,22 @@ class OpenCodeBrowserSnippetsTest {
         assertTrue(script.contains("const TAB_DELAY = ${OpenCodeBrowserSnippets.OPENCODE_TAB_POPOVER_OPEN_DELAY_MILLIS}"))
         assertTrue(script.contains("const PREVIEW_DELAY = ${OpenCodeBrowserSnippets.PATH_HOVER_PREVIEW_DELAY_MILLIS}"))
         assertTrue(script.contains("data-opencode-intellij-path-preview"))
-        // Home also renders session rows: only project rows may participate in the worktree
-        // count/order fallback. Session rows instead require an unambiguous project name.
+        // Project-row order mapping must not apply to session rows. A session directory can be
+        // a linked worktree; resolve it from data-session-id plus the SPA's own session list.
         assertTrue(script.contains("const PROJECT_ROW = '[data-component=\"home-project-row\"]'"))
-        assertTrue(script.contains("const HOVER_ROW = PROJECT_ROW + ', [data-component=\"home-session-row\"]'"))
+        assertTrue(script.contains("const SESSION_ROW = '[data-component=\"home-session-row\"]'"))
+        assertTrue(script.contains("const SEARCH_ROW = '[data-component=\"home-session-search-row\"]'"))
+        assertTrue(script.contains("const HOVER_ROW = PROJECT_ROW + ', ' + SESSION_ROW + ', ' + SEARCH_ROW"))
         assertTrue(script.contains("if (!row.matches(PROJECT_ROW)) return ''"))
+        assertTrue(script.contains("data-session-id"))
+        assertTrue(script.contains("location.directory"))
+        assertTrue(script.contains("'/api/session'"))
+        assertTrue(script.contains("previousFetch"))
+        assertTrue(script.contains("matches.length === 1"))
+        // The session preview mirrors the session-tab popover: owning project label as the
+        // muted project slot, session title bold, then the full directory path as detail.
+        assertTrue(script.contains("sessionPreview"))
+        assertTrue(script.contains("contextEl.setAttribute('data-slot', 'project')"))
         assertTrue(script.contains("return node.closest(HOVER_ROW)"))
         assertTrue(script.contains("querySelectorAll(PROJECT_ROW)"))
         // Only Kobalte's pointerenter-scheduled 2000ms timer is clamped; unrelated page timers

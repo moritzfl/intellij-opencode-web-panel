@@ -1076,20 +1076,25 @@ internal object OpenCodeBrowserSnippets {
     /**
      * Shortens OpenCode's session-tab path popover (Kobalte `openDelay` 2000ms) to
      * [PATH_HOVER_PREVIEW_DELAY_MILLIS], and adds the same styled preview on home project rows
-     * so duplicate display names still show distinct worktrees.
+     * and home session rows so a session's git worktree is visible before it is opened.
      *
      * Tab delay: Kobalte schedules `window.setTimeout(..., 2000)` when the pointer enters
      * `[data-component="session-tab-popover-trigger"]`. The clamp applies only to two-argument
      * 2000ms timers scheduled within a short window of such a pointerenter, so unrelated page
      * timers with the same 2000ms delay (copy-state reset, typewriter cursor) are untouched;
-      * the skip-window path uses 0 and is left alone. Home rows (`home-project-row` on 1.18,
-      * `home-session-row` on CLI 2.x) do not put the worktree in the DOM. 1.18 maps row order
-      * onto `opencode.global.dat:server` `projects` and skips when project-row counts do not match
-      * (the home page can also contain session rows). CLI 2.x session rows expose a project-name
-      * span; overlay uses it only when that basename uniquely
-      * matches a stored worktree. The overlay reuses OpenCode's `session-tab-popover` slots so
-      * it picks up the page CSS. Must be removable by reload (safeguard); the builder returns
-      * null when disabled.
+     * the skip-window path uses 0 and is left alone. Home project rows do not put the worktree
+     * in the DOM. 1.18 maps row order onto `opencode.global.dat:server` `projects` and skips
+     * when project-row counts do not match. Session rows are not that list: a session directory
+     * can be a linked worktree of the selected project. The preview reads `data-session-id`
+     * (or a search row's `data-key`) and the directory captured from the SPA's own
+     * `GET /api/session` / `GET /session` responses (`location.directory`, else `directory`).
+     * It does not open its own requests. Ambiguous rows show nothing rather than the project
+     * root. The preview mirrors the session-tab popover: owning project label (matched like
+     * OpenCode's `projectForSession` — `worktree`/`sandboxes`, then `projectID` — so a
+     * linked-worktree session keeps its parent project's name), session title, then the
+     * session's full directory path. The overlay reuses OpenCode's `session-tab-popover`
+     * slots so it picks up the page CSS.
+     * Must be removable by reload (safeguard); the builder returns null when disabled.
      */
     fun buildPathHoverPreviewScript(enabled: Boolean): String? {
         if (!enabled) return null
@@ -1099,12 +1104,142 @@ internal object OpenCodeBrowserSnippets {
         val script = """
             (() => {
               if (window.__opencodeIntellijPathHoverPreviewInstalled) return;
+              if (typeof window.fetch !== 'function' || typeof window.setTimeout !== 'function') return;
               window.__opencodeIntellijPathHoverPreviewInstalled = true;
+              const nativeFetch = window.fetch;
+              const previousFetch = nativeFetch.bind(window);
+              const sessions = new Map();
+              const projects = new Map();
+              let refreshSessionHover = () => {};
+              const requestUrl = (input) => {
+                if (typeof input === 'string') return input;
+                if (input && typeof input.url === 'string') return input.url;
+                if (input && typeof input.href === 'string') return input.href;
+                return '';
+              };
+              const pathnameOf = (input) => {
+                try { return new URL(requestUrl(input), location.href).pathname; }
+                catch (_) { return ''; }
+              };
+              const samePath = (left, right) => {
+                if (typeof left !== 'string' || typeof right !== 'string' || !left || !right) return false;
+                const norm = (value) => {
+                  let next = value.replace(/\\/g, '/').replace(/\/+$/g, '');
+                  if (/^[A-Za-z]:\//.test(next) || next.startsWith('//')) next = next.toLowerCase();
+                  return next;
+                };
+                return norm(left) === norm(right);
+              };
+              const sessionDirectoryOf = (raw) => {
+                if (!raw || typeof raw !== 'object') return '';
+                const location = raw.location;
+                if (location && typeof location.directory === 'string' && location.directory) return location.directory;
+                return typeof raw.directory === 'string' ? raw.directory : '';
+              };
+              const rememberSession = (raw) => {
+                if (!raw || typeof raw !== 'object') return;
+                const id = raw.id;
+                if (typeof id !== 'string' || id.indexOf('ses_') !== 0) return;
+                const directory = sessionDirectoryOf(raw);
+                if (!directory) return;
+                const time = raw.time && typeof raw.time === 'object' ? raw.time : {};
+                sessions.set(id, {
+                  id: id,
+                  title: typeof raw.title === 'string' ? raw.title : '',
+                  directory: directory,
+                  updated: typeof time.updated === 'number' ? time.updated : (typeof time.created === 'number' ? time.created : 0),
+                  parentID: typeof raw.parentID === 'string' ? raw.parentID : '',
+                  archived: typeof time.archived === 'number',
+                  projectID: typeof raw.projectID === 'string' ? raw.projectID : '',
+                });
+              };
+              const rememberProject = (raw) => {
+                if (!raw || typeof raw !== 'object') return;
+                const worktree = typeof raw.worktree === 'string' && raw.worktree
+                  ? raw.worktree
+                  : (typeof raw.canonical === 'string' ? raw.canonical : '');
+                if (!worktree) return;
+                const id = typeof raw.id === 'string' && raw.id ? raw.id : worktree;
+                const sandboxes = [];
+                const pushDir = (value) => {
+                  if (typeof value !== 'string' || !value || samePath(value, worktree)) return;
+                  if (sandboxes.some((item) => samePath(item, value))) return;
+                  sandboxes.push(value);
+                };
+                if (Array.isArray(raw.sandboxes)) raw.sandboxes.forEach(pushDir);
+                if (Array.isArray(raw.worktrees)) {
+                  raw.worktrees.forEach((item) => {
+                    if (!item || typeof item !== 'object' || item.strategy === undefined) return;
+                    pushDir(item.directory);
+                  });
+                }
+                const previous = projects.get(id);
+                projects.set(id, {
+                  id: id,
+                  worktree: worktree,
+                  sandboxes: sandboxes.length ? sandboxes : ((previous && previous.sandboxes) || []),
+                });
+              };
+              const eachRecord = (json, visit) => {
+                if (Array.isArray(json)) {
+                  json.forEach(visit);
+                  return;
+                }
+                if (!json || typeof json !== 'object') return;
+                if (Array.isArray(json.data)) {
+                  json.data.forEach(visit);
+                  return;
+                }
+                visit(json.data && typeof json.data === 'object' ? json.data : json);
+              };
+              const isSessionList = (path) => path === '/api/session' || path === '/session';
+              const isSessionItem = (path) => {
+                const marker = '/ses_';
+                const index = path.lastIndexOf(marker);
+                if (index < 0) return false;
+                const tail = path.slice(index + marker.length);
+                if (!tail || tail.indexOf('/') !== -1) return false;
+                return path === '/api/session/ses_' + tail || path === '/session/ses_' + tail;
+              };
+              const isProjectList = (path) => (
+                path === '/api/project' || path === '/project' ||
+                path === '/api/project/current' || path === '/project/current'
+              );
+              const ingestSessionPayload = (path, json) => {
+                if (isSessionList(path) || isSessionItem(path)) {
+                  eachRecord(json, rememberSession);
+                  return;
+                }
+                if (isProjectList(path)) eachRecord(json, rememberProject);
+              };
+              const observeSessionFetch = (input, pending) => {
+                const path = pathnameOf(input);
+                if (!isSessionList(path) && !isSessionItem(path) && !isProjectList(path)) return;
+                Promise.resolve(pending).then((response) => {
+                  if (!response || !response.ok || typeof response.clone !== 'function') return;
+                  const type = response.headers && response.headers.get && response.headers.get('content-type');
+                  if (type && type.indexOf('text/event-stream') !== -1) return;
+                  response.clone().json().then((json) => {
+                    ingestSessionPayload(path, json);
+                    refreshSessionHover();
+                  }).catch(() => {});
+                }).catch(() => {});
+              };
+              window.fetch = function(input, init) {
+                const pending = previousFetch.apply(window, arguments);
+                try { observeSessionFetch(input, pending); } catch (_) {}
+                return pending;
+              };
+              if (typeof globalThis === 'object' && globalThis.fetch === nativeFetch) {
+                globalThis.fetch = window.fetch;
+              }
               const TAB_DELAY = $tabDelay;
               const PREVIEW_DELAY = $previewDelay;
               const TAB_TRIGGER = '[data-component="session-tab-popover-trigger"]';
               const PROJECT_ROW = '[data-component="home-project-row"]';
-              const HOVER_ROW = PROJECT_ROW + ', [data-component="home-session-row"]';
+              const SESSION_ROW = '[data-component="home-session-row"]';
+              const SEARCH_ROW = '[data-component="home-session-search-row"]';
+              const HOVER_ROW = PROJECT_ROW + ', ' + SESSION_ROW + ', ' + SEARCH_ROW;
               const nativeSetTimeout = window.setTimeout.bind(window);
               const nativeClearTimeout = window.clearTimeout.bind(window);
               // Kobalte schedules its hover open-delay synchronously inside the trigger's
@@ -1219,13 +1354,158 @@ internal object OpenCodeBrowserSnippets {
                 if (index < 0 || index >= trees.length) return '';
                 return trees[index];
               };
+              const sessionIdFromRow = (row) => {
+                const marked = (row.closest && row.closest('[data-session-id]')) || row;
+                const id = marked.getAttribute && marked.getAttribute('data-session-id');
+                if (typeof id === 'string' && id.indexOf('ses_') === 0) return id;
+                const key = row.getAttribute && row.getAttribute('data-key');
+                if (typeof key !== 'string') return '';
+                const marker = ':ses_';
+                const index = key.lastIndexOf(marker);
+                return index < 0 ? '' : key.slice(index + 1);
+              };
+              const directoryFromSearchKey = (row) => {
+                const key = row.getAttribute && row.getAttribute('data-key');
+                if (typeof key !== 'string') return '';
+                const marker = ':ses_';
+                const index = key.lastIndexOf(marker);
+                return index <= 0 ? '' : key.slice(0, index);
+              };
+              const displaySessionTitle = (session) => {
+                const title = session.title || '';
+                const prefixes = ['New session - ', 'Child session - '];
+                for (let index = 0; index < prefixes.length; index += 1) {
+                  if (title.indexOf(prefixes[index]) !== 0) continue;
+                  const rest = title.slice(prefixes[index].length);
+                  if (rest.length === 24 && rest.charAt(10) === 'T' && rest.charAt(23) === 'Z') {
+                    return prefixes[index].slice(0, prefixes[index].length - 3);
+                  }
+                }
+                return title || session.id;
+              };
+              const sessionTitleFromRow = (row) => {
+                const titled = row.querySelector('[data-component="home-session-title"]');
+                if (titled && titled.textContent) return titled.textContent.replace(/\s+/g, ' ').trim();
+                const spans = row.querySelectorAll(':scope > span, :scope [data-slot="home-session-labels"] > span');
+                for (let index = 0; index < spans.length; index += 1) {
+                  if (spans[index].getAttribute('data-component') === 'home-session-project-name') continue;
+                  const text = (spans[index].textContent || '').replace(/\s+/g, ' ').trim();
+                  if (text) return text;
+                }
+                return '';
+              };
+              const selectedProjectWorktree = () => {
+                const selected = document.querySelector(
+                  PROJECT_ROW + '[aria-current="page"], ' + PROJECT_ROW + '[data-selected]',
+                );
+                if (selected) {
+                  const path = pathForProjectRow(selected);
+                  if (path) return path;
+                }
+                if (document.querySelector(PROJECT_ROW)) return '';
+                try {
+                  const marker = window.localStorage.getItem('opencode-intellij-project');
+                  if (typeof marker === 'string' && marker) return marker;
+                } catch (_) {}
+                return '';
+              };
+              const scopeDirectories = () => {
+                const selected = selectedProjectWorktree();
+                const roots = selected ? [selected] : storedWorktrees();
+                if (!roots.length) return null;
+                const dirs = roots.slice();
+                const add = (value) => {
+                  if (typeof value !== 'string' || !value) return;
+                  if (dirs.some((dir) => samePath(dir, value))) return;
+                  dirs.push(value);
+                };
+                projects.forEach((project) => {
+                  if (!roots.some((root) => samePath(root, project.worktree))) return;
+                  (project.sandboxes || []).forEach(add);
+                });
+                return dirs;
+              };
+              const orderedScopeSessions = () => {
+                const dirs = scopeDirectories();
+                const list = [];
+                sessions.forEach((session) => {
+                  if (session.parentID || session.archived) return;
+                  if (dirs && !dirs.some((dir) => samePath(dir, session.directory))) return;
+                  list.push(session);
+                });
+                list.sort((left, right) => {
+                  const delta = (right.updated || 0) - (left.updated || 0);
+                  if (delta !== 0) return delta;
+                  if (left.id < right.id) return -1;
+                  if (left.id > right.id) return 1;
+                  return 0;
+                });
+                return list;
+              };
+              const pathForSessionRow = (row) => {
+                const id = sessionIdFromRow(row);
+                if (id && sessions.has(id)) return sessions.get(id).directory;
+                const fromKey = directoryFromSearchKey(row);
+                if (fromKey) return fromKey;
+                if (!row.matches(SESSION_ROW)) {
+                  const title = sessionTitleFromRow(row);
+                  if (!title) return '';
+                  const matches = orderedScopeSessions().filter((session) => displaySessionTitle(session) === title);
+                  return matches.length === 1 ? matches[0].directory : '';
+                }
+                const visible = Array.prototype.slice.call(document.querySelectorAll(SESSION_ROW));
+                const index = visible.indexOf(row);
+                if (index < 0) return '';
+                const titles = visible.map(sessionTitleFromRow);
+                const candidates = orderedScopeSessions();
+                if (
+                  candidates.length === titles.length &&
+                  titles.every((title, at) => displaySessionTitle(candidates[at]) === title)
+                ) {
+                  return candidates[index].directory;
+                }
+                const title = titles[index];
+                if (!title) return '';
+                const matches = candidates.filter((session) => displaySessionTitle(session) === title);
+                if (matches.length === 1 && titles.filter((item) => item === title).length === 1) {
+                  return matches[0].directory;
+                }
+                return '';
+              };
+              const owningProjectRoot = (directory, projectID) => {
+                let exact = '';
+                let sandboxOwner = '';
+                let byID = '';
+                projects.forEach((project) => {
+                  if (!exact && samePath(project.worktree, directory)) exact = project.worktree;
+                  if (!sandboxOwner && (project.sandboxes || []).some((sandbox) => samePath(sandbox, directory))) {
+                    sandboxOwner = project.worktree;
+                  }
+                  if (projectID && !byID && project.id === projectID) byID = project.worktree;
+                });
+                if (exact) return exact;
+                if (sandboxOwner) return sandboxOwner;
+                if (byID) return byID;
+                const selected = selectedProjectWorktree();
+                return selected && samePath(selected, directory) ? selected : '';
+              };
+              const sessionPreview = (row) => {
+                const directory = pathForSessionRow(row);
+                const path = prettyPath(directory);
+                if (!path) return { title: '', path: '', context: '' };
+                const sessionTitle = sessionTitleFromRow(row);
+                const cached = sessions.get(sessionIdFromRow(row));
+                const root = owningProjectRoot(directory, cached && cached.projectID);
+                const label = worktreeBasename(root || directory);
+                return { title: sessionTitle || label, path: path, context: sessionTitle ? label : '' };
+              };
               let overlay = null;
               const hidePopover = () => {
                 if (!overlay) return;
                 if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
                 overlay = null;
               };
-              const showPopover = (anchor, title, path) => {
+              const showPopover = (anchor, title, path, context) => {
                 hidePopover();
                 if (!path) return;
                 const pop = document.createElement('div');
@@ -1239,6 +1519,12 @@ internal object OpenCodeBrowserSnippets {
                 pop.style.pointerEvents = 'none';
                 const header = document.createElement('div');
                 header.setAttribute('data-slot', 'header');
+                if (context) {
+                  const contextEl = document.createElement('span');
+                  contextEl.setAttribute('data-slot', 'project');
+                  contextEl.textContent = context;
+                  header.appendChild(contextEl);
+                }
                 if (title) {
                   const titleEl = document.createElement('span');
                   titleEl.setAttribute('data-slot', 'title');
@@ -1280,6 +1566,19 @@ internal object OpenCodeBrowserSnippets {
                 }
                 hidePopover();
               };
+              const showRowPreview = (row) => {
+                if (row.matches(SESSION_ROW) || row.matches(SEARCH_ROW)) {
+                  const preview = sessionPreview(row);
+                  showPopover(row, preview.title, preview.path, preview.context);
+                  return;
+                }
+                showPopover(row, projectNameFromRow(row), prettyPath(pathForProjectRow(row)));
+              };
+              refreshSessionHover = () => {
+                if (!hoverRow || hoverTimer) return;
+                if (!hoverRow.matches(SESSION_ROW) && !hoverRow.matches(SEARCH_ROW)) return;
+                showRowPreview(hoverRow);
+              };
               const scheduleHover = (row) => {
                 if (hoverRow === row) return;
                 cancelHover();
@@ -1287,7 +1586,7 @@ internal object OpenCodeBrowserSnippets {
                 hoverTimer = nativeSetTimeout(() => {
                   hoverTimer = 0;
                   if (hoverRow !== row) return;
-                  showPopover(row, projectNameFromRow(row), prettyPath(pathForProjectRow(row)));
+                  showRowPreview(row);
                 }, PREVIEW_DELAY);
               };
               document.addEventListener('pointerover', (event) => {

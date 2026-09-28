@@ -111,7 +111,7 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
     private val enableChatFileDropCheckBox = JBCheckBox("Enable file drop and paste into chat")
     private val forceCompactLayoutCheckBox = JBCheckBox("Lock to compact view")
     private val hideWebsiteButtonCheckBox = JBCheckBox("Hide the OpenCode website button")
-    private val fasterPathHoverPreviewCheckBox = JBCheckBox("Faster path previews on tabs and projects")
+    private val fasterPathHoverPreviewCheckBox = JBCheckBox("Faster path previews on tabs, projects, and sessions")
     private val syncThemeWithIdeCheckBox = JBCheckBox("Sync OpenCode color scheme with the IDE theme")
     private val suppressProjectSwitchPromptsCheckBox = JBCheckBox("Suppress project-switch prompts")
     private val mirrorBrowserCursorCheckBox = JBCheckBox("Mirror the web page mouse cursor")
