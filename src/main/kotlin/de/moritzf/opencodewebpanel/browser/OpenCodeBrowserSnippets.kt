@@ -1567,6 +1567,11 @@ internal object OpenCodeBrowserSnippets {
                 const themeRoot = anchor.closest('[data-theme]') || document.documentElement;
                 const theme = themeRoot && themeRoot.getAttribute && themeRoot.getAttribute('data-theme');
                 if (theme) pop.setAttribute('data-theme', theme);
+                // Drawer rows live in the corvu drawer's own stacking context (transform on
+                // mobile-drawer-content): a body-level card with z-index 50 renders *behind*
+                // the open sheet. Keep the card at body level but never let it cross the
+                // drawer's top edge — place it fully above the sheet instead.
+                const drawer = anchor.closest && anchor.closest('[data-slot="mobile-drawer-content"]');
                 pop.style.position = 'fixed';
                 pop.style.zIndex = '50';
                 pop.style.pointerEvents = 'none';
@@ -1601,6 +1606,10 @@ internal object OpenCodeBrowserSnippets {
                 if (top + size.height > window.innerHeight - 8) top = Math.max(8, rect.top - size.height - 6);
                 if (left + size.width > window.innerWidth - 8) left = Math.max(8, window.innerWidth - size.width - 8);
                 if (left < 8) left = 8;
+                if (drawer) {
+                  const drawerTop = drawer.getBoundingClientRect().top;
+                  if (top + size.height > drawerTop - 6) top = Math.max(8, drawerTop - size.height - 6);
+                }
                 pop.style.left = left + 'px';
                 pop.style.top = top + 'px';
               };

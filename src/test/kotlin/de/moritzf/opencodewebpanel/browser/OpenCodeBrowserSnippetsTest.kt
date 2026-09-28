@@ -496,6 +496,9 @@ class OpenCodeBrowserSnippetsTest {
         // If a future OpenCode re-enables the native popover inside the drawer (trigger reports
         // data-open/data-expanded), the synthetic card must yield instead of stacking.
         assertTrue(script.contains("nativeTrigger.hasAttribute('data-open') || nativeTrigger.hasAttribute('data-expanded')"))
+        // The drawer's stacking context covers a body-level card: stay fully above its top edge.
+        assertTrue(script.contains("anchor.closest('[data-slot=\"mobile-drawer-content\"]')"))
+        assertTrue(script.contains("drawerTop - size.height - 6"))
         // Search rows keep their trimmed title inside a wrapper (no row-level span) — fall back
         // to the cached session title, with timestamped defaults stripped like the SPA does.
         assertTrue(script.contains("sessionTitleFromRow(row) || (cached ? displaySessionTitle(cached) : '')"))
