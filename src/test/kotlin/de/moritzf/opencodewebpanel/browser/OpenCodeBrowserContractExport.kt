@@ -32,6 +32,7 @@ object OpenCodeBrowserContractExport {
                 enabled = true, fatalCallback = "window.__chunkCalls.push(message)",
             ),
             "watchdog" to OpenCodeBrowserSnippets.buildEventStreamWatchdogScript(enabled = true),
+            "pathHover" to OpenCodeBrowserSnippets.buildPathHoverPreviewScript(enabled = true),
             "nativeWatchdog" to OpenCodeBrowserSnippets.buildEventStreamWatchdogScript(
                 enabled = true, wireProtocol = OpenCodeWireProtocol.V2_CLI,
             ),
