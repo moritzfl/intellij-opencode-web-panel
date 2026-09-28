@@ -1094,6 +1094,14 @@ internal object OpenCodeBrowserSnippets {
      * linked-worktree session keeps its parent project's name), session title, then the
      * session's full directory path. The overlay reuses OpenCode's `session-tab-popover`
      * slots so it picks up the page CSS.
+     * CLI 2.x compact titlebar: `[data-slot="mobile-tabs-trigger"]` shows the current session's
+     * title but has no hover preview of its own. Hovering it shows the current route session's
+     * preview; the session is read from the `/server/.../session/<ses_>` route and the
+     * SPA-captured session fetches, so a draft or home route shows nothing. The "Tabs" drawer
+     * rows (`[data-slot="titlebar-tab-item"]` inside `[data-slot="mobile-drawer-content"]`)
+     * keep their session id in the tab link's href even though their Kobalte popover is
+     * suppressed while the drawer is open, so they get the same preview — placed above the row
+     * when the drawer sits at the viewport bottom.
      * Must be removable by reload (safeguard); the builder returns null when disabled.
      */
     fun buildPathHoverPreviewScript(enabled: Boolean): String? {
@@ -1239,7 +1247,15 @@ internal object OpenCodeBrowserSnippets {
               const PROJECT_ROW = '[data-component="home-project-row"]';
               const SESSION_ROW = '[data-component="home-session-row"]';
               const SEARCH_ROW = '[data-component="home-session-search-row"]';
-              const HOVER_ROW = PROJECT_ROW + ', ' + SESSION_ROW + ', ' + SEARCH_ROW;
+              // CLI 2.x compact titlebar: the "Tabs" drawer trigger shows the current session's
+              // title but, unlike the drawer rows (full tab items with Kobalte popover), has no
+              // hover preview of its own.
+              const MOBILE_TABS_TRIGGER = '[data-slot="mobile-tabs-trigger"]';
+              // CLI 2.x mobile drawer rows are full tab items, but their Kobalte popover is
+              // suppressed while the drawer is open (verified live on 2.0.18); the row's tab
+              // link href still carries the session id.
+              const MOBILE_DRAWER_TAB = '[data-slot="mobile-drawer-content"] [data-slot="titlebar-tab-item"]';
+              const HOVER_ROW = PROJECT_ROW + ', ' + SESSION_ROW + ', ' + SEARCH_ROW + ', ' + MOBILE_TABS_TRIGGER + ', ' + MOBILE_DRAWER_TAB;
               const nativeSetTimeout = window.setTimeout.bind(window);
               const nativeClearTimeout = window.clearTimeout.bind(window);
               // Kobalte schedules its hover open-delay synchronously inside the trigger's
@@ -1489,6 +1505,41 @@ internal object OpenCodeBrowserSnippets {
                 const selected = selectedProjectWorktree();
                 return selected && samePath(selected, directory) ? selected : '';
               };
+              const currentRouteSession = () => {
+                const match = location.pathname.match(/\/session\/(ses_[^/]+)\/?$/);
+                if (!match) return null;
+                return sessions.get(match[1]) || null;
+              };
+              const sessionIdFromHref = (href) => {
+                const match = typeof href === 'string' ? href.match(/\/session\/(ses_[^/?#]+)/) : null;
+                return match ? match[1] : '';
+              };
+              const mobileDrawerTabPreview = (row) => {
+                const link = row.querySelector('[data-slot="tab-link"][href]');
+                const id = sessionIdFromHref(link ? link.getAttribute('href') : '');
+                const session = id ? sessions.get(id) : null;
+                const directory = session ? session.directory : '';
+                const path = prettyPath(directory);
+                if (!path) return { title: '', path: '', context: '' };
+                const titleEl = row.querySelector('[data-slot="tab-title"]');
+                const sessionTitle = ((titleEl && titleEl.textContent) || (session && session.title) || '')
+                  .replace(/\s+/g, ' ').trim();
+                const root = owningProjectRoot(directory, session && session.projectID);
+                const label = worktreeBasename(root || directory);
+                return { title: sessionTitle || label, path: path, context: sessionTitle ? label : '' };
+              };
+              const mobileTriggerPreview = (trigger) => {
+                const session = currentRouteSession();
+                const directory = session ? session.directory : '';
+                const path = prettyPath(directory);
+                if (!path) return { title: '', path: '', context: '' };
+                const titleEl = trigger.querySelector('[data-slot="mobile-tab-title"]');
+                const sessionTitle = ((titleEl && titleEl.textContent) || (session && session.title) || '')
+                  .replace(/\s+/g, ' ').trim();
+                const root = owningProjectRoot(directory, session && session.projectID);
+                const label = worktreeBasename(root || directory);
+                return { title: sessionTitle || label, path: path, context: sessionTitle ? label : '' };
+              };
               const sessionPreview = (row) => {
                 const directory = pathForSessionRow(row);
                 const path = prettyPath(directory);
@@ -1572,11 +1623,21 @@ internal object OpenCodeBrowserSnippets {
                   showPopover(row, preview.title, preview.path, preview.context);
                   return;
                 }
+                if (row.matches(MOBILE_TABS_TRIGGER)) {
+                  const preview = mobileTriggerPreview(row);
+                  showPopover(row, preview.title, preview.path, preview.context);
+                  return;
+                }
+                if (row.matches('[data-slot="titlebar-tab-item"]') && row.closest('[data-slot="mobile-drawer-content"]')) {
+                  const preview = mobileDrawerTabPreview(row);
+                  showPopover(row, preview.title, preview.path, preview.context);
+                  return;
+                }
                 showPopover(row, projectNameFromRow(row), prettyPath(pathForProjectRow(row)));
               };
               refreshSessionHover = () => {
                 if (!hoverRow || hoverTimer) return;
-                if (!hoverRow.matches(SESSION_ROW) && !hoverRow.matches(SEARCH_ROW)) return;
+                if (!hoverRow.matches(SESSION_ROW) && !hoverRow.matches(SEARCH_ROW) && !hoverRow.matches(MOBILE_TABS_TRIGGER) && !hoverRow.matches('[data-slot="titlebar-tab-item"]')) return;
                 showRowPreview(hoverRow);
               };
               const scheduleHover = (row) => {

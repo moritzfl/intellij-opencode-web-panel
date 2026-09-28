@@ -173,6 +173,8 @@ MARKERS_V1=(
 MARKERS_V2=(
   'composer-editor'
   'home-session-project-name'
+  'mobile-tabs-trigger'
+  'mobile-tab-title'
   'opencode-v2-icon'
   'file-tree-v2-row'
   'select-v2'

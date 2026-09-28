@@ -478,7 +478,21 @@ class OpenCodeBrowserSnippetsTest {
         assertTrue(script.contains("const PROJECT_ROW = '[data-component=\"home-project-row\"]'"))
         assertTrue(script.contains("const SESSION_ROW = '[data-component=\"home-session-row\"]'"))
         assertTrue(script.contains("const SEARCH_ROW = '[data-component=\"home-session-search-row\"]'"))
-        assertTrue(script.contains("const HOVER_ROW = PROJECT_ROW + ', ' + SESSION_ROW + ', ' + SEARCH_ROW"))
+        assertTrue(script.contains(
+            "const HOVER_ROW = PROJECT_ROW + ', ' + SESSION_ROW + ', ' + SEARCH_ROW + ', ' + MOBILE_TABS_TRIGGER",
+        ))
+        // CLI 2.x compact titlebar "Tabs" trigger: unlike the drawer rows (full tab items with
+        // Kobalte popovers) it has no preview; resolve the current route session, never guess.
+        assertTrue(script.contains("const MOBILE_TABS_TRIGGER = '[data-slot=\"mobile-tabs-trigger\"]'"))
+        assertTrue(script.contains("mobile-tab-title"))
+        assertTrue(script.contains("mobileTriggerPreview"))
+        assertTrue(script.contains("location.pathname.match(/\\/session\\/(ses_[^/]+)\\/?$/)"))
+        // Drawer rows keep the session id in the tab link href; desktop strip rows stay native.
+        assertTrue(script.contains("const MOBILE_DRAWER_TAB = '[data-slot=\"mobile-drawer-content\"] [data-slot=\"titlebar-tab-item\"]'"))
+        assertTrue(script.contains("mobileDrawerTabPreview"))
+        assertTrue(script.contains("row.querySelector('[data-slot=\"tab-link\"][href]')"))
+        assertTrue(script.contains("href.match(/\\/session\\/(ses_[^/?#]+)/)"))
+        assertTrue(script.contains("row.querySelector('[data-slot=\"tab-title\"]')"))
         assertTrue(script.contains("if (!row.matches(PROJECT_ROW)) return ''"))
         assertTrue(script.contains("data-session-id"))
         assertTrue(script.contains("location.directory"))
