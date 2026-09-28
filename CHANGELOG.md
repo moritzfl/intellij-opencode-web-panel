@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [2.7.1] - 2026-09-28
+
 ### Fixed
 
 - Recover IDE-wide typing when dragging a macOS screenshot thumbnail into chat
@@ -1095,7 +1097,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.7.0...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.7.1...HEAD
+[2.7.1]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.7.0...2.7.1
 [2.7.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.6.3...2.7.0
 [2.6.3]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.6.2...2.6.3
 [2.6.2]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.6.1...2.6.2
