@@ -42,7 +42,6 @@ import de.moritzf.opencodewebpanel.server.formatOpenCodeServerLifecycleStatusTex
 import de.moritzf.opencodewebpanel.server.formatOpenCodeServerStatusDetail
 import de.moritzf.opencodewebpanel.toolWindow.confirmOpenCodeSandboxBinaryUpgrade
 import de.moritzf.opencodewebpanel.toolWindow.confirmOpenCodeServerRestart
-import de.moritzf.opencodewebpanel.toolWindow.requestOpenCodeSandboxReset
 import de.moritzf.opencodewebpanel.toolWindow.requestOpenCodeServerRestart
 import java.awt.Component
 import java.io.File
@@ -487,8 +486,6 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
     }
 
     override fun apply() {
-        val settings = OpenCodeProjectSettingsState.getInstance(project)
-        val oldDirectory = settings.effectiveProjectDirectory(project.basePath)
         val nextMode = selectedProjectDirectoryMode()
         val nextDirectory = projectDirectory()
         if (nextMode == OpenCodeProjectDirectoryMode.CUSTOM && nextDirectory.isBlank()) {
@@ -552,49 +549,20 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         val spec =
             currentSpec()
                 ?: throw ConfigurationException("Set an OpenCode project directory first.")
-        val validWorkingDirectory =
-            SbxLaunchSpec.parseYaml(spec.toYaml()) != null &&
-                runCatching {
-                        val root = java.nio.file.Path.of(spec.canonicalDirectory).toRealPath()
-                        val workdir =
-                            java.nio.file.Path.of(spec.hostWorkingDirectory()).toRealPath()
-                        workdir.startsWith(root) && java.nio.file.Files.isDirectory(workdir)
-                    }
-                    .getOrDefault(false)
-        if (!validWorkingDirectory) {
-            throw ConfigurationException(
-                "OpenCode working directory must be an existing folder inside the mounted repository."
+        val applier = OpenCodeProjectSettingsApplier(project)
+        val plan =
+            applier.prepare(
+                OpenCodeProjectSettingsValues(
+                    nextMode,
+                    nextDirectory,
+                    effectiveDirectory(),
+                    selectedPortMode(),
+                    fixedPortOrDefault(),
+                ),
+                spec,
+                sandboxSessionRetentionSummary(spec.canonicalDirectory),
             )
-        }
-        // The preview compares what will be written against the *destination's* current spec.
-        // Diffing the old directory's spec on a directory switch would report kit/mount changes
-        // that are really another project's settings, and offer "Recreate" for a write that only
-        // creates a fresh spec. Stopping the previous backend is decided by directoryChanged below.
-        val storedDestinationSpec = SbxLaunchSpec.load(spec.canonicalDirectory)
-        // Without a stored spec the runtime currently uses app defaults and the project XML port.
-        val baselineSpec =
-            storedDestinationSpec
-                ?: SbxLaunchSpec.fromSettings(
-                        OpenCodeSettingsState.getInstance(),
-                        spec.canonicalDirectory,
-                        hostPort = settings.hostPortOrNull(),
-                    )
-                    .copy(useSandbox = SbxLaunchSpec.usesSandbox(spec.canonicalDirectory))
-        val canonicalOldDirectory =
-            OpenCodeServerProtocol.canonicalOpenCodeDirectory(oldDirectory) ?: oldDirectory
-        val preview =
-            de.moritzf.opencodewebpanel.server.SbxApplyPreview.build(
-                directory = spec.canonicalDirectory,
-                oldSpec = baselineSpec,
-                newSpec = spec,
-                directoryChanged =
-                    canonicalOldDirectory != null &&
-                        canonicalOldDirectory != spec.canonicalDirectory,
-                portChanged = baselineSpec.hostPort != spec.hostPort,
-                historyNote = sandboxSessionRetentionSummary(spec.canonicalDirectory),
-                hasVm =
-                    SbxSandboxRecordStore.getInstance().recordFor(spec.canonicalDirectory) != null,
-            )
+        val preview = plan.preview
         var exposure = SbxExposure(emptyList(), "")
         if (spec.useSandbox) {
             var failure: Exception? = null
@@ -649,105 +617,8 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                     .ask(panel)
             if (!confirmed) throw ConfigurationException("Cancelled.")
         }
-        val registry = OpenCodeServerBackendRegistry.getInstance()
-        // Resolve before saving useSandbox: afterwards the registry selects the new runtime.
-        val oldBackend = registry.backendFor(project)
-        // Keep a hand-written sandbox name from the destination spec; only the derived default
-        // is refreshed from the (possibly changed) directory.
-        val specToPersist = storedDestinationSpec?.let { spec.adoptStoredName(it) } ?: spec
-        if (SbxLaunchSpec.persist(specToPersist) == null) {
-            throw ConfigurationException(
-                "Could not save ${SbxLaunchSpec.PROJECT_SPEC_NAME}. Check the project directory permissions and IDE log."
-            )
-        }
-        // The user reviewed these values in the form (and the dialog above when they grant host
-        // access).
-        if (spec.useSandbox) {
-            SbxSandboxRecordStore.getInstance()
-                .acknowledgeExposure(spec.canonicalDirectory, exposure.fingerprint)
-        }
-        settings.projectDirectoryMode = nextMode.name
-        settings.openCodeProjectDirectory = nextDirectory
-        settings.portMode = selectedPortMode().name
-        settings.fixedPort = fixedPortOrDefault()
-        fixedPortField.text = settings.fixedPort.toString()
-        val newDirectory = settings.effectiveProjectDirectory(project.basePath)
-        val directoryChanged = oldDirectory != newDirectory
-        val runtimeChanged = (oldBackend is SbxOpenCodeServerBackend) != spec.useSandbox
-        val shouldStop =
-            directoryChanged ||
-                runtimeChanged ||
-                preview.effect == de.moritzf.opencodewebpanel.server.SbxApplyEffect.RESTART ||
-                preview.effect == de.moritzf.opencodewebpanel.server.SbxApplyEffect.RECREATE
-        val modality = ModalityState.defaultModalityState()
-        // Start never recreates on its own; a confirmed Recreate is carried out here.
-        val recreate =
-            spec.useSandbox &&
-                preview.effect == de.moritzf.opencodewebpanel.server.SbxApplyEffect.RECREATE
-        val afterStop = {
-            ApplicationManager.getApplication()
-                .invokeLater(
-                    {
-                        if (project.isDisposed) return@invokeLater
-                        if (recreate) {
-                            requestOpenCodeSandboxReset(project, dropGuestOpenCode = false)
-                        } else {
-                            requestOpenCodeServerRestart(project)
-                        }
-                    },
-                    modality,
-                )
-        }
-        // Backends are per directory: another open project on the same directory keeps using the
-        // old one when only this project moves away from it.
-        val leavingSharedBackend =
-            (directoryChanged || runtimeChanged) &&
-                com.intellij.openapi.project.ProjectManager.getInstance().openProjects.any { other
-                    ->
-                    other !== project &&
-                        !other.isDisposed &&
-                        registry.backendFor(other) === oldBackend
-                }
-        if (shouldStop && leavingSharedBackend) {
-            afterStop()
-        } else if (shouldStop) {
-            oldBackend.stopServer { afterStop() }
-        } else if (
-            preview.effect == de.moritzf.opencodewebpanel.server.SbxApplyEffect.LIVE &&
-                oldBackend is SbxOpenCodeServerBackend
-        ) {
-            val reload =
-                preview.reloadPage &&
-                    oldBackend.getLifecycleState() == OpenCodeServerLifecycleState.RUNNING
-            oldBackend.applyLiveSettings { error ->
-                ApplicationManager.getApplication()
-                    .invokeLater(
-                        {
-                            if (project.isDisposed) return@invokeLater
-                            if (error != null) {
-                                com.intellij.notification.NotificationGroupManager.getInstance()
-                                    .getNotificationGroup("OpenCode Web Panel")
-                                    .createNotification(
-                                        "Sandbox settings not applied",
-                                        com.intellij.openapi.util.text.StringUtil.escapeXmlEntities(
-                                                error
-                                            )
-                                            .replace("\n", "<br>"),
-                                        com.intellij.notification.NotificationType.WARNING,
-                                    )
-                                    .notify(project)
-                                return@invokeLater
-                            }
-                            if (reload) {
-                                project.messageBus
-                                    .syncPublisher(OpenCodeProjectSettingsListener.TOPIC)
-                                    .serverReloadRequested()
-                            }
-                        },
-                        modality,
-                    )
-            }
-        }
+        applier.apply(plan, exposure)
+        fixedPortField.text = plan.values.fixedPort.toString()
         updateSandboxControls()
         updateServerStatus()
         showSpecStatus(SbxLaunchSpec.inspect(effectiveDirectory()))
