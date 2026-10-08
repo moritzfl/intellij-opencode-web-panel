@@ -1,7 +1,9 @@
 package de.moritzf.opencodewebpanel.features
 
 import de.moritzf.opencodewebpanel.server.OpenCodeProtocolResult
+import de.moritzf.opencodewebpanel.server.OpenCodeServerConnection
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
+import de.moritzf.opencodewebpanel.server.OpenCodeWireProtocol
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -43,10 +45,16 @@ class OpenCodeInterruptedSessionRecoveryTest {
                 projectDirectory = { directory },
                 enabled = { enabled },
                 isDisposed = { disposed },
-                serverUrl = { serverUrl },
-                serverPassword = { password },
-                serverGeneration = { generation },
-                serverGenerationStartedAtMillis = { serverStartedAtMillis },
+                connection = {
+                    OpenCodeServerConnection(
+                        serverUrl,
+                        password,
+                        null,
+                        OpenCodeWireProtocol.V1_18,
+                        generation,
+                        serverStartedAtMillis,
+                    )
+                },
                 fetchRecentSessions = { _, _, _ ->
                     listCalls++
                     sessionResults.removeFirst()

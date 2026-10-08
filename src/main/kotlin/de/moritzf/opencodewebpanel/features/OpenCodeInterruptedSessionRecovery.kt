@@ -5,7 +5,9 @@ import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import de.moritzf.opencodewebpanel.server.OpenCodeProtocolResult
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
+import de.moritzf.opencodewebpanel.server.OpenCodeServerConnection
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
+import de.moritzf.opencodewebpanel.server.OpenCodeWireProtocol
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
 import java.util.concurrent.ConcurrentHashMap
 
@@ -19,6 +21,7 @@ internal data class OpenCodeRecoveryContext(
      * before it.
      */
     val startedAtMillis: Long = Long.MAX_VALUE,
+    val wireProtocol: OpenCodeWireProtocol = OpenCodeWireProtocol.UNKNOWN,
 ) {
     val authHeader: String = OpenCodeServerProtocol.buildBasicAuthHeader(password)
 }
@@ -101,10 +104,7 @@ internal constructor(
     private val projectDirectory: () -> String?,
     private val enabled: () -> Boolean,
     private val isDisposed: () -> Boolean,
-    private val serverUrl: () -> String?,
-    private val serverPassword: () -> String?,
-    private val serverGeneration: () -> Long,
-    private val serverGenerationStartedAtMillis: () -> Long = { Long.MAX_VALUE },
+    private val connection: () -> OpenCodeServerConnection?,
     private val fetchRecentSessions:
         (
             context: OpenCodeRecoveryContext,
@@ -134,10 +134,7 @@ internal constructor(
         projectDirectory = projectDirectory,
         enabled = { OpenCodeSettingsState.getInstance().autoContinueInterruptedSessions },
         isDisposed = { project.isDisposed },
-        serverUrl = serverManager::getServerUrl,
-        serverPassword = serverManager::getServerPassword,
-        serverGeneration = serverManager::getServerGeneration,
-        serverGenerationStartedAtMillis = serverManager::getServerGenerationStartedAtMillis,
+        connection = serverManager::getConnection,
         fetchRecentSessions = { context, maxAgeMillis, limit ->
             OpenCodeServerProtocol.fetchRecentSessionsResult(
                 context.serverUrl,
@@ -153,7 +150,7 @@ internal constructor(
                 context.authHeader,
                 context.directory,
                 sessionID,
-                wireProtocol = serverManager.getWireProtocol(),
+                wireProtocol = context.wireProtocol,
             )
         },
         sendContinuePrompt = { context, sessionID ->
@@ -161,7 +158,7 @@ internal constructor(
                 context.serverUrl,
                 context.authHeader,
                 sessionID,
-                wireProtocol = serverManager.getWireProtocol(),
+                wireProtocol = context.wireProtocol,
             )
         },
         executeAsync = { task -> ApplicationManager.getApplication().executeOnPooledThread(task) },
@@ -393,18 +390,25 @@ internal constructor(
     private fun captureContext(): OpenCodeRecoveryContext? {
         if (!enabled() || isDisposed()) return null
         val directory = projectDirectory()?.takeIf { it.isNotBlank() } ?: return null
-        val url = serverUrl() ?: return null
-        val password = serverPassword() ?: return null
-        val generation = serverGeneration().takeIf { it > 0L } ?: return null
-        val startedAtMillis = serverGenerationStartedAtMillis().takeIf { it > 0L } ?: Long.MAX_VALUE
-        return OpenCodeRecoveryContext(url, password, directory, generation, startedAtMillis)
+        val server = connection() ?: return null
+        val generation = server.generation.takeIf { it > 0L } ?: return null
+        val startedAtMillis = server.startedAtMillis.takeIf { it > 0L } ?: Long.MAX_VALUE
+        return OpenCodeRecoveryContext(
+            server.url,
+            server.password,
+            directory,
+            generation,
+            startedAtMillis,
+            server.wireProtocol,
+        )
     }
 
     private fun stillEligible(context: OpenCodeRecoveryContext): Boolean {
         if (!enabled() || isDisposed()) return false
-        if (serverGeneration() != context.generation || serverUrl() != context.serverUrl)
+        val server = connection() ?: return false
+        if (server.generation != context.generation || server.url != context.serverUrl) return false
+        if (server.password != context.password || server.wireProtocol != context.wireProtocol)
             return false
-        if (serverPassword() != context.password) return false
         return OpenCodeServerProtocol.isSameFilesystemPath(projectDirectory(), context.directory)
     }
 

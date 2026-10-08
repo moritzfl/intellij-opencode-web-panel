@@ -1014,6 +1014,7 @@ class SbxOpenCodeServerBackendTest {
         backend.stopServer { calls += "stopped callback" }
         drain()
         assertEquals(listOf("ls", "stop", "stopped callback"), calls.toList())
+        assertStoppedBackend(backend)
     }
 
     @Test

@@ -246,19 +246,22 @@ class OpenCodePluginTest : BasePlatformTestCase() {
             checkFuture = future,
         )
         service.setServerRunning(true)
+        val connection = service.getConnection()!!
 
         service.stopServer()
 
         assertTrue(process.destroyed)
         assertTrue(future.cancelled)
         assertFalse(service.isServerRunning())
-        assertEquals(OpenCodeServerLifecycleState.STOPPED, service.getLifecycleState())
+        de.moritzf.opencodewebpanel.server.assertStoppedBackend(
+            service,
+            "http://127.0.0.1:60482",
+            "secret-password",
+        )
+        assertEquals("http://127.0.0.1:60482", connection.url)
+        assertEquals("secret-password", connection.password)
         assertNull(service.getServerProcess())
-        assertNull(service.getServerUrl())
-        assertNull(service.getServerPassword())
         assertTrue(service.isServerReadyForAuth())
-        assertEquals("http://127.0.0.1:60482", service.getAuthServerUrl())
-        assertEquals("secret-password", service.getAuthPassword())
     }
 
     fun testStopCannotBeOvertakenByReservedHealthRestartPublication() {

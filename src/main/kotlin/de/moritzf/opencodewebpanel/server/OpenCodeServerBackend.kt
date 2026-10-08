@@ -10,9 +10,7 @@ import java.nio.file.Path
 interface OpenCodeServerBackend {
     val backendId: String
 
-    /**
-     * False when this backend publishes a dynamic host port (SBX) and must not offer Auto/Fixed.
-     */
+    /** Both Host CLI and sandbox backends support Auto/Fixed host ports. */
     val offersHostPortControls: Boolean
         get() = true
 
@@ -38,6 +36,9 @@ interface OpenCodeServerBackend {
     fun getServerUrl(): String?
 
     fun getServerPassword(): String?
+
+    /** Capture URL, credentials, protocol and generation atomically, or null without a live URL. */
+    fun getConnection(): OpenCodeServerConnection?
 
     /**
      * Last origin that may receive Basic auth. Survives stop/restart so a parked JCEF document does

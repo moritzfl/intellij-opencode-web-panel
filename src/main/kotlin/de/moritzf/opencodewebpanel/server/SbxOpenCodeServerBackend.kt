@@ -102,12 +102,6 @@ internal class SbxOpenCodeServerBackend(
     override val backendId: String = "sbx:${SbxCli.sandboxName(canonicalDirectory)}"
     override val offersHostPortControls: Boolean = true
 
-    private data class StartCallback(
-        val isActive: () -> Boolean,
-        val onStarted: () -> Unit,
-        val onFailed: () -> Unit,
-    )
-
     private data class PendingBinaryUpgrade(
         val startId: Long,
         val sandboxName: String,
@@ -115,7 +109,7 @@ internal class SbxOpenCodeServerBackend(
     )
 
     private val lock = Any()
-    private val pendingStarts = mutableListOf<StartCallback>()
+    private val pendingStarts = mutableListOf<OpenCodeStartCallback>()
     private var startSequence = 0L
     private var starting = false
     private var disposed = false
@@ -127,9 +121,8 @@ internal class SbxOpenCodeServerBackend(
     private var authServerUrl: String? = null
     private var authServerPassword: String? = null
     private var serverVersion: String? = null
-    private var unsupportedVersionWarningShownFor: String? = null
+    private val warnings = OpenCodeBackendWarnings()
     private var wireProtocol = OpenCodeWireProtocol.UNKNOWN
-    private var v2ProtocolWarningShown = false
     private var serverGeneration = 0L
     private var serverGenerationStartedAtMillis = 0L
     private var lastFailure = SbxFailureKind.NONE
@@ -339,7 +332,7 @@ internal class SbxOpenCodeServerBackend(
     ) {
         enqueueStart(
             project,
-            StartCallback(callbackActive, onStarted, onFailed),
+            OpenCodeStartCallback(callbackActive, onStarted, onFailed),
             OpenCodeServerLifecycleState.STARTING,
         ) { startId ->
             val url = getServerUrl()
@@ -388,32 +381,27 @@ internal class SbxOpenCodeServerBackend(
 
     override fun getServerPassword(): String? = synchronized(lock) { serverPassword }
 
+    override fun getConnection(): OpenCodeServerConnection? =
+        synchronized(lock) {
+            OpenCodeServerConnection(
+                serverUrl ?: return@synchronized null,
+                serverPassword ?: return@synchronized null,
+                serverVersion,
+                wireProtocol,
+                serverGeneration,
+                serverGenerationStartedAtMillis,
+            )
+        }
+
     override fun getServerVersion(): String? = synchronized(lock) { serverVersion }
 
     override fun getWireProtocol(): OpenCodeWireProtocol = synchronized(lock) { wireProtocol }
 
     override fun consumeUnsupportedServerVersionWarning(): String? =
-        synchronized(lock) {
-            val version =
-                serverVersion?.trim()?.takeIf { it.isNotEmpty() } ?: return@synchronized null
-            if (
-                !OpenCodeServerProtocol.isOpenCodeVersionUnsupported(version) ||
-                    unsupportedVersionWarningShownFor == version
-            ) {
-                return@synchronized null
-            }
-            unsupportedVersionWarningShownFor = version
-            version
-        }
+        synchronized(lock) { warnings.consumeUnsupportedVersion(serverVersion) }
 
     override fun consumeV2ProtocolWarning(): Boolean =
-        synchronized(lock) {
-            if (v2ProtocolWarningShown || wireProtocol != OpenCodeWireProtocol.V1_18_EMBEDDED_V2) {
-                return@synchronized false
-            }
-            v2ProtocolWarningShown = true
-            true
-        }
+        synchronized(lock) { warnings.consumeEmbeddedV2(wireProtocol) }
 
     override fun consumeCreateStaleWarning(): List<String> =
         synchronized(lock) {
@@ -515,7 +503,7 @@ internal class SbxOpenCodeServerBackend(
     ) {
         enqueueStart(
             project,
-            StartCallback(callbackActive, onStarted, onFailed),
+            OpenCodeStartCallback(callbackActive, onStarted, onFailed),
             OpenCodeServerLifecycleState.RESTARTING,
         ) {
             stopOwnedServe(stopVm = false)
@@ -550,7 +538,7 @@ internal class SbxOpenCodeServerBackend(
     ) {
         enqueueStart(
             project,
-            StartCallback(callbackActive, onStarted, onFailed),
+            OpenCodeStartCallback(callbackActive, onStarted, onFailed),
             OpenCodeServerLifecycleState.RESTARTING,
             replaceCurrent = true,
         ) { startId ->
@@ -634,7 +622,7 @@ internal class SbxOpenCodeServerBackend(
             cancelPendingStarts()
             enqueueStart(
                 project,
-                StartCallback(callbackActive, onStarted, onFailed),
+                OpenCodeStartCallback(callbackActive, onStarted, onFailed),
                 OpenCodeServerLifecycleState.RESTARTING,
             ) {
                 val name = recordStore().recordFor(canonicalDirectory)?.name
@@ -676,7 +664,7 @@ internal class SbxOpenCodeServerBackend(
         pendingBinaryUpgrade = null
         val callbacks = pendingStarts.toList()
         pendingStarts.clear()
-        notifyStartCallbacks(callbacks, success = false)
+        notifyOpenCodeStartCallbacks(callbacks, success = false)
     }
 
     private fun runOnLifecycle(onReject: () -> Unit = {}, action: () -> Unit) {
@@ -689,14 +677,14 @@ internal class SbxOpenCodeServerBackend(
 
     private fun enqueueStart(
         project: Project?,
-        callback: StartCallback,
+        callback: OpenCodeStartCallback,
         state: OpenCodeServerLifecycleState,
         replaceCurrent: Boolean = false,
         prepare: (Long) -> Boolean,
     ) {
         synchronized(lock) {
             if (disposed) {
-                notifyStartCallbacks(listOf(callback), success = false)
+                notifyOpenCodeStartCallbacks(listOf(callback), success = false)
                 return
             }
             if (project != null && !project.isDisposed) {
@@ -720,7 +708,7 @@ internal class SbxOpenCodeServerBackend(
                     starting = false
                     val callbacks = pendingStarts.toList()
                     pendingStarts.clear()
-                    notifyStartCallbacks(callbacks, success = false)
+                    notifyOpenCodeStartCallbacks(callbacks, success = false)
                 }
             ) {
                 if (!isCurrentStart(startId)) return@runOnLifecycle
@@ -1685,17 +1673,7 @@ internal class SbxOpenCodeServerBackend(
                 else OpenCodeServerLifecycleState.FAILED
             )
             if (success) startPeriodicCheck() else cancelPeriodicCheck()
-            notifyStartCallbacks(callbacks, success)
-        }
-    }
-
-    private fun notifyStartCallbacks(callbacks: List<StartCallback>, success: Boolean) {
-        if (callbacks.isEmpty()) return
-        ApplicationManager.getApplication().invokeLater {
-            callbacks.forEach { callback ->
-                if (!callback.isActive()) return@forEach
-                if (success) callback.onStarted() else callback.onFailed()
-            }
+            notifyOpenCodeStartCallbacks(callbacks, success)
         }
     }
 
@@ -1744,7 +1722,7 @@ internal class SbxOpenCodeServerBackend(
                 )
             enqueueStart(
                 null,
-                StartCallback({ false }, {}, {}),
+                OpenCodeStartCallback({ false }, {}, {}),
                 OpenCodeServerLifecycleState.RESTARTING,
             ) {
                 stopOwnedServe(stopVm = false)
@@ -1762,14 +1740,15 @@ internal class SbxOpenCodeServerBackend(
     }
 
     private fun refreshServerVersion() {
-        val url = getServerUrl() ?: return
-        val password = getServerPassword() ?: return
-        val auth = OpenCodeServerProtocol.buildBasicAuthHeader(password)
-        val version = OpenCodeServerProtocol.fetchServerVersion(url, auth)
-        val protocol = OpenCodeServerProtocol.detectWireProtocol(url, auth)
+        val target = getConnection() ?: return
+        val auth = OpenCodeServerProtocol.buildBasicAuthHeader(target.password)
+        val version = OpenCodeServerProtocol.fetchServerVersion(target.url, auth)
+        val protocol = OpenCodeServerProtocol.detectWireProtocol(target.url, auth)
         synchronized(lock) {
-            serverVersion = version
-            wireProtocol = protocol
+            if (target.sameProcess(getConnection())) {
+                serverVersion = version
+                wireProtocol = protocol
+            }
         }
     }
 

@@ -28,12 +28,6 @@ class SharedOpenCodeServerManager(private val canonicalDirectory: String) :
         private const val SERVER_START_POLL_MILLIS = 1_000L
     }
 
-    private data class StartCallback(
-        val isActive: () -> Boolean,
-        val onStarted: () -> Unit,
-        val onFailed: () -> Unit,
-    )
-
     private data class ServerResourcesToStop(
         val future: ScheduledFuture<*>?,
         val process: Process?,
@@ -52,7 +46,7 @@ class SharedOpenCodeServerManager(private val canonicalDirectory: String) :
     override val backendId: String = OpenCodeServerBackend.nativeBackendId(canonicalDirectory)
 
     private val lock = Any()
-    private val pendingStarts = mutableListOf<StartCallback>()
+    private val pendingStarts = mutableListOf<OpenCodeStartCallback>()
     private var startSequence = 0L
     private var starting = false
     private var disposed = false
@@ -68,9 +62,8 @@ class SharedOpenCodeServerManager(private val canonicalDirectory: String) :
     private var authServerUrl: String? = null
     private var authServerPassword: String? = null
     private var serverVersion: String? = null
-    private var unsupportedVersionWarningShownFor: String? = null
+    private val warnings = OpenCodeBackendWarnings()
     private var wireProtocol = OpenCodeWireProtocol.UNKNOWN
-    private var v2ProtocolWarningShown = false
     private var serverGeneration = 0L
     private var serverGenerationStartedAtMillis = 0L
     private var launcherExitNoticeLogged = false
@@ -115,9 +108,9 @@ class SharedOpenCodeServerManager(private val canonicalDirectory: String) :
         onFailed: () -> Unit,
     ) {
         val basePath = rememberBasePath(projectBasePath)
-        val callback = StartCallback(callbackActive, onStarted, onFailed)
+        val callback = OpenCodeStartCallback(callbackActive, onStarted, onFailed)
         if (isDisposed()) {
-            notifyStartCallbacks(listOf(callback), success = false)
+            notifyOpenCodeStartCallbacks(listOf(callback), success = false)
             return
         }
 
@@ -267,6 +260,18 @@ class SharedOpenCodeServerManager(private val canonicalDirectory: String) :
 
     override fun getServerPassword(): String? = synchronized(lock) { serverPassword }
 
+    override fun getConnection(): OpenCodeServerConnection? =
+        synchronized(lock) {
+            OpenCodeServerConnection(
+                serverUrl ?: return@synchronized null,
+                serverPassword ?: return@synchronized null,
+                serverVersion,
+                wireProtocol,
+                serverGeneration,
+                serverGenerationStartedAtMillis,
+            )
+        }
+
     override fun getServerVersion(): String? = synchronized(lock) { serverVersion }
 
     override fun getWireProtocol(): OpenCodeWireProtocol = synchronized(lock) { wireProtocol }
@@ -275,30 +280,13 @@ class SharedOpenCodeServerManager(private val canonicalDirectory: String) :
      * Returns an unsupported version once, so several open panels do not show duplicate warnings.
      */
     override fun consumeUnsupportedServerVersionWarning(): String? =
-        synchronized(lock) {
-            val version =
-                serverVersion?.trim()?.takeIf { it.isNotEmpty() } ?: return@synchronized null
-            if (
-                !OpenCodeServerProtocol.isOpenCodeVersionUnsupported(version) ||
-                    unsupportedVersionWarningShownFor == version
-            ) {
-                return@synchronized null
-            }
-            unsupportedVersionWarningShownFor = version
-            version
-        }
+        synchronized(lock) { warnings.consumeUnsupportedVersion(serverVersion) }
 
     override fun startFailureMessage(): String? = null
 
     /** Returns true once when the running server would make the embedded page use permission v2. */
     override fun consumeV2ProtocolWarning(): Boolean =
-        synchronized(lock) {
-            if (v2ProtocolWarningShown || wireProtocol != OpenCodeWireProtocol.V1_18_EMBEDDED_V2) {
-                return@synchronized false
-            }
-            v2ProtocolWarningShown = true
-            true
-        }
+        synchronized(lock) { warnings.consumeEmbeddedV2(wireProtocol) }
 
     /**
      * Increments each time a new server process is launched (0 while none was ever started). Lets
@@ -317,23 +305,12 @@ class SharedOpenCodeServerManager(private val canonicalDirectory: String) :
 
     /** Best-effort, informational only: refreshes the reported OpenCode version off the EDT. */
     private fun refreshServerVersion() {
-        val target =
-            synchronized(lock) {
-                ServerProbeTarget(
-                    url = serverUrl ?: return,
-                    password = serverPassword ?: return,
-                    generation = serverGeneration,
-                )
-            }
+        val target = getConnection() ?: return
         val auth = OpenCodeServerProtocol.buildBasicAuthHeader(target.password)
         val version = OpenCodeServerProtocol.fetchServerVersion(target.url, auth)
         val protocol = OpenCodeServerProtocol.detectWireProtocol(target.url, auth)
         synchronized(lock) {
-            if (
-                serverUrl == target.url &&
-                    serverPassword == target.password &&
-                    serverGeneration == target.generation
-            ) {
+            if (target.sameProcess(getConnection())) {
                 serverVersion = version
                 wireProtocol = protocol
             }
@@ -366,7 +343,7 @@ class SharedOpenCodeServerManager(private val canonicalDirectory: String) :
 
     override fun stopServer(onStopped: () -> Unit) {
         try {
-            val callbacks: List<StartCallback>
+            val callbacks: List<OpenCodeStartCallback>
             val resources =
                 synchronized(lock) {
                     startupProgress.finish(startSequence)
@@ -379,7 +356,7 @@ class SharedOpenCodeServerManager(private val canonicalDirectory: String) :
                 }
 
             setLifecycleState(OpenCodeServerLifecycleState.STOPPED)
-            notifyStartCallbacks(callbacks, success = false)
+            notifyOpenCodeStartCallbacks(callbacks, success = false)
             // Detach under the caller; kill off the EDT so settings apply never freezes the UI
             // while dispose + process termination run (can take several seconds).
             stopResourcesAsync(resources, onStopped)
@@ -397,9 +374,9 @@ class SharedOpenCodeServerManager(private val canonicalDirectory: String) :
         onFailed: () -> Unit,
     ) {
         val basePath = rememberBasePath(projectBasePath)
-        val callback = StartCallback(callbackActive, onStarted, onFailed)
+        val callback = OpenCodeStartCallback(callbackActive, onStarted, onFailed)
         if (isDisposed()) {
-            notifyStartCallbacks(listOf(callback), success = false)
+            notifyOpenCodeStartCallbacks(listOf(callback), success = false)
             return
         }
         val resources: ServerResourcesToStop
@@ -900,17 +877,7 @@ class SharedOpenCodeServerManager(private val canonicalDirectory: String) :
             recordStartFailure()
         }
 
-        notifyStartCallbacks(callbacks, success)
-    }
-
-    private fun notifyStartCallbacks(callbacks: List<StartCallback>, success: Boolean) {
-        if (callbacks.isEmpty()) return
-        ApplicationManager.getApplication().invokeLater {
-            callbacks.forEach { callback ->
-                if (!callback.isActive()) return@forEach
-                if (success) callback.onStarted() else callback.onFailed()
-            }
-        }
+        notifyOpenCodeStartCallbacks(callbacks, success)
     }
 
     private fun rememberBasePath(projectBasePath: String?): String? {
