@@ -29,7 +29,7 @@ async (page, { origin, serverKey, workspace, authorization, snippets, stallOrigi
                 metadata: { files: [{ file: 'src/Main.kt', additions: 1, deletions: 1, status: 'modified',
                   patch: '--- a/src/Main.kt\n+++ b/src/Main.kt\n@@ -1 +1 @@\n-fun main() = Unit\n+fun main() = println("fixture")\n' }] },
               },
-            }, { type: 'text', text: 'Fixture complete.' }],
+            }, { type: 'text', text: 'Fixture complete. See `src/Main.kt`:L1 and `Dockerfile`.' }],
           },
           { id: 'msg_contract_idle', type: 'idle', outcome: 'succeeded', time: { created: now + 3 } },
         ],
@@ -85,12 +85,21 @@ async (page, { origin, serverKey, workspace, authorization, snippets, stallOrigi
     assert(await search.inputValue() === 'before OLD after', 'Plain input paste lost native undo');
     await home.close();
   }
-  await page.evaluate(() => { window.__fileCalls = []; window.__diffCalls = []; window.__chunkCalls = []; });
+  await page.evaluate(() => { window.__fileCalls = []; window.__codeCalls = []; window.__diffCalls = []; window.__chunkCalls = []; });
   await page.evaluate(snippets.diffs);
   await page.evaluate(snippets.files);
+  await page.evaluate(snippets.code);
   await page.evaluate(snippets.chunks);
 
   if (v2) {
+    // Use native chat Markdown, including its path-kind annotation and adjacent line locator.
+    const inlinePath = page.locator('[data-component="markdown"] code').filter({ hasText: /^src\/Main\.kt$/ });
+    await inlinePath.waitFor();
+    assert(await inlinePath.getAttribute('data-inline-code-kind') === 'path', 'Native inline path annotation is missing');
+    await inlinePath.click();
+    assert(await page.evaluate(() => window.__codeCalls.at(-1)) === 'src/Main.kt:L1', 'Inline code navigation lost its adjacent locator');
+    await page.locator('[data-component="markdown"] code').filter({ hasText: /^Dockerfile$/ }).click();
+    assert(await page.evaluate(() => window.__codeCalls.at(-1)) === 'Dockerfile', 'Extensionless inline path was ignored');
     const group = page.locator('[data-component="context-tool-group-trigger"]').first();
     if (await group.count()) await group.click();
     const icon = page.locator('[data-slot="opencode-intellij-open-file"]').first();

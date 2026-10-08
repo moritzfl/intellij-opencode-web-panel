@@ -43,6 +43,11 @@ object OpenCodeBrowserContractExport {
                         enabled = true,
                         openFileCallback = "window.__fileCalls.push({href: rawHref, partID})",
                     ),
+                "code" to
+                    OpenCodeBrowserSnippets.buildCodeNavigationScript(
+                        enabled = true,
+                        openCodeCallback = "window.__codeCalls.push(ref)",
+                    ),
                 "diffs" to
                     OpenCodeBrowserSnippets.buildDiffNavigationScript(
                         enabled = true,

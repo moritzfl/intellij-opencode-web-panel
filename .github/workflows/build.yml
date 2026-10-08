@@ -139,8 +139,8 @@ jobs:
         include:
           - version: 1.18.31
             package: opencode-ai@1.18.31
-          - version: 2.0.18
-            package: '@opencode/cli@2.0.18'
+          - version: 2.0.25
+            package: '@opencode/cli@2.0.25'
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-java@v5
@@ -158,7 +158,9 @@ jobs:
           npm install --global @playwright/cli@0.1.15 '${{ matrix.package }}'
           playwright-cli install-browser chrome --with-deps
       - name: Verify DOM, wire, and browser behavior
-        run: node scripts/check-browser-contract.mjs
+        run: |
+          node --test scripts/classify-persist-keys.test.mjs
+          node scripts/check-browser-contract.mjs
 
   # Run Qodana inspections and provide a report
   inspectCode:
