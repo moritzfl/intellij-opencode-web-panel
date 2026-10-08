@@ -349,16 +349,9 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
                 openCodeServerDirectory()
                     ?.takeIf { it.isNotBlank() }
                     ?.let { projectDirectory ->
-                        // Pass the resolved boot target so OpenCode's own `lastProjectSession`
-                        // pointer is
-                        // already correct when the SPA bundle reads localStorage. Seeding it only
-                        // after
-                        // load lets the bundle bootstrap onto a stale pointer first, which shows
-                        // the
-                        // wrong conversation until the post-load navigate corrects it. The
-                        // navigation
-                        // itself stays a post-load step (window.location.assign needs a live
-                        // document).
+                        // Bind this panel's directory before the SPA reads shared localStorage.
+                        // OpenCode owns session selection; this seed never navigates or overwrites
+                        // its lastProjectSession pointer.
                         OpenCodeBrowserSnippets.buildOpenProjectScript(
                             projectDirectory,
                             serverUrl,

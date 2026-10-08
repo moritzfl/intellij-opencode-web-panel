@@ -19,6 +19,8 @@ import de.moritzf.opencodewebpanel.server.SbxCli
 )
 @Service(Service.Level.APP)
 class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
+    // Legacy XML fields are retained for loading old settings only. Project YAML owns runtime
+    // selection and sandbox provisioning; these values must not seed a new project spec.
     var runtimeMode: String = OpenCodeRuntimeMode.HOST.name
     var portMode: String = OpenCodePortMode.AUTO.name
     var fixedPort: Int = DEFAULT_FIXED_PORT
@@ -130,8 +132,6 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
         openCodeLocalStorageSnapshotsByBackend.clear()
     }
 
-    fun runtimeModeValue(): OpenCodeRuntimeMode = OpenCodeRuntimeMode.fromStorageValue(runtimeMode)
-
     fun portModeValue(): OpenCodePortMode = OpenCodePortMode.fromStorageValue(portMode)
 
     fun binaryModeValue(): OpenCodeBinaryMode = OpenCodeBinaryMode.fromStorageValue(binaryMode)
@@ -166,10 +166,6 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
             OpenCodeBinaryMode.CUSTOM -> sbxBinaryPath.ifBlank { SbxCli.DEFAULT_EXECUTABLE }
         }
     }
-
-    fun sbxMemoryValue(): String = SbxCli.sanitizeMemory(sbxMemory)
-
-    fun sbxCpusValue(): String = SbxCli.sanitizeCpus(sbxCpus)
 
     fun effectiveCodeNavigationEnabled(): Boolean {
         return openFileLinksInIde && enableCodeNavigation

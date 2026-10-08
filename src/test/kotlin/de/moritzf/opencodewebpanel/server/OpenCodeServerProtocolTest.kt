@@ -2700,17 +2700,8 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
-    fun fetchRecentSessionsReturnsEmptyOnConnectionError() {
+    fun fetchRecentSessionsReportsConnectionError() {
         val auth = OpenCodeServerProtocol.buildBasicAuthHeader("test")
-        val sessions =
-            OpenCodeServerProtocol.fetchRecentSessions(
-                "http://127.0.0.1:1",
-                auth,
-                "/tmp/project",
-                connectTimeoutMillis = 100,
-                readTimeoutMillis = 100,
-            )
-        assertTrue(sessions.isEmpty())
         val result =
             OpenCodeServerProtocol.fetchRecentSessionsResult(
                 "http://127.0.0.1:1",
@@ -2895,11 +2886,8 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
-    fun sendContinuePromptReturnsFalseForInvalidSessionId() {
+    fun sendContinuePromptRejectsInvalidSessionId() {
         val auth = OpenCodeServerProtocol.buildBasicAuthHeader("test")
-        assertFalse(
-            OpenCodeServerProtocol.sendContinuePrompt("http://127.0.0.1:1", auth, "invalid")
-        )
         assertEquals(
             OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_IDENTIFIER),
             OpenCodeServerProtocol.sendContinuePromptResult("http://127.0.0.1:1", auth, "invalid"),
@@ -2974,13 +2962,13 @@ class OpenCodeServerProtocolTest {
     fun sendContinuePromptSendsResumeTrueBody() {
         val (accepted, request) =
             withCapturedHttpRequest { base ->
-                OpenCodeServerProtocol.sendContinuePrompt(
+                OpenCodeServerProtocol.sendContinuePromptResult(
                     base,
                     OpenCodeServerProtocol.buildBasicAuthHeader("test"),
                     "ses_abc123",
                 )
             }
-        assertTrue(accepted)
+        assertEquals(OpenCodeProtocolResult.Success(Unit), accepted)
         assertTrue(request.body.contains("\"resume\":true"))
         assertTrue(request.body.contains("\"text\":\"Continue\""))
         assertTrue(request.body.contains("\"prompt\""))
@@ -2990,14 +2978,14 @@ class OpenCodeServerProtocolTest {
     fun sendContinuePromptOnCliOmitsPromptWrapper() {
         val (accepted, request) =
             withCapturedHttpRequest { base ->
-                OpenCodeServerProtocol.sendContinuePrompt(
+                OpenCodeServerProtocol.sendContinuePromptResult(
                     base,
                     OpenCodeServerProtocol.buildBasicAuthHeader("test"),
                     "ses_abc123",
                     wireProtocol = OpenCodeWireProtocol.V2_CLI,
                 )
             }
-        assertTrue(accepted)
+        assertEquals(OpenCodeProtocolResult.Success(Unit), accepted)
         assertEquals("""{"text":"Continue","resume":true}""", request.body)
     }
 
@@ -3353,11 +3341,16 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
-    fun fetchSessionDiffReturnsEmptyForInvalidSessionId() {
+    fun fetchSessionDiffRejectsInvalidIdentifiers() {
         val auth = OpenCodeServerProtocol.buildBasicAuthHeader("test")
-        assertTrue(
-            OpenCodeServerProtocol.fetchSessionDiff("http://127.0.0.1:1", auth, "/tmp", "invalid")
-                .isEmpty()
+        assertEquals(
+            OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_IDENTIFIER),
+            OpenCodeServerProtocol.fetchSessionDiffResult(
+                "http://127.0.0.1:1",
+                auth,
+                "/tmp",
+                "invalid",
+            ),
         )
         val invalidMessage =
             OpenCodeServerProtocol.fetchSessionDiffResult(
@@ -3422,9 +3415,9 @@ class OpenCodeServerProtocolTest {
     fun fetchSessionDiffRequestsDiffUrlAndParsesResult() {
         val body =
             """[{"file":"src/Foo.kt","patch":"@@ -1 +1 @@\n-a\n+b","additions":1,"deletions":1,"status":"modified"}]"""
-        val (diffs, request) =
+        val (result, request) =
             withCapturedHttpRequest(responseBody = body) { base ->
-                OpenCodeServerProtocol.fetchSessionDiff(
+                OpenCodeServerProtocol.fetchSessionDiffResult(
                     base,
                     OpenCodeServerProtocol.buildBasicAuthHeader("test"),
                     "/tmp/project",
@@ -3434,6 +3427,7 @@ class OpenCodeServerProtocolTest {
         assertEquals("GET", request.method)
         assertTrue(request.target.startsWith("/session/ses_abc123/diff?directory="))
         assertFalse(request.target.contains("messageID"))
+        val diffs = (result as OpenCodeProtocolResult.Success).value
         assertEquals(1, diffs.size)
         assertEquals("src/Foo.kt", diffs[0].file)
     }
@@ -3442,7 +3436,7 @@ class OpenCodeServerProtocolTest {
     fun fetchSessionDiffAppendsMessageIdParam() {
         val (_, request) =
             withCapturedHttpRequest(responseBody = "[]") { base ->
-                OpenCodeServerProtocol.fetchSessionDiff(
+                OpenCodeServerProtocol.fetchSessionDiffResult(
                     base,
                     OpenCodeServerProtocol.buildBasicAuthHeader("test"),
                     "/tmp/project",

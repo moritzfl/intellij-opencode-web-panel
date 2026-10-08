@@ -10,6 +10,7 @@ internal enum class SbxApplyEffect {
 internal data class SbxApplyChange(
     val summary: String,
     val effect: SbxApplyEffect,
+    val reloadPage: Boolean = false,
 )
 
 internal data class SbxApplyPreview(
@@ -20,6 +21,9 @@ internal data class SbxApplyPreview(
 ) {
     val effect: SbxApplyEffect
         get() = changes.maxByOrNull { it.effect.ordinal }?.effect ?: SbxApplyEffect.NONE
+
+    val reloadPage: Boolean
+        get() = changes.any { it.reloadPage }
 
     fun confirmTitle(): String =
         when (effect) {
@@ -80,6 +84,7 @@ internal data class SbxApplyPreview(
                         "Server port",
                         if (newSpec.useSandbox && oldSpec.useSandbox) SbxApplyEffect.LIVE
                         else SbxApplyEffect.RESTART,
+                        reloadPage = true,
                     )
             }
             // Sandbox-only options do not affect the Host CLI; they apply once the sandbox is used.

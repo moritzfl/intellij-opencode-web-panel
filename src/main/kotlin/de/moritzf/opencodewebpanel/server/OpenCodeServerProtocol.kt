@@ -1890,37 +1890,9 @@ internal object OpenCodeServerProtocol {
 
     /**
      * Fetches the diff for a session (`GET /session/{sessionID}/diff?directory=...`). With a
-     * [messageID] (`msg_...`) it returns that message's snapshot diff; without one it returns the
-     * session's cumulative diff. Returns an empty list on any error.
+     * [messageID] (`msg_...`) it returns that user turn's snapshot diff. Keep failures distinct
+     * from a successful empty diff.
      */
-    fun fetchSessionDiff(
-        serverUrl: String,
-        basicAuthHeader: String,
-        directory: String,
-        sessionID: String,
-        messageID: String? = null,
-        connectTimeoutMillis: Int = 5000,
-        readTimeoutMillis: Int = 5000,
-        wireProtocol: OpenCodeWireProtocol = OpenCodeWireProtocol.V1_18,
-    ): List<SnapshotFileDiff> {
-        return when (
-            val result =
-                fetchSessionDiffResult(
-                    serverUrl,
-                    basicAuthHeader,
-                    directory,
-                    sessionID,
-                    messageID,
-                    connectTimeoutMillis,
-                    readTimeoutMillis,
-                    wireProtocol,
-                )
-        ) {
-            is OpenCodeProtocolResult.Success -> result.value
-            is OpenCodeProtocolResult.Failure -> emptyList()
-        }
-    }
-
     fun fetchSessionDiffResult(
         serverUrl: String,
         basicAuthHeader: String,
@@ -2533,34 +2505,6 @@ internal object OpenCodeServerProtocol {
      * not by `time.updated`, and includes subagent child sessions — callers that want "most recent
      * activity" must select by [SessionSummary.updatedMillis] themselves.
      */
-    fun fetchRecentSessions(
-        serverUrl: String,
-        basicAuthHeader: String,
-        directory: String,
-        maxAgeMillis: Long = RECENT_SESSION_WINDOW_MILLIS,
-        nowMillis: Long = System.currentTimeMillis(),
-        limit: Int = 20,
-        connectTimeoutMillis: Int = 3000,
-        readTimeoutMillis: Int = 3000,
-    ): List<SessionSummary> {
-        return when (
-            val result =
-                fetchRecentSessionsResult(
-                    serverUrl,
-                    basicAuthHeader,
-                    directory,
-                    maxAgeMillis,
-                    nowMillis,
-                    limit,
-                    connectTimeoutMillis,
-                    readTimeoutMillis,
-                )
-        ) {
-            is OpenCodeProtocolResult.Success -> result.value
-            is OpenCodeProtocolResult.Failure -> emptyList()
-        }
-    }
-
     fun fetchRecentSessionsResult(
         serverUrl: String,
         basicAuthHeader: String,
@@ -2808,28 +2752,9 @@ internal object OpenCodeServerProtocol {
 
     /**
      * Sends a continuation prompt to a session via the v2 API (`POST
-     * /api/session/{sessionID}/prompt` with `{"prompt":{"text":"Continue"},"resume":true}`).
-     * Returns true when the server accepted the prompt.
+     * /api/session/{sessionID}/prompt`). CLI 2.x uses a flat text body; 1.18 uses the prompt
+     * wrapper.
      */
-    fun sendContinuePrompt(
-        serverUrl: String,
-        basicAuthHeader: String,
-        sessionID: String,
-        connectTimeoutMillis: Int = 5000,
-        readTimeoutMillis: Int = 5000,
-        wireProtocol: OpenCodeWireProtocol = OpenCodeWireProtocol.V1_18,
-    ): Boolean {
-        return sendContinuePromptResult(
-            serverUrl,
-            basicAuthHeader,
-            sessionID,
-            connectTimeoutMillis,
-            readTimeoutMillis,
-            wireProtocol,
-        ) is
-            OpenCodeProtocolResult.Success
-    }
-
     fun sendContinuePromptResult(
         serverUrl: String,
         basicAuthHeader: String,

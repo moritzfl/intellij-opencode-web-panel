@@ -22,6 +22,7 @@ class SbxApplyPreviewTest {
                 "",
             )
         assertEquals(SbxApplyEffect.LIVE, appended.effect)
+        assertFalse(appended.reloadPage)
         assertTrue(appended.message().contains("Append sandbox kit"))
         val removed =
             SbxApplyPreview.build(
@@ -41,6 +42,9 @@ class SbxApplyPreviewTest {
         val sandbox =
             SbxApplyPreview.build("/tmp/p", base, base.copy(hostPort = 4096), false, true, "")
         assertEquals(SbxApplyEffect.LIVE, sandbox.effect)
+        assertTrue(
+            sandbox.copy(changes = sandbox.changes.map { it.copy(summary = "Port") }).reloadPage
+        )
         val host =
             SbxApplyPreview.build(
                 "/tmp/p",

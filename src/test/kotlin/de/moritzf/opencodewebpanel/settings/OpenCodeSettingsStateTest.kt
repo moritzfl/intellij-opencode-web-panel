@@ -12,11 +12,11 @@ import org.junit.Test
 class OpenCodeSettingsStateTest {
 
     @Test
-    fun runtimeModeDefaultsToHost() {
-        assertEquals(OpenCodeRuntimeMode.HOST, OpenCodeSettingsState().runtimeModeValue())
+    fun legacyRuntimeModeLoadsAsHost() {
+        assertEquals(OpenCodeRuntimeMode.HOST.name, OpenCodeSettingsState().runtimeMode)
         val settings = OpenCodeSettingsState()
         settings.loadState(OpenCodeSettingsState().apply { runtimeMode = "legacy-value" })
-        assertEquals(OpenCodeRuntimeMode.HOST, settings.runtimeModeValue())
+        assertEquals(OpenCodeRuntimeMode.HOST.name, settings.runtimeMode)
     }
 
     @Test
@@ -31,24 +31,24 @@ class OpenCodeSettingsStateTest {
     @Test
     fun sbxMemoryAndCpusDefaultAndSanitize() {
         val settings = OpenCodeSettingsState()
-        assertEquals("4g", settings.sbxMemoryValue())
-        assertEquals("2", settings.sbxCpusValue())
+        assertEquals("4g", settings.sbxMemory)
+        assertEquals("2", settings.sbxCpus)
         settings.loadState(
             OpenCodeSettingsState().apply {
                 sbxMemory = "8G"
                 sbxCpus = "4"
             }
         )
-        assertEquals("8g", settings.sbxMemoryValue())
-        assertEquals("4", settings.sbxCpusValue())
+        assertEquals("8g", settings.sbxMemory)
+        assertEquals("4", settings.sbxCpus)
         settings.loadState(
             OpenCodeSettingsState().apply {
                 sbxMemory = "huge"
                 sbxCpus = "99"
             }
         )
-        assertEquals("4g", settings.sbxMemoryValue())
-        assertEquals("2", settings.sbxCpusValue())
+        assertEquals("4g", settings.sbxMemory)
+        assertEquals("2", settings.sbxCpus)
     }
 
     @Test

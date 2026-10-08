@@ -717,7 +717,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                 oldBackend is SbxOpenCodeServerBackend
         ) {
             val reload =
-                preview.changes.any { it.summary == "Server port" } &&
+                preview.reloadPage &&
                     oldBackend.getLifecycleState() == OpenCodeServerLifecycleState.RUNNING
             oldBackend.applyLiveSettings { error ->
                 ApplicationManager.getApplication()
