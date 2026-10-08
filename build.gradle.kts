@@ -33,6 +33,7 @@ repositories {
 // Dependencies are managed with Gradle version catalog - read more:
 // https://docs.gradle.org/current/userguide/version_catalogs.html
 dependencies {
+    testImplementation(libs.archunit)
     testImplementation(libs.junit)
 
     // IntelliJ Platform Gradle Plugin Dependencies Extension - read more:

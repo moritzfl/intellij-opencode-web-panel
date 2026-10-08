@@ -1,5 +1,6 @@
 [versions]
 # libraries
+archunit = "1.5.1"
 junit = "4.13.2"
 
 # plugins
@@ -10,6 +11,7 @@ kover = "0.9.11"
 ktfmt = "0.27.0"
 
 [libraries]
+archunit = { group = "com.tngtech.archunit", name = "archunit", version.ref = "archunit" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 
 [plugins]
