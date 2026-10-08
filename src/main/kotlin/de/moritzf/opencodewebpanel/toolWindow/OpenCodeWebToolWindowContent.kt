@@ -1,7 +1,6 @@
 package de.moritzf.opencodewebpanel.toolWindow
 
 import com.intellij.ide.AppLifecycleListener
-import com.intellij.ide.ui.LafManager
 import com.intellij.ide.ui.LafManagerListener
 import com.intellij.notification.Notification
 import com.intellij.notification.NotificationAction
@@ -297,121 +296,36 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
     private var openProjectScriptScheduled = false
     private var panelReplacementScheduled = false
     private val documentStartInjector = OpenCodeDocumentStartInjector(browser)
-    @Volatile private var mainDocumentLoadSucceeded = false
-    private var pageLoadInProgress = false
-    private var openCodePagePainted = false
-    private var pageLoadStartedAtMillis = 0L
-    private var pageLoadTargetUrl: String? = null
-    private var pageLoadWatchdogGeneration = 0L
-    private var pageLoadRetryCount = 0
-    private var pageLoadGaveUp = false
+    private val pageLifecycle = OpenCodePageLifecycle()
     private var cefBrowserCreated = false
-    private var pendingBrowserLoadGeneration = 0L
 
-    @Volatile private var mainDocumentLoadRevision = 0L
-    @Volatile private var browserDocumentRevision = 0L
     // Bumps on every chunk-failure report from the injected listener; a full-load (onLoadStart)
     // snapshots it so a pre-load error cannot satisfy the fresh document's debounce.
     private val pageLoadChunkFailureGeneration = AtomicLong()
 
-    /**
-     * A UI-behavior enhancement injected into the OpenCode page as JavaScript. Instances bundle the
-     * setting gate, the script builder, and the per-page-load "already scheduled" flag so
-     * scheduling and setting toggles can be handled generically for every feature.
-     */
-    private class InjectedFeature(
-        val enabledInSettings: () -> Boolean,
-        val buildScript: () -> String?,
-        /** Extra cleanup before the page reload that removes a disabled feature. */
-        val onDisable: () -> Unit = {},
-    ) {
-        var scheduled = false
-    }
-
-    /**
-     * A UI-behavior enhancement that must run before the SPA bundle executes. Registered with
-     * Chromium document-start before navigation, then injected again from `onLoadStart` (and
-     * retried on the early delay series) in case document-start was unavailable. Builders are
-     * re-invoked on every attempt so scripts can embed current state (e.g. the IDE theme); they
-     * must be idempotent in-page. Instances share one scheduling routine ([injectEarlyFeature]) and
-     * one reset point so per-feature flag drift is impossible.
-     */
-    private class EarlyInjectedFeature(
-        val enabledInSettings: () -> Boolean = { true },
-        val buildScript: (serverUrl: String) -> String?,
-    ) {
-        var scheduled = false
-    }
-
-    private val openProjectSeedFeature =
-        EarlyInjectedFeature(
-            buildScript = { serverUrl ->
-                openCodeServerDirectory()
-                    ?.takeIf { it.isNotBlank() }
-                    ?.let { projectDirectory ->
-                        // Bind this panel's directory before the SPA reads shared localStorage.
-                        // OpenCode owns session selection; this seed never navigates or overwrites
-                        // its lastProjectSession pointer.
-                        OpenCodeBrowserSnippets.buildOpenProjectScript(
-                            projectDirectory,
-                            serverUrl,
-                        )
-                    }
-            }
-        )
-    private val matchMediaPatchFeature =
-        EarlyInjectedFeature(
-            enabledInSettings = {
-                val settings = OpenCodeSettingsState.getInstance()
-                settings.syncThemeWithIde || settings.forceCompactLayout
+    private val injections =
+        OpenCodePanelInjections(
+            browser,
+            serverManager,
+            scriptScheduler,
+            ::openCodeServerDirectory,
+            query = { setting ->
+                when (setting) {
+                    OpenCodeUiSetting.FILE_LINK_NAVIGATION -> openFileLinkQuery
+                    OpenCodeUiSetting.EXTERNAL_LINK_NAVIGATION -> openExternalLinkQuery
+                    OpenCodeUiSetting.CODE_NAVIGATION -> openCodeReferenceQuery
+                    OpenCodeUiSetting.DIFF_NAVIGATION -> openDiffQuery
+                    OpenCodeUiSetting.BROWSER_CURSOR_MIRROR -> browserCursorQuery
+                    OpenCodeUiSetting.CHUNK_LOAD_RECOVERY -> chunkLoadErrorQuery
+                    OpenCodeUiSetting.RENDERER_WATCHDOG -> rendererHeartbeatQuery
+                    else -> error("No callback channel for $setting")
+                }
             },
-            buildScript = {
-                val settings = OpenCodeSettingsState.getInstance()
-                OpenCodeBrowserSnippets.buildMatchMediaPatchScript(
-                    compact = settings.forceCompactLayout,
-                    theme = settings.syncThemeWithIde,
-                    dark = isIdeDarkTheme(),
-                )
-            },
-        )
-    private val compactHomeLayoutFeature =
-        EarlyInjectedFeature(
-            enabledInSettings = { OpenCodeSettingsState.getInstance().forceCompactLayout },
-            buildScript = { OpenCodeBrowserSnippets.buildCompactHomeLayoutScript(enabled = true) },
-        )
-    private val hideWebsiteButtonFeature =
-        EarlyInjectedFeature(
-            enabledInSettings = { OpenCodeSettingsState.getInstance().hideWebsiteButton },
-            buildScript = { OpenCodeBrowserSnippets.buildHideWebsiteButtonScript(enabled = true) },
-        )
-    private val pathHoverPreviewFeature =
-        EarlyInjectedFeature(
-            enabledInSettings = { OpenCodeSettingsState.getInstance().fasterPathHoverPreview },
-            buildScript = { OpenCodeBrowserSnippets.buildPathHoverPreviewScript(enabled = true) },
-        )
-    private val eventStreamWatchdogFeature =
-        EarlyInjectedFeature(
-            enabledInSettings = {
-                OpenCodeSettingsState.getInstance().recoverStalledEventStream &&
-                    serverManager.getWireProtocol() != OpenCodeWireProtocol.V2_CLI
-            },
-            buildScript = {
-                OpenCodeBrowserSnippets.buildEventStreamWatchdogScript(
-                    enabled = true,
-                    wireProtocol = serverManager.getWireProtocol(),
-                )
-            },
-        )
-    private val chunkLoadRecoveryFeature =
-        EarlyInjectedFeature(
-            enabledInSettings = { OpenCodeSettingsState.getInstance().recoverFailedChunkLoads },
-            buildScript = {
-                // Signal-only callback: the message it carries is diagnostic, the JVM side just
-                // marks that this document raised a chunk failure and decides on reload.
-                OpenCodeBrowserSnippets.buildChunkLoadRecoveryScript(
-                    enabled = true,
-                    fatalCallback = chunkLoadErrorQuery.inject("message"),
-                )
+            resetMirroredBrowserCursor = ::resetMirroredBrowserCursor,
+            reloadPage = {
+                pageLifecycle.invalidatePendingLoad()
+                beginPageLoad(browser.cefBrowser.url)
+                browser.cefBrowser.reload()
             },
         )
 
@@ -430,108 +344,6 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
         )
     }
 
-    /** Injection order matters: the project seed must precede everything else. */
-    private val earlyInjectedFeatures =
-        listOf(
-            openProjectSeedFeature,
-            matchMediaPatchFeature,
-            compactHomeLayoutFeature,
-            hideWebsiteButtonFeature,
-            pathHoverPreviewFeature,
-            eventStreamWatchdogFeature,
-            chunkLoadRecoveryFeature,
-        )
-
-    private val fileLinkFeature =
-        InjectedFeature(
-            enabledInSettings = { OpenCodeSettingsState.getInstance().openFileLinksInIde },
-            buildScript = {
-                OpenCodeBrowserSnippets.buildFileLinkHandlerScript(
-                    openCodeServerDirectory(),
-                    enabled = true,
-                    openFileCallback =
-                        openFileLinkQuery.inject("rawHref + '\\n' + directory + '\\n' + partID"),
-                )
-            },
-        )
-    private val externalLinkFeature =
-        InjectedFeature(
-            enabledInSettings = { OpenCodeSettingsState.getInstance().openExternalLinksInBrowser },
-            buildScript = {
-                OpenCodeBrowserSnippets.buildExternalLinkHandlerScript(
-                    enabled = true,
-                    openExternalCallback = openExternalLinkQuery.inject("href"),
-                )
-            },
-        )
-    private val codeNavigationFeature =
-        InjectedFeature(
-            enabledInSettings = {
-                OpenCodeSettingsState.getInstance().effectiveCodeNavigationEnabled()
-            },
-            buildScript = {
-                OpenCodeBrowserSnippets.buildCodeNavigationScript(
-                    enabled = true,
-                    openCodeCallback = openCodeReferenceQuery.inject("ref"),
-                )
-            },
-        )
-    private val diffNavigationFeature =
-        InjectedFeature(
-            enabledInSettings = { OpenCodeSettingsState.getInstance().openDiffsInIde },
-            buildScript = {
-                OpenCodeBrowserSnippets.buildDiffNavigationScript(
-                    enabled = true,
-                    openDiffCallback =
-                        openDiffQuery.inject(
-                            "messageID + '\\n' + filePath + '\\n' + partID + '\\n' + (typeof vcsMode === 'string' ? vcsMode : '')"
-                        ),
-                )
-            },
-        )
-    private val projectSwitchPromptSuppressionFeature =
-        InjectedFeature(
-            enabledInSettings = {
-                OpenCodeSettingsState.getInstance().suppressProjectSwitchPrompts
-            },
-            buildScript = {
-                OpenCodeBrowserSnippets.buildProjectSwitchPromptSuppressionScript(enabled = true)
-            },
-        )
-    private val cursorMirrorFeature =
-        InjectedFeature(
-            enabledInSettings = { OpenCodeSettingsState.getInstance().mirrorBrowserCursor },
-            buildScript = {
-                OpenCodeBrowserSnippets.buildCursorMirrorScript(
-                    enabled = true,
-                    cursorCallback = browserCursorQuery.inject("payload"),
-                )
-            },
-            onDisable = { resetMirroredBrowserCursor() },
-        )
-    private val rendererHeartbeatFeature =
-        InjectedFeature(
-            enabledInSettings = {
-                OpenCodeSettingsState.getInstance().recoverStalledRenderer &&
-                    rendererHeartbeatQuery.isAvailable
-            },
-            buildScript = {
-                OpenCodeBrowserSnippets.buildRendererHeartbeatScript(
-                    enabled = true,
-                    heartbeatCallback = rendererHeartbeatQuery.inject("visibility"),
-                )
-            },
-        )
-    private val injectedFeatures =
-        listOf(
-            diffNavigationFeature,
-            fileLinkFeature,
-            externalLinkFeature,
-            codeNavigationFeature,
-            projectSwitchPromptSuppressionFeature,
-            cursorMirrorFeature,
-            rendererHeartbeatFeature,
-        )
     private val workspaceRefreshCoordinator =
         OpenCodeWorkspaceRefreshCoordinator(
             project,
@@ -565,10 +377,10 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
             isEnabledInSettings = { OpenCodeSettingsState.getInstance().recoverStalledRenderer },
             isPageReady = {
                 OpenCodeRendererWatchdogPolicy.isPageReadyForRendererWatchdog(
-                    pageLoadInProgress = pageLoadInProgress,
-                    pagePainted = openCodePagePainted,
-                    loadSucceeded = mainDocumentLoadSucceeded,
-                    loadGaveUp = pageLoadGaveUp,
+                    pageLoadInProgress = pageLifecycle.loadInProgress,
+                    pagePainted = pageLifecycle.painted,
+                    loadSucceeded = pageLifecycle.loadSucceeded,
+                    loadGaveUp = pageLifecycle.gaveUp,
                 )
             },
             onReloadPage = { reloadStalledOpenCodePage() },
@@ -606,9 +418,7 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
                 if (frame?.isMain == true) {
                     thisLogger()
                         .info("jcef onLoadStart url=${frame.url} transition=$transitionType")
-                    val loadRevision = ++mainDocumentLoadRevision
-                    browserDocumentRevision++
-                    mainDocumentLoadSucceeded = false
+                    val loadRevision = pageLifecycle.documentStarted()
                     // New document, new chunk-failure budget: the in-page listener re-arms and may
                     // report once more even if the previous page already did.
                     pageLoadChunkFailureGeneration.set(0L)
@@ -619,16 +429,15 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
                     if (host.isCurrent(this@OpenCodeWebToolWindowContent)) {
                         OpenCodeChatInputService.getInstance(project).requeueInFlight()
                     }
-                    injectedFeatures.forEach { it.scheduled = false }
-                    earlyInjectedFeatures.forEach { it.scheduled = false }
+                    injections.resetScheduled()
                     val serverUrl = serverManager.getServerUrl()
                     val frameUrl = frame.url
                     if (OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, frameUrl)) {
                         ApplicationManager.getApplication().invokeLater {
                             if (
                                 isContentDisposed() ||
-                                    loadRevision != mainDocumentLoadRevision ||
-                                    mainDocumentLoadSucceeded
+                                    loadRevision != pageLifecycle.documentRevision ||
+                                    pageLifecycle.loadSucceeded
                             ) {
                                 return@invokeLater
                             }
@@ -636,10 +445,10 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
                             if (!OpenCodeServerProtocol.isOpenCodeServerPage(liveUrl, frameUrl))
                                 return@invokeLater
                             val sameLoad =
-                                pageLoadInProgress &&
+                                pageLifecycle.loadInProgress &&
                                     OpenCodeServerProtocol.isOpenCodeRouteAlreadyOpen(
                                         liveUrl,
-                                        pageLoadTargetUrl,
+                                        pageLifecycle.targetUrl,
                                         frameUrl,
                                     )
                             beginPageLoad(frameUrl, resetRetryBudget = !sameLoad)
@@ -656,7 +465,7 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
                         // localStorage — the shared browser profile otherwise keeps the previous
                         // IDE
                         // project's workspace.
-                        earlyInjectedFeatures.forEach(::injectEarlyFeature)
+                        injections.earlyInjectedFeatures.forEach(injections::injectEarlyFeature)
                         localStorageBridge.installSync(frame.url)
                     }
                 }
@@ -675,11 +484,11 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
                     )
                 )
                     return
-                val completedRevision = mainDocumentLoadRevision
+                val completedRevision = pageLifecycle.documentRevision
                 ApplicationManager.getApplication().invokeLater {
                     if (isContentDisposed()) return@invokeLater
+                    if (completedRevision != pageLifecycle.documentRevision) return@invokeLater
                     noteOpenCodePageVisible(completedUrl)
-                    if (completedRevision != mainDocumentLoadRevision) return@invokeLater
                     val liveUrl = serverManager.getServerUrl() ?: return@invokeLater
                     if (!OpenCodeServerProtocol.isOpenCodeServerPage(liveUrl, completedUrl))
                         return@invokeLater
@@ -696,8 +505,8 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
                     localStorageBridge.restore(completedUrl)
                     scheduleOpenProjectScript()
                     localStorageBridge.installSync(completedUrl)
-                    injectedFeatures.forEach(::scheduleFeatureScript)
-                    scheduleIdeThemeSyncScript()
+                    injections.injectedFeatures.forEach(injections::scheduleFeatureScript)
+                    injections.scheduleIdeThemeSyncScript()
                     scheduleFlushPendingChatInput()
                     interruptedSessionRecovery.checkAndContinue()
                     prepareDisplayedSessionLineage(completedUrl)
@@ -765,7 +574,7 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
                     if (isContentDisposed()) return
                     if (frame?.isMain == true) {
                         thisLogger().info("jcef onAddressChange url=$url")
-                        browserDocumentRevision++
+                        pageLifecycle.addressChanged()
                         systemNotifications.browserAddressChanged()
                         prepareDisplayedSessionLineage(url)
                         scheduleBrowserRepaintNudges()
@@ -925,11 +734,11 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
                             OpenCodeUiSetting.FILE_LINK_NAVIGATION ->
                                 applyFileLinkNavigation(enabled)
                             OpenCodeUiSetting.EXTERNAL_LINK_NAVIGATION ->
-                                applyFeature(externalLinkFeature, enabled)
+                                injections.applyFeature(injections.externalLinkFeature, enabled)
                             OpenCodeUiSetting.CODE_NAVIGATION ->
-                                applyFeature(codeNavigationFeature, enabled)
+                                injections.applyFeature(injections.codeNavigationFeature, enabled)
                             OpenCodeUiSetting.DIFF_NAVIGATION ->
-                                applyFeature(diffNavigationFeature, enabled)
+                                injections.applyFeature(injections.diffNavigationFeature, enabled)
                             OpenCodeUiSetting.CHAT_FILE_DROP -> {
                                 if (!enabled) {
                                     OpenCodeChatInputService.getInstance(project).discardPending()
@@ -952,9 +761,12 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
                             OpenCodeUiSetting.PATH_HOVER_PREVIEW -> applyPathHoverPreview()
                             OpenCodeUiSetting.IDE_THEME_SYNC -> applyIdeThemeSync(enabled)
                             OpenCodeUiSetting.PROJECT_SWITCH_PROMPT_SUPPRESSION ->
-                                applyFeature(projectSwitchPromptSuppressionFeature, enabled)
+                                injections.applyFeature(
+                                    injections.projectSwitchPromptSuppressionFeature,
+                                    enabled,
+                                )
                             OpenCodeUiSetting.BROWSER_CURSOR_MIRROR ->
-                                applyFeature(cursorMirrorFeature, enabled)
+                                injections.applyFeature(injections.cursorMirrorFeature, enabled)
                             OpenCodeUiSetting.EVENT_STREAM_WATCHDOG -> applyEventStreamWatchdog()
                             OpenCodeUiSetting.CHUNK_LOAD_RECOVERY -> applyChunkLoadRecovery()
                             OpenCodeUiSetting.RENDERER_WATCHDOG -> applyRendererWatchdog()
@@ -1111,7 +923,7 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
                 browser,
                 serverManager,
                 ::openCodeProjectDirectory,
-                { browserDocumentRevision },
+                { pageLifecycle.browserRevision },
                 ::isContentDisposed,
                 this,
             )
@@ -1294,15 +1106,19 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
             visibleRecoveryNotice(
                 storedRecovery,
                 state,
-                openCodePagePainted,
-                pageLoadInProgress,
+                pageLifecycle.painted,
+                pageLifecycle.loadInProgress,
                 now,
             )
         if (storedRecovery != null && recovery == null) lastPanelRecovery = null
         val model =
             OpenCodeLifecycleStripModel(
                 state = state,
-                pageOpening = shouldShowPageOpeningStatus(pageLoadInProgress, openCodePagePainted),
+                pageOpening =
+                    shouldShowPageOpeningStatus(
+                        pageLifecycle.loadInProgress,
+                        pageLifecycle.painted,
+                    ),
                 cancelled = sbx?.lastFailure() == SbxFailureKind.CANCELLED,
                 stage = progress?.stage ?: sbx?.startupStage(),
                 elapsedMillis = if (starting) progress?.elapsedMillis else null,
@@ -1615,12 +1431,11 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
                 "jcef loadProjectPage backend=${serverManager.backendId} server=$serverUrl current=${safeBrowserUrl()} created=$cefBrowserCreated queries=${allJsQueries().count { it.isAvailable }}/${allJsQueries().size}"
             )
         openProjectScriptScheduled = false
-        pageLoadTargetUrl = null
+        pageLifecycle.forgetTarget()
         // No pre-load script scheduling here: onLoadStart cancels the alarm and resets the
         // per-page flags anyway, and onLoadStart/onLoadEnd (re)schedule everything for the new
         // document. The resets above only cover the case where the load never starts.
-        injectedFeatures.forEach { it.scheduled = false }
-        earlyInjectedFeatures.forEach { it.scheduled = false }
+        injections.resetScheduled()
         openProjectAlarm.cancelAllRequests()
         applyBrowserZoom()
         // Events that fired before this panel started caring never reached the tracker.
@@ -1658,16 +1473,7 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
     }
 
     private fun installDocumentStartScripts(serverUrl: String): CompletableFuture<Boolean> {
-        val script = buildString {
-            earlyInjectedFeatures.forEach { feature ->
-                if (!feature.enabledInSettings()) return@forEach
-                val built = feature.buildScript(serverUrl)
-                if (!built.isNullOrBlank()) {
-                    append(built)
-                    append('\n')
-                }
-            }
-        }
+        val script = injections.documentStartScript(serverUrl)
         val guarded =
             OpenCodeDocumentStartInjector.guardForOrigin(
                 script,
@@ -1681,7 +1487,7 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
         cancelIfDocumentRevisionChanges: Long? = null,
         load: () -> Unit,
     ) {
-        val generation = ++pendingBrowserLoadGeneration
+        val generation = pageLifecycle.invalidatePendingLoad()
         val waitMillis =
             if (documentStartInjector.hasInstalledScript()) {
                 DOCUMENT_START_INSTALL_TIMEOUT_MILLIS
@@ -1713,16 +1519,15 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
                         )
                 }
                 ApplicationManager.getApplication().invokeLater {
-                    if (isContentDisposed() || generation != pendingBrowserLoadGeneration)
+                    if (
+                        isContentDisposed() ||
+                            !pageLifecycle.acceptsPendingLoad(
+                                generation,
+                                cancelIfDocumentRevisionChanges,
+                            )
+                    )
                         return@invokeLater
                     if (serverManager.getServerUrl() != serverUrl) return@invokeLater
-                    if (
-                        cancelIfDocumentRevisionChanges != null &&
-                            (mainDocumentLoadRevision != cancelIfDocumentRevisionChanges ||
-                                mainDocumentLoadSucceeded)
-                    ) {
-                        return@invokeLater
-                    }
                     val keepCurrent =
                         OpenCodeDocumentStartInjector.shouldKeepCurrentPage(
                             installed = installed == true,
@@ -1738,13 +1543,11 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
                             .warn(
                                 "Keeping the current OpenCode page because its document-start script could not be replaced"
                             )
-                        pageLoadInProgress = false
-                        pageLoadStartedAtMillis = 0L
-                        pageLoadTargetUrl = null
+                        pageLifecycle.keepCurrentPage()
                         updateLifecycleIndicator()
                         return@invokeLater
                     }
-                    mainDocumentLoadSucceeded = false
+                    pageLifecycle.willNavigate()
                     load()
                 }
             }
@@ -1777,11 +1580,9 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
     private fun noteOpenCodePageVisible(pageUrl: String?) {
         val serverUrl = serverManager.getServerUrl()
         if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, pageUrl)) return
-        if (openCodePagePainted && !pageLoadInProgress) return
-        openCodePagePainted = true
-        mainDocumentLoadSucceeded = true
-        pageLoadGaveUp = false
-        clearPageLoadWatchdog()
+        if (pageLifecycle.painted && !pageLifecycle.loadInProgress) return
+        pageLifecycle.visible()
+        pageLoadWatchdogAlarm.cancelAllRequests()
         updateLifecycleIndicator()
     }
 
@@ -1791,80 +1592,51 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
     private fun dismissPageOpeningStatus(pageUrl: String?) {
         val serverUrl = serverManager.getServerUrl()
         if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, pageUrl)) return
-        if (!pageLoadInProgress) return
+        if (!pageLifecycle.loadInProgress) return
         clearPageLoadWatchdog()
         updateLifecycleIndicator()
     }
 
     private fun clearPageLoadWatchdog() {
-        pageLoadInProgress = false
-        pageLoadWatchdogGeneration++
+        pageLifecycle.dismissOpening()
         pageLoadWatchdogAlarm.cancelAllRequests()
-        pageLoadRetryCount = 0
-        pageLoadStartedAtMillis = 0L
-        pageLoadTargetUrl = null
     }
 
     private fun beginPageLoad(targetUrl: String? = null, resetRetryBudget: Boolean = true) {
-        mainDocumentLoadSucceeded = false
-        pageLoadInProgress = true
-        pageLoadGaveUp = false
-        if (targetUrl != null) pageLoadTargetUrl = targetUrl
-        if (resetRetryBudget) {
-            pageLoadRetryCount = 0
-            pageLoadStartedAtMillis = System.currentTimeMillis()
-        } else if (pageLoadStartedAtMillis == 0L) {
-            pageLoadStartedAtMillis = System.currentTimeMillis()
-        }
+        pageLifecycle.begin(targetUrl, resetRetryBudget)
         updateLifecycleIndicator()
     }
 
     private fun armPageLoadWatchdog(serverUrl: String) {
-        val token = ++pageLoadWatchdogGeneration
-        // Own alarm: onLoadStart cancels openProjectAlarm. Do not flip
-        // mainDocumentLoadSucceeded here — a late arm must not undo onLoadEnd.
+        val token = pageLifecycle.armWatchdog()
+        // Own alarm: onLoadStart cancels openProjectAlarm. Arming cannot undo onLoadEnd.
         pageLoadWatchdogAlarm.cancelAllRequests()
         addAlarmRequest(pageLoadWatchdogAlarm, PAGE_LOAD_WATCHDOG_MILLIS) {
-            if (token != pageLoadWatchdogGeneration) return@addAlarmRequest
-            val elapsed =
-                if (pageLoadStartedAtMillis == 0L) 0L
-                else System.currentTimeMillis() - pageLoadStartedAtMillis
-            if (
-                !OpenCodePageLoadWatchdog.shouldRetry(
-                    mainDocumentLoadSucceeded,
-                    pageLoadRetryCount,
-                    elapsed,
-                )
-            ) {
-                if (
-                    !mainDocumentLoadSucceeded &&
-                        pageLoadRetryCount >= OpenCodePageLoadWatchdog.MAX_RETRIES
-                ) {
+            when (pageLifecycle.timeout(token)) {
+                OpenCodePageLifecycle.Timeout.NONE -> return@addAlarmRequest
+                OpenCodePageLifecycle.Timeout.GAVE_UP -> {
                     thisLogger()
                         .warn(
                             "OpenCode page failed to load after ${OpenCodePageLoadWatchdog.MAX_RETRIES} retries"
                         )
-                    pageLoadInProgress = false
-                    pageLoadGaveUp = true
-                    pageLoadStartedAtMillis = 0L
                     updateLifecycleIndicator()
+                    return@addAlarmRequest
                 }
-                return@addAlarmRequest
+                OpenCodePageLifecycle.Timeout.RETRY -> Unit
             }
-            pageLoadRetryCount++
             thisLogger()
                 .warn(
-                    "OpenCode page load timed out; retrying ($pageLoadRetryCount/${OpenCodePageLoadWatchdog.MAX_RETRIES})"
+                    "OpenCode page load timed out; retrying (${pageLifecycle.retryCount}/${OpenCodePageLoadWatchdog.MAX_RETRIES})"
                 )
             val liveUrl = serverManager.getServerUrl()
             if (liveUrl != serverUrl) return@addAlarmRequest
             val target =
                 OpenCodePageLoadWatchdog.retryTarget(
                     liveUrl,
-                    pageLoadTargetUrl,
+                    pageLifecycle.targetUrl,
                     browser.cefBrowser.url,
                 )
-            val stalledDocumentRevision = mainDocumentLoadRevision
+            val stalledDocumentRevision = pageLifecycle.documentRevision
             beginPageLoad(target, resetRetryBudget = false)
             ensureCefBrowser()
             loadAfterDocumentStartScripts(
@@ -1889,15 +1661,8 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
             return
         }
         loadedServerRootUrl = null
-        pendingBrowserLoadGeneration++
-        pageLoadWatchdogGeneration++
+        pageLifecycle.reset()
         pageLoadWatchdogAlarm.cancelAllRequests()
-        pageLoadInProgress = false
-        pageLoadGaveUp = false
-        pageLoadRetryCount = 0
-        openCodePagePainted = false
-        pageLoadStartedAtMillis = 0L
-        pageLoadTargetUrl = null
         openProjectAlarm.cancelAllRequests()
         runCatching { browser.cefBrowser.stopLoad() }
         if (shouldHideEmbeddedPage(state)) {
@@ -1961,99 +1726,6 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
             val onProjectDestination = isOpenCodeProjectDestination(frameUrl)
             !onProjectDestination || onProjectRootRoute
         }
-    }
-
-    /**
-     * Injects [feature] from `onLoadStart`: executes the script immediately (before the SPA bundle
-     * runs) and retries on the early delay series in case the first attempt ran before the new
-     * document's V8 context was ready. The builder is re-invoked per attempt so it always reflects
-     * current IDE state. The open-project seed must be first: post-load injects alone race the
-     * SPA's first read of the shared browser profile and can leave the panel bound to another IDE
-     * project's workspace.
-     */
-    private fun injectEarlyFeature(feature: EarlyInjectedFeature) {
-        if (feature.scheduled) return
-        if (!feature.enabledInSettings()) return
-        val serverUrl = serverManager.getServerUrl() ?: return
-        val script = feature.buildScript(serverUrl) ?: return
-        val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
-        feature.scheduled = true
-        browser.cefBrowser.executeJavaScript(script, rootUrl, 0)
-        scriptScheduler.scheduleAction(
-            early = true,
-            shouldRun = { feature.enabledInSettings() && isBrowserOnOpenCodeServerPage(serverUrl) },
-        ) {
-            feature.buildScript(serverUrl)?.let {
-                browser.cefBrowser.executeJavaScript(it, rootUrl, 0)
-            }
-        }
-    }
-
-    /** Schedules [feature]'s script for retried injection into the current page load. */
-    private fun scheduleFeatureScript(feature: InjectedFeature) {
-        if (feature.scheduled) return
-        if (!feature.enabledInSettings()) return
-
-        val serverUrl = serverManager.getServerUrl() ?: return
-        val script = feature.buildScript() ?: return
-        val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
-        feature.scheduled = true
-
-        // These scripts install document-level listeners and carry their own idempotence guards;
-        // no DOM target needs to exist first. Install immediately so a fast first click/paste after
-        // load cannot slip through, then retain retries for SPA/browser timing resilience.
-        browser.cefBrowser.executeJavaScript(script, rootUrl, 0)
-        scriptScheduler.schedule(script, rootUrl) {
-            feature.enabledInSettings() && isBrowserOnOpenCodeServerPage(serverUrl)
-        }
-    }
-
-    /**
-     * Applies a runtime toggle of [feature]: injects the script when enabled, or reloads the page
-     * when disabled so previously installed listeners and patches are fully removed (per the
-     * safeguard contract, never a "disable" script).
-     */
-    private fun applyFeature(feature: InjectedFeature, enabled: Boolean) {
-        val serverUrl = serverManager.getServerUrl() ?: return
-        val decision =
-            OpenCodeInjectedFeaturePolicy.decide(
-                enabled = enabled,
-                enabledInSettings = feature.enabledInSettings(),
-                onOpenCodePage = isBrowserOnOpenCodeServerPage(serverUrl),
-                script =
-                    if (enabled && feature.enabledInSettings()) feature.buildScript() else null,
-            )
-        if (decision.clearScheduled) feature.scheduled = false
-        when (decision.action) {
-            OpenCodeInjectedFeaturePolicy.Action.NONE -> return
-            OpenCodeInjectedFeaturePolicy.Action.RELOAD -> {
-                feature.onDisable()
-                pendingBrowserLoadGeneration++
-                beginPageLoad(browser.cefBrowser.url)
-                browser.cefBrowser.reload()
-            }
-            OpenCodeInjectedFeaturePolicy.Action.INJECT -> {
-                val script = decision.script ?: return
-                browser.cefBrowser.executeJavaScript(
-                    script,
-                    OpenCodeServerProtocol.buildServerRootUrl(serverUrl),
-                    0,
-                )
-                if (decision.markScheduled) feature.scheduled = true
-            }
-        }
-    }
-
-    private fun scheduleIdeThemeSyncScript() {
-        if (!matchMediaPatchFeature.enabledInSettings()) return
-        val serverUrl = serverManager.getServerUrl() ?: return
-        scriptScheduler.scheduleAction(
-            shouldRun = {
-                matchMediaPatchFeature.enabledInSettings() &&
-                    isBrowserOnOpenCodeServerPage(serverUrl)
-            },
-            action = { executeIdeThemeSyncScript(serverUrl) },
-        )
     }
 
     /**
@@ -2127,21 +1799,22 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
     private fun applyIdeThemeSync(enabled: Boolean) {
         val serverUrl = serverManager.getServerUrl() ?: return
         if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)) return
-        matchMediaPatchFeature.scheduled = false
+        injections.matchMediaPatchFeature.scheduled = false
         if (!enabled) {
-            reloadForEarlyFeatureToggle(matchMediaPatchFeature)
+            reloadForEarlyFeatureToggle(injections.matchMediaPatchFeature)
             return
         }
         installDocumentStartScripts(serverUrl)
-        if (executeIdeThemeSyncScript(serverUrl)) matchMediaPatchFeature.scheduled = true
+        if (injections.executeIdeThemeSyncScript(serverUrl))
+            injections.matchMediaPatchFeature.scheduled = true
     }
 
     /** Code navigation piggybacks on file-link navigation, so a toggle here re-applies both. */
     private fun applyFileLinkNavigation(enabled: Boolean) {
-        codeNavigationFeature.scheduled = false
-        applyFeature(fileLinkFeature, enabled)
+        injections.codeNavigationFeature.scheduled = false
+        injections.applyFeature(injections.fileLinkFeature, enabled)
         if (enabled && OpenCodeSettingsState.getInstance().enableCodeNavigation) {
-            applyFeature(codeNavigationFeature, enabled = true)
+            injections.applyFeature(injections.codeNavigationFeature, enabled = true)
         }
     }
 
@@ -2220,43 +1893,23 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
         notification.notify(project)
     }
 
-    private fun executeIdeThemeSyncScript(serverUrl: String): Boolean {
-        val settings = OpenCodeSettingsState.getInstance()
-        val script =
-            OpenCodeBrowserSnippets.buildMatchMediaPatchScript(
-                compact = settings.forceCompactLayout,
-                theme = settings.syncThemeWithIde,
-                dark = isIdeDarkTheme(),
-            ) ?: return false
-        browser.cefBrowser.executeJavaScript(
-            script,
-            OpenCodeServerProtocol.buildServerRootUrl(serverUrl),
-            0,
-        )
-        return true
-    }
-
-    private fun isIdeDarkTheme(): Boolean {
-        return LafManager.getInstance().currentUIThemeLookAndFeel?.isDark == true
-    }
-
     private fun applyCompactLayout() {
         // Reload rebuilds all early scripts: both the media-query patch and V2 Home stylesheet.
-        reloadForEarlyFeatureToggle(matchMediaPatchFeature)
+        reloadForEarlyFeatureToggle(injections.matchMediaPatchFeature)
     }
 
     private fun applyHideWebsiteButton() {
         // Off → reload so listeners/stylesheets are fully removed (safeguard contract).
         // On → reload so early inject runs before SPA chrome mounts.
-        reloadForEarlyFeatureToggle(hideWebsiteButtonFeature)
+        reloadForEarlyFeatureToggle(injections.hideWebsiteButtonFeature)
     }
 
     private fun applyPathHoverPreview() {
-        reloadForEarlyFeatureToggle(pathHoverPreviewFeature)
+        reloadForEarlyFeatureToggle(injections.pathHoverPreviewFeature)
     }
 
     private fun forceEventStreamReconnect() {
-        if (!eventStreamWatchdogFeature.enabledInSettings()) return
+        if (!injections.eventStreamWatchdogFeature.enabledInSettings()) return
         val serverUrl = serverManager.getServerUrl() ?: return
         ApplicationManager.getApplication().invokeLater {
             if (isContentDisposed()) return@invokeLater
@@ -2275,13 +1928,13 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
         if (serverManager.getWireProtocol() == OpenCodeWireProtocol.V2_CLI) return
         // Off → reload so the patched window.fetch is replaced by the untouched original.
         // On → reload so the patch is in place before the SPA bundle captures window.fetch.
-        reloadForEarlyFeatureToggle(eventStreamWatchdogFeature)
+        reloadForEarlyFeatureToggle(injections.eventStreamWatchdogFeature)
     }
 
     private fun applyChunkLoadRecovery() {
         // Both directions reload: off removes the error listeners entirely (safeguard contract),
         // on puts the listener in place before the SPA bundle can raise the first chunk failure.
-        reloadForEarlyFeatureToggle(chunkLoadRecoveryFeature)
+        reloadForEarlyFeatureToggle(injections.chunkLoadRecoveryFeature)
     }
 
     /**
@@ -2289,7 +1942,7 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
      * so previously installed patches are fully removed (safeguard contract, never a "disable"
      * script), on so the script runs before the SPA bundle on the next load start.
      */
-    private fun reloadForEarlyFeatureToggle(feature: EarlyInjectedFeature) {
+    private fun reloadForEarlyFeatureToggle(feature: OpenCodePanelInjections.EarlyInjectedFeature) {
         feature.scheduled = false
         val serverUrl = serverManager.getServerUrl() ?: return
         if (OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)) {
@@ -2316,8 +1969,8 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
         } else {
             rendererWatchdog.stop()
         }
-        applyFeature(
-            rendererHeartbeatFeature,
+        injections.applyFeature(
+            injections.rendererHeartbeatFeature,
             OpenCodeSettingsState.getInstance().recoverStalledRenderer,
         )
     }
@@ -2325,13 +1978,8 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
     private fun showErrorInBrowser() {
         if (isContentDisposed()) return
         loadedServerRootUrl = null
-        pendingBrowserLoadGeneration++
-        pageLoadInProgress = false
-        pageLoadGaveUp = false
-        pageLoadRetryCount = 0
-        openCodePagePainted = false
-        pageLoadStartedAtMillis = 0L
-        pageLoadTargetUrl = null
+        pageLifecycle.reset()
+        pageLoadWatchdogAlarm.cancelAllRequests()
         updateLifecycleIndicator()
         val sbx = serverManager as? SbxOpenCodeServerBackend
         val failure = sbx?.lastFailure()
@@ -2536,7 +2184,7 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
 
     override fun dispose() {
         disposed = true
-        pendingBrowserLoadGeneration++
+        pageLifecycle.reset()
         foreignSessionWarning.suppress()
         permissionAutoResponder.dispose()
         openProjectAlarm.cancelAllRequests()

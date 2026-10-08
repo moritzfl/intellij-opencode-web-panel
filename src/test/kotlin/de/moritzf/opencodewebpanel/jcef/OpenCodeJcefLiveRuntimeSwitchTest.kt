@@ -27,6 +27,8 @@ import com.intellij.testFramework.ApplicationRule
 import com.intellij.testFramework.DisposableRule
 import com.intellij.testFramework.replaceService
 import com.intellij.ui.jcef.JBCefBrowser
+import com.intellij.util.Alarm
+import de.moritzf.opencodewebpanel.browser.OpenCodeBrowserScriptScheduler
 import de.moritzf.opencodewebpanel.browser.OpenCodeBrowserSnippets
 import de.moritzf.opencodewebpanel.browser.OpenCodeDocumentStartInjector
 import de.moritzf.opencodewebpanel.browser.OpenCodeJsQuery
@@ -41,10 +43,13 @@ import de.moritzf.opencodewebpanel.server.OpenCodeWireProtocol
 import de.moritzf.opencodewebpanel.server.SbxCli
 import de.moritzf.opencodewebpanel.server.SbxProcessRunner
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
+import de.moritzf.opencodewebpanel.settings.OpenCodeUiSetting
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodeBrowserContextMenuHandler
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodeBrowserShortcutHandler
+import de.moritzf.opencodewebpanel.toolWindow.OpenCodePageLifecycle
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodePanel
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodePanelController
+import de.moritzf.opencodewebpanel.toolWindow.OpenCodePanelInjections
 import java.awt.datatransfer.DataFlavor
 import java.awt.datatransfer.StringSelection
 import java.awt.datatransfer.Transferable
@@ -1003,6 +1008,146 @@ class OpenCodeJcefLiveRuntimeSwitchTest {
             }
             previous = parent
         }
+    }
+
+    @Test
+    fun panelInjectionLifecycleDeliversHeartbeatsAndRemovesDisabledPatches() {
+        val origin = origins[0]
+        val protocol =
+            OpenCodeServerProtocol.detectWireProtocol(origin, "Basic b3BlbmNvZGU6cHJvYmUtb25seQ==")
+        val settings = OpenCodeSettingsState()
+        ApplicationManager.getApplication()
+            .replaceService(OpenCodeSettingsState::class.java, settings, disposable.disposable)
+        val backend =
+            Proxy.newProxyInstance(
+                OpenCodeServerBackend::class.java.classLoader,
+                arrayOf(OpenCodeServerBackend::class.java),
+            ) { _, method, _ ->
+                when (method.name) {
+                    "getServerUrl" -> origin
+                    "getWireProtocol" -> protocol
+                    else -> error("Unexpected injection backend call: ${method.name}")
+                }
+            } as OpenCodeServerBackend
+        val page = OpenCodePageLifecycle()
+        val beats = AtomicInteger()
+        lateinit var browser: JBCefBrowser
+        lateinit var injections: OpenCodePanelInjections
+        lateinit var alarm: Alarm
+        lateinit var created: CompletableFuture<Unit>
+        SwingUtilities.invokeAndWait {
+            browser = OpenCodeJcefTestHelper.createBrowser(disposable.disposable)
+            alarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, disposable.disposable)
+            val queries =
+                listOf(
+                        OpenCodeUiSetting.FILE_LINK_NAVIGATION,
+                        OpenCodeUiSetting.EXTERNAL_LINK_NAVIGATION,
+                        OpenCodeUiSetting.CODE_NAVIGATION,
+                        OpenCodeUiSetting.DIFF_NAVIGATION,
+                        OpenCodeUiSetting.BROWSER_CURSOR_MIRROR,
+                        OpenCodeUiSetting.CHUNK_LOAD_RECOVERY,
+                        OpenCodeUiSetting.RENDERER_WATCHDOG,
+                    )
+                    .associateWith { setting ->
+                        OpenCodeJsQuery.create(browser).also { query ->
+                            assertTrue(query.isAvailable)
+                            query.addHandler {
+                                if (setting == OpenCodeUiSetting.RENDERER_WATCHDOG)
+                                    beats.incrementAndGet()
+                                null
+                            }
+                        }
+                    }
+            injections =
+                OpenCodePanelInjections(
+                    browser,
+                    backend,
+                    OpenCodeBrowserScriptScheduler(
+                        ProjectManager.getInstance().defaultProject,
+                        browser,
+                        alarm,
+                    ),
+                    { workspace },
+                    queries::getValue,
+                    {},
+                    reloadPage = {
+                        page.invalidatePendingLoad()
+                        page.begin(browser.cefBrowser.url)
+                        browser.cefBrowser.reload()
+                    },
+                )
+            created = createOpenCodeBrowserBeforeReplacement(browser)
+        }
+        created.get(15, TimeUnit.SECONDS)
+        browser.jbCefClient.addRequestHandler(
+            OpenCodeJcefAuthHandler(
+                origin,
+                "Basic b3BlbmNvZGU6cHJvYmUtb25seQ==",
+                password = "probe-only",
+            ),
+            browser.cefBrowser,
+        )
+        browser.jbCefClient.addLoadHandler(
+            object : CefLoadHandlerAdapter() {
+                override fun onLoadStart(
+                    cef: CefBrowser?,
+                    frame: CefFrame?,
+                    transition: CefRequest.TransitionType?,
+                ) {
+                    if (frame?.isMain != true || !frame.url.startsWith(origin)) return
+                    page.documentStarted()
+                    alarm.cancelAllRequests()
+                    injections.resetScheduled()
+                    injections.earlyInjectedFeatures.forEach(injections::injectEarlyFeature)
+                }
+
+                override fun onLoadEnd(cef: CefBrowser?, frame: CefFrame?, status: Int) {
+                    if (
+                        frame?.isMain != true ||
+                            !frame.url.startsWith(origin) ||
+                            status !in 200..299
+                    )
+                        return
+                    val revision = page.documentRevision
+                    ApplicationManager.getApplication().invokeLater {
+                        if (revision != page.documentRevision) return@invokeLater
+                        page.visible()
+                        injections.injectedFeatures.forEach(injections::scheduleFeatureScript)
+                    }
+                }
+            },
+            browser.cefBrowser,
+        )
+        SwingUtilities.invokeAndWait {
+            OpenCodeJcefTestHelper.show(browser, "Panel injection lifecycle", disposable.disposable)
+        }
+        OpenCodeDocumentStartInjector(browser)
+            .installAndWait(injections.documentStartScript(origin), 20_000)
+        OpenCodeJcefTestHelper.invokeAndWaitForLoad(browser, "$origin/") {
+            page.begin("$origin/")
+            browser.loadURL("$origin/")
+        }
+        OpenCodeJcefTestHelper.awaitCondition("panel first-document heartbeats", 20) {
+            beats.get() >= 2
+        }
+        assertTrue(page.loadSucceeded)
+        assertEquals("true", evaluate(browser, "!window.matchMedia('(min-width: 768px)').matches"))
+        OpenCodeJcefTestHelper.invokeAndWaitForLoad(browser, "$origin/") {
+            settings.recoverStalledRenderer = false
+            injections.applyFeature(injections.rendererHeartbeatFeature, false)
+        }
+        assertEquals(
+            "false",
+            evaluate(browser, "window.__opencodeIntellijRendererHeartbeatInstalled === true"),
+        )
+        val revision = page.documentRevision
+        val count = beats.get()
+        SwingUtilities.invokeAndWait {
+            settings.recoverStalledRenderer = true
+            injections.applyFeature(injections.rendererHeartbeatFeature, true)
+        }
+        OpenCodeJcefTestHelper.awaitCondition("re-enabled heartbeat") { beats.get() > count }
+        assertEquals("Enable injects in place", revision, page.documentRevision)
     }
 
     @Test

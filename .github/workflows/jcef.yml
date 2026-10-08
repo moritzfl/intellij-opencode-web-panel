@@ -42,10 +42,11 @@ jobs:
           npm install --global '${{ matrix.package }}'
           opencode --version
           echo "OPENCODE_JCEF_EXECUTABLE=$(command -v opencode)" >> "$GITHUB_ENV"
-      - name: Exercise real JCEF callbacks, replacement, editor transfers, and clipboard
+      - name: Exercise real JCEF callbacks, injection lifecycle, replacement, editor transfers, and clipboard
         run: |
           xvfb-run --auto-servernum ./gradlew test --rerun -Pjcef \
             --tests '*OpenCodeJcefLiveRuntimeSwitchTest.firstDocumentDeliversRendererHeartbeatsWithoutReload' \
+            --tests '*OpenCodeJcefLiveRuntimeSwitchTest.panelInjectionLifecycleDeliversHeartbeatsAndRemovesDisabledPatches' \
             --tests '*OpenCodeJcefLiveRuntimeSwitchTest.homeRouteSurvivesRepeatedBackendBrowserReplacement' \
             --tests '*OpenCodeJcefLiveRuntimeSwitchTest.editorTransfersKeepRealComposerDraftAndCallbacksWithoutReload' \
             --tests '*OpenCodeJcefLiveRuntimeSwitchTest.clipboardPasteUsesIdeActionAndContextMenuWithCaretUndoAndImages' \
@@ -56,7 +57,7 @@ jobs:
           import { readFileSync } from 'node:fs';
           const xml = readFileSync('build/test-results/test/TEST-de.moritzf.opencodewebpanel.jcef.OpenCodeJcefLiveRuntimeSwitchTest.xml', 'utf8');
           const suite = xml.match(/<testsuite\b[^>]*>/)?.[0] ?? '';
-          for (const [key, expected] of Object.entries({ tests: 5, skipped: 0, failures: 0, errors: 0 })) {
+          for (const [key, expected] of Object.entries({ tests: 6, skipped: 0, failures: 0, errors: 0 })) {
             const actual = suite.match(new RegExp(`\\b${key}="(\\d+)"`))?.[1];
             if (Number(actual) !== expected) throw new Error(`${key}: expected ${expected}, got ${actual}`);
           }
