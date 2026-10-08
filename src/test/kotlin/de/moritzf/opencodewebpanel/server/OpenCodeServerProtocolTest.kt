@@ -2837,13 +2837,14 @@ class OpenCodeServerProtocolTest {
         }
         server.start()
         try {
-            val msg =
-                OpenCodeServerProtocol.fetchLastMessageJson(
+            val result =
+                OpenCodeServerProtocol.fetchLastMessageJsonResult(
                     "http://127.0.0.1:${server.address.port}",
                     OpenCodeServerProtocol.buildBasicAuthHeader("test"),
                     "/tmp/project",
                     "ses_abc123",
                 )
+            val msg = (result as OpenCodeProtocolResult.Success).value
             assertNotNull(msg)
             assertTrue(msg!!.contains("\"type\":\"assistant\""))
             assertTrue(OpenCodeServerProtocol.isInterruptedLastMessage(msg))
@@ -2870,13 +2871,14 @@ class OpenCodeServerProtocolTest {
         }
         server.start()
         try {
-            val msg =
-                OpenCodeServerProtocol.fetchLastMessageJson(
+            val result =
+                OpenCodeServerProtocol.fetchLastMessageJsonResult(
                     "http://127.0.0.1:${server.address.port}",
                     OpenCodeServerProtocol.buildBasicAuthHeader("test"),
                     "/tmp/project",
                     "ses_abc123",
                 )
+            val msg = (result as OpenCodeProtocolResult.Success).value
             assertNotNull(msg)
             assertTrue(msg!!.contains("\"type\":\"assistant\""))
             assertTrue(OpenCodeServerProtocol.isInterruptedLastMessage(msg))
