@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Provider-free, isolated real-server browser regression gate. Requires Node and playwright-cli.
 // Usage: node scripts/check-browser-contract.mjs [/path/to/opencode]
-import { execFile, spawn, spawnSync } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { createServer, request } from 'node:http';
 import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -61,12 +61,17 @@ async function stallingProxy(origin) {
   return `http://127.0.0.1:${stallProxy.address().port}`;
 }
 
-function run(command, args, options = {}) {
-  const result = spawnSync(command, args, { cwd: repo, encoding: 'utf8', timeout: 180_000, ...options });
-  if (result.error || result.status !== 0) {
-    throw new Error(`${command} ${args.join(' ')} failed: ${result.error ?? result.status}\n${result.stdout}\n${result.stderr}`);
+async function run(command, args, options = {}) {
+  // Keep draining serve's log pipes while gates fetch assets. spawnSync blocks this event loop
+  // and can deadlock a verbose server once its stdout/stderr pipe fills.
+  try {
+    const { stdout } = await execFileAsync(command, args, {
+      cwd: repo, encoding: 'utf8', timeout: 180_000, maxBuffer: 8 * 1024 * 1024, ...options,
+    });
+    return stdout;
+  } catch (error) {
+    throw new Error(`${command} ${args.join(' ')} failed: ${error.code ?? error.message}\n${error.stdout ?? ''}\n${error.stderr ?? ''}`);
   }
-  return result.stdout;
 }
 
 try {
@@ -76,12 +81,12 @@ try {
   await writeFile(path.join(root, 'config/opencode/opencode.json'), '{}');
   await writeFile(path.join(workspace, 'README.md'), '# Browser contract\n\nOriginal.\n');
   await writeFile(path.join(workspace, 'src/Main.kt'), 'fun main() = Unit\n');
-  run('git', ['init', '-q', '-b', 'main'], { cwd: workspace });
-  run('git', ['add', '.'], { cwd: workspace });
-  run('git', ['-c', 'user.name=Contract test', '-c', 'user.email=contract@example.invalid', 'commit', '-qm', 'Fixture'], { cwd: workspace });
-  run('git', ['checkout', '-qb', 'fixture-branch'], { cwd: workspace });
+  await run('git', ['init', '-q', '-b', 'main'], { cwd: workspace });
+  await run('git', ['add', '.'], { cwd: workspace });
+  await run('git', ['-c', 'user.name=Contract test', '-c', 'user.email=contract@example.invalid', 'commit', '-qm', 'Fixture'], { cwd: workspace });
+  await run('git', ['checkout', '-qb', 'fixture-branch'], { cwd: workspace });
   await writeFile(path.join(workspace, 'README.md'), '# Browser contract\n\nCommitted change.\n');
-  run('git', ['-c', 'user.name=Contract test', '-c', 'user.email=contract@example.invalid', 'commit', '-qam', 'Branch fixture'], { cwd: workspace });
+  await run('git', ['-c', 'user.name=Contract test', '-c', 'user.email=contract@example.invalid', 'commit', '-qam', 'Branch fixture'], { cwd: workspace });
   await writeFile(path.join(workspace, 'README.md'), '# Browser contract\n\nChanged.\n\n[Relative file](src/Main.kt)\n\n[Absolute file](/src/Main.kt)\n');
   server = spawn(process.argv[2] || 'opencode', ['serve', '--hostname', '127.0.0.1', '--port', '0', '--print-logs'], {
     cwd: workspace, stdio: ['ignore', 'pipe', 'pipe'],
@@ -104,9 +109,9 @@ try {
     await delay(100);
   }
   const env = { ...process.env, OPENCODE_SERVER_PASSWORD: password };
-  process.stdout.write(run('bash', ['scripts/check-dom-contract.sh', origin], { env }));
-  process.stdout.write(run('bash', ['scripts/check-wire-contract.sh', origin, workspace], { env }));
-  run('./gradlew', ['exportBrowserContract', `-PbrowserContractDirectory=${workspace}`, `-PbrowserContractOrigin=${origin}`, '--console=plain']);
+  process.stdout.write(await run('bash', ['scripts/check-dom-contract.sh', origin], { env }));
+  process.stdout.write(await run('bash', ['scripts/check-wire-contract.sh', origin, workspace], { env }));
+  await run('./gradlew', ['exportBrowserContract', `-PbrowserContractDirectory=${workspace}`, `-PbrowserContractOrigin=${origin}`, '--console=plain']);
   const snippets = JSON.parse(await readFile(path.join(repo, 'build/browser-contract/snippets.json'), 'utf8'));
   const scenario = await readFile(path.join(repo, 'scripts/browser-contract.js'), 'utf8');
   const stallOrigin = await stallingProxy(origin);

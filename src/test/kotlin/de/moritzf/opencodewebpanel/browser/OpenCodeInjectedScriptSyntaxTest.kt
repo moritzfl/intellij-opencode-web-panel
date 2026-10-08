@@ -16,11 +16,12 @@ import org.junit.Test
 class OpenCodeInjectedScriptSyntaxTest {
     @Test
     fun generatedInjectionScriptsAreValidJavaScript() {
+        val scripts = generatedScripts()
         val node = nodeExecutable()
         assumeTrue("node is not on PATH; skipping injected-script syntax check", node != null)
 
         val failures = mutableListOf<String>()
-        for ((name, script) in generatedScripts()) {
+        for ((name, script) in scripts) {
             val file = Files.createTempFile("opencode-snippet-$name-", ".js")
             try {
                 Files.writeString(file, script)
@@ -152,7 +153,9 @@ class OpenCodeInjectedScriptSyntaxTest {
                         listOf("Mod+N"),
                     ),
             )
-            .mapNotNull { (name, script) -> script?.let { name to it } }
+            .map { (name, script) ->
+                name to requireNotNull(script) { "Enabled injection missing: $name" }
+            }
     }
 
     private fun nodeExecutable(): String? {

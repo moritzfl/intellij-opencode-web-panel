@@ -16,7 +16,7 @@ async (page, { origin, serverKey, workspace, authorization, snippets, stallOrigi
     const imported = await page.request.post(`${origin}/api/experimental/session/import`, {
       headers: { Authorization: authorization },
       data: {
-        info: { ...session, id: session.id + 'fixture' },
+        info: { ...session, id: session.id + 'fixture', title: 'Browser contract transcript' },
         messages: [
           { id: 'msg_contract_user', type: 'user', text: 'Fixture edit', time: { created: now } },
           {
@@ -63,7 +63,18 @@ async (page, { origin, serverKey, workspace, authorization, snippets, stallOrigi
   if (v2) {
     const home = await page.context().newPage();
     await home.setExtraHTTPHeaders({ Authorization: authorization });
+    await home.addInitScript(snippets.pathHover);
     await home.goto(origin);
+    // Some Home generations keep the session id on an ancestor, others render only its title.
+    // The fixture title is unique and owned by this test, independent of translated UI labels.
+    const sessionRow = home.locator('[data-component="home-session-row"]').filter({ hasText: session.title });
+    await sessionRow.hover();
+    const preview = home.locator('[data-opencode-intellij-path-preview]');
+    await preview.waitFor();
+    const previewPath = await preview.locator('[data-slot="detail"]').textContent();
+    const normalizeTempPath = value => value.replace(/^\/private(?=\/var\/)/, '');
+    assert(normalizeTempPath(previewPath) === normalizeTempPath(workspace), 'Home hover lost the session directory');
+    assert(await preview.locator('[data-slot="title"]').textContent() === session.title, 'Home hover lost the session title');
     const search = home.locator('input[aria-controls="home-session-search-results"]');
     await search.fill('before OLD after');
     await search.evaluate(input => input.setSelectionRange(7, 10));
