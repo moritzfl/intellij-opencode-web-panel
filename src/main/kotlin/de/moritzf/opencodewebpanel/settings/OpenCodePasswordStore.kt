@@ -22,17 +22,13 @@ class OpenCodePasswordStore {
     }
 
     fun loadFreshBlocking(): String? {
-        return synchronized(lock) {
-            readPasswordSafe().also { cachedPassword = it }
-        }
+        return synchronized(lock) { readPasswordSafe().also { cachedPassword = it } }
     }
 
     fun cachedPassword(): String? = synchronized(lock) { cachedPassword }
 
     fun ensurePasswordBlocking(): String {
-        return synchronized(lock) {
-            loadBlocking() ?: regenerateBlocking()
-        }
+        return synchronized(lock) { loadBlocking() ?: regenerateBlocking() }
     }
 
     private fun regenerateBlocking(): String {
@@ -57,9 +53,7 @@ class OpenCodePasswordStore {
     fun resolveAndSaveBlocking(editedPassword: String?): PasswordUpdate {
         return synchronized(lock) {
             val previous = readPasswordSafe().also { cachedPassword = it }
-            val current = editedPassword
-                ?: previous
-                ?: generatePasswordForEditing()
+            val current = editedPassword ?: previous ?: generatePasswordForEditing()
             if (current != previous) {
                 PasswordSafe.instance[attributes] = Credentials(USER_NAME, current)
             }
@@ -73,8 +67,8 @@ class OpenCodePasswordStore {
      *
      * Exceptions from secure storage (e.g. a locked or unavailable keychain) are intentionally
      * propagated rather than swallowed: a transient read failure must not be mistaken for an absent
-     * password, which would cause callers such as [ensurePasswordBlocking] to silently regenerate and
-     * overwrite the server password.
+     * password, which would cause callers such as [ensurePasswordBlocking] to silently regenerate
+     * and overwrite the server password.
      */
     private fun readPasswordSafe(): String? {
         return PasswordSafe.instance[attributes]?.getPasswordAsString()?.ifBlank { null }

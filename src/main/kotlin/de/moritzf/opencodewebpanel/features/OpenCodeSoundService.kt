@@ -6,8 +6,8 @@ import com.intellij.openapi.util.Disposer
 import com.intellij.util.concurrency.AppExecutorUtil
 import de.moritzf.opencodewebpanel.server.OpenCodeGlobalEvent
 import de.moritzf.opencodewebpanel.server.OpenCodeGlobalEventListener
-import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
+import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.server.objectMember
 import de.moritzf.opencodewebpanel.server.stringMember
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
@@ -17,8 +17,8 @@ import org.jetbrains.annotations.TestOnly
  * Plays OpenCode's configured notification sounds for agent-idle, permission, and error events.
  *
  * Uses the JVM `/global/event` stream (same source as system notifications) and the mirrored
- * `settings.v3` sound preferences, so cues work even when the embedded page's HTMLAudioElement
- * path stays silent.
+ * `settings.v3` sound preferences, so cues work even when the embedded page's HTMLAudioElement path
+ * stays silent.
  *
  * Busy state is scoped per backend: Host CLI and Docker Sandbox can serve the same directory at
  * different times, and a restart of one backend must not clear or satisfy the other's sessions.
@@ -26,11 +26,14 @@ import org.jetbrains.annotations.TestOnly
 internal object OpenCodeSoundService {
     private val lock = Any()
     private var busConnection: com.intellij.openapi.Disposable? = null
-    private val eventExecutor = AppExecutorUtil.createBoundedApplicationPoolExecutor(
-        "OpenCode Sound Events",
-        1,
-    )
+    private val eventExecutor =
+        AppExecutorUtil.createBoundedApplicationPoolExecutor(
+            "OpenCode Sound Events",
+            1,
+        )
+
     private data class SessionKey(val backendId: String, val sessionID: String)
+
     private val busySessions = mutableSetOf<SessionKey>()
     private val connectedGenerations = mutableMapOf<String, Long>()
 
@@ -58,9 +61,7 @@ internal object OpenCodeSoundService {
                 },
             )
             Disposer.register(connection) {
-                synchronized(lock) {
-                    if (busConnection === connection) busConnection = null
-                }
+                synchronized(lock) { if (busConnection === connection) busConnection = null }
             }
             busConnection = connection
             thisLogger().info("OpenCode sound service subscribed to global events")
@@ -87,7 +88,12 @@ internal object OpenCodeSoundService {
     internal fun handleEvent(
         event: OpenCodeGlobalEvent,
         settings: OpenCodeSoundSettings = currentSettings(),
-        fetchSession: (backendId: String, directory: String, sessionID: String) -> OpenCodeServerProtocol.SessionInfo? =
+        fetchSession:
+            (
+                backendId: String,
+                directory: String,
+                sessionID: String,
+            ) -> OpenCodeServerProtocol.SessionInfo? =
             ::fetchSessionInfo,
         play: (String?) -> Unit = OpenCodeSoundPlayer::playById,
     ) {
@@ -96,7 +102,8 @@ internal object OpenCodeSoundService {
         if (type == "session.status") {
             val statusType = event.properties.objectMember("status")?.stringMember("type")
             if (statusType == "busy" || statusType == "retry") {
-                event.properties.stringMember("sessionID")
+                event.properties
+                    .stringMember("sessionID")
                     ?.takeIf(OpenCodeServerProtocol::isSessionId)
                     ?.let { markBusy(backendId, it) }
                 return
@@ -139,11 +146,18 @@ internal object OpenCodeSoundService {
     }
 
     private fun currentSettings(): OpenCodeSoundSettings {
-        return parseOpenCodeSoundSettings(OpenCodeSettingsState.getInstance().localStorageSnapshot())
+        return parseOpenCodeSoundSettings(
+            OpenCodeSettingsState.getInstance().localStorageSnapshot()
+        )
     }
 
-    private fun fetchSessionInfo(backendId: String, directory: String, sessionID: String): OpenCodeServerProtocol.SessionInfo? {
-        val serverManager = OpenCodeServerBackendRegistry.getInstance().backend(backendId) ?: return null
+    private fun fetchSessionInfo(
+        backendId: String,
+        directory: String,
+        sessionID: String,
+    ): OpenCodeServerProtocol.SessionInfo? {
+        val serverManager =
+            OpenCodeServerBackendRegistry.getInstance().backend(backendId) ?: return null
         val serverUrl = serverManager.getServerUrl() ?: return null
         val password = serverManager.getServerPassword() ?: return null
         return OpenCodeServerProtocol.fetchSessionInfo(
@@ -168,8 +182,6 @@ internal object OpenCodeSoundService {
     }
 
     private fun markBusy(backendId: String, sessionID: String) {
-        synchronized(busySessions) {
-            busySessions.add(SessionKey(backendId, sessionID))
-        }
+        synchronized(busySessions) { busySessions.add(SessionKey(backendId, sessionID)) }
     }
 }

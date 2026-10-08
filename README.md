@@ -290,14 +290,24 @@ Project-specific settings are stored with the IDE project.
 Useful development commands:
 
 ```bash
+./gradlew ktfmtFormat
+./gradlew check
 ./gradlew test
 ./gradlew runIde
 ./gradlew runIdeForUiTests
 ```
 
+- `ktfmtFormat` formats Kotlin sources, tests, and root Gradle Kotlin scripts with
+  [ktfmt](https://github.com/Kotlin/ktfmt), using KotlinLang style (four spaces, 100-column width).
+- `check` runs Kotlin formatting checks, JVM and IntelliJ Platform tests, and the other build checks.
+  CI uses the same task and rejects unformatted Kotlin. Use `./gradlew ktfmtCheck` for formatting only.
 - `test` runs JVM and IntelliJ Platform tests.
 - `runIde` launches a sandbox IDE with the plugin installed.
 - `runIdeForUiTests` launches the sandbox IDE with the JetBrains Robot Server enabled.
+
+Run `ktfmtFormat` before committing Kotlin changes. For IDE formatting, install the
+[ktfmt IntelliJ plugin](https://plugins.jetbrains.com/plugin/14912-ktfmt) and select KotlinLang style.
+The Gradle formatter is authoritative; `.editorconfig` aligns basic editor indentation and line width.
 
 The **JCEF integration** GitHub Actions workflow runs weekly and supports manual runs.
 It checks real Chromium callbacks, browser replacement, editor transfers, and IDE clipboard

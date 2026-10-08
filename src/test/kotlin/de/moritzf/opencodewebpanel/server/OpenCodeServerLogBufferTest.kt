@@ -16,7 +16,13 @@ class OpenCodeServerLogBufferTest {
     fun appendsToCurrentLogFile() {
         val dir = Files.createTempDirectory("opencode-server-log-buffer")
         try {
-            val buffer = OpenCodeServerLogBuffer(logDir = dir, maxLogFiles = 20, maxLogAge = Duration.ofDays(7), enabled = { true })
+            val buffer =
+                OpenCodeServerLogBuffer(
+                    logDir = dir,
+                    maxLogFiles = 20,
+                    maxLogAge = Duration.ofDays(7),
+                    enabled = { true },
+                )
             val startedAt = Instant.parse("2026-06-21T12:00:00Z")
 
             val file = buffer.startNewFile(startedAt)
@@ -41,13 +47,14 @@ class OpenCodeServerLogBufferTest {
     fun rotatesToANewFileWhenSizeLimitIsReached() {
         val dir = Files.createTempDirectory("opencode-server-log-rotation")
         try {
-            val buffer = OpenCodeServerLogBuffer(
-                logDir = dir,
-                maxLogFiles = 20,
-                maxLogAge = Duration.ofDays(7),
-                maxLogFileBytes = 200,
-                enabled = { true },
-            )
+            val buffer =
+                OpenCodeServerLogBuffer(
+                    logDir = dir,
+                    maxLogFiles = 20,
+                    maxLogAge = Duration.ofDays(7),
+                    maxLogFileBytes = 200,
+                    enabled = { true },
+                )
             val firstFile = buffer.startNewFile(Instant.parse("2026-06-21T12:00:00Z"))!!
 
             repeat(20) { index -> buffer.append("line-$index-padding-padding-padding") }
@@ -69,7 +76,13 @@ class OpenCodeServerLogBufferTest {
     fun doesNotCreateOrAppendLogFileWhenDisabled() {
         val dir = Files.createTempDirectory("opencode-server-log-disabled")
         try {
-            val buffer = OpenCodeServerLogBuffer(logDir = dir, maxLogFiles = 20, maxLogAge = Duration.ofDays(7), enabled = { false })
+            val buffer =
+                OpenCodeServerLogBuffer(
+                    logDir = dir,
+                    maxLogFiles = 20,
+                    maxLogAge = Duration.ofDays(7),
+                    enabled = { false },
+                )
 
             assertEquals(null, buffer.startNewFile())
             buffer.append("first")
@@ -88,7 +101,13 @@ class OpenCodeServerLogBufferTest {
             val stale = writeLog(dir, "stale", daysAgo = 30)
             val fresh = writeLog(dir, "fresh", daysAgo = 1)
 
-            OpenCodeServerLogBuffer(logDir = dir, maxLogFiles = 20, maxLogAge = Duration.ofDays(7), enabled = { true }).pruneOldLogs()
+            OpenCodeServerLogBuffer(
+                    logDir = dir,
+                    maxLogFiles = 20,
+                    maxLogAge = Duration.ofDays(7),
+                    enabled = { true },
+                )
+                .pruneOldLogs()
 
             assertFalse("stale log should be pruned", Files.exists(stale))
             assertTrue("fresh log should be retained", Files.exists(fresh))
@@ -102,11 +121,23 @@ class OpenCodeServerLogBufferTest {
         val dir = Files.createTempDirectory("opencode-server-log-count")
         try {
             val total = 7
-            val files = (0 until total).map { index ->
-                writeLog(dir, "entry-$index", daysAgo = 0, ageOffsetMillis = (total - index).toLong())
-            }
+            val files =
+                (0 until total).map { index ->
+                    writeLog(
+                        dir,
+                        "entry-$index",
+                        daysAgo = 0,
+                        ageOffsetMillis = (total - index).toLong(),
+                    )
+                }
 
-            OpenCodeServerLogBuffer(logDir = dir, maxLogFiles = 4, maxLogAge = Duration.ofDays(7), enabled = { true }).pruneOldLogs()
+            OpenCodeServerLogBuffer(
+                    logDir = dir,
+                    maxLogFiles = 4,
+                    maxLogAge = Duration.ofDays(7),
+                    enabled = { true },
+                )
+                .pruneOldLogs()
 
             val survivors = Files.list(dir).use { stream -> stream.count() }
             assertTrue("directory should be trimmed to the cap, was $survivors", survivors <= 4L)
@@ -124,7 +155,10 @@ class OpenCodeServerLogBufferTest {
             val file = dir.resolve("server.log")
             Files.writeString(file, (1..50).joinToString("\n") { "line-$it" } + "\n\n")
 
-            assertEquals(listOf("line-48", "line-49", "line-50"), OpenCodeServerLogBuffer.tailLines(file, maxLines = 3))
+            assertEquals(
+                listOf("line-48", "line-49", "line-50"),
+                OpenCodeServerLogBuffer.tailLines(file, maxLines = 3),
+            )
         } finally {
             deleteRecursively(dir)
         }
@@ -135,13 +169,25 @@ class OpenCodeServerLogBufferTest {
         val dir = Files.createTempDirectory("opencode-server-log-tail-huge")
         try {
             assertEquals(emptyList<String>(), OpenCodeServerLogBuffer.tailLines(null))
-            assertEquals(emptyList<String>(), OpenCodeServerLogBuffer.tailLines(dir.resolve("missing.log")))
+            assertEquals(
+                emptyList<String>(),
+                OpenCodeServerLogBuffer.tailLines(dir.resolve("missing.log")),
+            )
 
             val huge = dir.resolve("huge.log")
-            Files.writeString(huge, (1..20_000).joinToString("\n") { "entry-$it-padding-padding-padding" })
+            Files.writeString(
+                huge,
+                (1..20_000).joinToString("\n") { "entry-$it-padding-padding-padding" },
+            )
 
             val tail = OpenCodeServerLogBuffer.tailLines(huge, maxLines = 2)
-            assertEquals(listOf("entry-19999-padding-padding-padding", "entry-20000-padding-padding-padding"), tail)
+            assertEquals(
+                listOf(
+                    "entry-19999-padding-padding-padding",
+                    "entry-20000-padding-padding-padding",
+                ),
+                tail,
+            )
         } finally {
             deleteRecursively(dir)
         }

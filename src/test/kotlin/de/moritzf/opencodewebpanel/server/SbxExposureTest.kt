@@ -1,24 +1,25 @@
 package de.moritzf.opencodewebpanel.server
 
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
+import java.nio.file.Files
+import java.nio.file.Path
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
-import java.nio.file.Files
-import java.nio.file.Path
 
 class SbxExposureTest {
-    @get:Rule
-    val temp = TemporaryFolder()
+    @get:Rule val temp = TemporaryFolder()
 
     @Test
     fun projectLocalMountsAreNotExposure() {
         val project = temp.newFolder("project").toPath().toRealPath().toString()
-        val spec = base(project).copy(extraMounts = listOf(SbxExtraMount("./docs", "/home/agent/docs")))
-        val exposure = SbxExposure.of(spec, project, hostHome = "/home/user", hostConfigDir = Path.of("/cfg"))
+        val spec =
+            base(project).copy(extraMounts = listOf(SbxExtraMount("./docs", "/home/agent/docs")))
+        val exposure =
+            SbxExposure.of(spec, project, hostHome = "/home/user", hostConfigDir = Path.of("/cfg"))
         assertTrue(exposure.isEmpty)
         assertEquals("", exposure.fingerprint)
     }
@@ -27,12 +28,20 @@ class SbxExposureTest {
     fun outsideMountsSharedConfigAndKitsAreListed() {
         val project = temp.newFolder("project").toPath().toRealPath().toString()
         val home = temp.newFolder("home").toPath().toRealPath().toString()
-        val spec = base(project).copy(
-            extraMounts = listOf(SbxExtraMount("~/data", "/home/agent/data"), SbxExtraMount("../other", "../other", readOnly = true)),
-            shareHostOpencodeConfig = true,
-            kits = listOf("git+https://example.com/kits.git#ref=v1"),
-        )
-        val items = SbxExposure.of(spec, project, hostHome = home, hostConfigDir = Path.of("/cfg/opencode")).items
+        val spec =
+            base(project)
+                .copy(
+                    extraMounts =
+                        listOf(
+                            SbxExtraMount("~/data", "/home/agent/data"),
+                            SbxExtraMount("../other", "../other", readOnly = true),
+                        ),
+                    shareHostOpencodeConfig = true,
+                    kits = listOf("git+https://example.com/kits.git#ref=v1"),
+                )
+        val items =
+            SbxExposure.of(spec, project, hostHome = home, hostConfigDir = Path.of("/cfg/opencode"))
+                .items
         assertEquals(
             listOf(
                 "Host path mounted read-write: ${SbxCli.posixPath(Path.of(home).resolve("data").toString())}",
@@ -51,7 +60,10 @@ class SbxExposureTest {
         Files.writeString(kit.resolve("spec.yaml"), "kind: mixin\n")
         val spec = base(project.toString()).copy(kits = listOf("./kit"))
         val before = SbxExposure.of(spec, project.toString()).fingerprint
-        Files.writeString(kit.resolve("spec.yaml"), "kind: mixin\npermissions:\n  network:\n    allow: [\"*\"]\n")
+        Files.writeString(
+            kit.resolve("spec.yaml"),
+            "kind: mixin\npermissions:\n  network:\n    allow: [\"*\"]\n",
+        )
         assertNotEquals(before, SbxExposure.of(spec, project.toString()).fingerprint)
     }
 

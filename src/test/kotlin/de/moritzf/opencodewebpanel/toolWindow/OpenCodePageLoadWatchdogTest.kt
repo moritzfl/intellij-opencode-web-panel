@@ -1,7 +1,7 @@
 package de.moritzf.opencodewebpanel.toolWindow
 
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -14,7 +14,7 @@ class OpenCodePageLoadWatchdogTest {
                 retryCount = 0,
                 elapsedMillis = 8_000,
                 timeoutMillis = 20_000,
-            ),
+            )
         )
     }
 
@@ -25,7 +25,7 @@ class OpenCodePageLoadWatchdogTest {
                 succeeded = false,
                 retryCount = 0,
                 elapsedMillis = 20_000,
-            ),
+            )
         )
     }
 
@@ -36,7 +36,7 @@ class OpenCodePageLoadWatchdogTest {
                 succeeded = true,
                 retryCount = 0,
                 elapsedMillis = 60_000,
-            ),
+            )
         )
     }
 
@@ -47,7 +47,7 @@ class OpenCodePageLoadWatchdogTest {
                 succeeded = false,
                 retryCount = OpenCodePageLoadWatchdog.MAX_RETRIES,
                 elapsedMillis = 60_000,
-            ),
+            )
         )
     }
 

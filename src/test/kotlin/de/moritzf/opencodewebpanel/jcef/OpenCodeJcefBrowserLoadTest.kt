@@ -12,12 +12,11 @@ import org.junit.Rule
 import org.junit.Test
 
 /**
- * Real JCEF (same stack as the tool window), against a local Basic-auth server.
- * Mirrors JetBrains `JBCefLoadHtmlTest`: ApplicationRule + show frame + wait onLoadEnd.
+ * Real JCEF (same stack as the tool window), against a local Basic-auth server. Mirrors JetBrains
+ * `JBCefLoadHtmlTest`: ApplicationRule + show frame + wait onLoadEnd.
  */
 class OpenCodeJcefBrowserLoadTest {
-    @get:Rule
-    val disposableRule = DisposableRule()
+    @get:Rule val disposableRule = DisposableRule()
 
     @Before
     fun setUp() {
@@ -33,13 +32,18 @@ class OpenCodeJcefBrowserLoadTest {
                 browser.cefBrowser,
             )
             OpenCodeJcefTestHelper.invokeAndWaitForLoad(browser, server.origin + "/") {
-                OpenCodeJcefTestHelper.show(browser, javaClass.simpleName, disposableRule.disposable)
+                OpenCodeJcefTestHelper.show(
+                    browser,
+                    javaClass.simpleName,
+                    disposableRule.disposable,
+                )
                 browser.loadURL(server.origin + "/")
             }
-            val marker = OpenCodeJcefTestHelper.evaluateString(
-                browser,
-                "document.getElementById('${OpenCodeJcefTestServer.MARKER_ID}')?.textContent || ''",
-            )
+            val marker =
+                OpenCodeJcefTestHelper.evaluateString(
+                    browser,
+                    "document.getElementById('${OpenCodeJcefTestServer.MARKER_ID}')?.textContent || ''",
+                )
             assertEquals("ready", marker)
             assertTrue(server.requestPaths.contains("/assets/app.js"))
             assertEquals(0, server.unauthorizedCount.get())
@@ -60,20 +64,22 @@ class OpenCodeJcefBrowserLoadTest {
                 javaClass.simpleName,
                 disposableRule.disposable,
             )
-            val registered = injector.installAndWait(
-                OpenCodeBrowserSnippets.buildEventStreamWatchdogScript(enabled = true)!!,
-                timeoutMillis = OpenCodeJcefTestHelper.WAIT_BROWSER_SECONDS * 1_000,
-            )
+            val registered =
+                injector.installAndWait(
+                    OpenCodeBrowserSnippets.buildEventStreamWatchdogScript(enabled = true)!!,
+                    timeoutMillis = OpenCodeJcefTestHelper.WAIT_BROWSER_SECONDS * 1_000,
+                )
             assertTrue("Page.addScriptToEvaluateOnNewDocument was not accepted", registered)
 
             OpenCodeJcefTestHelper.invokeAndWaitForLoad(browser, server.origin + "/") {
                 browser.loadURL(server.origin + "/")
             }
 
-            val installed = OpenCodeJcefTestHelper.evaluateString(
-                browser,
-                "window.__opencodeJcefWatchdog ? '1' : '0'",
-            )
+            val installed =
+                OpenCodeJcefTestHelper.evaluateString(
+                    browser,
+                    "window.__opencodeJcefWatchdog ? '1' : '0'",
+                )
             assertEquals("1", installed)
         }
     }
@@ -100,7 +106,7 @@ class OpenCodeJcefBrowserLoadTest {
                             server.origin,
                         ),
                         timeoutMillis = OpenCodeJcefTestHelper.WAIT_BROWSER_SECONDS * 1_000,
-                    ),
+                    )
                 )
 
                 OpenCodeJcefTestHelper.invokeAndWaitForLoad(browser, foreignServer.origin + "/") {
@@ -143,16 +149,26 @@ class OpenCodeJcefBrowserLoadTest {
                 javaClass.simpleName,
                 disposableRule.disposable,
             )
-            assertTrue(injector.installAndWait("(window.__documentStartRuns ||= []).push('old');", 10_000))
+            assertTrue(
+                injector.installAndWait("(window.__documentStartRuns ||= []).push('old');", 10_000)
+            )
             injector.installAsync("(window.__documentStartRuns ||= []).push('superseded');")
-            assertTrue(injector.installAndWait("(window.__documentStartRuns ||= []).push('latest');", 10_000))
+            assertTrue(
+                injector.installAndWait(
+                    "(window.__documentStartRuns ||= []).push('latest');",
+                    10_000,
+                )
+            )
 
             OpenCodeJcefTestHelper.invokeAndWaitForLoad(browser, server.origin + "/") {
                 browser.loadURL(server.origin + "/")
             }
             assertEquals(
                 "[\"latest\"]",
-                OpenCodeJcefTestHelper.evaluateString(browser, "JSON.stringify(window.__documentStartRuns || [])"),
+                OpenCodeJcefTestHelper.evaluateString(
+                    browser,
+                    "JSON.stringify(window.__documentStartRuns || [])",
+                ),
             )
         }
     }
@@ -185,58 +201,63 @@ class OpenCodeJcefBrowserLoadTest {
                 injector.installAndWait(
                     OpenCodeBrowserSnippets.buildEventStreamWatchdogScript(
                         enabled = true,
-                        stallTimeoutMillis = OpenCodeBrowserSnippets.MIN_EVENT_STREAM_STALL_TIMEOUT_MILLIS,
+                        stallTimeoutMillis =
+                            OpenCodeBrowserSnippets.MIN_EVENT_STREAM_STALL_TIMEOUT_MILLIS,
                     )!!,
                     timeoutMillis = OpenCodeJcefTestHelper.WAIT_BROWSER_SECONDS * 1_000,
-                ),
+                )
             )
 
             val targetUrl = server.origin + "/?watchdog=1"
             OpenCodeJcefTestHelper.invokeAndWaitForLoad(browser, targetUrl) {
                 browser.loadURL(targetUrl)
             }
-            Thread.sleep(OpenCodeBrowserSnippets.MIN_EVENT_STREAM_STALL_TIMEOUT_MILLIS.toLong() + 3_000)
+            Thread.sleep(
+                OpenCodeBrowserSnippets.MIN_EVENT_STREAM_STALL_TIMEOUT_MILLIS.toLong() + 3_000
+            )
             assertEquals(1, server.eventStreamCount.get())
         }
     }
 
     private fun assertStalledEventStreamReconnects(stallBeforeHeaders: Boolean) {
         OpenCodeJcefTestServer(
-            stallEventStream = true,
-            stallBeforeEventStreamHeaders = stallBeforeHeaders,
-        ).use { server ->
-            val browser = OpenCodeJcefTestHelper.createBrowser(disposableRule.disposable)
-            browser.jbCefClient.addRequestHandler(
-                OpenCodeJcefAuthHandler(server.origin, server.expectedAuthorization),
-                browser.cefBrowser,
+                stallEventStream = true,
+                stallBeforeEventStreamHeaders = stallBeforeHeaders,
             )
-            val injector = OpenCodeDocumentStartInjector(browser)
-            OpenCodeJcefTestHelper.showAndWaitForBrowser(
-                browser,
-                javaClass.simpleName,
-                disposableRule.disposable,
-            )
-            assertTrue(
-                injector.installAndWait(
-                    OpenCodeBrowserSnippets.buildEventStreamWatchdogScript(
-                        enabled = true,
-                        stallTimeoutMillis = OpenCodeBrowserSnippets.MIN_EVENT_STREAM_STALL_TIMEOUT_MILLIS,
-                    )!!,
-                    timeoutMillis = OpenCodeJcefTestHelper.WAIT_BROWSER_SECONDS * 1_000,
-                ),
-            )
+            .use { server ->
+                val browser = OpenCodeJcefTestHelper.createBrowser(disposableRule.disposable)
+                browser.jbCefClient.addRequestHandler(
+                    OpenCodeJcefAuthHandler(server.origin, server.expectedAuthorization),
+                    browser.cefBrowser,
+                )
+                val injector = OpenCodeDocumentStartInjector(browser)
+                OpenCodeJcefTestHelper.showAndWaitForBrowser(
+                    browser,
+                    javaClass.simpleName,
+                    disposableRule.disposable,
+                )
+                assertTrue(
+                    injector.installAndWait(
+                        OpenCodeBrowserSnippets.buildEventStreamWatchdogScript(
+                            enabled = true,
+                            stallTimeoutMillis =
+                                OpenCodeBrowserSnippets.MIN_EVENT_STREAM_STALL_TIMEOUT_MILLIS,
+                        )!!,
+                        timeoutMillis = OpenCodeJcefTestHelper.WAIT_BROWSER_SECONDS * 1_000,
+                    )
+                )
 
-            val targetUrl = server.origin + "/?watchdog=1"
-            OpenCodeJcefTestHelper.invokeAndWaitForLoad(browser, targetUrl) {
-                browser.loadURL(server.origin + "/?watchdog=1")
+                val targetUrl = server.origin + "/?watchdog=1"
+                OpenCodeJcefTestHelper.invokeAndWaitForLoad(browser, targetUrl) {
+                    browser.loadURL(server.origin + "/?watchdog=1")
+                }
+                OpenCodeJcefTestHelper.awaitCondition(
+                    "waiting for the stalled event stream to reconnect",
+                    timeoutSeconds = 30,
+                ) {
+                    server.eventStreamCount.get() >= 2
+                }
             }
-            OpenCodeJcefTestHelper.awaitCondition(
-                "waiting for the stalled event stream to reconnect",
-                timeoutSeconds = 30,
-            ) {
-                server.eventStreamCount.get() >= 2
-            }
-        }
     }
 
     private fun readMarker(browser: com.intellij.ui.jcef.JBCefBrowser): String {
@@ -247,8 +268,6 @@ class OpenCodeJcefBrowserLoadTest {
     }
 
     companion object {
-        @ClassRule
-        @JvmField
-        val appRule = ApplicationRule()
+        @ClassRule @JvmField val appRule = ApplicationRule()
     }
 }

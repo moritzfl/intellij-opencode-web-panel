@@ -3,7 +3,11 @@ package de.moritzf.opencodewebpanel.settings
 import com.intellij.util.messages.Topic
 
 /** The UI-behavior toggles whose changes the tool window must apply to the live page. */
-enum class OpenCodeRestartScope { ALL, NATIVE, SBX }
+enum class OpenCodeRestartScope {
+    ALL,
+    NATIVE,
+    SBX,
+}
 
 enum class OpenCodeUiSetting {
     FILE_LINK_NAVIGATION,
@@ -34,9 +38,10 @@ interface OpenCodeSettingsListener {
     fun serverRestartRequested(scope: OpenCodeRestartScope = OpenCodeRestartScope.ALL) {}
 
     companion object {
-        val TOPIC: Topic<OpenCodeSettingsListener> = Topic.create(
-            "OpenCode Web Panel settings",
-            OpenCodeSettingsListener::class.java,
-        )
+        val TOPIC: Topic<OpenCodeSettingsListener> =
+            Topic.create(
+                "OpenCode Web Panel settings",
+                OpenCodeSettingsListener::class.java,
+            )
     }
 }

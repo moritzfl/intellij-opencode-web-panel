@@ -35,12 +35,17 @@ internal class SbxSandboxRecordStore : PersistentStateComponent<SbxSandboxRecord
             state.records.forEach { (key, value) ->
                 val directory = key.trim()
                 if (directory.isEmpty()) return@forEach
-                val bean = value.takeIf { it.sandboxId.isNotBlank() && it.name.isNotBlank() } ?: return@forEach
+                val bean =
+                    value.takeIf { it.sandboxId.isNotBlank() && it.name.isNotBlank() }
+                        ?: return@forEach
                 records[directory] = bean.copy()
             }
-            acknowledgedExposure = HashMap(state.acknowledgedExposure.filter { (key, value) ->
-                key.isNotBlank() && value.isNotBlank()
-            })
+            acknowledgedExposure =
+                HashMap(
+                    state.acknowledgedExposure.filter { (key, value) ->
+                        key.isNotBlank() && value.isNotBlank()
+                    }
+                )
         }
     }
 
@@ -66,7 +71,8 @@ internal class SbxSandboxRecordStore : PersistentStateComponent<SbxSandboxRecord
     fun acknowledgeExposure(canonicalDirectory: String, fingerprint: String) {
         val key = OpenCodeServerProtocol.filesystemPathKey(canonicalDirectory) ?: canonicalDirectory
         synchronized(lock) {
-            if (fingerprint.isBlank()) acknowledgedExposure.remove(key) else acknowledgedExposure[key] = fingerprint
+            if (fingerprint.isBlank()) acknowledgedExposure.remove(key)
+            else acknowledgedExposure[key] = fingerprint
         }
     }
 

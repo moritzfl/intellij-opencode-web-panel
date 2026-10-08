@@ -3,9 +3,7 @@ package de.moritzf.opencodewebpanel.server
 import com.intellij.openapi.diagnostic.thisLogger
 import java.util.concurrent.TimeUnit
 
-internal class OpenCodeProcessTerminator(
-    private val stopTimeoutSeconds: Long = 5L,
-) {
+internal class OpenCodeProcessTerminator(private val stopTimeoutSeconds: Long = 5L) {
     fun destroy(process: Process?, capturedDescendants: List<ProcessHandle> = emptyList()) {
         if (process == null) return
         if (!process.isAlive) {
@@ -54,16 +52,15 @@ internal class OpenCodeProcessTerminator(
     }
 
     private fun destroyGracefully(handles: List<ProcessHandle>) {
-        handles.asReversed()
-            .filter { it.isAlive }
-            .forEach { it.destroy() }
+        handles.asReversed().filter { it.isAlive }.forEach { it.destroy() }
     }
 
     private fun destroyRemainingDescendants(handles: List<ProcessHandle>) {
         val aliveHandles = handles.filter { it.isAlive }
         if (aliveHandles.isEmpty()) return
 
-        thisLogger().warn("OpenCode child processes are still alive after graceful stop, killing them")
+        thisLogger()
+            .warn("OpenCode child processes are still alive after graceful stop, killing them")
         destroyForcibly(aliveHandles)
         waitForExit(aliveHandles)
         if (aliveHandles.any { it.isAlive }) {
@@ -72,9 +69,7 @@ internal class OpenCodeProcessTerminator(
     }
 
     private fun destroyForcibly(handles: List<ProcessHandle>) {
-        handles.asReversed()
-            .filter { it.isAlive }
-            .forEach { it.destroyForcibly() }
+        handles.asReversed().filter { it.isAlive }.forEach { it.destroyForcibly() }
     }
 
     private fun waitForExit(handles: List<ProcessHandle>) {

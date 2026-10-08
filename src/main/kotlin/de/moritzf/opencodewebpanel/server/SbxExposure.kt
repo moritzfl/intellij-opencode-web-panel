@@ -11,14 +11,15 @@ import java.security.MessageDigest
 
 /**
  * What a project spec lets its sandbox reach beyond the project tree. A committed
- * `opencode-sbx.yaml` comes from whoever last pushed it, so creating (or extending) a VM from
- * a spec with such grants needs one explicit acknowledgement per distinct set of grants.
+ * `opencode-sbx.yaml` comes from whoever last pushed it, so creating (or extending) a VM from a
+ * spec with such grants needs one explicit acknowledgement per distinct set of grants.
  */
 internal data class SbxExposure(
     val items: List<String>,
     val fingerprint: String,
 ) {
-    val isEmpty: Boolean get() = items.isEmpty()
+    val isEmpty: Boolean
+        get() = items.isEmpty()
 
     companion object {
         fun of(
@@ -40,11 +41,13 @@ internal data class SbxExposure(
                 if (isInside(workspace, mount.hostPath)) return@forEach
                 add(
                     if (mount.readOnly) "Host path mounted read-only: ${mount.hostPath}"
-                    else "Host path mounted read-write: ${mount.hostPath}",
+                    else "Host path mounted read-write: ${mount.hostPath}"
                 )
             }
             if (spec.shareHostOpencodeConfig) {
-                add("Host OpenCode config shared read-only: ${SbxCli.posixPath(hostConfigDir.toString())}")
+                add(
+                    "Host OpenCode config shared read-only: ${SbxCli.posixPath(hostConfigDir.toString())}"
+                )
             }
             spec.kits.forEach { ref ->
                 // Kit YAML can grant network access and run setup in the VM. A local kit's
@@ -81,7 +84,10 @@ internal data class SbxExposure(
                 var entries = 0
                 while (iterator.hasNext()) {
                     ProgressManager.checkCanceled()
-                    if (++entries > maxEntries) throw IOException("Kit $ref exceeds $maxEntries entries; cannot verify consent.")
+                    if (++entries > maxEntries)
+                        throw IOException(
+                            "Kit $ref exceeds $maxEntries entries; cannot verify consent."
+                        )
                     val path = iterator.next()
                     val attributes = Files.readAttributes(path, BasicFileAttributes::class.java)
                     when {
@@ -105,7 +111,10 @@ internal data class SbxExposure(
                         val count = input.read(buffer)
                         if (count < 0) break
                         bytes += count
-                        if (bytes > maxBytes) throw IOException("Kit $ref exceeds $maxBytes bytes; cannot verify consent.")
+                        if (bytes > maxBytes)
+                            throw IOException(
+                                "Kit $ref exceeds $maxBytes bytes; cannot verify consent."
+                            )
                         content.update(buffer, 0, count)
                     }
                 }

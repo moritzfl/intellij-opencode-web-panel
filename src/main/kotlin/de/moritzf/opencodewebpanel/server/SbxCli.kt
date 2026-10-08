@@ -11,7 +11,9 @@ import java.security.MessageDigest
 import java.util.Base64
 import java.util.Locale
 
-internal data class SbxExtraMount @JvmOverloads constructor(
+internal data class SbxExtraMount
+@JvmOverloads
+constructor(
     val hostPath: String,
     val sandboxPath: String,
     val readOnly: Boolean = false,
@@ -64,8 +66,8 @@ internal data class SbxSandboxRecord(
 }
 
 /**
- * Argv builders and JSON parsers for the Docker Sandboxes (`sbx`) CLI. Never `shell=true`.
- * Password and config overlay travel as ProcessBuilder env with bare `-e KEY` only.
+ * Argv builders and JSON parsers for the Docker Sandboxes (`sbx`) CLI. Never `shell=true`. Password
+ * and config overlay travel as ProcessBuilder env with bare `-e KEY` only.
  */
 internal object SbxCli {
     const val DEFAULT_EXECUTABLE = "sbx"
@@ -83,56 +85,65 @@ internal object SbxCli {
     const val PROJECT_CONTROL_DIR = "opencode-sbx"
     const val NETWORK_KIT_DIR = "opencode-network-kit"
 
-    val NETWORK_KIT_HOST_PRESETS = listOf(
-        "OpenAI" to "api.openai.com",
-        "Anthropic" to "api.anthropic.com",
-        "Google Gemini" to "generativelanguage.googleapis.com",
-        "xAI" to "api.x.ai",
-        "Groq" to "api.groq.com",
-        "Mistral" to "api.mistral.ai",
-        "OpenRouter" to "openrouter.ai",
-        "OpenCode Zen" to "opencode.ai",
-        "OpenCode models" to "models.opencode.ai",
-        "GitHub" to "api.github.com",
-        "GitHub Models" to "models.github.ai",
-        "DeepSeek" to "api.deepseek.com",
-        "Together" to "api.together.xyz",
-        "Fireworks" to "api.fireworks.ai",
-        "Ollama Cloud" to "ollama.com",
-        "npm registry" to "registry.npmjs.org",
-    )
-    private val SERVE_FLAGS = listOf(
-        "serve",
-        "--hostname",
-        OpenCodeServerProtocol.SANDBOX_SERVE_HOST,
-        "--port",
-        OpenCodeServerProtocol.SANDBOX_SERVE_PORT.toString(),
-        "--print-logs",
-    )
+    val NETWORK_KIT_HOST_PRESETS =
+        listOf(
+            "OpenAI" to "api.openai.com",
+            "Anthropic" to "api.anthropic.com",
+            "Google Gemini" to "generativelanguage.googleapis.com",
+            "xAI" to "api.x.ai",
+            "Groq" to "api.groq.com",
+            "Mistral" to "api.mistral.ai",
+            "OpenRouter" to "openrouter.ai",
+            "OpenCode Zen" to "opencode.ai",
+            "OpenCode models" to "models.opencode.ai",
+            "GitHub" to "api.github.com",
+            "GitHub Models" to "models.github.ai",
+            "DeepSeek" to "api.deepseek.com",
+            "Together" to "api.together.xyz",
+            "Fireworks" to "api.fireworks.ai",
+            "Ollama Cloud" to "ollama.com",
+            "npm registry" to "registry.npmjs.org",
+        )
+    private val SERVE_FLAGS =
+        listOf(
+            "serve",
+            "--hostname",
+            OpenCodeServerProtocol.SANDBOX_SERVE_HOST,
+            "--port",
+            OpenCodeServerProtocol.SANDBOX_SERVE_PORT.toString(),
+            "--print-logs",
+        )
     /**
-     * Kit PATH still has 1.x `opencode`. When [SbxOpenCodeVersion.V2] is selected,
-     * require the validated 2.x at `$HOME/.opencode/bin`. `$0` is dummy;
-     * remaining argv are forwarded after `exec`. 1.x launches kit `opencode` even if
-     * that 2.x binary exists.
+     * Kit PATH still has 1.x `opencode`. When [SbxOpenCodeVersion.V2] is selected, require the
+     * validated 2.x at `$HOME/.opencode/bin`. `$0` is dummy; remaining argv are forwarded after
+     * `exec`. 1.x launches kit `opencode` even if that 2.x binary exists.
      */
-    const val GUEST_OPENCODE_DISPATCH =
-        $$"""exec "$HOME/.opencode/bin/opencode" "$@""""
+    const val GUEST_OPENCODE_DISPATCH = $$"""exec "$HOME/.opencode/bin/opencode" "$@""""
     const val V2_INSTALL_URL = "https://opencode.ai/v2/install"
     // Read the same quoted heredocs the standalone launcher passes to guest sh -c.
-    private val launcherScript: String by lazy { guestResource("opencode-sbx.sh").replace("\r\n", "\n") }
+    private val launcherScript: String by lazy {
+        guestResource("opencode-sbx.sh").replace("\r\n", "\n")
+    }
     val V2_INSTALL_SCRIPT: String by lazy { guestScript("OCWP_V2_INSTALL") }
     val GUEST_V2_VERSION_SCRIPT: String by lazy { guestScript("OCWP_V2_VERSION") }
 
     private fun guestScript(delimiter: String): String {
-        val script = launcherScript.substringAfter("<<'$delimiter'\n", "")
-            .substringBefore("\n$delimiter\n", "").trimEnd()
+        val script =
+            launcherScript
+                .substringAfter("<<'$delimiter'\n", "")
+                .substringBefore("\n$delimiter\n", "")
+                .trimEnd()
         check(script.isNotBlank()) { "Missing sandbox script block: $delimiter" }
         return script
     }
 
     private fun guestResource(resource: String): String =
-        checkNotNull(SbxCli::class.java.getResourceAsStream(resource)) { "Missing sandbox resource: $resource" }
-            .bufferedReader(StandardCharsets.UTF_8).use { it.readText().trimEnd() }
+        checkNotNull(SbxCli::class.java.getResourceAsStream(resource)) {
+                "Missing sandbox resource: $resource"
+            }
+            .bufferedReader(StandardCharsets.UTF_8)
+            .use { it.readText().trimEnd() }
+
     private const val SERVE_PKILL_PATTERN =
         $$"[o]pencode serve --hostname $${OpenCodeServerProtocol.SANDBOX_SERVE_HOST} " +
             $$"--port $${OpenCodeServerProtocol.SANDBOX_SERVE_PORT} --print-logs"
@@ -145,7 +156,9 @@ internal object SbxCli {
         if (!osName.lowercase(java.util.Locale.ROOT).contains("win")) return canonicalDirectory
         val msys = Regex("^/([A-Za-z])(/.*)?$").matchEntire(posix)
         if (msys != null) {
-            return msys.groupValues[1].uppercase(java.util.Locale.ROOT) + ":" + msys.groupValues.getOrElse(2) { "" }
+            return msys.groupValues[1].uppercase(java.util.Locale.ROOT) +
+                ":" +
+                msys.groupValues.getOrElse(2) { "" }
         }
         if (posix.length >= 2 && posix[1] == ':') {
             return posix[0].uppercaseChar() + posix.substring(1)
@@ -157,8 +170,12 @@ internal object SbxCli {
         canonicalDirectory: String,
         osName: String = System.getProperty("os.name").orEmpty(),
     ): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-            .digest(sandboxIdentityPath(canonicalDirectory, osName).toByteArray(StandardCharsets.UTF_8))
+        val digest =
+            MessageDigest.getInstance("SHA-256")
+                .digest(
+                    sandboxIdentityPath(canonicalDirectory, osName)
+                        .toByteArray(StandardCharsets.UTF_8)
+                )
         val hex = digest.joinToString("") { byte -> "%02x".format(byte) }.take(12)
         return NAME_PREFIX + hex
     }
@@ -177,7 +194,9 @@ internal object SbxCli {
 
     fun sanitizeCpus(value: String?): String = parseCpus(value) ?: DEFAULT_CPUS
 
-    /** Names are joined into host paths; keep this in sync with the launcher's `valid_sandbox_name`. */
+    /**
+     * Names are joined into host paths; keep this in sync with the launcher's `valid_sandbox_name`.
+     */
     fun isValidSandboxName(name: String): Boolean {
         if (name.equals("default", ignoreCase = true)) return false
         if (name.length < 2) return false
@@ -185,7 +204,8 @@ internal object SbxCli {
         return name.all { it.isAsciiLetterOrDigit() || it == '.' || it == '-' }
     }
 
-    private fun Char.isAsciiLetterOrDigit(): Boolean = this in 'a'..'z' || this in 'A'..'Z' || this in '0'..'9'
+    private fun Char.isAsciiLetterOrDigit(): Boolean =
+        this in 'a'..'z' || this in 'A'..'Z' || this in '0'..'9'
 
     private fun requireValidSandboxName(name: String): String {
         require(isValidSandboxName(name)) { "Invalid sandbox name: $name" }
@@ -203,22 +223,21 @@ internal object SbxCli {
         extraWorkspaces: List<String> = emptyList(),
         kits: List<String> = emptyList(),
     ): List<String> {
-        val command = mutableListOf(
-            executable,
-            "create",
-            "-q",
-            "--name",
-            name,
-            "--memory",
-            memory,
-            "--cpus",
-            cpus,
-            "--publish",
-            publishSpec(hostPort, inVmPort),
-        )
-        kits.filter { it.isNotBlank() }.forEach { ref ->
-            command += listOf("--kit", ref)
-        }
+        val command =
+            mutableListOf(
+                executable,
+                "create",
+                "-q",
+                "--name",
+                name,
+                "--memory",
+                memory,
+                "--cpus",
+                cpus,
+                "--publish",
+                publishSpec(hostPort, inVmPort),
+            )
+        kits.filter { it.isNotBlank() }.forEach { ref -> command += listOf("--kit", ref) }
         command += listOf(AGENT, workspace)
         command += extraWorkspaces.filter { it.isNotBlank() && it != workspace }
         return command
@@ -232,16 +251,19 @@ internal object SbxCli {
         text: String?,
         home: String = System.getProperty("user.home").orEmpty(),
     ): List<String> {
-        return parseLineList(text).map { raw ->
-            posixPath(if (raw.startsWith("~")) expandUserHome(raw, home) else raw)
-        }.distinct()
+        return parseLineList(text)
+            .map { raw -> posixPath(if (raw.startsWith("~")) expandUserHome(raw, home) else raw) }
+            .distinct()
     }
 
     fun posixPath(path: String): String {
         return FileUtil.toSystemIndependentName(path.trim())
     }
 
-    /** In-guest spelling of a host bind. sbx mounts workspaces at the host path; Windows drives become `/c/...`. */
+    /**
+     * In-guest spelling of a host bind. sbx mounts workspaces at the host path; Windows drives
+     * become `/c/...`.
+     */
     fun guestBindPath(hostPath: String): String {
         val posix = posixPath(hostPath)
         if (posix.length >= 3 && posix[0].isLetter() && posix[1] == ':' && posix[2] == '/') {
@@ -251,9 +273,9 @@ internal object SbxCli {
     }
 
     /**
-     * Guest path prefix → host path prefix, longest guest first.
-     * Extra mounts may alias `/home/agent/docs` onto a different host folder;
-     * Windows primary workspaces appear as `/c/Users/...` in the VM.
+     * Guest path prefix → host path prefix, longest guest first. Extra mounts may alias
+     * `/home/agent/docs` onto a different host folder; Windows primary workspaces appear as
+     * `/c/Users/...` in the VM.
      */
     fun guestToHostPathMappings(
         primaryWorkspace: String,
@@ -272,13 +294,14 @@ internal object SbxCli {
             add(mount.sandboxPath, mount.hostPath)
             add(guestBindPath(mount.hostPath), mount.hostPath)
         }
-        persistHostPath?.trim()?.takeIf { it.isNotBlank() }?.let { host ->
-            add(persistSandboxGuestPath(), host)
-            add(guestBindPath(host), host)
-        }
-        return maps.entries
-            .map { it.key to it.value }
-            .sortedByDescending { it.first.length }
+        persistHostPath
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?.let { host ->
+                add(persistSandboxGuestPath(), host)
+                add(guestBindPath(host), host)
+            }
+        return maps.entries.map { it.key to it.value }.sortedByDescending { it.first.length }
     }
 
     fun workspaceHostPath(arg: String): String {
@@ -286,7 +309,8 @@ internal object SbxCli {
         return if (posix.endsWith(":ro", ignoreCase = true)) posix.dropLast(3) else posix
     }
 
-    private fun workspaceIsReadOnly(arg: String): Boolean = posixPath(arg).endsWith(":ro", ignoreCase = true)
+    private fun workspaceIsReadOnly(arg: String): Boolean =
+        posixPath(arg).endsWith(":ro", ignoreCase = true)
 
     /**
      * Differences between the running VM and the spec that only a new VM can apply. Start never
@@ -309,11 +333,16 @@ internal object SbxCli {
         val reasons = ArrayList<String>()
         val installedKits = parseLineList(record.kits)
         val desiredKits = parseLineList(kitsText)
-        if (desiredKits.size < installedKits.size || desiredKits.take(installedKits.size) != installedKits) {
+        if (
+            desiredKits.size < installedKits.size ||
+                desiredKits.take(installedKits.size) != installedKits
+        ) {
             reasons += "kits were removed or reordered"
         }
         if (record.shareHostConfig != shareHostConfig) {
-            reasons += if (shareHostConfig) "host OpenCode config sharing was turned on" else "host OpenCode config sharing was turned off"
+            reasons +=
+                if (shareHostConfig) "host OpenCode config sharing was turned on"
+                else "host OpenCode config sharing was turned off"
         }
         fun listed(host: String) = listedWorkspaces.firstOrNull {
             OpenCodeServerProtocol.isSameFilesystemPath(workspaceHostPath(it), host)
@@ -325,10 +354,13 @@ internal object SbxCli {
                 continue
             }
             // A VM created before config sharing became read-only keeps its bind until Reset.
-            val sharedConfig = sharedConfigPath != null &&
-                OpenCodeServerProtocol.isSameFilesystemPath(mount.hostPath, sharedConfigPath)
+            val sharedConfig =
+                sharedConfigPath != null &&
+                    OpenCodeServerProtocol.isSameFilesystemPath(mount.hostPath, sharedConfigPath)
             if (!sharedConfig && workspaceIsReadOnly(attached) != mount.readOnly) {
-                reasons += if (mount.readOnly) "mount ${mount.hostPath} should be read-only" else "mount ${mount.hostPath} should be writable"
+                reasons +=
+                    if (mount.readOnly) "mount ${mount.hostPath} should be read-only"
+                    else "mount ${mount.hostPath} should be writable"
             }
         }
         val known = (desiredMounts + pluginMounts).map { it.hostPath } + workspace
@@ -348,21 +380,31 @@ internal object SbxCli {
         out.append("kind: mixin\n")
         out.append("name: opencode-network\n")
         out.append("displayName: OpenCode extra network\n")
-        out.append("description: Uncomment hosts this sandbox should reach, then recreate the sandbox.\n")
+        out.append(
+            "description: Uncomment hosts this sandbox should reach, then recreate the sandbox.\n"
+        )
         out.append("permissions:\n")
         out.append("  network:\n")
         out.append("    allow:\n")
         out.append("      # Uncomment what this sandbox should reach, then recreate it.\n")
-        out.append("      # Balanced does not include every provider (for example xAI is not included).\n")
+        out.append(
+            "      # Balanced does not include every provider (for example xAI is not included).\n"
+        )
         out.append("      #\n")
-        out.append("      # All outbound TCP: uncomment ALL THREE lines (hostnames, IPv4 and IPv6).\n")
-        out.append("      # This also permits local-network TCP access. UDP and ICMP remain blocked.\n")
+        out.append(
+            "      # All outbound TCP: uncomment ALL THREE lines (hostnames, IPv4 and IPv6).\n"
+        )
+        out.append(
+            "      # This also permits local-network TCP access. UDP and ICMP remain blocked.\n"
+        )
         out.append("      # CIDRs alone do not allow hostname requests such as api.x.ai:443.\n")
         out.append("      # - \"*\"\n")
         out.append("      # - 0.0.0.0/0\n")
         out.append("      # - \"::/0\"\n")
         out.append("      #\n")
-        out.append("      # Local-network additions (loopback + RFC1918), NOT a local-only restriction.\n")
+        out.append(
+            "      # Local-network additions (loopback + RFC1918), NOT a local-only restriction.\n"
+        )
         out.append("      # Existing global/agent-kit internet allows still apply.\n")
         out.append("      # - localhost\n")
         out.append("      # - 127.0.0.1\n")
@@ -381,7 +423,9 @@ internal object SbxCli {
     fun networkKitRef(): String = posixPath("./$PROJECT_CONTROL_DIR/$NETWORK_KIT_DIR")
 
     fun parseLineList(text: String?): List<String> {
-        return text.orEmpty().lineSequence()
+        return text
+            .orEmpty()
+            .lineSequence()
             .map { posixPath(it) }
             .filter { it.isNotBlank() && !it.startsWith("#") }
             .distinct()
@@ -411,7 +455,10 @@ internal object SbxCli {
         if (trimmed == "." || trimmed == "..") return true
         if (trimmed.startsWith("./") || trimmed.startsWith("../")) return true
         if (trimmed.startsWith("/") || trimmed.startsWith("~")) return true
-        return trimmed.length >= 3 && trimmed[0].isLetter() && trimmed[1] == ':' && trimmed[2] == '/'
+        return trimmed.length >= 3 &&
+            trimmed[0].isLetter() &&
+            trimmed[1] == ':' &&
+            trimmed[2] == '/'
     }
 
     fun sandboxProtectMounts(
@@ -432,12 +479,14 @@ internal object SbxCli {
             mounts += SbxExtraMount(host, host, readOnly = true)
         }
         add(control)
-        kits.filter { isLocalKitRef(it) }.forEach { ref ->
-            val expanded = expandUserHome(ref, hostHome)
-            val path = Path.of(root).resolve(expanded).normalize()
-            if (isUnder(control, path)) return@forEach
-            add(path)
-        }
+        kits
+            .filter { isLocalKitRef(it) }
+            .forEach { ref ->
+                val expanded = expandUserHome(ref, hostHome)
+                val path = Path.of(root).resolve(expanded).normalize()
+                if (isUnder(control, path)) return@forEach
+                add(path)
+            }
         return mounts
     }
 
@@ -463,13 +512,17 @@ internal object SbxCli {
             val local = localAppData?.trim()?.ifBlank { null } ?: userHome
             Path.of(local, "opencode-web-panel")
         } else {
-            val base = xdgDataHome?.trim()?.ifBlank { null } ?: Path.of(userHome, ".local", "share").toString()
+            val base =
+                xdgDataHome?.trim()?.ifBlank { null }
+                    ?: Path.of(userHome, ".local", "share").toString()
             Path.of(base, "opencode-web-panel")
         }
     }
 
     fun sandboxPersistDataHome(sandboxName: String, dataRoot: Path = persistDataDir()): String {
-        return posixPath(dataRoot.resolve("sbx").resolve(requireValidSandboxName(sandboxName)).toString())
+        return posixPath(
+            dataRoot.resolve("sbx").resolve(requireValidSandboxName(sandboxName)).toString()
+        )
     }
 
     fun persistSandboxGuestPath(): String = posixPath("$SANDBOX_HOME/.local/share/opencode")
@@ -484,9 +537,17 @@ internal object SbxCli {
         return SbxExtraMount(host, persistSandboxGuestPath())
     }
 
-    /** Plugin-owned host copy of guest `$HOME/.opencode`. Not host `~/.opencode`. Survives stop/start; Reset deletes it. */
+    /**
+     * Plugin-owned host copy of guest `$HOME/.opencode`. Not host `~/.opencode`. Survives
+     * stop/start; Reset deletes it.
+     */
     fun guestOpenCodeDataHome(sandboxName: String, dataRoot: Path = persistDataDir()): String {
-        return posixPath(dataRoot.resolve("sbx-opencode").resolve(requireValidSandboxName(sandboxName)).toString())
+        return posixPath(
+            dataRoot
+                .resolve("sbx-opencode")
+                .resolve(requireValidSandboxName(sandboxName))
+                .toString()
+        )
     }
 
     fun guestOpenCodeGuestPath(): String = posixPath("$SANDBOX_HOME/.opencode")
@@ -580,7 +641,11 @@ internal object SbxCli {
         val selected = ArrayList<SbxExtraMount>()
         for (mount in mounts) {
             val host = posixPath(mount.hostPath)
-            if (host.isBlank() || OpenCodeServerProtocol.isSameFilesystemPath(host, primaryWorkspace)) continue
+            if (
+                host.isBlank() ||
+                    OpenCodeServerProtocol.isSameFilesystemPath(host, primaryWorkspace)
+            )
+                continue
             if (!seen.add(host)) continue
             selected += mount.copy(hostPath = host)
         }
@@ -593,13 +658,21 @@ internal object SbxCli {
         hostHome: String = System.getProperty("user.home").orEmpty(),
         environment: Map<String, String> = System.getenv(),
     ): List<SbxExtraMount> = mounts.map { mount ->
-        val host = posixPath(Path.of(workspace).resolve(expandHostMountPath(mount.hostPath, hostHome, environment)).normalize().toString())
-        val sandbox = if (mount.sandboxPath.isBlank() || mount.sandboxPath == mount.hostPath) {
-            host
-        } else {
-            val expanded = posixPath(expandUserHome(mount.sandboxPath, SANDBOX_HOME))
-            if (isAbsolutePosixPath(expanded)) expanded else "$SANDBOX_HOME/${expanded.removePrefix("./")}"
-        }
+        val host =
+            posixPath(
+                Path.of(workspace)
+                    .resolve(expandHostMountPath(mount.hostPath, hostHome, environment))
+                    .normalize()
+                    .toString()
+            )
+        val sandbox =
+            if (mount.sandboxPath.isBlank() || mount.sandboxPath == mount.hostPath) {
+                host
+            } else {
+                val expanded = posixPath(expandUserHome(mount.sandboxPath, SANDBOX_HOME))
+                if (isAbsolutePosixPath(expanded)) expanded
+                else "$SANDBOX_HOME/${expanded.removePrefix("./")}"
+            }
         SbxExtraMount(host, sandbox, mount.readOnly)
     }
 
@@ -623,7 +696,8 @@ internal object SbxCli {
               rm -rf -- "$2"
             fi
             ln -sfn -- "$1" "$2"
-            """.trimIndent()
+            """
+                .trimIndent()
         } else {
             // `ln -sfn` onto a real directory would create the link inside it.
             $$"""
@@ -633,7 +707,8 @@ internal object SbxCli {
               exit 1
             fi
             ln -sfn -- "$1" "$2"
-            """.trimIndent()
+            """
+                .trimIndent()
         }
     }
 
@@ -658,22 +733,29 @@ internal object SbxCli {
         mount: SbxExtraMount,
         replaceExistingDirectory: Boolean = false,
     ): List<String> {
-        return listOf(executable, "exec", "-w", "/", name) + guestScriptCommand(
-            extraMountLinkScript(replaceExistingDirectory),
-            listOf(guestBindPath(mount.hostPath), mount.sandboxPath),
-        )
+        return listOf(executable, "exec", "-w", "/", name) +
+            guestScriptCommand(
+                extraMountLinkScript(replaceExistingDirectory),
+                listOf(guestBindPath(mount.hostPath), mount.sandboxPath),
+            )
     }
 
-    /** sbx on Windows breaks quotes inside an argv script passed by ProcessBuilder. Decode inside the guest instead. */
+    /**
+     * sbx on Windows breaks quotes inside an argv script passed by ProcessBuilder. Decode inside
+     * the guest instead.
+     */
     private fun guestScriptCommand(script: String, args: List<String> = emptyList()): List<String> {
-        val body = if (args.isEmpty()) script else "set -- ${args.joinToString(" ") { shellQuote(it) }}\n$script"
+        val body =
+            if (args.isEmpty()) script
+            else "set -- ${args.joinToString(" ") { shellQuote(it) }}\n$script"
         val encoded = Base64.getEncoder().encodeToString(body.toByteArray(StandardCharsets.UTF_8))
         return listOf("sh", "-c", "printf %s $encoded | base64 -d | sh")
     }
 
     private fun shellQuote(value: String): String = "'" + value.replace("'", "'\\''") + "'"
 
-    fun normalizeExtraMountText(text: String?): String = serializeExtraMountRows(parseExtraMountRows(text))
+    fun normalizeExtraMountText(text: String?): String =
+        serializeExtraMountRows(parseExtraMountRows(text))
 
     fun parseExtraMountRows(text: String?): List<Pair<String, String>> {
         val rows = ArrayList<Pair<String, String>>()
@@ -695,7 +777,8 @@ internal object SbxCli {
     private val COMMENT_AFTER_SPACE = Regex("(^|\\s)#.*$")
 
     fun serializeExtraMountRows(rows: List<Pair<String, String>>): String {
-        return rows.map { posixPath(it.first) to posixPath(it.second) }
+        return rows
+            .map { posixPath(it.first) to posixPath(it.second) }
             .filter { it.first.isNotBlank() }
             .map { (host, sandbox) ->
                 if (sandbox.isBlank() || sandbox == host) host else "$host | $sandbox"
@@ -705,10 +788,7 @@ internal object SbxCli {
     }
 
     fun isAbsolutePosixPath(path: String): Boolean {
-        return path.startsWith("/") &&
-            '\u0000' !in path &&
-            '\n' !in path &&
-            '\r' !in path
+        return path.startsWith("/") && '\u0000' !in path && '\n' !in path && '\r' !in path
     }
 
     fun expandUserHome(path: String, home: String): String {
@@ -719,20 +799,31 @@ internal object SbxCli {
     }
 
     /** A leading host variable is data, never shell code; values are not expanded recursively. */
-    fun expandHostMountPath(path: String, home: String, environment: Map<String, String> = System.getenv()): String {
+    fun expandHostMountPath(
+        path: String,
+        home: String,
+        environment: Map<String, String> = System.getenv(),
+    ): String {
         if (!path.startsWith("\${")) return expandUserHome(path, home)
-        val match = HOST_MOUNT_VARIABLE.matchEntire(path)
-            ?: throw IllegalArgumentException("Invalid host mount variable; use \${NAME} or \${NAME:-fallback}")
+        val match =
+            HOST_MOUNT_VARIABLE.matchEntire(path)
+                ?: throw IllegalArgumentException(
+                    "Invalid host mount variable; use \${NAME} or \${NAME:-fallback}"
+                )
         val name = match.groupValues[1]
-        val value = environment[name]?.takeIf { it.isNotEmpty() }
-            ?: match.groups[2]?.value
-            ?: throw IllegalArgumentException("Host environment variable $name is not set for a sandbox mount")
+        val value =
+            environment[name]?.takeIf { it.isNotEmpty() }
+                ?: match.groups[2]?.value
+                ?: throw IllegalArgumentException(
+                    "Host environment variable $name is not set for a sandbox mount"
+                )
         val expanded = value + match.groupValues[3]
         require(expanded.isNotBlank()) { "Host mount path must not be empty" }
         return expandUserHome(expanded, home)
     }
 
-    private val HOST_MOUNT_VARIABLE = Regex("""^\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^{}]*))?}(.*)$""")
+    private val HOST_MOUNT_VARIABLE =
+        Regex("""^\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^{}]*))?}(.*)$""")
 
     fun buildExecServeCommand(
         executable: String = DEFAULT_EXECUTABLE,
@@ -742,9 +833,10 @@ internal object SbxCli {
         preferGuestV2: Boolean = false,
     ): List<String> {
         val command = mutableListOf(executable, "exec", "-e", OPENCODE_SERVER_PASSWORD_ENV)
-        extraEnvKeys.distinct().filter { it.isNotBlank() && it != OPENCODE_SERVER_PASSWORD_ENV }.forEach { key ->
-            command += listOf("-e", key)
-        }
+        extraEnvKeys
+            .distinct()
+            .filter { it.isNotBlank() && it != OPENCODE_SERVER_PASSWORD_ENV }
+            .forEach { key -> command += listOf("-e", key) }
         command += listOf("-w", guestBindPath(workspace), name)
         appendGuestOpenCode(command, SERVE_FLAGS, preferGuestV2)
         return command
@@ -774,10 +866,27 @@ internal object SbxCli {
         return listOf(executable, "exec", "-w", "/", name) + guestScriptCommand(V2_INSTALL_SCRIPT)
     }
 
-    fun buildNetworkProbeCommand(executable: String, name: String, url: String): List<String> = listOf(
-        executable, "exec", "-w", "/", name, "curl", "--silent", "--show-error", "--location",
-        "--connect-timeout", "5", "--max-time", "10", "--output", "/dev/null", "--write-out", "\n$NETWORK_PROBE_MARKER%{http_code}\n", url,
-    )
+    fun buildNetworkProbeCommand(executable: String, name: String, url: String): List<String> =
+        listOf(
+            executable,
+            "exec",
+            "-w",
+            "/",
+            name,
+            "curl",
+            "--silent",
+            "--show-error",
+            "--location",
+            "--connect-timeout",
+            "5",
+            "--max-time",
+            "10",
+            "--output",
+            "/dev/null",
+            "--write-out",
+            "\n$NETWORK_PROBE_MARKER%{http_code}\n",
+            url,
+        )
 
     const val NETWORK_PROBE_MARKER = "OCWP_HTTP="
 
@@ -790,7 +899,8 @@ internal object SbxCli {
         executable: String = DEFAULT_EXECUTABLE,
         name: String,
     ): List<String> {
-        return listOf(executable, "exec", "-w", "/", name) + guestScriptCommand(GUEST_V2_VERSION_SCRIPT)
+        return listOf(executable, "exec", "-w", "/", name) +
+            guestScriptCommand(GUEST_V2_VERSION_SCRIPT)
     }
 
     private fun appendGuestOpenCode(
@@ -806,15 +916,19 @@ internal object SbxCli {
         }
     }
 
-    fun buildAddKitCommand(executable: String = DEFAULT_EXECUTABLE, name: String, ref: String): List<String> =
-        listOf(executable, "kit", "add", name, ref)
+    fun buildAddKitCommand(
+        executable: String = DEFAULT_EXECUTABLE,
+        name: String,
+        ref: String,
+    ): List<String> = listOf(executable, "kit", "add", name, ref)
 
     fun buildRemotePkillCommand(
         executable: String = DEFAULT_EXECUTABLE,
         name: String,
     ): List<String> {
-        return listOf(executable, "exec", "-w", "/", name) + guestScriptCommand(
-            $$"""
+        return listOf(executable, "exec", "-w", "/", name) +
+            guestScriptCommand(
+                $$"""
             pkill -TERM -f '$${SERVE_PKILL_PATTERN}' || true
             i=0
             while [ "$i" -lt 5 ]; do
@@ -823,8 +937,9 @@ internal object SbxCli {
               i=$((i+1))
             done
             pkill -KILL -f '$${SERVE_PKILL_PATTERN}' || true
-            """.trimIndent(),
-        )
+            """
+                    .trimIndent()
+            )
     }
 
     fun buildPortsCommand(
@@ -883,14 +998,18 @@ internal object SbxCli {
         return listOf(executable, "daemon", "start", "--detach")
     }
 
-    /** Older sbx versions returned from bare `daemon start`; newer CLIs keep it in the foreground. */
+    /**
+     * Older sbx versions returned from bare `daemon start`; newer CLIs keep it in the foreground.
+     */
     fun buildLegacyDaemonStartCommand(executable: String = DEFAULT_EXECUTABLE): List<String> =
         listOf(executable, "daemon", "start")
 
     fun daemonDetachUnsupported(output: String): Boolean {
         val message = output.lowercase(Locale.ROOT)
         return "detach" in message &&
-            ("unknown flag" in message || "flag provided but not defined" in message || "unrecognized option" in message)
+            ("unknown flag" in message ||
+                "flag provided but not defined" in message ||
+                "unrecognized option" in message)
     }
 
     fun buildDiagnoseJsonCommand(executable: String = DEFAULT_EXECUTABLE): List<String> {
@@ -912,8 +1031,11 @@ internal object SbxCli {
      * governance). Kit and per-sandbox rules alone do not count.
      */
     fun policyIsInitialized(json: String): Boolean {
-        val root = runCatching { JsonParser.parseString(json) }.getOrNull()
-            ?.takeIf { it.isJsonObject }?.asJsonObject ?: return false
+        val root =
+            runCatching { JsonParser.parseString(json) }
+                .getOrNull()
+                ?.takeIf { it.isJsonObject }
+                ?.asJsonObject ?: return false
         val rules = root.get("rules")?.takeIf { it.isJsonArray }?.asJsonArray ?: return false
         return rules.any { element ->
             val rule = element.takeIf { it.isJsonObject }?.asJsonObject ?: return@any false
@@ -934,7 +1056,8 @@ internal object SbxCli {
     }
 
     fun ideMcpLoopbackPort(statusMessage: String): Int? {
-        val match = Regex("""https?://(?:127\.0\.0\.1|localhost|\[::1]):(\d+)""").find(statusMessage)
+        val match =
+            Regex("""https?://(?:127\.0\.0\.1|localhost|\[::1]):(\d+)""").find(statusMessage)
         return match?.groupValues?.get(1)?.toIntOrNull()
     }
 
@@ -947,9 +1070,13 @@ internal object SbxCli {
     }
 
     fun parseTemplateLsJson(json: String): List<SbxTemplateImage> {
-        val root = runCatching { JsonParser.parseString(json) }.getOrNull()
-            ?.takeIf { it.isJsonObject }?.asJsonObject ?: return emptyList()
-        val images = root.get("images")?.takeIf { it.isJsonArray }?.asJsonArray ?: return emptyList()
+        val root =
+            runCatching { JsonParser.parseString(json) }
+                .getOrNull()
+                ?.takeIf { it.isJsonObject }
+                ?.asJsonObject ?: return emptyList()
+        val images =
+            root.get("images")?.takeIf { it.isJsonArray }?.asJsonArray ?: return emptyList()
         return images.mapNotNull { element ->
             val obj = element.takeIf { it.isJsonObject }?.asJsonObject ?: return@mapNotNull null
             val id = obj.stringMember("id")?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
@@ -978,8 +1105,11 @@ internal object SbxCli {
     fun parseLsJson(json: String): List<SbxSandboxListEntry> = parseLsJsonOrNull(json).orEmpty()
 
     fun parseLsJsonOrNull(json: String): List<SbxSandboxListEntry>? {
-        val root = runCatching { JsonParser.parseString(json) }.getOrNull()
-            ?.takeIf { it.isJsonObject }?.asJsonObject ?: return null
+        val root =
+            runCatching { JsonParser.parseString(json) }
+                .getOrNull()
+                ?.takeIf { it.isJsonObject }
+                ?.asJsonObject ?: return null
         val sandboxes = root.get("sandboxes")?.takeIf { it.isJsonArray }?.asJsonArray ?: return null
         // An entry without name or id cannot be matched by ownership (id) or conflict (name)
         // checks; skip it instead of discarding the whole inventory.
@@ -1019,7 +1149,8 @@ internal object SbxCli {
     fun loopbackPortMappings(
         ports: List<SbxPortMapping>,
         sandboxPort: Int = OpenCodeServerProtocol.SANDBOX_SERVE_PORT,
-    ): List<SbxPortMapping> = sandboxPortMappings(ports, sandboxPort).filter { it.hostIp == "127.0.0.1" }
+    ): List<SbxPortMapping> =
+        sandboxPortMappings(ports, sandboxPort).filter { it.hostIp == "127.0.0.1" }
 
     fun publishedHostPorts(
         ports: List<SbxPortMapping>,
@@ -1027,7 +1158,8 @@ internal object SbxCli {
         desiredHostPort: Int? = null,
     ): List<Int> {
         val matching = sandboxPortMappings(ports, sandboxPort).filter { it.hostIp == "127.0.0.1" }
-        val preferred = matching.filter { it.protocol.equals("tcp4", ignoreCase = true) }.ifEmpty { matching }
+        val preferred =
+            matching.filter { it.protocol.equals("tcp4", ignoreCase = true) }.ifEmpty { matching }
         val hostPorts = preferred.map { it.hostPort }.distinct()
         val pinned = desiredHostPort?.takeIf { it in 1..65535 }
         return if (pinned == null) hostPorts else hostPorts.filter { it == pinned }
@@ -1059,13 +1191,19 @@ internal object SbxCli {
         return entries.firstOrNull { entry ->
             entry.name == name ||
                 !ownedElsewhere(entry) &&
-                entry.workspaces.any { OpenCodeServerProtocol.isSameFilesystemPath(it, workspace) }
+                    entry.workspaces.any {
+                        OpenCodeServerProtocol.isSameFilesystemPath(it, workspace)
+                    }
         }
     }
 
     fun diagnoseReportsUnsupported(json: String): Boolean {
-        val root = runCatching { JsonParser.parseString(json) }.getOrNull()
-            ?.takeIf { it.isJsonObject }?.asJsonObject
+        val root = runCatching {
+            JsonParser.parseString(json)
+        }
+            .getOrNull()
+            ?.takeIf { it.isJsonObject }
+            ?.asJsonObject
         if (root != null) {
             if (root.booleanMember("supported") == false) return true
             val virtualization = root.objectMember("virtualization")
@@ -1073,9 +1211,12 @@ internal object SbxCli {
             if (virtualization?.booleanMember("available") == false) return true
             val errors = root.get("errors")?.takeIf { it.isJsonArray }?.asJsonArray
             if (errors != null) {
-                val text = errors.joinToString(" ") { element ->
-                    if (element.isJsonPrimitive && element.asJsonPrimitive.isString) element.asString else ""
-                }
+                val text =
+                    errors.joinToString(" ") { element ->
+                        if (element.isJsonPrimitive && element.asJsonPrimitive.isString)
+                            element.asString
+                        else ""
+                    }
                 if (looksUnsupportedText(text)) return true
             }
             return false
@@ -1103,14 +1244,20 @@ internal object SbxCli {
         val id = obj.stringMember("id")?.takeIf { it.isNotBlank() } ?: return null
         val agent = obj.stringMember("agent").orEmpty()
         val status = obj.stringMember("status").orEmpty()
-        val ports = obj.get("ports")?.takeIf { it.isJsonArray }?.asJsonArray
-            ?.let { parsePortArray(it) }
-            .orEmpty()
-        val workspaces = obj.get("workspaces")?.takeIf { it.isJsonArray }?.asJsonArray
-            ?.mapNotNull { element ->
-                element.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }?.asString
-            }
-            .orEmpty()
+        val ports =
+            obj.get("ports")
+                ?.takeIf { it.isJsonArray }
+                ?.asJsonArray
+                ?.let { parsePortArray(it) }
+                .orEmpty()
+        val workspaces =
+            obj.get("workspaces")
+                ?.takeIf { it.isJsonArray }
+                ?.asJsonArray
+                ?.mapNotNull { element ->
+                    element.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }?.asString
+                }
+                .orEmpty()
         return SbxSandboxListEntry(name, id, agent, status, ports, workspaces)
     }
 

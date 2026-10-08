@@ -11,8 +11,8 @@ import java.net.HttpURLConnection
 import java.net.SocketTimeoutException
 import java.net.URI
 import java.net.URLDecoder
-import java.nio.file.Files
 import java.nio.charset.StandardCharsets
+import java.nio.file.Files
 import java.nio.file.Path
 import java.security.SecureRandom
 import java.util.Base64
@@ -25,23 +25,32 @@ enum class OpenCodeWireProtocol {
     V1_18,
     V2_CLI,
     V1_18_EMBEDDED_V2,
-    UNKNOWN,
-    ;
+    UNKNOWN;
 
-    fun statusLabel(): String? = when (this) {
-        V1_18, V1_18_EMBEDDED_V2 -> "1.18"
-        V2_CLI -> "2.x"
-        UNKNOWN -> null
-    }
+    fun statusLabel(): String? =
+        when (this) {
+            V1_18,
+            V1_18_EMBEDDED_V2 -> "1.18"
+            V2_CLI -> "2.x"
+            UNKNOWN -> null
+        }
 }
 
 internal sealed interface OpenCodeProtocolResult<out T> {
     data class Success<T>(val value: T) : OpenCodeProtocolResult<T>
+
     data class Failure(
         val kind: Kind,
         val statusCode: Int? = null,
     ) : OpenCodeProtocolResult<Nothing> {
-        enum class Kind { INVALID_IDENTIFIER, HTTP, TIMEOUT, IO, TOO_LARGE, INVALID_BODY }
+        enum class Kind {
+            INVALID_IDENTIFIER,
+            HTTP,
+            TIMEOUT,
+            IO,
+            TOO_LARGE,
+            INVALID_BODY,
+        }
     }
 }
 
@@ -65,14 +74,17 @@ internal object OpenCodeServerProtocol {
     const val GLOBAL_EVENT_PATH = "/global/event"
     const val CLI_EVENT_PATH = "/api/event"
 
-    fun eventPath(protocol: OpenCodeWireProtocol): String? = when (protocol) {
-        OpenCodeWireProtocol.V1_18, OpenCodeWireProtocol.V1_18_EMBEDDED_V2 -> GLOBAL_EVENT_PATH
-        OpenCodeWireProtocol.V2_CLI -> CLI_EVENT_PATH
-        OpenCodeWireProtocol.UNKNOWN -> null
-    }
+    fun eventPath(protocol: OpenCodeWireProtocol): String? =
+        when (protocol) {
+            OpenCodeWireProtocol.V1_18,
+            OpenCodeWireProtocol.V1_18_EMBEDDED_V2 -> GLOBAL_EVENT_PATH
+            OpenCodeWireProtocol.V2_CLI -> CLI_EVENT_PATH
+            OpenCodeWireProtocol.UNKNOWN -> null
+        }
 
     fun usesCliHttpApi(protocol: OpenCodeWireProtocol): Boolean =
         protocol == OpenCodeWireProtocol.V2_CLI
+
     const val DISPOSE_PATH = "/global/dispose"
     const val BASIC_AUTH_USERNAME = "opencode"
     const val DEFAULT_EXECUTABLE = "opencode"
@@ -90,7 +102,9 @@ internal object OpenCodeServerProtocol {
     private const val MESSAGE_PAGE_MAX = 40
 
     private val secureRandom = SecureRandom()
-    private val minimumSupportedOpenCodeVersion = requireNotNull(SemVer.parseFromText(MINIMUM_SUPPORTED_OPENCODE_VERSION))
+    private val minimumSupportedOpenCodeVersion =
+        requireNotNull(SemVer.parseFromText(MINIMUM_SUPPORTED_OPENCODE_VERSION))
+
     fun buildServerRootUrl(serverUrl: String): String {
         return serverUrl.trimEnd('/')
     }
@@ -112,13 +126,16 @@ internal object OpenCodeServerProtocol {
         // The id-less /server/<key>/session shell has no page content in OpenCode 1.18.29.
         // Home is a real landing page and lets OpenCode restore its own tabs/session selection.
         if (sessionId.isNullOrBlank()) return buildServerRootUrl(serverUrl) + "/"
-        val base = "${buildServerRootUrl(serverUrl)}/server/${encodeDirectory(buildOrigin(serverUrl))}/session"
+        val base =
+            "${buildServerRootUrl(serverUrl)}/server/${encodeDirectory(buildOrigin(serverUrl))}/session"
         return "$base/$sessionId"
     }
 
     fun localFileDropText(file: File, projectBasePath: String?): String? {
-        val projectRoot = projectBasePath?.takeIf { it.isNotBlank() }?.let { Path.of(it).toAbsolutePath().normalize() }
-            ?: return null
+        val projectRoot =
+            projectBasePath
+                ?.takeIf { it.isNotBlank() }
+                ?.let { Path.of(it).toAbsolutePath().normalize() } ?: return null
         val filePath = file.toPath().toAbsolutePath().normalize()
         if (!filePath.startsWith(projectRoot) || filePath == projectRoot) return null
         if (!Files.isRegularFile(filePath)) return null
@@ -176,7 +193,8 @@ internal object OpenCodeServerProtocol {
 
     private fun openFileLinkQueryParameter(requestUrl: String?, name: String): String? {
         val url = requestUrl ?: return null
-        return URI(url).rawQuery
+        return URI(url)
+            .rawQuery
             ?.split('&')
             ?.firstOrNull { it.substringBefore('=') == name }
             ?.substringAfter('=', "")
@@ -201,10 +219,15 @@ internal object OpenCodeServerProtocol {
         return try {
             val path = URI(frameUrl).path?.takeIf { it.isNotBlank() } ?: return null
             // Directoryless 1.18 routes never encode a project directory.
-            if (path == "/new-session" || path.startsWith("/new-session/") || path.startsWith("/server/")) {
+            if (
+                path == "/new-session" ||
+                    path.startsWith("/new-session/") ||
+                    path.startsWith("/server/")
+            ) {
                 return null
             }
-            val encodedDirectory = path.trimStart('/').substringBefore('/').takeIf { it.isNotBlank() } ?: return null
+            val encodedDirectory =
+                path.trimStart('/').substringBefore('/').takeIf { it.isNotBlank() } ?: return null
             val directory = decodeDirectory(encodedDirectory) ?: return null
             directory.takeIf(::looksLikeAbsoluteFilesystemPath)
         } catch (_: Exception) {
@@ -212,11 +235,17 @@ internal object OpenCodeServerProtocol {
         }
     }
 
-    fun isOpenCodeRouteAlreadyOpen(serverUrl: String?, currentUrl: String?, route: String?): Boolean {
+    fun isOpenCodeRouteAlreadyOpen(
+        serverUrl: String?,
+        currentUrl: String?,
+        route: String?,
+    ): Boolean {
         if (!isOpenCodeServerPage(serverUrl, currentUrl)) return false
-        val targetRoute = normalizedRoute(route)
-            ?: normalizedRoute(runCatching { URI(route).rawPathWithQuery() }.getOrNull())
-        val currentRoute = normalizedRoute(runCatching { URI(currentUrl).rawPathWithQuery() }.getOrNull())
+        val targetRoute =
+            normalizedRoute(route)
+                ?: normalizedRoute(runCatching { URI(route).rawPathWithQuery() }.getOrNull())
+        val currentRoute =
+            normalizedRoute(runCatching { URI(currentUrl).rawPathWithQuery() }.getOrNull())
         if (targetRoute != null && currentRoute != null && targetRoute == currentRoute) {
             return true
         }
@@ -224,7 +253,8 @@ internal object OpenCodeServerProtocol {
         // still counts as already open — notification clicks must not force a reload. A target that
         // pins a query (e.g. ?tab=) still requires an exact route match above.
         if (targetRoute?.contains('?') == true) return false
-        val targetSession = sessionIdFromUrl(route) ?: sessionIdFromUrl(absoluteRouteUrl(serverUrl, route))
+        val targetSession =
+            sessionIdFromUrl(route) ?: sessionIdFromUrl(absoluteRouteUrl(serverUrl, route))
         val currentSession = sessionIdFromUrl(currentUrl)
         return targetSession != null && currentSession != null && targetSession == currentSession
     }
@@ -246,9 +276,18 @@ internal object OpenCodeServerProtocol {
         guestToHostPrefixes: List<Pair<String, String>> = emptyList(),
         home: String? = null,
     ): FileLinkTarget? {
-        val basePaths = listOfNotNull(routeBasePath?.takeIf { it.isNotBlank() }, projectBasePath?.takeIf { it.isNotBlank() })
-            .distinct()
-        return resolveFileLinkWithBases(href, basePaths, guestToHostPrefixes = guestToHostPrefixes, home = home)
+        val basePaths =
+            listOfNotNull(
+                    routeBasePath?.takeIf { it.isNotBlank() },
+                    projectBasePath?.takeIf { it.isNotBlank() },
+                )
+                .distinct()
+        return resolveFileLinkWithBases(
+            href,
+            basePaths,
+            guestToHostPrefixes = guestToHostPrefixes,
+            home = home,
+        )
     }
 
     internal fun resolveFileLinkWithBases(
@@ -260,34 +299,48 @@ internal object OpenCodeServerProtocol {
         guessIncomplete: Boolean = true,
     ): FileLinkTarget? {
         if (href.isNullOrBlank()) return null
-        val cleanedHref = cleanFileLinkHref(href).ifBlank { return null }
+        val cleanedHref =
+            cleanFileLinkHref(href).ifBlank {
+                return null
+            }
         // Check the route exclusion on the cleaned spelling too: a decorated SPA route must not
         // slip past it and get preventDefault-ed as a file.
         if (isOpenCodeSessionRouteHref(href) || isOpenCodeSessionRouteHref(cleanedHref)) return null
-        if (isUnixRootRelativeHref(cleanedHref) && !lastPathSegmentLooksLikeFile(cleanedHref)) return null
+        if (isUnixRootRelativeHref(cleanedHref) && !lastPathSegmentLooksLikeFile(cleanedHref))
+            return null
         val parsed = parseFileLink(cleanedHref) ?: return null
-        val aliased = parsed.copy(paths = aliasedFileLinkSpellings(parsed, guestToHostPrefixes, home))
-        val bases = (basePaths + guestToHostPrefixes.map { it.second })
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
-            .distinct()
+        val aliased =
+            parsed.copy(paths = aliasedFileLinkSpellings(parsed, guestToHostPrefixes, home))
+        val bases =
+            (basePaths + guestToHostPrefixes.map { it.second })
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .distinct()
         if (bases.isEmpty()) return null
-        val hit = candidateFileLinkPaths(aliased, bases).firstOrNull { Files.isRegularFile(it.second) }
-            ?: (if (guessIncomplete) bestGuessFileLinkPath(aliased, bases, caseSensitive) else null)
-            ?: return null
+        val hit =
+            candidateFileLinkPaths(aliased, bases).firstOrNull { Files.isRegularFile(it.second) }
+                ?: (if (guessIncomplete) bestGuessFileLinkPath(aliased, bases, caseSensitive)
+                else null)
+                ?: return null
         val (spelling, path) = hit
-        return FileLinkTarget(path, spelling.line?.coerceAtLeast(0), spelling.column?.coerceAtLeast(0))
+        return FileLinkTarget(
+            path,
+            spelling.line?.coerceAtLeast(0),
+            spelling.column?.coerceAtLeast(0),
+        )
     }
 
     fun isOpenCodeSessionRouteHref(href: String?): Boolean {
         val text = href?.trim()?.takeIf { it.isNotBlank() } ?: return false
-        val routePath = when {
-            text.startsWith('/') -> text
-            text.startsWith("http://", ignoreCase = true) || text.startsWith("https://", ignoreCase = true) -> {
-                runCatching { URI(text).path }.getOrNull() ?: return false
+        val routePath =
+            when {
+                text.startsWith('/') -> text
+                text.startsWith("http://", ignoreCase = true) ||
+                    text.startsWith("https://", ignoreCase = true) -> {
+                    runCatching { URI(text).path }.getOrNull() ?: return false
+                }
+                else -> return false
             }
-            else -> return false
-        }
         val path = routePath.substringBefore('?').substringBefore('#')
         // Keep in sync with isOpenCodeAppRoute in OpenCodeBrowserSnippets (file-link exclusions).
         if (path == "/" || path.isEmpty()) return true
@@ -306,18 +359,19 @@ internal object OpenCodeServerProtocol {
     }
 
     /**
-     * The directory string OpenCode persists on sessions (`FSUtil.resolve` / `realpath`).
-     * The SPA's `session.get` uses exact `===` against this, so the panel must seed
-     * `lastProject` / `lastProjectSession.directory` with this spelling — not IntelliJ's
-     * raw `basePath` (`/var` vs `/private/var`, symlink aliases, Windows real casing).
+     * The directory string OpenCode persists on sessions (`FSUtil.resolve` / `realpath`). The SPA's
+     * `session.get` uses exact `===` against this, so the panel must seed `lastProject` /
+     * `lastProjectSession.directory` with this spelling — not IntelliJ's raw `basePath` (`/var` vs
+     * `/private/var`, symlink aliases, Windows real casing).
      */
     fun canonicalOpenCodeDirectory(path: String?): String? {
         val raw = path?.trim()?.takeIf { it.isNotBlank() } ?: return null
-        val resolved = lookupOrCompute(canonicalDirectoryCache, raw) {
-            runCatching { Path.of(raw).toRealPath().toString() }
-                .recoverCatching { Path.of(raw).toAbsolutePath().normalize().toString() }
-                .getOrDefault(raw)
-        }
+        val resolved =
+            lookupOrCompute(canonicalDirectoryCache, raw) {
+                runCatching { Path.of(raw).toRealPath().toString() }
+                    .recoverCatching { Path.of(raw).toAbsolutePath().normalize().toString() }
+                    .getOrDefault(raw)
+            }
         if (resolved != raw) canonicalDirectoryCache.putIfAbsent(resolved, resolved)
         return resolved
     }
@@ -327,7 +381,8 @@ internal object OpenCodeServerProtocol {
      * Worktree/sandbox paths are left alone so `lastProject` stays the project root.
      */
     fun adoptOpenCodeDirectory(idePath: String?, serverPath: String?): String? {
-        val canonical = canonicalOpenCodeDirectory(idePath) ?: idePath?.trim()?.takeIf { it.isNotBlank() }
+        val canonical =
+            canonicalOpenCodeDirectory(idePath) ?: idePath?.trim()?.takeIf { it.isNotBlank() }
         val server = serverPath?.trim()?.takeIf { it.isNotBlank() } ?: return canonical
         return if (isSameFilesystemPath(canonical ?: idePath, server)) server else canonical
     }
@@ -348,32 +403,102 @@ internal object OpenCodeServerProtocol {
         }
     }
 
-    private fun <K : Any, V : Any> lookupOrCompute(cache: ConcurrentHashMap<K, V>, key: K, compute: () -> V): V {
-        cache[key]?.let { return it }
+    private fun <K : Any, V : Any> lookupOrCompute(
+        cache: ConcurrentHashMap<K, V>,
+        key: K,
+        compute: () -> V,
+    ): V {
+        cache[key]?.let {
+            return it
+        }
         val value = compute()
         return cache.putIfAbsent(key, value) ?: value
     }
 
     private val QUALIFIED_CLASS = Regex("^(?:[a-zA-Z_][a-zA-Z0-9_]*\\.)+[A-Z][a-zA-Z0-9_]*$")
-    private val TYPE_MEMBER_CALL = Regex(
-        """^((?:[a-zA-Z_][a-zA-Z0-9_]*\.)*[A-Z][a-zA-Z0-9_]*)(?:[.#]([a-z_][a-zA-Z0-9_]*))?\s*\(.*\)$""",
-    )
-    private val TYPE_MEMBER_BARE = Regex(
-        """^((?:[a-zA-Z_][a-zA-Z0-9_]*\.)*[A-Z][a-zA-Z0-9_]*)[.#]([a-z_][a-zA-Z0-9_]*)$""",
-    )
-    private val FILE_EXTENSIONS = setOf(
-        "kt", "kts", "java", "ts", "tsx", "js", "jsx", "mjs", "cjs",
-        "py", "rb", "go", "rs", "c", "h", "cc", "cpp", "hpp", "cs", "swift",
-        "m", "mm", "scala", "groovy", "gradle", "xml", "json", "yml", "yaml",
-        "md", "txt", "toml", "properties", "sql", "sh", "bash", "zsh",
-        "xsd", "xsl", "xslt", "wsdl",
-        "html", "css", "scss", "vue", "svelte", "proto",
-    )
-    private val SOURCE_FILE_EXTENSIONS = setOf(
-        "kt", "kts", "java", "ts", "tsx", "js", "jsx", "mjs", "cjs",
-        "py", "rb", "go", "rs", "c", "h", "cc", "cpp", "hpp", "cs", "swift",
-        "m", "mm", "scala", "groovy",
-    )
+    private val TYPE_MEMBER_CALL =
+        Regex(
+            """^((?:[a-zA-Z_][a-zA-Z0-9_]*\.)*[A-Z][a-zA-Z0-9_]*)(?:[.#]([a-z_][a-zA-Z0-9_]*))?\s*\(.*\)$"""
+        )
+    private val TYPE_MEMBER_BARE =
+        Regex("""^((?:[a-zA-Z_][a-zA-Z0-9_]*\.)*[A-Z][a-zA-Z0-9_]*)[.#]([a-z_][a-zA-Z0-9_]*)$""")
+    private val FILE_EXTENSIONS =
+        setOf(
+            "kt",
+            "kts",
+            "java",
+            "ts",
+            "tsx",
+            "js",
+            "jsx",
+            "mjs",
+            "cjs",
+            "py",
+            "rb",
+            "go",
+            "rs",
+            "c",
+            "h",
+            "cc",
+            "cpp",
+            "hpp",
+            "cs",
+            "swift",
+            "m",
+            "mm",
+            "scala",
+            "groovy",
+            "gradle",
+            "xml",
+            "json",
+            "yml",
+            "yaml",
+            "md",
+            "txt",
+            "toml",
+            "properties",
+            "sql",
+            "sh",
+            "bash",
+            "zsh",
+            "xsd",
+            "xsl",
+            "xslt",
+            "wsdl",
+            "html",
+            "css",
+            "scss",
+            "vue",
+            "svelte",
+            "proto",
+        )
+    private val SOURCE_FILE_EXTENSIONS =
+        setOf(
+            "kt",
+            "kts",
+            "java",
+            "ts",
+            "tsx",
+            "js",
+            "jsx",
+            "mjs",
+            "cjs",
+            "py",
+            "rb",
+            "go",
+            "rs",
+            "c",
+            "h",
+            "cc",
+            "cpp",
+            "hpp",
+            "cs",
+            "swift",
+            "m",
+            "mm",
+            "scala",
+            "groovy",
+        )
     private val CLASS_FILE_EXTENSIONS = listOf("kt", "kts", "java", "ts", "tsx", "js", "jsx")
 
     /**
@@ -382,11 +507,12 @@ internal object OpenCodeServerProtocol {
      */
     internal fun normalizeNavigablePath(text: String): String {
         var value = stripBidiMarks(text.trim())
-        val python = Regex("""^File\s+"([^"\n]+)"\s*,\s*line\s+(\d+)$""", RegexOption.IGNORE_CASE).matchEntire(value)
+        val python =
+            Regex("""^File\s+"([^"\n]+)"\s*,\s*line\s+(\d+)$""", RegexOption.IGNORE_CASE)
+                .matchEntire(value)
         if (python != null) return "${python.groupValues[1]}:${python.groupValues[2]}"
-        val parenFile = Regex(
-            """\(([^()\s]+?\.[A-Za-z][A-Za-z0-9]{0,8}(?::L?\d+(?::\d+)?)?)\)$""",
-        ).find(value)
+        val parenFile =
+            Regex("""\(([^()\s]+?\.[A-Za-z][A-Za-z0-9]{0,8}(?::L?\d+(?::\d+)?)?)\)$""").find(value)
         if (parenFile != null) {
             val inner = parenFile.groupValues[1]
             val ext = inner.substringBefore(':').substringAfterLast('.').lowercase(Locale.ROOT)
@@ -399,30 +525,41 @@ internal object OpenCodeServerProtocol {
     }
 
     fun parseCodeReference(ref: String): ParsedCodeReference? {
-        val text = normalizeNavigablePath(ref).ifBlank { return null }
+        val text =
+            normalizeNavigablePath(ref).ifBlank {
+                return null
+            }
         val (pathPart, line, column) = splitPathAndLocation(text)
         if (pathPart.isBlank()) return null
         val call = TYPE_MEMBER_CALL.matchEntire(pathPart)
         val bare = if (call == null) TYPE_MEMBER_BARE.matchEntire(pathPart) else null
         val memberFromCall = call?.groupValues?.get(2)?.takeIf { it.isNotBlank() }
-        val memberFromBare = bare?.groupValues?.get(2)?.takeIf { member ->
-            member.isNotBlank() && member.lowercase(Locale.ROOT) !in FILE_EXTENSIONS
-        }
-        val resolved = when {
-            call != null -> call.groupValues[1]
-            bare != null && memberFromBare != null -> bare.groupValues[1]
-            else -> pathPart
-        }
+        val memberFromBare =
+            bare?.groupValues?.get(2)?.takeIf { member ->
+                member.isNotBlank() && member.lowercase(Locale.ROOT) !in FILE_EXTENSIONS
+            }
+        val resolved =
+            when {
+                call != null -> call.groupValues[1]
+                bare != null && memberFromBare != null -> bare.groupValues[1]
+                else -> pathPart
+            }
         val hasPath = resolved.contains('/') || resolved.contains('\\')
-        val qualifiedName = if (!hasPath && QUALIFIED_CLASS.matches(resolved)) {
-            resolved
-        } else {
-            null
-        }
-        val fileName = (qualifiedName?.substringAfterLast('.')
-            ?: resolved.substringAfterLast('/').substringAfterLast('\\'))
-            .ifBlank { return null }
-        val extension = if (qualifiedName == null) fileName.substringAfterLast('.', "").ifBlank { null } else null
+        val qualifiedName =
+            if (!hasPath && QUALIFIED_CLASS.matches(resolved)) {
+                resolved
+            } else {
+                null
+            }
+        val fileName =
+            (qualifiedName?.substringAfterLast('.')
+                    ?: resolved.substringAfterLast('/').substringAfterLast('\\'))
+                .ifBlank {
+                    return null
+                }
+        val extension =
+            if (qualifiedName == null) fileName.substringAfterLast('.', "").ifBlank { null }
+            else null
         return ParsedCodeReference(
             path = resolved,
             qualifiedName = qualifiedName,
@@ -447,21 +584,35 @@ internal object OpenCodeServerProtocol {
     )
 
     internal fun findMemberLineIndex(source: String, member: String): Int? {
-        val name = member.trim().ifBlank { return null }
+        val name =
+            member.trim().ifBlank {
+                return null
+            }
         val escaped = Regex.escape(name)
-        val definitions = listOf(
-            Regex("""\bfun\s+(?:<[^>\n]*>\s*)?(?:[A-Za-z_][\w.]+\.)?`?$escaped`?\b"""),
-            Regex("""\b(?:func|fn|def|function)\s+$escaped\b"""),
-            Regex("""\b(?:val|var|let|const)\s+$escaped\b"""),
-        )
+        val definitions =
+            listOf(
+                Regex("""\bfun\s+(?:<[^>\n]*>\s*)?(?:[A-Za-z_][\w.]+\.)?`?$escaped`?\b"""),
+                Regex("""\b(?:func|fn|def|function)\s+$escaped\b"""),
+                Regex("""\b(?:val|var|let|const)\s+$escaped\b"""),
+            )
         val call = Regex("""\b$escaped\s*\(""")
-        val declarationHint = Regex(
-            """\b(?:fun|func|fn|def|function|void|public|protected|private|internal|static|override|open|suspend|async|final|abstract|class|object)\b""",
-        )
-        val lines = source.lineSequence().withIndex().map { indexed ->
-            indexed.copy(value = indexed.value.trimEnd('\r'))
-        }.filterNot { isIgnorableSourceLine(it.value) }.toList()
-        lines.firstOrNull { (_, line) -> definitions.any { it.containsMatchIn(line) } }?.index?.let { return it }
+        val declarationHint =
+            Regex(
+                """\b(?:fun|func|fn|def|function|void|public|protected|private|internal|static|override|open|suspend|async|final|abstract|class|object)\b"""
+            )
+        val lines =
+            source
+                .lineSequence()
+                .withIndex()
+                .map { indexed -> indexed.copy(value = indexed.value.trimEnd('\r')) }
+                .filterNot { isIgnorableSourceLine(it.value) }
+                .toList()
+        lines
+            .firstOrNull { (_, line) -> definitions.any { it.containsMatchIn(line) } }
+            ?.index
+            ?.let {
+                return it
+            }
         val calls = lines.filter { (_, line) -> call.containsMatchIn(line) }
         return calls.firstOrNull { (_, line) -> declarationHint.containsMatchIn(line) }?.index
             ?: calls.firstOrNull()?.index
@@ -483,7 +634,10 @@ internal object OpenCodeServerProtocol {
     internal fun codeReferenceFileNames(parsed: ParsedCodeReference): List<String> {
         val names = LinkedHashSet<String>()
         fun addBase(base: String) {
-            val trimmed = base.trim().ifBlank { return }
+            val trimmed =
+                base.trim().ifBlank {
+                    return
+                }
             names += trimmed
             val ext = trimmed.substringAfterLast('.', "")
             if (ext.isNotEmpty() && ext.lowercase(Locale.ROOT) in FILE_EXTENSIONS) return
@@ -499,8 +653,8 @@ internal object OpenCodeServerProtocol {
     }
 
     /**
-     * Among [candidatePaths], keep a unique hit for [referencePath]. One path always wins;
-     * several win only when a single candidate has a strictly better trailing-segment score.
+     * Among [candidatePaths], keep a unique hit for [referencePath]. One path always wins; several
+     * win only when a single candidate has a strictly better trailing-segment score.
      */
     internal fun pickDistinctPath(candidatePaths: List<String>, referencePath: String): String? {
         val unique = candidatePaths.distinct()
@@ -520,7 +674,8 @@ internal object OpenCodeServerProtocol {
         val normalized = path.replace('\\', '/').lowercase(Locale.ROOT)
         var penalty = 0
         if ("/src/test/" in normalized || "/src/tests/" in normalized) penalty += 2
-        if ("/test/" in normalized || "/tests/" in normalized || "/__tests__/" in normalized) penalty += 1
+        if ("/test/" in normalized || "/tests/" in normalized || "/__tests__/" in normalized)
+            penalty += 1
         return penalty
     }
 
@@ -537,19 +692,18 @@ internal object OpenCodeServerProtocol {
 
     /**
      * Keys under which a shown notification can be auto-dismissed. Permission and question
-     * notifications are dismissed when their request is answered (a `request` scope key);
-     * plain session notifications (response ready, session error) when the user views the
-     * notified session (`session` scope). Deliberately not both for permissions: merely
-     * viewing the session must not remove a still-unanswered request.
+     * notifications are dismissed when their request is answered (a `request` scope key); plain
+     * session notifications (response ready, session error) when the user views the notified
+     * session (`session` scope). Deliberately not both for permissions: merely viewing the session
+     * must not remove a still-unanswered request.
      */
     fun notificationDismissKeys(payload: SystemNotificationPayload): List<String> {
         return when (payload.kind) {
-            "permission", "question" -> listOfNotNull(
-                payload.requestID.takeIf(::isOpenCodeRecordId)?.let { "request:$it" },
-            )
-            else -> listOfNotNull(
-                payload.sessionID.takeIf(::isOpenCodeRecordId)?.let { "session:$it" },
-            )
+            "permission",
+            "question" ->
+                listOfNotNull(payload.requestID.takeIf(::isOpenCodeRecordId)?.let { "request:$it" })
+            else ->
+                listOfNotNull(payload.sessionID.takeIf(::isOpenCodeRecordId)?.let { "session:$it" })
         }
     }
 
@@ -560,8 +714,8 @@ internal object OpenCodeServerProtocol {
     }
 
     /**
-     * Answers a pending permission request via the non-deprecated endpoint
-     * `POST /permission/{requestID}/reply?directory=...` with `{"reply":"once"|"always"|"reject"}`.
+     * Answers a pending permission request via the non-deprecated endpoint `POST
+     * /permission/{requestID}/reply?directory=...` with `{"reply":"once"|"always"|"reject"}`.
      *
      * This replaces the deprecated `POST /session/{sessionID}/permissions/{permissionID}` +
      * `{"response":...}` form (op `permission.respond`, marked `deprecated` in the 1.17.x OpenAPI
@@ -570,7 +724,9 @@ internal object OpenCodeServerProtocol {
      * accepted the reply.
      */
     enum class PermissionResponse(val jsonValue: String) {
-        ONCE("once"), ALWAYS("always"), REJECT("reject")
+        ONCE("once"),
+        ALWAYS("always"),
+        REJECT("reject"),
     }
 
     fun replyToPermission(
@@ -587,17 +743,22 @@ internal object OpenCodeServerProtocol {
         if (wireProtocol == OpenCodeWireProtocol.UNKNOWN) return false
         if (!isSessionId(sessionID) || !isPermissionId(permissionID)) return false
         val encodedDirectory = java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
-        val (url, body) = if (usesCliHttpApi(wireProtocol)) {
-            buildServerRootUrl(serverUrl) + "/api/session/$sessionID/permission/$permissionID/reply" to
-                "{\"decision\":\"${response.jsonValue}\"}"
-        } else {
-            buildServerRootUrl(serverUrl) + "/permission/$permissionID/reply?directory=" + encodedDirectory to
-                "{\"reply\":\"${response.jsonValue}\"}"
-        }
+        val (url, body) =
+            if (usesCliHttpApi(wireProtocol)) {
+                buildServerRootUrl(serverUrl) +
+                    "/api/session/$sessionID/permission/$permissionID/reply" to
+                    "{\"decision\":\"${response.jsonValue}\"}"
+            } else {
+                buildServerRootUrl(serverUrl) +
+                    "/permission/$permissionID/reply?directory=" +
+                    encodedDirectory to "{\"reply\":\"${response.jsonValue}\"}"
+            }
         return httpPostJson(url, basicAuthHeader, body, connectTimeoutMillis, readTimeoutMillis)
     }
 
-    /** OpenCode record IDs are URL-safe by construction; endpoint-specific helpers validate kind. */
+    /**
+     * OpenCode record IDs are URL-safe by construction; endpoint-specific helpers validate kind.
+     */
     fun isOpenCodeRecordId(value: String): Boolean {
         return value.isNotBlank() && Regex("^[A-Za-z0-9_-]+$").matches(value)
     }
@@ -608,10 +769,12 @@ internal object OpenCodeServerProtocol {
 
     fun isPartId(value: String): Boolean = value.startsWith("prt_") && isOpenCodeRecordId(value)
 
-    fun isPermissionId(value: String): Boolean = value.startsWith("per_") && isOpenCodeRecordId(value)
+    fun isPermissionId(value: String): Boolean =
+        value.startsWith("per_") && isOpenCodeRecordId(value)
 
     private fun looksLikeAbsoluteFilesystemPath(value: String): Boolean {
-        return value.startsWith('/') || value.startsWith("\\\\") ||
+        return value.startsWith('/') ||
+            value.startsWith("\\\\") ||
             Regex("^[A-Za-z]:[\\\\/]").containsMatchIn(value)
     }
 
@@ -629,13 +792,16 @@ internal object OpenCodeServerProtocol {
         // a `src/Main.kt:42` reference can be probed both stripped (a line reference, by far the
         // common case) and whole (a file whose name really ends in `:42`) without the line number
         // leaking onto the wrong reading.
-        val spellings = decodedPaths.flatMap { text ->
-            val trailing = if (explicitLine == null) parseTrailingLineColumn(text) else null
-            listOfNotNull(
-                trailing?.let { spellingOf(it.first, it.second, it.third) },
-                spellingOf(text, explicitLine, explicitColumn),
-            )
-        }.distinctBy { it.text }
+        val spellings =
+            decodedPaths
+                .flatMap { text ->
+                    val trailing = if (explicitLine == null) parseTrailingLineColumn(text) else null
+                    listOfNotNull(
+                        trailing?.let { spellingOf(it.first, it.second, it.third) },
+                        spellingOf(text, explicitLine, explicitColumn),
+                    )
+                }
+                .distinctBy { it.text }
         if (spellings.isEmpty()) return null
         return ParsedFileLink(
             spellings,
@@ -650,12 +816,13 @@ internal object OpenCodeServerProtocol {
     }
 
     /**
-     * A root-relative link (`/src/Main.kt`) is absolute on Unix but on Windows `Path.isAbsolute`
-     * is false for it — and `Path.of("C:/proj").resolve("/src/Main.kt")` keeps only the drive
-     * root, silently dropping the project directory. Decide on the href text, which is the same
-     * on every platform, and strip the separator before resolving under a base.
+     * A root-relative link (`/src/Main.kt`) is absolute on Unix but on Windows `Path.isAbsolute` is
+     * false for it — and `Path.of("C:/proj").resolve("/src/Main.kt")` keeps only the drive root,
+     * silently dropping the project directory. Decide on the href text, which is the same on every
+     * platform, and strip the separator before resolving under a base.
      */
-    private fun isRootRelative(text: String): Boolean = text.startsWith('/') || text.startsWith('\\')
+    private fun isRootRelative(text: String): Boolean =
+        text.startsWith('/') || text.startsWith('\\')
 
     internal fun isUnixRootRelativeHref(href: String): Boolean {
         val path = href.substringBefore('?').substringBefore('#')
@@ -663,11 +830,14 @@ internal object OpenCodeServerProtocol {
     }
 
     internal fun lastPathSegmentLooksLikeFile(path: String): Boolean {
-        val last = path.substringBefore('?').substringBefore('#')
-            .trimEnd('/', '\\')
-            .substringAfterLast('/')
-            .substringAfterLast('\\')
-            .replace(CODE_REF_LOCATOR, "")
+        val last =
+            path
+                .substringBefore('?')
+                .substringBefore('#')
+                .trimEnd('/', '\\')
+                .substringAfterLast('/')
+                .substringAfterLast('\\')
+                .replace(CODE_REF_LOCATOR, "")
         return Regex("\\.[A-Za-z0-9]{1,8}$").containsMatchIn(last)
     }
 
@@ -679,8 +849,8 @@ internal object OpenCodeServerProtocol {
     }
 
     /**
-     * Git-Bash / sbx Windows bind: `/c/Users/foo` → `C:/Users/foo`.
-     * Requires a slash after the drive letter so `/home/agent` is not treated as `H:`.
+     * Git-Bash / sbx Windows bind: `/c/Users/foo` → `C:/Users/foo`. Requires a slash after the
+     * drive letter so `/home/agent` is not treated as `H:`.
      */
     internal fun windowsDriveGuestToHost(path: String): String? {
         val posix = path.replace('\\', '/')
@@ -690,10 +860,14 @@ internal object OpenCodeServerProtocol {
         return if (rest.isEmpty()) "$drive:/" else "$drive:/$rest"
     }
 
-    internal fun applyGuestToHostPrefixes(path: String, prefixes: List<Pair<String, String>>): String {
+    internal fun applyGuestToHostPrefixes(
+        path: String,
+        prefixes: List<Pair<String, String>>,
+    ): String {
         if (prefixes.isEmpty()) return path
         val posix = path.replace('\\', '/')
-        for ((guest, host) in prefixes.sortedByDescending { it.first.replace('\\', '/').trimEnd('/').length }) {
+        for ((guest, host) in
+            prefixes.sortedByDescending { it.first.replace('\\', '/').trimEnd('/').length }) {
             val prefix = guest.replace('\\', '/').trimEnd('/')
             val mapped = host.replace('\\', '/').trimEnd('/')
             if (prefix.isEmpty() || mapped.isEmpty()) continue
@@ -732,30 +906,36 @@ internal object OpenCodeServerProtocol {
         guestToHostPrefixes: List<Pair<String, String>>,
         home: String?,
     ): List<PathSpelling> {
-        return parsed.paths.flatMap { spelling ->
-            fileLinkPathAliases(spelling.text, guestToHostPrefixes, home).mapNotNull { alias ->
-                spellingOf(alias, spelling.line, spelling.column)
+        return parsed.paths
+            .flatMap { spelling ->
+                fileLinkPathAliases(spelling.text, guestToHostPrefixes, home).mapNotNull { alias ->
+                    spellingOf(alias, spelling.line, spelling.column)
+                }
             }
-        }.distinctBy { it.text }
+            .distinctBy { it.text }
     }
 
     private fun candidateFileLinkPaths(
         parsed: ParsedFileLink,
         basePaths: List<String>,
     ): List<Pair<PathSpelling, Path>> {
-        val paths = parsed.paths.flatMap { spelling ->
-            candidatesFor(spelling, basePaths).map { spelling to it }
-        }
-        val fallbacks = if (parsed.fallbackToProjectFileName) {
+        val paths =
             parsed.paths.flatMap { spelling ->
-                val fileName = spelling.path.fileName ?: return@flatMap emptyList()
-                basePaths.mapNotNull { base ->
-                    runCatching { Path.of(base).resolve(fileName).normalize() }.getOrNull()?.let { spelling to it }
-                }
+                candidatesFor(spelling, basePaths).map { spelling to it }
             }
-        } else {
-            emptyList()
-        }
+        val fallbacks =
+            if (parsed.fallbackToProjectFileName) {
+                parsed.paths.flatMap { spelling ->
+                    val fileName = spelling.path.fileName ?: return@flatMap emptyList()
+                    basePaths.mapNotNull { base ->
+                        runCatching { Path.of(base).resolve(fileName).normalize() }
+                            .getOrNull()
+                            ?.let { spelling to it }
+                    }
+                }
+            } else {
+                emptyList()
+            }
         return (paths + fallbacks).distinctBy { it.second }
     }
 
@@ -768,7 +948,8 @@ internal object OpenCodeServerProtocol {
         return when {
             // Real absolute path (Unix `/x` or Windows `C:\x`): the literal target wins, but a
             // project-relative reading is still tried so `/src/Main.kt` works in both worlds.
-            spelling.path.isAbsolute -> listOf(spelling.path) + underBases(spelling.text.trimStart('/', '\\'))
+            spelling.path.isAbsolute ->
+                listOf(spelling.path) + underBases(spelling.text.trimStart('/', '\\'))
             isRootRelative(spelling.text) -> underBases(spelling.text.trimStart('/', '\\'))
             else -> underBases(spelling.text)
         }
@@ -785,26 +966,30 @@ internal object OpenCodeServerProtocol {
      * Turns one href into the path spellings worth probing on disk, most specific first.
      *
      * OpenCode renders markdown links through marked, which runs `encodeURI` on every href, so a
-     * relative link to a path containing a space or any non-ASCII character arrives
-     * percent-encoded (`docs/My%20File.md`). Plain ASCII paths are untouched, which is why only
-     * some relative links used to fail. Both spellings are returned because a file name may also
-     * legitimately contain a literal `%`.
+     * relative link to a path containing a space or any non-ASCII character arrives percent-encoded
+     * (`docs/My%20File.md`). Plain ASCII paths are untouched, which is why only some relative links
+     * used to fail. Both spellings are returned because a file name may also legitimately contain a
+     * literal `%`.
      */
     private fun decodeFileLinkPaths(value: String): List<String> {
         if (value.startsWith("sandbox:", ignoreCase = true)) {
             return withPercentDecoded(value.substringAfter(':'))
         }
         if (!value.startsWith("file:", ignoreCase = true)) return withPercentDecoded(value)
-        val uri = runCatching { URI(value) }.getOrNull() ?: return withPercentDecoded(value.removePrefix("file:"))
+        val uri =
+            runCatching { URI(value) }.getOrNull()
+                ?: return withPercentDecoded(value.removePrefix("file:"))
         val host = uri.host.orEmpty()
         // `file:src/Main.kt` (no authority) is an opaque URI: `path` is null and the payload sits
         // in the scheme-specific part. That is the form the panel itself writes for dropped files.
         // Take the *raw* form so the single decode below is not applied twice.
         val path = uri.rawPath ?: uri.rawSchemeSpecificPart.orEmpty()
-        val decoded = when {
-            host.isNotEmpty() && !host.equals("localhost", ignoreCase = true) -> "$host/${path.trimStart('/')}"
-            else -> path
-        }
+        val decoded =
+            when {
+                host.isNotEmpty() && !host.equals("localhost", ignoreCase = true) ->
+                    "$host/${path.trimStart('/')}"
+                else -> path
+            }
         return withPercentDecoded(decoded.replace(Regex("^/([A-Za-z]:/)"), "$1"))
     }
 
@@ -813,33 +998,52 @@ internal object OpenCodeServerProtocol {
         if (trimmed.isBlank()) return emptyList()
         // `+` is a literal in a path segment, so decode percent escapes only. A malformed escape
         // (`%zz`, a trailing `%`) throws, leaving just the raw spelling.
-        val decoded = if (trimmed.contains('%')) {
-            runCatching { URLDecoder.decode(trimmed.replace("+", "%2B"), StandardCharsets.UTF_8) }
-                .getOrNull()?.let(::stripBidiMarks)?.takeIf { it.isNotBlank() && it != trimmed }
-        } else {
-            null
-        }
-        return listOfNotNull(decoded, stripBidiMarks(trimmed)).flatMap { path ->
-            // Markdown can render a Windows absolute path as `/C:/...`. Normalize it before
-            // Path.of rejects the colon; keep ordinary `/src/...` and Unix paths unchanged.
-            val drivePath = if (SystemInfo.isWindows && path.length >= 4 && path[0] == '/' &&
-                path[1].isLetter() && path[2] == ':' && (path[3] == '/' || path[3] == '\\')) {
-                path.drop(1)
+        val decoded =
+            if (trimmed.contains('%')) {
+                runCatching {
+                        URLDecoder.decode(trimmed.replace("+", "%2B"), StandardCharsets.UTF_8)
+                    }
+                    .getOrNull()
+                    ?.let(::stripBidiMarks)
+                    ?.takeIf { it.isNotBlank() && it != trimmed }
             } else {
                 null
             }
-            listOfNotNull(drivePath, path)
-        }.filter { it.isNotBlank() }.distinct()
+        return listOfNotNull(decoded, stripBidiMarks(trimmed))
+            .flatMap { path ->
+                // Markdown can render a Windows absolute path as `/C:/...`. Normalize it before
+                // Path.of rejects the colon; keep ordinary `/src/...` and Unix paths unchanged.
+                val drivePath =
+                    if (
+                        SystemInfo.isWindows &&
+                            path.length >= 4 &&
+                            path[0] == '/' &&
+                            path[1].isLetter() &&
+                            path[2] == ':' &&
+                            (path[3] == '/' || path[3] == '\\')
+                    ) {
+                        path.drop(1)
+                    } else {
+                        null
+                    }
+                listOfNotNull(drivePath, path)
+            }
+            .filter { it.isNotBlank() }
+            .distinct()
     }
 
     private fun parseLineColumn(fragment: String): Pair<Int?, Int?>? {
         val match = Regex("^L?(\\d+)(?::(\\d+))?(?:-.+)?$").find(fragment) ?: return null
-        return Pair(match.groupValues[1].toIntOrNull()?.minus(1), match.groupValues.getOrNull(2)?.toIntOrNull()?.minus(1))
+        return Pair(
+            match.groupValues[1].toIntOrNull()?.minus(1),
+            match.groupValues.getOrNull(2)?.toIntOrNull()?.minus(1),
+        )
     }
 
     private fun parseQueryLine(query: String): Int? {
         if (query.isBlank()) return null
-        return query.split('&')
+        return query
+            .split('&')
             .firstOrNull { it.substringBefore('=') == "start" }
             ?.substringAfter('=', "")
             ?.toIntOrNull()
@@ -847,28 +1051,31 @@ internal object OpenCodeServerProtocol {
     }
 
     /**
-     * Trailing location on a path or code ref. Start line/column are 0-based. Anchored at the
-     * end so `C:\proj\Foo.java:L10` keeps the drive letter.
+     * Trailing location on a path or code ref. Start line/column are 0-based. Anchored at the end
+     * so `C:\proj\Foo.java:L10` keeps the drive letter.
      *
-     * `path:line` / `path:line:column` / `path:Lline[-Lend]` / `path#Lline[-Lend]` /
-     * `path(line)` / `path(Lline)` / `path(line,column)`.
+     * `path:line` / `path:line:column` / `path:Lline[-Lend]` / `path#Lline[-Lend]` / `path(line)` /
+     * `path(Lline)` / `path(line,column)`.
      */
-    private val CODE_REF_LOCATOR = Regex(
-        """(?::(\d+):(\d+)|:L?(\d+)-L?(\d+)|:L?(\d+)|#L?(\d+)(?:-L?\d+)?|\(L?(\d+)\s*,\s*L?(\d+)\)|\(L?(\d+)\))$""",
-        RegexOption.IGNORE_CASE,
-    )
+    private val CODE_REF_LOCATOR =
+        Regex(
+            """(?::(\d+):(\d+)|:L?(\d+)-L?(\d+)|:L?(\d+)|#L?(\d+)(?:-L?\d+)?|\(L?(\d+)\s*,\s*L?(\d+)\)|\(L?(\d+)\))$""",
+            RegexOption.IGNORE_CASE,
+        )
 
     internal fun splitPathAndLocation(text: String): Triple<String, Int?, Int?> {
         val match = CODE_REF_LOCATOR.find(text) ?: return Triple(text, null, null)
         val path = text.take(match.range.first)
         if (path.isBlank()) return Triple(text, null, null)
         val groups = match.groupValues
-        val line = listOf(groups[1], groups[3], groups[5], groups[6], groups[7], groups[9])
-            .firstNotNullOfOrNull { it.takeIf(String::isNotBlank)?.toIntOrNull() }
-            ?.minus(1)
-        val column = listOf(groups[2], groups[8])
-            .firstNotNullOfOrNull { it.takeIf(String::isNotBlank)?.toIntOrNull() }
-            ?.minus(1)
+        val line =
+            listOf(groups[1], groups[3], groups[5], groups[6], groups[7], groups[9])
+                .firstNotNullOfOrNull { it.takeIf(String::isNotBlank)?.toIntOrNull() }
+                ?.minus(1)
+        val column =
+            listOf(groups[2], groups[8])
+                .firstNotNullOfOrNull { it.takeIf(String::isNotBlank)?.toIntOrNull() }
+                ?.minus(1)
         return Triple(path, line, column)
     }
 
@@ -900,9 +1107,13 @@ internal object OpenCodeServerProtocol {
             val reference = spelling.path
             for (start in 1 until reference.nameCount) {
                 val suffix = reference.subpath(start, reference.nameCount)
-                val hit = basePaths.asSequence()
-                    .mapNotNull { runCatching { Path.of(it).resolve(suffix).normalize() }.getOrNull() }
-                    .firstOrNull { Files.isRegularFile(it) }
+                val hit =
+                    basePaths
+                        .asSequence()
+                        .mapNotNull {
+                            runCatching { Path.of(it).resolve(suffix).normalize() }.getOrNull()
+                        }
+                        .firstOrNull { Files.isRegularFile(it) }
                 if (hit != null) return spelling to hit
             }
         }
@@ -915,20 +1126,38 @@ internal object OpenCodeServerProtocol {
     }
 
     /** Directories that never hold sources but dominate a naive walk. */
-    private val SEARCH_PRUNED_DIRECTORIES = setOf(
-        ".git", ".hg", ".svn", ".idea", ".gradle", ".venv", "venv", "node_modules",
-        "build", "out", "dist", "target", "bin", "obj", ".next", ".cache", "__pycache__",
-    )
+    private val SEARCH_PRUNED_DIRECTORIES =
+        setOf(
+            ".git",
+            ".hg",
+            ".svn",
+            ".idea",
+            ".gradle",
+            ".venv",
+            "venv",
+            "node_modules",
+            "build",
+            "out",
+            "dist",
+            "target",
+            "bin",
+            "obj",
+            ".next",
+            ".cache",
+            "__pycache__",
+        )
     private const val SEARCH_MAX_VISITED_ENTRIES = 20_000
     private const val SEARCH_MAX_DEPTH = 12
 
     /**
      * Finds the file under [base] whose path ends with the segments of [reference]. Ranked by
-     * matched segments (most specific first), then by depth and path so the pick is stable;
-     * bounded in depth and visited files so a click can never hang on a huge tree.
+     * matched segments (most specific first), then by depth and path so the pick is stable; bounded
+     * in depth and visited files so a click can never hang on a huge tree.
      */
     private fun searchBySuffix(base: String, reference: Path, caseSensitive: Boolean): Path? {
-        val root = runCatching { Path.of(base) }.getOrNull()?.takeIf { Files.isDirectory(it) } ?: return null
+        val root =
+            runCatching { Path.of(base) }.getOrNull()?.takeIf { Files.isDirectory(it) }
+                ?: return null
         val segments = (0 until reference.nameCount).map { reference.getName(it).toString() }
         val fileName = segments.lastOrNull()?.takeIf { it.isNotBlank() } ?: return null
         var visited = 0
@@ -939,22 +1168,29 @@ internal object OpenCodeServerProtocol {
         while (stack.isNotEmpty()) {
             val (directory, depth) = stack.removeLast()
             if (depth > SEARCH_MAX_DEPTH) continue
-            val entries = runCatching { Files.newDirectoryStream(directory) }.getOrNull() ?: continue
+            val entries =
+                runCatching { Files.newDirectoryStream(directory) }.getOrNull() ?: continue
             entries.use { directoryEntries ->
                 for (entry in directoryEntries) {
                     if (++visited > SEARCH_MAX_VISITED_ENTRIES) return best
                     val name = entry.fileName?.toString() ?: continue
                     if (Files.isDirectory(entry)) {
                         val prunedName = if (caseSensitive) name else name.lowercase(Locale.ROOT)
-                        if (name.startsWith('.') || prunedName in SEARCH_PRUNED_DIRECTORIES) continue
+                        if (name.startsWith('.') || prunedName in SEARCH_PRUNED_DIRECTORIES)
+                            continue
                         stack.addLast(entry to depth + 1)
                         continue
                     }
                     if (!fileNameMatches(name, fileName, caseSensitive)) continue
                     val score = matchedSuffixSegments(entry, segments, caseSensitive)
                     val entryDepth = entry.nameCount
-                    val better = score > bestScore || (score == bestScore && entryDepth < bestDepth) ||
-                        (score == bestScore && entryDepth == bestDepth && best != null && entry.toString() < best.toString())
+                    val better =
+                        score > bestScore ||
+                            (score == bestScore && entryDepth < bestDepth) ||
+                            (score == bestScore &&
+                                entryDepth == bestDepth &&
+                                best != null &&
+                                entry.toString() < best.toString())
                     if (better) {
                         best = entry
                         bestScore = score
@@ -967,18 +1203,23 @@ internal object OpenCodeServerProtocol {
     }
 
     /** How many trailing segments of [candidate] match [segments]; at least 1 (the file name). */
-    private fun matchedSuffixSegments(candidate: Path, segments: List<String>, caseSensitive: Boolean): Int {
+    private fun matchedSuffixSegments(
+        candidate: Path,
+        segments: List<String>,
+        caseSensitive: Boolean,
+    ): Int {
         var matched = 0
         var candidateIndex = candidate.nameCount - 1
         var segmentIndex = segments.size - 1
         while (candidateIndex >= 0 && segmentIndex >= 0) {
             val candidateName = candidate.getName(candidateIndex).toString()
             val segment = segments[segmentIndex]
-            val matches = if (segmentIndex == segments.lastIndex) {
-                fileNameMatches(candidateName, segment, caseSensitive)
-            } else {
-                candidateName.equals(segment, ignoreCase = !caseSensitive)
-            }
+            val matches =
+                if (segmentIndex == segments.lastIndex) {
+                    fileNameMatches(candidateName, segment, caseSensitive)
+                } else {
+                    candidateName.equals(segment, ignoreCase = !caseSensitive)
+                }
             if (!matches) break
             matched++
             candidateIndex--
@@ -997,11 +1238,12 @@ internal object OpenCodeServerProtocol {
         var pathIndex = parts.lastIndex
         var segmentIndex = segments.lastIndex
         while (pathIndex >= 0 && segmentIndex >= 0) {
-            val matches = if (segmentIndex == segments.lastIndex) {
-                fileNameMatches(parts[pathIndex], segments[segmentIndex], caseSensitive = false)
-            } else {
-                parts[pathIndex].equals(segments[segmentIndex], ignoreCase = true)
-            }
+            val matches =
+                if (segmentIndex == segments.lastIndex) {
+                    fileNameMatches(parts[pathIndex], segments[segmentIndex], caseSensitive = false)
+                } else {
+                    parts[pathIndex].equals(segments[segmentIndex], ignoreCase = true)
+                }
             if (!matches) break
             matched++
             pathIndex--
@@ -1017,14 +1259,21 @@ internal object OpenCodeServerProtocol {
         if (slash.contains('/')) return slash.split('/').filter { it.isNotBlank() }
         val ext = slash.substringAfterLast('.', "")
         if (ext.isNotEmpty() && ext.lowercase(Locale.ROOT) in FILE_EXTENSIONS) return listOf(slash)
-        if (QUALIFIED_CLASS.matches(slash) || (slash.contains('.') && ext.lowercase(Locale.ROOT) !in FILE_EXTENSIONS)) {
+        if (
+            QUALIFIED_CLASS.matches(slash) ||
+                (slash.contains('.') && ext.lowercase(Locale.ROOT) !in FILE_EXTENSIONS)
+        ) {
             val dotted = slash.split('.').filter { it.isNotBlank() }
             if (dotted.size > 1) return dotted
         }
         return listOf(slash)
     }
 
-    private fun fileNameMatches(actual: String, referenced: String, caseSensitive: Boolean): Boolean {
+    private fun fileNameMatches(
+        actual: String,
+        referenced: String,
+        caseSensitive: Boolean,
+    ): Boolean {
         if (actual.equals(referenced, ignoreCase = !caseSensitive)) return true
         if (referenced.contains('.')) return false
         val ext = actual.substringAfterLast('.', "")
@@ -1035,7 +1284,11 @@ internal object OpenCodeServerProtocol {
 
     data class FileLinkTarget(val path: Path, val line: Int?, val column: Int?)
 
-    data class OpenFileLinkPayload(val href: String, val basePath: String?, val partID: String? = null)
+    data class OpenFileLinkPayload(
+        val href: String,
+        val basePath: String?,
+        val partID: String? = null,
+    )
 
     data class DroppedFilePayload(
         val name: String,
@@ -1045,10 +1298,15 @@ internal object OpenCodeServerProtocol {
     )
 
     /**
-     * One spelling of a linked path: the text, its parsed form, and the position that applies
-     * when this spelling is the one found on disk.
+     * One spelling of a linked path: the text, its parsed form, and the position that applies when
+     * this spelling is the one found on disk.
      */
-    private data class PathSpelling(val text: String, val path: Path, val line: Int?, val column: Int?)
+    private data class PathSpelling(
+        val text: String,
+        val path: Path,
+        val line: Int?,
+        val column: Int?,
+    )
 
     private data class ParsedFileLink(
         /** Path spellings to probe, most specific first (see [decodeFileLinkPaths]). */
@@ -1082,7 +1340,12 @@ internal object OpenCodeServerProtocol {
         }
     }
 
-    fun shouldHandleBasicAuthChallenge(serverUrl: String?, isProxy: Boolean, host: String?, port: Int): Boolean {
+    fun shouldHandleBasicAuthChallenge(
+        serverUrl: String?,
+        isProxy: Boolean,
+        host: String?,
+        port: Int,
+    ): Boolean {
         if (isProxy || serverUrl == null || host == null) return false
         val uri = runCatching { URI(buildProjectUrl(serverUrl)) }.getOrNull() ?: return false
         val expectedPort = if (uri.port >= 0) uri.port else defaultPort(uri.scheme)
@@ -1090,8 +1353,8 @@ internal object OpenCodeServerProtocol {
     }
 
     /**
-     * Chromium may challenge `localhost` or `[::1]` for a server bound to `127.0.0.1`.
-     * Those loopback aliases are the same machine; any other host still has to match exactly.
+     * Chromium may challenge `localhost` or `[::1]` for a server bound to `127.0.0.1`. Those
+     * loopback aliases are the same machine; any other host still has to match exactly.
      */
     internal fun hostsMatchForAuth(challengeHost: String, serverHost: String?): Boolean {
         if (serverHost == null) return false
@@ -1109,18 +1372,27 @@ internal object OpenCodeServerProtocol {
         ready: Boolean,
     ): BasicAuthChallengeReply {
         if (isProxy) return BasicAuthChallengeReply.IGNORE
-        if (!password.isNullOrBlank() && ready && shouldHandleBasicAuthChallenge(serverUrl, false, host, port)) {
+        if (
+            !password.isNullOrBlank() &&
+                ready &&
+                shouldHandleBasicAuthChallenge(serverUrl, false, host, port)
+        ) {
             return BasicAuthChallengeReply.CONTINUE
         }
         return BasicAuthChallengeReply.CANCEL
     }
 
-    enum class BasicAuthChallengeReply { CONTINUE, CANCEL, IGNORE }
+    enum class BasicAuthChallengeReply {
+        CONTINUE,
+        CANCEL,
+        IGNORE,
+    }
 
-    private val SERVER_LISTEN_URL = Regex(
-        """(?:opencode\s+)?server\s+listening\s+on\s+(https?://\S+)""",
-        RegexOption.IGNORE_CASE,
-    )
+    private val SERVER_LISTEN_URL =
+        Regex(
+            """(?:opencode\s+)?server\s+listening\s+on\s+(https?://\S+)""",
+            RegexOption.IGNORE_CASE,
+        )
 
     fun parseServerUrl(line: String): String? {
         val match = SERVER_LISTEN_URL.find(line)
@@ -1149,8 +1421,10 @@ internal object OpenCodeServerProtocol {
         return normalized == "127.0.0.1" || normalized == "localhost" || normalized == "::1"
     }
 
-    fun buildOpenCodeCommand(port: String = DYNAMIC_PORT, executable: String = DEFAULT_EXECUTABLE): List<String> =
-        OpenCodeProcessLaunch.buildOpenCodeCommand(port, executable)
+    fun buildOpenCodeCommand(
+        port: String = DYNAMIC_PORT,
+        executable: String = DEFAULT_EXECUTABLE,
+    ): List<String> = OpenCodeProcessLaunch.buildOpenCodeCommand(port, executable)
 
     fun createProcessBuilder(
         projectBasePath: String?,
@@ -1158,19 +1432,21 @@ internal object OpenCodeServerProtocol {
         port: String = DYNAMIC_PORT,
         executable: String = DEFAULT_EXECUTABLE,
         path: String = resolvePath(),
-        command: List<String> = buildOpenCodeCommand(port, resolveExecutableForLaunch(executable, path)),
+        command: List<String> =
+            buildOpenCodeCommand(port, resolveExecutableForLaunch(executable, path)),
         httpProxy: IdeHttpProxy? = null,
         stripInheritedProxy: Boolean = false,
-    ): ProcessBuilder = OpenCodeProcessLaunch.createProcessBuilder(
-        projectBasePath,
-        password,
-        port,
-        executable,
-        path,
-        command,
-        httpProxy,
-        stripInheritedProxy,
-    )
+    ): ProcessBuilder =
+        OpenCodeProcessLaunch.createProcessBuilder(
+            projectBasePath,
+            password,
+            port,
+            executable,
+            path,
+            command,
+            httpProxy,
+            stripInheritedProxy,
+        )
 
     fun generateServerPassword(): String {
         val bytes = ByteArray(32)
@@ -1185,15 +1461,24 @@ internal object OpenCodeServerProtocol {
         readTimeoutMillis: Int = 2000,
     ): Boolean {
         val root = buildServerRootUrl(serverUrl)
-        val health = httpGetResult(root + HEALTH_PATH, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)
+        val health =
+            httpGetResult(
+                root + HEALTH_PATH,
+                basicAuthHeader,
+                connectTimeoutMillis,
+                readTimeoutMillis,
+            )
         if (isHealthyJson(health)) return true
         if (health is OpenCodeProtocolResult.Success) return false
-        return isCliStatusJson(fetchCliIdentityResult(root, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis))
+        return isCliStatusJson(
+            fetchCliIdentityResult(root, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)
+        )
     }
 
     /**
-     * 1.18: `/global/health` `{version}`. CLI 2.x: `/api/info` then `/api/status` `{version}`.
-     * HTML is ignored. Returns null when neither JSON body has a string version; that never blocks startup.
+     * 1.18: `/global/health` `{version}`. CLI 2.x: `/api/info` then `/api/status` `{version}`. HTML
+     * is ignored. Returns null when neither JSON body has a string version; that never blocks
+     * startup.
      */
     fun fetchServerVersion(
         serverUrl: String,
@@ -1202,9 +1487,24 @@ internal object OpenCodeServerProtocol {
         readTimeoutMillis: Int = 2000,
     ): String? {
         val root = buildServerRootUrl(serverUrl)
-        val global = httpGetResult(root + GLOBAL_HEALTH_PATH, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)
-        jsonObject(global)?.let { return it.stringMember("version") }
-        return jsonObject(fetchCliIdentityResult(root, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis))
+        val global =
+            httpGetResult(
+                root + GLOBAL_HEALTH_PATH,
+                basicAuthHeader,
+                connectTimeoutMillis,
+                readTimeoutMillis,
+            )
+        jsonObject(global)?.let {
+            return it.stringMember("version")
+        }
+        return jsonObject(
+                fetchCliIdentityResult(
+                    root,
+                    basicAuthHeader,
+                    connectTimeoutMillis,
+                    readTimeoutMillis,
+                )
+            )
             ?.stringMember("version")
     }
 
@@ -1224,11 +1524,24 @@ internal object OpenCodeServerProtocol {
         readTimeoutMillis: Int = 2000,
     ): OpenCodeWireProtocol {
         val root = buildServerRootUrl(serverUrl)
-        val global = httpGetResult(root + GLOBAL_HEALTH_PATH, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)
+        val global =
+            httpGetResult(
+                root + GLOBAL_HEALTH_PATH,
+                basicAuthHeader,
+                connectTimeoutMillis,
+                readTimeoutMillis,
+            )
         if (isHealthyJson(global)) return OpenCodeWireProtocol.V1_18
-        val cliIdentity = fetchCliIdentityResult(root, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)
+        val cliIdentity =
+            fetchCliIdentityResult(root, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)
         if (isCliStatusJson(cliIdentity, requireVersion = true)) return OpenCodeWireProtocol.V2_CLI
-        val api = httpGetResult(root + HEALTH_PATH, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)
+        val api =
+            httpGetResult(
+                root + HEALTH_PATH,
+                basicAuthHeader,
+                connectTimeoutMillis,
+                readTimeoutMillis,
+            )
         return classifyWireProtocol(global, cliIdentity, api)
     }
 
@@ -1260,9 +1573,7 @@ internal object OpenCodeServerProtocol {
         return jsonObject(result)?.booleanMember("healthy") == true
     }
 
-    /**
-     * CLI 2.0.8+ serves identity at [INFO_PATH]; 2.0.5 used [STATUS_PATH]. Same JSON shape.
-     */
+    /** CLI 2.0.8+ serves identity at [INFO_PATH]; 2.0.5 used [STATUS_PATH]. Same JSON shape. */
     private fun fetchCliIdentityResult(
         root: String,
         basicAuthHeader: String?,
@@ -1271,7 +1582,8 @@ internal object OpenCodeServerProtocol {
     ): OpenCodeProtocolResult<String> {
         var last: OpenCodeProtocolResult<String>? = null
         for (path in arrayOf(INFO_PATH, STATUS_PATH)) {
-            val result = httpGetResult(root + path, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)
+            val result =
+                httpGetResult(root + path, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)
             last = result
             if (isCliStatusJson(result, requireVersion = true)) return result
         }
@@ -1298,17 +1610,17 @@ internal object OpenCodeServerProtocol {
     }
 
     /**
-     * Unknown version formats are not treated as unsupported, avoiding a false update warning
-     * when the health endpoint cannot report a normal semantic version.
+     * Unknown version formats are not treated as unsupported, avoiding a false update warning when
+     * the health endpoint cannot report a normal semantic version.
      */
     fun isOpenCodeVersionUnsupported(version: String?): Boolean {
-        val parsedVersion = version
-            ?.trim()
-            ?.removePrefix("v")
-            ?.removePrefix("V")
-            ?.takeIf { it.isNotEmpty() }
-            ?.let { SemVer.parseFromText(it) }
-            ?: return false
+        val parsedVersion =
+            version
+                ?.trim()
+                ?.removePrefix("v")
+                ?.removePrefix("V")
+                ?.takeIf { it.isNotEmpty() }
+                ?.let { SemVer.parseFromText(it) } ?: return false
         return parsedVersion < minimumSupportedOpenCodeVersion
     }
 
@@ -1319,13 +1631,16 @@ internal object OpenCodeServerProtocol {
         readTimeoutMillis: Int = 5_000,
         wireProtocol: OpenCodeWireProtocol = OpenCodeWireProtocol.V1_18,
     ): Boolean {
-        if (wireProtocol != OpenCodeWireProtocol.V1_18 &&
-            wireProtocol != OpenCodeWireProtocol.V1_18_EMBEDDED_V2
+        if (
+            wireProtocol != OpenCodeWireProtocol.V1_18 &&
+                wireProtocol != OpenCodeWireProtocol.V1_18_EMBEDDED_V2
         ) {
             return true
         }
         return try {
-            val connection = URI(buildServerRootUrl(serverUrl) + DISPOSE_PATH).toURL().openConnection() as HttpURLConnection
+            val connection =
+                URI(buildServerRootUrl(serverUrl) + DISPOSE_PATH).toURL().openConnection()
+                    as HttpURLConnection
             try {
                 connection.connectTimeout = connectTimeoutMillis
                 connection.readTimeout = readTimeoutMillis
@@ -1343,19 +1658,25 @@ internal object OpenCodeServerProtocol {
     }
 
     /**
-     * Heuristic: does the server log tail look like a failed attempt to bind the port?
-     * `ServeError` is the generic listen-failure marker of current OpenCode releases; the other
-     * patterns cover classic bind errors. Callers should only act on this in fixed-port mode,
-     * where switching to automatic port selection is a safe suggestion.
+     * Heuristic: does the server log tail look like a failed attempt to bind the port? `ServeError`
+     * is the generic listen-failure marker of current OpenCode releases; the other patterns cover
+     * classic bind errors. Callers should only act on this in fixed-port mode, where switching to
+     * automatic port selection is a safe suggestion.
      */
     fun logIndicatesPortConflict(logLines: List<String>): Boolean {
-        val pattern = Regex("EADDRINUSE|address already in use|is port .{0,16} in use|ServeError", RegexOption.IGNORE_CASE)
+        val pattern =
+            Regex(
+                "EADDRINUSE|address already in use|is port .{0,16} in use|ServeError",
+                RegexOption.IGNORE_CASE,
+            )
         return logLines.any { pattern.containsMatchIn(it) }
     }
 
     fun startFailureBackoffMillis(consecutiveFailures: Int): Long {
         val exponent = (consecutiveFailures - 1).coerceIn(0, 4)
-        return (START_FAILURE_BACKOFF_BASE_MILLIS shl exponent).coerceAtMost(START_FAILURE_BACKOFF_MAX_MILLIS)
+        return (START_FAILURE_BACKOFF_BASE_MILLIS shl exponent).coerceAtMost(
+            START_FAILURE_BACKOFF_MAX_MILLIS
+        )
     }
 
     fun resolvePath(
@@ -1371,8 +1692,10 @@ internal object OpenCodeServerProtocol {
         osName: String = System.getProperty("os.name").orEmpty(),
     ): String? = OpenCodeProcessLaunch.detectExecutablePath(executable, path, pathSeparator, osName)
 
-    fun resolveExecutableForLaunch(executable: String = DEFAULT_EXECUTABLE, path: String = resolvePath()): String =
-        OpenCodeProcessLaunch.resolveExecutableForLaunch(executable, path)
+    fun resolveExecutableForLaunch(
+        executable: String = DEFAULT_EXECUTABLE,
+        path: String = resolvePath(),
+    ): String = OpenCodeProcessLaunch.resolveExecutableForLaunch(executable, path)
 
     fun toCefZoomLevel(percent: Int): Double {
         val scale = percent.coerceAtLeast(1) / 100.0
@@ -1389,7 +1712,8 @@ internal object OpenCodeServerProtocol {
         // The JDK URL decoder accepts unpadded base64url input.
         return runCatching {
             String(Base64.getUrlDecoder().decode(directory), StandardCharsets.UTF_8)
-        }.getOrNull()
+        }
+            .getOrNull()
     }
 
     private fun buildHealthUrl(serverUrl: String): String {
@@ -1416,11 +1740,27 @@ internal object OpenCodeServerProtocol {
 
     // ─── Interrupted-session recovery ───────────────────────────────────────────
 
-    fun detectSuspendGapMillis(previousRunMillis: Long, nowMillis: Long, intervalMillis: Long): Long? =
-        OpenCodeRecoveryClassifier.detectSuspendGapMillis(previousRunMillis, nowMillis, intervalMillis)
+    fun detectSuspendGapMillis(
+        previousRunMillis: Long,
+        nowMillis: Long,
+        intervalMillis: Long,
+    ): Long? =
+        OpenCodeRecoveryClassifier.detectSuspendGapMillis(
+            previousRunMillis,
+            nowMillis,
+            intervalMillis,
+        )
 
-    fun isSuspendSeveredLastMessage(messageJson: String, createdBeforeMillis: Long, completedAfterMillis: Long): Boolean =
-        OpenCodeRecoveryClassifier.isSuspendSeveredLastMessage(messageJson, createdBeforeMillis, completedAfterMillis)
+    fun isSuspendSeveredLastMessage(
+        messageJson: String,
+        createdBeforeMillis: Long,
+        completedAfterMillis: Long,
+    ): Boolean =
+        OpenCodeRecoveryClassifier.isSuspendSeveredLastMessage(
+            messageJson,
+            createdBeforeMillis,
+            completedAfterMillis,
+        )
 
     fun isUnsettledTurnFromBefore(messageJson: String, createdBeforeMillis: Long): Boolean =
         OpenCodeRecoveryClassifier.isUnsettledTurnFromBefore(messageJson, createdBeforeMillis)
@@ -1435,9 +1775,9 @@ internal object OpenCodeServerProtocol {
     )
 
     /**
-     * Fetches one session (`GET /session/{sessionID}?directory=...`), used for notification
-     * titles and to skip notifications for child sessions. Handles both the bare session
-     * object and the `{"data": {...}}` envelope. Returns null on any error.
+     * Fetches one session (`GET /session/{sessionID}?directory=...`), used for notification titles
+     * and to skip notifications for child sessions. Handles both the bare session object and the
+     * `{"data": {...}}` envelope. Returns null on any error.
      */
     fun fetchSessionInfo(
         serverUrl: String,
@@ -1450,18 +1790,28 @@ internal object OpenCodeServerProtocol {
     ): SessionInfo? {
         if (wireProtocol == OpenCodeWireProtocol.UNKNOWN || !isSessionId(sessionID)) return null
         val encodedDirectory = java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
-        val url = if (usesCliHttpApi(wireProtocol)) {
-            buildServerRootUrl(serverUrl) + "/api/session/" + sessionID + "?directory=" + encodedDirectory
-        } else {
-            buildServerRootUrl(serverUrl) + "/session/" + sessionID + "?directory=" + encodedDirectory
-        }
-        val body = httpGet(url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis) ?: return null
+        val url =
+            if (usesCliHttpApi(wireProtocol)) {
+                buildServerRootUrl(serverUrl) +
+                    "/api/session/" +
+                    sessionID +
+                    "?directory=" +
+                    encodedDirectory
+            } else {
+                buildServerRootUrl(serverUrl) +
+                    "/session/" +
+                    sessionID +
+                    "?directory=" +
+                    encodedDirectory
+            }
+        val body =
+            httpGet(url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis) ?: return null
         return parseSessionInfo(body)?.takeIf { it.id == sessionID }
     }
 
     /**
-     * Direct children of [sessionID] (`GET /session/{sessionID}/children?directory=...`).
-     * Bare array or `{"data":[...]}`. Empty on any error.
+     * Direct children of [sessionID] (`GET /session/{sessionID}/children?directory=...`). Bare
+     * array or `{"data":[...]}`. Empty on any error.
      */
     fun fetchSessionChildren(
         serverUrl: String,
@@ -1472,15 +1822,26 @@ internal object OpenCodeServerProtocol {
         readTimeoutMillis: Int = 3000,
         wireProtocol: OpenCodeWireProtocol = OpenCodeWireProtocol.V1_18,
     ): List<SessionInfo> {
-        if (wireProtocol == OpenCodeWireProtocol.UNKNOWN || !isSessionId(sessionID)) return emptyList()
+        if (wireProtocol == OpenCodeWireProtocol.UNKNOWN || !isSessionId(sessionID))
+            return emptyList()
         val encodedDirectory = java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
-        val url = if (usesCliHttpApi(wireProtocol)) {
-            buildServerRootUrl(serverUrl) + "/api/session?directory=" + encodedDirectory +
-                "&parentID=" + java.net.URLEncoder.encode(sessionID, StandardCharsets.UTF_8)
-        } else {
-            buildServerRootUrl(serverUrl) + "/session/" + sessionID + "/children?directory=" + encodedDirectory
-        }
-        val body = httpGet(url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis) ?: return emptyList()
+        val url =
+            if (usesCliHttpApi(wireProtocol)) {
+                buildServerRootUrl(serverUrl) +
+                    "/api/session?directory=" +
+                    encodedDirectory +
+                    "&parentID=" +
+                    java.net.URLEncoder.encode(sessionID, StandardCharsets.UTF_8)
+            } else {
+                buildServerRootUrl(serverUrl) +
+                    "/session/" +
+                    sessionID +
+                    "/children?directory=" +
+                    encodedDirectory
+            }
+        val body =
+            httpGet(url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)
+                ?: return emptyList()
         return parseSessionChildren(body)
     }
 
@@ -1492,11 +1853,13 @@ internal object OpenCodeServerProtocol {
 
     fun parseSessionChildren(json: String): List<SessionInfo> {
         val parsed = runCatching { JsonParser.parseString(json) }.getOrNull() ?: return emptyList()
-        val array = when {
-            parsed.isJsonArray -> parsed.asJsonArray
-            parsed.isJsonObject -> parsed.asJsonObject.get("data")?.takeIf { it.isJsonArray }?.asJsonArray
-            else -> null
-        } ?: return emptyList()
+        val array =
+            when {
+                parsed.isJsonArray -> parsed.asJsonArray
+                parsed.isJsonObject ->
+                    parsed.asJsonObject.get("data")?.takeIf { it.isJsonArray }?.asJsonArray
+                else -> null
+            } ?: return emptyList()
         return array.mapNotNull { element ->
             element.takeIf { it.isJsonObject }?.asJsonObject?.let(::parseSessionInfoObject)
         }
@@ -1514,7 +1877,9 @@ internal object OpenCodeServerProtocol {
 
     // ─── Session diffs (for the "open diff in IDE" feature) ─────────────────────
 
-    /** One file's diff as returned by `GET /session/{id}/diff`; `patch` is a unified diff string. */
+    /**
+     * One file's diff as returned by `GET /session/{id}/diff`; `patch` is a unified diff string.
+     */
     data class SnapshotFileDiff(
         val file: String?,
         val patch: String?,
@@ -1538,16 +1903,19 @@ internal object OpenCodeServerProtocol {
         readTimeoutMillis: Int = 5000,
         wireProtocol: OpenCodeWireProtocol = OpenCodeWireProtocol.V1_18,
     ): List<SnapshotFileDiff> {
-        return when (val result = fetchSessionDiffResult(
-            serverUrl,
-            basicAuthHeader,
-            directory,
-            sessionID,
-            messageID,
-            connectTimeoutMillis,
-            readTimeoutMillis,
-            wireProtocol,
-        )) {
+        return when (
+            val result =
+                fetchSessionDiffResult(
+                    serverUrl,
+                    basicAuthHeader,
+                    directory,
+                    sessionID,
+                    messageID,
+                    connectTimeoutMillis,
+                    readTimeoutMillis,
+                    wireProtocol,
+                )
+        ) {
             is OpenCodeProtocolResult.Success -> result.value
             is OpenCodeProtocolResult.Failure -> emptyList()
         }
@@ -1567,31 +1935,54 @@ internal object OpenCodeServerProtocol {
             return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_BODY)
         }
         if (!isSessionId(sessionID)) {
-            return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_IDENTIFIER)
+            return OpenCodeProtocolResult.Failure(
+                OpenCodeProtocolResult.Failure.Kind.INVALID_IDENTIFIER
+            )
         }
         val normalizedMessageID = messageID?.takeIf { it.isNotBlank() }
         if (normalizedMessageID != null && !isMessageId(normalizedMessageID)) {
-            return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_IDENTIFIER)
+            return OpenCodeProtocolResult.Failure(
+                OpenCodeProtocolResult.Failure.Kind.INVALID_IDENTIFIER
+            )
         }
         val encodedDirectory = java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
-        val url = if (usesCliHttpApi(wireProtocol)) {
-            val fromParam = normalizedMessageID
-                ?.let { "&from=" + java.net.URLEncoder.encode(it, StandardCharsets.UTF_8) }
-                .orEmpty()
-            buildServerRootUrl(serverUrl) + "/api/session/" + sessionID + "/diff?directory=" +
-                encodedDirectory + fromParam
-        } else {
-            val messageParam = normalizedMessageID
-                ?.let { "&messageID=" + java.net.URLEncoder.encode(it, StandardCharsets.UTF_8) }
-                .orEmpty()
-            buildServerRootUrl(serverUrl) + "/session/" + sessionID + "/diff?directory=" +
-                encodedDirectory + messageParam
-        }
-        return when (val response = httpGetResult(url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)) {
+        val url =
+            if (usesCliHttpApi(wireProtocol)) {
+                val fromParam =
+                    normalizedMessageID
+                        ?.let { "&from=" + java.net.URLEncoder.encode(it, StandardCharsets.UTF_8) }
+                        .orEmpty()
+                buildServerRootUrl(serverUrl) +
+                    "/api/session/" +
+                    sessionID +
+                    "/diff?directory=" +
+                    encodedDirectory +
+                    fromParam
+            } else {
+                val messageParam =
+                    normalizedMessageID
+                        ?.let {
+                            "&messageID=" + java.net.URLEncoder.encode(it, StandardCharsets.UTF_8)
+                        }
+                        .orEmpty()
+                buildServerRootUrl(serverUrl) +
+                    "/session/" +
+                    sessionID +
+                    "/diff?directory=" +
+                    encodedDirectory +
+                    messageParam
+            }
+        return when (
+            val response =
+                httpGetResult(url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)
+        ) {
             is OpenCodeProtocolResult.Failure -> response
             is OpenCodeProtocolResult.Success -> {
-                val array = sessionDiffArray(response.value)
-                    ?: return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_BODY)
+                val array =
+                    sessionDiffArray(response.value)
+                        ?: return OpenCodeProtocolResult.Failure(
+                            OpenCodeProtocolResult.Failure.Kind.INVALID_BODY
+                        )
                 OpenCodeProtocolResult.Success(parseSessionDiffArray(array))
             }
         }
@@ -1613,21 +2004,38 @@ internal object OpenCodeServerProtocol {
         if (!usesCliHttpApi(wireProtocol)) {
             return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_BODY)
         }
-        val normalizedMode = when (mode) {
-            "working", "branch" -> mode
-            else -> return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_IDENTIFIER)
-        }
+        val normalizedMode =
+            when (mode) {
+                "working",
+                "branch" -> mode
+                else ->
+                    return OpenCodeProtocolResult.Failure(
+                        OpenCodeProtocolResult.Failure.Kind.INVALID_IDENTIFIER
+                    )
+            }
         if (directory.isBlank()) {
-            return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_IDENTIFIER)
+            return OpenCodeProtocolResult.Failure(
+                OpenCodeProtocolResult.Failure.Kind.INVALID_IDENTIFIER
+            )
         }
         val encodedDirectory = java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
-        val url = buildServerRootUrl(serverUrl) + "/api/vcs/diff?mode=" + normalizedMode +
-            "&directory=" + encodedDirectory
-        return when (val response = httpGetResult(url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)) {
+        val url =
+            buildServerRootUrl(serverUrl) +
+                "/api/vcs/diff?mode=" +
+                normalizedMode +
+                "&directory=" +
+                encodedDirectory
+        return when (
+            val response =
+                httpGetResult(url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)
+        ) {
             is OpenCodeProtocolResult.Failure -> response
             is OpenCodeProtocolResult.Success -> {
-                val array = sessionDiffArray(response.value)
-                    ?: return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_BODY)
+                val array =
+                    sessionDiffArray(response.value)
+                        ?: return OpenCodeProtocolResult.Failure(
+                            OpenCodeProtocolResult.Failure.Kind.INVALID_BODY
+                        )
                 OpenCodeProtocolResult.Success(parseSessionDiffArray(array))
             }
         }
@@ -1643,7 +2051,8 @@ internal object OpenCodeServerProtocol {
         val parsed = runCatching { JsonParser.parseString(json) }.getOrNull() ?: return null
         return when {
             parsed.isJsonArray -> parsed.asJsonArray
-            parsed.isJsonObject -> parsed.asJsonObject.get("data")?.takeIf { it.isJsonArray }?.asJsonArray
+            parsed.isJsonObject ->
+                parsed.asJsonObject.get("data")?.takeIf { it.isJsonArray }?.asJsonArray
             else -> null
         }
     }
@@ -1659,16 +2068,16 @@ internal object OpenCodeServerProtocol {
                     additions = entry.longMember("additions") ?: 0L,
                     deletions = entry.longMember("deletions") ?: 0L,
                     status = entry.stringMember("status"),
-                ),
+                )
             )
         }
         return results
     }
 
     /**
-     * Per-tool file changes from an edit/write/apply_patch part. [diffs] is the tool's own
-     * patch list (empty for write, which has no `filediff`/`files`). [fileHint] is the write
-     * tool's absolute path so callers can fall back to the turn snapshot.
+     * Per-tool file changes from an edit/write/apply_patch part. [diffs] is the tool's own patch
+     * list (empty for write, which has no `filediff`/`files`). [fileHint] is the write tool's
+     * absolute path so callers can fall back to the turn snapshot.
      */
     data class ToolPartChange(
         val diffs: List<SnapshotFileDiff>,
@@ -1676,9 +2085,9 @@ internal object OpenCodeServerProtocol {
     )
 
     /**
-     * Loads the tool part [partID] (`prt_…`) from `GET /session/{sessionID}/message` and
-     * returns its file changes. There is no GET-by-part; pages of [MESSAGE_PAGE_LIMIT] are
-     * walked via `X-Next-Cursor` / `before`. Missing part → empty [ToolPartChange], not HTTP failure.
+     * Loads the tool part [partID] (`prt_…`) from `GET /session/{sessionID}/message` and returns
+     * its file changes. There is no GET-by-part; pages of [MESSAGE_PAGE_LIMIT] are walked via
+     * `X-Next-Cursor` / `before`. Missing part → empty [ToolPartChange], not HTTP failure.
      */
     fun fetchToolPartChange(
         serverUrl: String,
@@ -1695,27 +2104,47 @@ internal object OpenCodeServerProtocol {
         }
         val validPart = if (usesCliHttpApi(wireProtocol)) partID.isNotBlank() else isPartId(partID)
         if (!isSessionId(sessionID) || !validPart || directory.isBlank()) {
-            return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_IDENTIFIER)
+            return OpenCodeProtocolResult.Failure(
+                OpenCodeProtocolResult.Failure.Kind.INVALID_IDENTIFIER
+            )
         }
         val root = buildServerRootUrl(serverUrl)
-        val directoryParam = "directory=" + java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
+        val directoryParam =
+            "directory=" + java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
         if (usesCliHttpApi(wireProtocol)) {
             var cursor: String? = null
             repeat(MESSAGE_PAGE_MAX) {
-                val cursorParam = cursor
-                    ?.let { "&cursor=" + java.net.URLEncoder.encode(it, StandardCharsets.UTF_8) }
-                    .orEmpty()
-                val url = "$root/api/session/$sessionID/message?$directoryParam&limit=$MESSAGE_PAGE_LIMIT$cursorParam"
-                when (val page = httpGetResult(url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)) {
+                val cursorParam =
+                    cursor
+                        ?.let {
+                            "&cursor=" + java.net.URLEncoder.encode(it, StandardCharsets.UTF_8)
+                        }
+                        .orEmpty()
+                val url =
+                    "$root/api/session/$sessionID/message?$directoryParam&limit=$MESSAGE_PAGE_LIMIT$cursorParam"
+                when (
+                    val page =
+                        httpGetResult(url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)
+                ) {
                     is OpenCodeProtocolResult.Failure -> return page
                     is OpenCodeProtocolResult.Success -> {
-                        val parsed = parseJsonObject(page.value)
-                            ?: return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_BODY)
-                        val array = parsed.get("data")?.takeIf { it.isJsonArray }?.asJsonArray
-                            ?: return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_BODY)
+                        val parsed =
+                            parseJsonObject(page.value)
+                                ?: return OpenCodeProtocolResult.Failure(
+                                    OpenCodeProtocolResult.Failure.Kind.INVALID_BODY
+                                )
+                        val array =
+                            parsed.get("data")?.takeIf { it.isJsonArray }?.asJsonArray
+                                ?: return OpenCodeProtocolResult.Failure(
+                                    OpenCodeProtocolResult.Failure.Kind.INVALID_BODY
+                                )
                         val part = toolPartFromMessages(array, partID)
-                        if (part != null) return OpenCodeProtocolResult.Success(parseToolPartChange(part))
-                        cursor = parsed.objectMember("cursor")?.stringMember("next")?.takeIf { it.isNotBlank() }
+                        if (part != null)
+                            return OpenCodeProtocolResult.Success(parseToolPartChange(part))
+                        cursor =
+                            parsed.objectMember("cursor")?.stringMember("next")?.takeIf {
+                                it.isNotBlank()
+                            }
                         if (cursor == null) {
                             return OpenCodeProtocolResult.Success(ToolPartChange(emptyList()))
                         }
@@ -1726,24 +2155,31 @@ internal object OpenCodeServerProtocol {
         }
         var before: String? = null
         repeat(MESSAGE_PAGE_MAX) {
-            val beforeParam = before
-                ?.let { "&before=" + java.net.URLEncoder.encode(it, StandardCharsets.UTF_8) }
-                .orEmpty()
-            val url = "$root/session/$sessionID/message?$directoryParam&limit=$MESSAGE_PAGE_LIMIT$beforeParam"
-            val page = httpGetResultAndHeader(
-                url,
-                basicAuthHeader,
-                connectTimeoutMillis,
-                readTimeoutMillis,
-                headerName = "X-Next-Cursor",
-            )
+            val beforeParam =
+                before
+                    ?.let { "&before=" + java.net.URLEncoder.encode(it, StandardCharsets.UTF_8) }
+                    .orEmpty()
+            val url =
+                "$root/session/$sessionID/message?$directoryParam&limit=$MESSAGE_PAGE_LIMIT$beforeParam"
+            val page =
+                httpGetResultAndHeader(
+                    url,
+                    basicAuthHeader,
+                    connectTimeoutMillis,
+                    readTimeoutMillis,
+                    headerName = "X-Next-Cursor",
+                )
             when (page) {
                 is OpenCodeProtocolResult.Failure -> return page
                 is OpenCodeProtocolResult.Success -> {
-                    val array = parseJsonArray(page.value.first)
-                        ?: return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_BODY)
+                    val array =
+                        parseJsonArray(page.value.first)
+                            ?: return OpenCodeProtocolResult.Failure(
+                                OpenCodeProtocolResult.Failure.Kind.INVALID_BODY
+                            )
                     val part = toolPartFromMessages(array, partID)
-                    if (part != null) return OpenCodeProtocolResult.Success(parseToolPartChange(part))
+                    if (part != null)
+                        return OpenCodeProtocolResult.Success(parseToolPartChange(part))
                     before = page.value.second?.takeIf { it.isNotBlank() }
                     if (before == null) {
                         return OpenCodeProtocolResult.Success(ToolPartChange(emptyList()))
@@ -1774,30 +2210,36 @@ internal object OpenCodeServerProtocol {
         val files = metadata?.get("files")?.takeIf { it.isJsonArray }?.asJsonArray
         if (files != null && files.size() > 0) {
             val diffs = files.mapNotNull { element ->
-                val file = element.takeIf { it.isJsonObject }?.asJsonObject ?: return@mapNotNull null
-                val filePath = file.stringMember("relativePath")?.takeIf { it.isNotBlank() }
-                    ?: file.stringMember("file")?.takeIf { it.isNotBlank() }
-                    ?: file.stringMember("filePath")?.takeIf { it.isNotBlank() }
-                    ?: input?.stringMember("path")?.takeIf { it.isNotBlank() }
-                    ?: input?.stringMember("filePath")?.takeIf { it.isNotBlank() }
+                val file =
+                    element.takeIf { it.isJsonObject }?.asJsonObject ?: return@mapNotNull null
+                val filePath =
+                    file.stringMember("relativePath")?.takeIf { it.isNotBlank() }
+                        ?: file.stringMember("file")?.takeIf { it.isNotBlank() }
+                        ?: file.stringMember("filePath")?.takeIf { it.isNotBlank() }
+                        ?: input?.stringMember("path")?.takeIf { it.isNotBlank() }
+                        ?: input?.stringMember("filePath")?.takeIf { it.isNotBlank() }
                 snapshotFileDiff(
                     file = filePath,
                     patch = file.stringMember("patch") ?: file.stringMember("diff"),
                     additions = file.longMember("additions") ?: 0L,
                     deletions = file.longMember("deletions") ?: 0L,
-                    status = when (file.stringMember("type") ?: file.stringMember("status")) {
-                        "add", "added" -> "added"
-                        "delete", "deleted" -> "deleted"
-                        else -> file.stringMember("status") ?: "modified"
-                    },
+                    status =
+                        when (file.stringMember("type") ?: file.stringMember("status")) {
+                            "add",
+                            "added" -> "added"
+                            "delete",
+                            "deleted" -> "deleted"
+                            else -> file.stringMember("status") ?: "modified"
+                        },
                 )
             }
             if (diffs.isNotEmpty()) return ToolPartChange(diffs)
         }
         val filediff = metadata?.objectMember("filediff")
         if (filediff != null) {
-            val path = filediff.stringMember("file")?.takeIf { it.isNotBlank() }
-                ?: input?.stringMember("filePath")?.takeIf { it.isNotBlank() }
+            val path =
+                filediff.stringMember("file")?.takeIf { it.isNotBlank() }
+                    ?: input?.stringMember("filePath")?.takeIf { it.isNotBlank() }
             return ToolPartChange(
                 listOf(
                     snapshotFileDiff(
@@ -1806,13 +2248,14 @@ internal object OpenCodeServerProtocol {
                         additions = filediff.longMember("additions") ?: 0L,
                         deletions = filediff.longMember("deletions") ?: 0L,
                         status = filediff.stringMember("status") ?: "modified",
-                    ),
-                ),
+                    )
+                )
             )
         }
-        val writePath = input?.stringMember("filePath")?.takeIf { it.isNotBlank() }
-            ?: input?.stringMember("path")?.takeIf { it.isNotBlank() }
-            ?: metadata?.stringMember("filepath")?.takeIf { it.isNotBlank() }
+        val writePath =
+            input?.stringMember("filePath")?.takeIf { it.isNotBlank() }
+                ?: input?.stringMember("path")?.takeIf { it.isNotBlank() }
+                ?: metadata?.stringMember("filepath")?.takeIf { it.isNotBlank() }
         return ToolPartChange(emptyList(), fileHint = writePath)
     }
 
@@ -1835,9 +2278,10 @@ internal object OpenCodeServerProtocol {
     private fun toolPartFromMessages(array: JsonArray, partID: String): JsonObject? {
         for (element in array) {
             val message = element.takeIf { it.isJsonObject }?.asJsonObject ?: continue
-            val parts = message.get("parts")?.takeIf { it.isJsonArray }?.asJsonArray
-                ?: message.get("content")?.takeIf { it.isJsonArray }?.asJsonArray
-                ?: continue
+            val parts =
+                message.get("parts")?.takeIf { it.isJsonArray }?.asJsonArray
+                    ?: message.get("content")?.takeIf { it.isJsonArray }?.asJsonArray
+                    ?: continue
             for (partElement in parts) {
                 val part = partElement.takeIf { it.isJsonObject }?.asJsonObject ?: continue
                 if (part.stringMember("id") == partID) return part
@@ -1847,13 +2291,15 @@ internal object OpenCodeServerProtocol {
     }
 
     /**
-     * Path-only SPA route for opening a session from a notification.
-     * Prefer the 1.18 `/server/<key>/session/<id>` form when [serverUrl] is known; fall back to the
-     * legacy directory-encoded route only when the origin cannot be derived.
+     * Path-only SPA route for opening a session from a notification. Prefer the 1.18
+     * `/server/<key>/session/<id>` form when [serverUrl] is known; fall back to the legacy
+     * directory-encoded route only when the origin cannot be derived.
      */
     fun buildSessionRoute(serverUrl: String?, directory: String, sessionID: String?): String {
         if (!serverUrl.isNullOrBlank()) {
-            val path = runCatching { URI(buildServerSessionUrl(serverUrl, sessionID?.takeIf(::isSessionId))).rawPath }
+            val path = runCatching {
+                URI(buildServerSessionUrl(serverUrl, sessionID?.takeIf(::isSessionId))).rawPath
+            }
                 .getOrNull()
             if (!path.isNullOrBlank()) return path
         }
@@ -1867,24 +2313,23 @@ internal object OpenCodeServerProtocol {
     }
 
     /**
-     * Extracts the session ID from an OpenCode route URL (`.../session/<id>`), or null when
-     * the URL shows no session. Both the classic and the new `/server/<key>/session/<id>`
-     * layout put the ID after a `/session/` path segment.
+     * Extracts the session ID from an OpenCode route URL (`.../session/<id>`), or null when the URL
+     * shows no session. Both the classic and the new `/server/<key>/session/<id>` layout put the ID
+     * after a `/session/` path segment.
      */
     fun sessionIdFromUrl(url: String?): String? {
         if (url.isNullOrBlank()) return null
         // rawPath keeps percent-encoding, so an encoded slash cannot split the segment early.
         val path = runCatching { URI(url).rawPath }.getOrNull() ?: return null
         val encoded = Regex("/session/([^/?#]+)").find(path)?.groupValues?.get(1) ?: return null
-        return runCatching { URLDecoder.decode(encoded, StandardCharsets.UTF_8) }.getOrNull()
+        return runCatching { URLDecoder.decode(encoded, StandardCharsets.UTF_8) }
+            .getOrNull()
             ?.takeIf { isSessionId(it) }
     }
 
     /** The last path segment of a project directory, for human-readable notification texts. */
     fun projectDisplayName(directory: String): String {
-        return directory.trimEnd('/', '\\')
-            .split('/', '\\')
-            .lastOrNull { it.isNotBlank() }
+        return directory.trimEnd('/', '\\').split('/', '\\').lastOrNull { it.isNotBlank() }
             ?: directory
     }
 
@@ -1895,10 +2340,10 @@ internal object OpenCodeServerProtocol {
     const val CLI_PERMISSION_LIST_PATH = "/api/permission/request"
 
     /**
-     * Fetches the current session statuses for a project directory
-     * (`GET /session/status?directory=...`, shape `{"ses_...": {"type": "busy"|...}, ...}`)
-     * and returns the IDs of sessions that are busy or retrying. Returns null on any error
-     * so callers can tell "no busy sessions" from "seed unavailable".
+     * Fetches the current session statuses for a project directory (`GET
+     * /session/status?directory=...`, shape `{"ses_...": {"type": "busy"|...}, ...}`) and returns
+     * the IDs of sessions that are busy or retrying. Returns null on any error so callers can tell
+     * "no busy sessions" from "seed unavailable".
      */
     fun fetchBusySessionIds(
         serverUrl: String,
@@ -1909,13 +2354,16 @@ internal object OpenCodeServerProtocol {
         wireProtocol: OpenCodeWireProtocol = OpenCodeWireProtocol.V1_18,
     ): Set<String>? {
         if (wireProtocol == OpenCodeWireProtocol.UNKNOWN) return null
-        val url = if (usesCliHttpApi(wireProtocol)) {
-            buildServerRootUrl(serverUrl) + "/api/session/active"
-        } else {
-            buildServerRootUrl(serverUrl) + "/session/status?directory=" +
-                java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
-        }
-        val body = httpGet(url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis) ?: return null
+        val url =
+            if (usesCliHttpApi(wireProtocol)) {
+                buildServerRootUrl(serverUrl) + "/api/session/active"
+            } else {
+                buildServerRootUrl(serverUrl) +
+                    "/session/status?directory=" +
+                    java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
+            }
+        val body =
+            httpGet(url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis) ?: return null
         if (parseJsonObject(body) == null) return null
         return parseBusySessionIds(body)
     }
@@ -1931,9 +2379,9 @@ internal object OpenCodeServerProtocol {
     }
 
     /**
-     * Fetches the pending permission or question requests for a project directory
-     * (`GET /permission?directory=...` or `GET /question?directory=...`, a JSON array of
-     * request objects) and returns their IDs. Returns null on any error.
+     * Fetches the pending permission or question requests for a project directory (`GET
+     * /permission?directory=...` or `GET /question?directory=...`, a JSON array of request objects)
+     * and returns their IDs. Returns null on any error.
      */
     fun fetchPendingRequestIds(
         serverUrl: String,
@@ -1944,15 +2392,18 @@ internal object OpenCodeServerProtocol {
         readTimeoutMillis: Int = 3000,
         wireProtocol: OpenCodeWireProtocol = OpenCodeWireProtocol.V1_18,
     ): List<String>? {
-        return when (val result = fetchPendingRequestsResult(
-            serverUrl,
-            basicAuthHeader,
-            listPath,
-            directory,
-            connectTimeoutMillis,
-            readTimeoutMillis,
-            wireProtocol,
-        )) {
+        return when (
+            val result =
+                fetchPendingRequestsResult(
+                    serverUrl,
+                    basicAuthHeader,
+                    listPath,
+                    directory,
+                    connectTimeoutMillis,
+                    readTimeoutMillis,
+                    wireProtocol,
+                )
+        ) {
             is OpenCodeProtocolResult.Success -> result.value.map { it.id }
             is OpenCodeProtocolResult.Failure -> null
         }
@@ -1960,19 +2411,24 @@ internal object OpenCodeServerProtocol {
 
     fun parsePendingRequestIds(json: String): List<String> {
         val parsed = runCatching { JsonParser.parseString(json) }.getOrNull() ?: return emptyList()
-        val requests = when {
-            parsed.isJsonArray -> parsed.asJsonArray
-            parsed.isJsonObject -> parsed.asJsonObject.get("data")?.takeIf { it.isJsonArray }?.asJsonArray
-            else -> null
-        } ?: return emptyList()
+        val requests =
+            when {
+                parsed.isJsonArray -> parsed.asJsonArray
+                parsed.isJsonObject ->
+                    parsed.asJsonObject.get("data")?.takeIf { it.isJsonArray }?.asJsonArray
+                else -> null
+            } ?: return emptyList()
         return requests.mapNotNull { request ->
-            request.takeIf { it.isJsonObject }?.asJsonObject
+            request
+                .takeIf { it.isJsonObject }
+                ?.asJsonObject
                 ?.stringMember("id")
                 ?.takeIf { it.isNotBlank() }
         }
     }
 
     data class PendingRequestSummary(val id: String, val sessionID: String)
+
     private data class ParsedPendingRequests(
         val requests: List<PendingRequestSummary>,
         val malformedEntry: Boolean,
@@ -1993,14 +2449,21 @@ internal object OpenCodeServerProtocol {
         if (usesCliHttpApi(wireProtocol) && listPath == QUESTION_LIST_PATH) {
             return OpenCodeProtocolResult.Success(emptyList())
         }
-        val path = if (usesCliHttpApi(wireProtocol) && listPath == PERMISSION_LIST_PATH) {
-            CLI_PERMISSION_LIST_PATH
-        } else {
-            listPath
-        }
-        val url = buildServerRootUrl(serverUrl) + path + "?directory=" +
-            java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
-        return when (val response = httpGetResult(url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)) {
+        val path =
+            if (usesCliHttpApi(wireProtocol) && listPath == PERMISSION_LIST_PATH) {
+                CLI_PERMISSION_LIST_PATH
+            } else {
+                listPath
+            }
+        val url =
+            buildServerRootUrl(serverUrl) +
+                path +
+                "?directory=" +
+                java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
+        return when (
+            val response =
+                httpGetResult(url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)
+        ) {
             is OpenCodeProtocolResult.Failure -> response
             is OpenCodeProtocolResult.Success -> {
                 parsePendingRequestsResult(response.value)
@@ -2009,11 +2472,17 @@ internal object OpenCodeServerProtocol {
     }
 
     @TestOnly
-    fun parsePendingRequests(json: String): List<PendingRequestSummary> = parsePendingRequestsBody(json)?.requests.orEmpty()
+    fun parsePendingRequests(json: String): List<PendingRequestSummary> =
+        parsePendingRequestsBody(json)?.requests.orEmpty()
 
-    fun parsePendingRequestsResult(json: String): OpenCodeProtocolResult<List<PendingRequestSummary>> {
-        val parsed = parsePendingRequestsBody(json)
-            ?: return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_BODY)
+    fun parsePendingRequestsResult(
+        json: String
+    ): OpenCodeProtocolResult<List<PendingRequestSummary>> {
+        val parsed =
+            parsePendingRequestsBody(json)
+                ?: return OpenCodeProtocolResult.Failure(
+                    OpenCodeProtocolResult.Failure.Kind.INVALID_BODY
+                )
         if (parsed.malformedEntry) {
             return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_BODY)
         }
@@ -2022,23 +2491,28 @@ internal object OpenCodeServerProtocol {
 
     private fun parsePendingRequestsBody(json: String): ParsedPendingRequests? {
         val parsed = runCatching { JsonParser.parseString(json) }.getOrNull() ?: return null
-        val requests = when {
-            parsed.isJsonArray -> parsed.asJsonArray
-            parsed.isJsonObject -> parsed.asJsonObject.get("data")?.takeIf { it.isJsonArray }?.asJsonArray
-            else -> null
-        } ?: return null
+        val requests =
+            when {
+                parsed.isJsonArray -> parsed.asJsonArray
+                parsed.isJsonObject ->
+                    parsed.asJsonObject.get("data")?.takeIf { it.isJsonArray }?.asJsonArray
+                else -> null
+            } ?: return null
         var malformedEntry = false
-        val summaries = requests.mapNotNull { request ->
-            val value = request.takeIf { it.isJsonObject }?.asJsonObject
-            val id = value?.stringMember("id")?.takeIf(::isOpenCodeRecordId)
-            val sessionID = value?.stringMember("sessionID")?.takeIf(::isSessionId)
-            if (id == null || sessionID == null) {
-                malformedEntry = true
-                null
-            } else {
-                PendingRequestSummary(id, sessionID)
-            }
-        }.distinctBy { it.id }
+        val summaries =
+            requests
+                .mapNotNull { request ->
+                    val value = request.takeIf { it.isJsonObject }?.asJsonObject
+                    val id = value?.stringMember("id")?.takeIf(::isOpenCodeRecordId)
+                    val sessionID = value?.stringMember("sessionID")?.takeIf(::isSessionId)
+                    if (id == null || sessionID == null) {
+                        malformedEntry = true
+                        null
+                    } else {
+                        PendingRequestSummary(id, sessionID)
+                    }
+                }
+                .distinctBy { it.id }
         return ParsedPendingRequests(summaries, malformedEntry)
     }
 
@@ -2048,15 +2522,16 @@ internal object OpenCodeServerProtocol {
         val parentID: String? = null,
         val directory: String? = null,
     )
+
     private data class SessionPage(val sessions: List<SessionSummary>, val nextCursor: String?)
 
     /**
-     * Fetches recent sessions for a project directory from the v2 API
-     * (`GET /api/session?directory=...&order=desc&limit=N`). Returns session IDs with their
-     * `time.updated` timestamp and parent ID, filtered to those updated within [maxAgeMillis]
-     * of [nowMillis]. Note (verified against opencode 1.17.13): the listing is ordered by
-     * creation, not by `time.updated`, and includes subagent child sessions — callers that
-     * want "most recent activity" must select by [SessionSummary.updatedMillis] themselves.
+     * Fetches recent sessions for a project directory from the v2 API (`GET
+     * /api/session?directory=...&order=desc&limit=N`). Returns session IDs with their
+     * `time.updated` timestamp and parent ID, filtered to those updated within [maxAgeMillis] of
+     * [nowMillis]. Note (verified against opencode 1.17.13): the listing is ordered by creation,
+     * not by `time.updated`, and includes subagent child sessions — callers that want "most recent
+     * activity" must select by [SessionSummary.updatedMillis] themselves.
      */
     fun fetchRecentSessions(
         serverUrl: String,
@@ -2068,16 +2543,19 @@ internal object OpenCodeServerProtocol {
         connectTimeoutMillis: Int = 3000,
         readTimeoutMillis: Int = 3000,
     ): List<SessionSummary> {
-        return when (val result = fetchRecentSessionsResult(
-            serverUrl,
-            basicAuthHeader,
-            directory,
-            maxAgeMillis,
-            nowMillis,
-            limit,
-            connectTimeoutMillis,
-            readTimeoutMillis,
-        )) {
+        return when (
+            val result =
+                fetchRecentSessionsResult(
+                    serverUrl,
+                    basicAuthHeader,
+                    directory,
+                    maxAgeMillis,
+                    nowMillis,
+                    limit,
+                    connectTimeoutMillis,
+                    readTimeoutMillis,
+                )
+        ) {
             is OpenCodeProtocolResult.Success -> result.value
             is OpenCodeProtocolResult.Failure -> emptyList()
         }
@@ -2095,27 +2573,39 @@ internal object OpenCodeServerProtocol {
         maxPages: Int = 10,
     ): OpenCodeProtocolResult<List<SessionSummary>> {
         val rootUrl = buildServerRootUrl(serverUrl)
-        var url = rootUrl + "/api/session?order=desc&limit=$limit&directory=" +
-            java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
+        var url =
+            rootUrl +
+                "/api/session?order=desc&limit=$limit&directory=" +
+                java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
         val sessions = linkedMapOf<String, SessionSummary>()
         val seenCursors = mutableSetOf<String>()
         repeat(maxPages.coerceAtLeast(1)) {
-            val response = httpGetResult(url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)
+            val response =
+                httpGetResult(url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)
             if (response is OpenCodeProtocolResult.Failure) return response
             val body = (response as OpenCodeProtocolResult.Success).value
-            val page = parseSessionPage(body, maxAgeMillis, nowMillis)
-                ?: return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_BODY)
+            val page =
+                parseSessionPage(body, maxAgeMillis, nowMillis)
+                    ?: return OpenCodeProtocolResult.Failure(
+                        OpenCodeProtocolResult.Failure.Kind.INVALID_BODY
+                    )
             page.sessions.forEach { session -> sessions.putIfAbsent(session.id, session) }
-            val cursor = page.nextCursor?.takeIf { it.isNotBlank() }
-                ?: return OpenCodeProtocolResult.Success(sessions.values.toList())
+            val cursor =
+                page.nextCursor?.takeIf { it.isNotBlank() }
+                    ?: return OpenCodeProtocolResult.Success(sessions.values.toList())
             if (!seenCursors.add(cursor)) {
-                return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_BODY)
+                return OpenCodeProtocolResult.Failure(
+                    OpenCodeProtocolResult.Failure.Kind.INVALID_BODY
+                )
             }
             // Cursor pages still need directory (+ order). OpenCode scopes lists per project;
             // dropping directory lets page 2+ mix in other workspaces.
-            url = rootUrl + "/api/session?order=desc&limit=$limit&cursor=" +
-                java.net.URLEncoder.encode(cursor, StandardCharsets.UTF_8) +
-                "&directory=" + java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
+            url =
+                rootUrl +
+                    "/api/session?order=desc&limit=$limit&cursor=" +
+                    java.net.URLEncoder.encode(cursor, StandardCharsets.UTF_8) +
+                    "&directory=" +
+                    java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
         }
         return OpenCodeProtocolResult.Success(sessions.values.toList())
     }
@@ -2133,12 +2623,14 @@ internal object OpenCodeServerProtocol {
     }
 
     private fun sessionDirectory(session: JsonObject): String? {
-        return session.objectMember("location")?.stringMember("directory")?.takeIf { it.isNotBlank() }
-            ?: session.stringMember("directory")?.takeIf { it.isNotBlank() }
+        return session.objectMember("location")?.stringMember("directory")?.takeIf {
+            it.isNotBlank()
+        } ?: session.stringMember("directory")?.takeIf { it.isNotBlank() }
     }
 
     private fun parseSessionPage(json: String, maxAgeMillis: Long, nowMillis: Long): SessionPage? {
-        // Response shape (verified against opencode 1.17.13): {"data":[SessionV2Info...],"cursor":{...}}
+        // Response shape (verified against opencode 1.17.13):
+        // {"data":[SessionV2Info...],"cursor":{...}}
         // with each session carrying id ("ses_...") and time.{created,updated} epoch millis.
         val root = parseJsonObject(json) ?: return null
         val data = root.get("data")?.takeIf { it.isJsonArray }?.asJsonArray ?: return null
@@ -2146,9 +2638,7 @@ internal object OpenCodeServerProtocol {
         for (element in data) {
             val session = element.takeIf { it.isJsonObject }?.asJsonObject ?: continue
             val id = session.stringMember("id")?.takeIf { it.startsWith("ses_") } ?: continue
-            val updated = session.objectMember("time")
-                ?.longMember("updated")
-                ?: continue
+            val updated = session.objectMember("time")?.longMember("updated") ?: continue
             if (nowMillis - updated <= maxAgeMillis) {
                 results.add(
                     SessionSummary(
@@ -2156,7 +2646,7 @@ internal object OpenCodeServerProtocol {
                         updated,
                         session.stringMember("parentID")?.takeIf { it.isNotBlank() },
                         sessionDirectory(session),
-                    ),
+                    )
                 )
             }
         }
@@ -2165,16 +2655,16 @@ internal object OpenCodeServerProtocol {
     }
 
     /**
-     * Fetches the most recent message of a session and returns it in the classifier shape
-     * used by [isInterruptedLastMessage] / [isSuspendSeveredLastMessage] /
-     * [isUnsettledTurnFromBefore], or null when the session has no messages / on any error.
+     * Fetches the most recent message of a session and returns it in the classifier shape used by
+     * [isInterruptedLastMessage] / [isSuspendSeveredLastMessage] / [isUnsettledTurnFromBefore], or
+     * null when the session has no messages / on any error.
      *
-     * The embedded web app writes sessions through the **v1** API
-     * (`POST /session` + `/session/{id}/prompt_async`), so its turns live in
-     * `GET /session/{id}/message?directory=…&limit=1` (bare array of `{info, parts}`). The v2
-     * store at `GET /api/session/{id}/message` stays empty for those sessions. This helper
-     * reads v1 first and falls back to v2 only when the v1 list is empty or missing, so both
-     * SPA sessions and any remaining v2-native ones recover.
+     * The embedded web app writes sessions through the **v1** API (`POST /session` +
+     * `/session/{id}/prompt_async`), so its turns live in `GET
+     * /session/{id}/message?directory=…&limit=1` (bare array of `{info, parts}`). The v2 store at
+     * `GET /api/session/{id}/message` stays empty for those sessions. This helper reads v1 first
+     * and falls back to v2 only when the v1 list is empty or missing, so both SPA sessions and any
+     * remaining v2-native ones recover.
      */
     fun fetchLastMessageJson(
         serverUrl: String,
@@ -2185,15 +2675,18 @@ internal object OpenCodeServerProtocol {
         readTimeoutMillis: Int = 3000,
         wireProtocol: OpenCodeWireProtocol = OpenCodeWireProtocol.V1_18,
     ): String? {
-        return when (val result = fetchLastMessageJsonResult(
-            serverUrl,
-            basicAuthHeader,
-            directory,
-            sessionID,
-            connectTimeoutMillis,
-            readTimeoutMillis,
-            wireProtocol,
-        )) {
+        return when (
+            val result =
+                fetchLastMessageJsonResult(
+                    serverUrl,
+                    basicAuthHeader,
+                    directory,
+                    sessionID,
+                    connectTimeoutMillis,
+                    readTimeoutMillis,
+                    wireProtocol,
+                )
+        ) {
             is OpenCodeProtocolResult.Success -> result.value
             is OpenCodeProtocolResult.Failure -> null
         }
@@ -2212,19 +2705,29 @@ internal object OpenCodeServerProtocol {
             return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_BODY)
         }
         if (!isSessionId(sessionID) || directory.isBlank()) {
-            return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_IDENTIFIER)
+            return OpenCodeProtocolResult.Failure(
+                OpenCodeProtocolResult.Failure.Kind.INVALID_IDENTIFIER
+            )
         }
         val root = buildServerRootUrl(serverUrl)
         if (!usesCliHttpApi(wireProtocol)) {
-            val v1Url = "$root/session/$sessionID/message" +
-                "?directory=" + java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8) +
-                "&limit=1"
-            when (val v1 = httpGetResult(v1Url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)) {
+            val v1Url =
+                "$root/session/$sessionID/message" +
+                    "?directory=" +
+                    java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8) +
+                    "&limit=1"
+            when (
+                val v1 =
+                    httpGetResult(v1Url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)
+            ) {
                 is OpenCodeProtocolResult.Success -> {
                     val raw = extractLastMessageRaw(v1.value)
                     if (raw != null) {
-                        val normalized = normalizeLastMessageForClassification(raw)
-                            ?: return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_BODY)
+                        val normalized =
+                            normalizeLastMessageForClassification(raw)
+                                ?: return OpenCodeProtocolResult.Failure(
+                                    OpenCodeProtocolResult.Failure.Kind.INVALID_BODY
+                                )
                         return OpenCodeProtocolResult.Success(normalized)
                     }
                     // Empty v1 list → try v2 (session may have been created through the v2 API).
@@ -2236,63 +2739,76 @@ internal object OpenCodeServerProtocol {
                 }
             }
         }
-        val v2Url = "$root/api/session/$sessionID/message?order=desc&limit=1" +
-            "&directory=" + java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
-        return when (val v2 = httpGetResult(v2Url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)) {
+        val v2Url =
+            "$root/api/session/$sessionID/message?order=desc&limit=1" +
+                "&directory=" +
+                java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
+        return when (
+            val v2 = httpGetResult(v2Url, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)
+        ) {
             is OpenCodeProtocolResult.Failure -> v2
             is OpenCodeProtocolResult.Success -> {
-                val raw = extractLastMessageRaw(v2.value)
-                    ?: return OpenCodeProtocolResult.Success(null)
-                val normalized = normalizeLastMessageForClassification(raw)
-                    ?: return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_BODY)
+                val raw =
+                    extractLastMessageRaw(v2.value) ?: return OpenCodeProtocolResult.Success(null)
+                val normalized =
+                    normalizeLastMessageForClassification(raw)
+                        ?: return OpenCodeProtocolResult.Failure(
+                            OpenCodeProtocolResult.Failure.Kind.INVALID_BODY
+                        )
                 OpenCodeProtocolResult.Success(normalized)
             }
         }
     }
 
     /**
-     * Pulls the most-recent message object out of either list shape the two message stores
-     * return: v1 bare array (newest first with `limit=1`) or v2 `{"data":[…],"cursor":…}`.
+     * Pulls the most-recent message object out of either list shape the two message stores return:
+     * v1 bare array (newest first with `limit=1`) or v2 `{"data":[…],"cursor":…}`.
      */
     @TestOnly
     fun extractLastMessageRaw(body: String): String? {
         val parsed = runCatching { JsonParser.parseString(body) }.getOrNull() ?: return null
-        val messages = when {
-            parsed.isJsonArray -> parsed.asJsonArray
-            parsed.isJsonObject -> parsed.asJsonObject.get("data")?.takeIf { it.isJsonArray }?.asJsonArray
-            else -> null
-        } ?: return null
+        val messages =
+            when {
+                parsed.isJsonArray -> parsed.asJsonArray
+                parsed.isJsonObject ->
+                    parsed.asJsonObject.get("data")?.takeIf { it.isJsonArray }?.asJsonArray
+                else -> null
+            } ?: return null
         return messages.firstOrNull { it.isJsonObject }?.toString()
     }
 
     /** @deprecated Prefer [extractLastMessageRaw]; kept for existing call sites. */
-    @TestOnly
-    fun extractFirstDataObject(body: String): String? = extractLastMessageRaw(body)
+    @TestOnly fun extractFirstDataObject(body: String): String? = extractLastMessageRaw(body)
 
     @TestOnly
     fun normalizeLastMessageForClassification(messageJson: String): String? =
         OpenCodeRecoveryClassifier.normalizeLastMessageForClassification(messageJson)
 
-    fun isInterruptedLastMessage(messageJson: String, createdBeforeMillis: Long = Long.MAX_VALUE): Boolean =
+    fun isInterruptedLastMessage(
+        messageJson: String,
+        createdBeforeMillis: Long = Long.MAX_VALUE,
+    ): Boolean =
         OpenCodeRecoveryClassifier.isInterruptedLastMessage(messageJson, createdBeforeMillis)
 
     private fun parseJsonObject(text: String): JsonObject? {
         if (text.isBlank()) return null
-        return runCatching { JsonParser.parseString(text) }.getOrNull()
+        return runCatching { JsonParser.parseString(text) }
+            .getOrNull()
             ?.takeIf { it.isJsonObject }
             ?.asJsonObject
     }
 
     private fun parseJsonArray(text: String): JsonArray? {
         if (text.isBlank()) return null
-        return runCatching { JsonParser.parseString(text) }.getOrNull()
+        return runCatching { JsonParser.parseString(text) }
+            .getOrNull()
             ?.takeIf { it.isJsonArray }
             ?.asJsonArray
     }
 
     /**
-     * Sends a continuation prompt to a session via the v2 API
-     * (`POST /api/session/{sessionID}/prompt` with `{"prompt":{"text":"Continue"},"resume":true}`).
+     * Sends a continuation prompt to a session via the v2 API (`POST
+     * /api/session/{sessionID}/prompt` with `{"prompt":{"text":"Continue"},"resume":true}`).
      * Returns true when the server accepted the prompt.
      */
     fun sendContinuePrompt(
@@ -2310,7 +2826,8 @@ internal object OpenCodeServerProtocol {
             connectTimeoutMillis,
             readTimeoutMillis,
             wireProtocol,
-        ) is OpenCodeProtocolResult.Success
+        ) is
+            OpenCodeProtocolResult.Success
     }
 
     fun sendContinuePromptResult(
@@ -2325,14 +2842,17 @@ internal object OpenCodeServerProtocol {
             return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_BODY)
         }
         if (!isSessionId(sessionID)) {
-            return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_IDENTIFIER)
+            return OpenCodeProtocolResult.Failure(
+                OpenCodeProtocolResult.Failure.Kind.INVALID_IDENTIFIER
+            )
         }
         val url = buildServerRootUrl(serverUrl) + "/api/session/$sessionID/prompt"
-        val body = if (usesCliHttpApi(wireProtocol)) {
-            """{"text":"Continue","resume":true}"""
-        } else {
-            """{"prompt":{"text":"Continue"},"resume":true}"""
-        }
+        val body =
+            if (usesCliHttpApi(wireProtocol)) {
+                """{"text":"Continue","resume":true}"""
+            } else {
+                """{"prompt":{"text":"Continue"},"resume":true}"""
+            }
         return httpPostJsonResult(
             url,
             basicAuthHeader,
@@ -2349,13 +2869,16 @@ internal object OpenCodeServerProtocol {
         readTimeoutMillis: Int,
         maxResponseChars: Int = MAX_HTTP_RESPONSE_CHARS,
     ): String? {
-        return when (val result = httpGetResult(
-            url,
-            basicAuthHeader,
-            connectTimeoutMillis,
-            readTimeoutMillis,
-            maxResponseChars,
-        )) {
+        return when (
+            val result =
+                httpGetResult(
+                    url,
+                    basicAuthHeader,
+                    connectTimeoutMillis,
+                    readTimeoutMillis,
+                    maxResponseChars,
+                )
+        ) {
             is OpenCodeProtocolResult.Success -> result.value
             is OpenCodeProtocolResult.Failure -> null
         }
@@ -2369,13 +2892,14 @@ internal object OpenCodeServerProtocol {
         maxResponseChars: Int = MAX_HTTP_RESPONSE_CHARS,
     ): OpenCodeProtocolResult<String> {
         return when (
-            val result = httpGetResultAndHeader(
-                url,
-                basicAuthHeader,
-                connectTimeoutMillis,
-                readTimeoutMillis,
-                maxResponseChars,
-            )
+            val result =
+                httpGetResultAndHeader(
+                    url,
+                    basicAuthHeader,
+                    connectTimeoutMillis,
+                    readTimeoutMillis,
+                    maxResponseChars,
+                )
         ) {
             is OpenCodeProtocolResult.Failure -> result
             is OpenCodeProtocolResult.Success -> OpenCodeProtocolResult.Success(result.value.first)
@@ -2401,11 +2925,21 @@ internal object OpenCodeServerProtocol {
                 }
                 val status = connection.responseCode
                 if (status !in 200..299) {
-                    return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.HTTP, status)
+                    return OpenCodeProtocolResult.Failure(
+                        OpenCodeProtocolResult.Failure.Kind.HTTP,
+                        status,
+                    )
                 }
-                val body = connection.inputStream.bufferedReader().use { reader -> readBounded(reader, maxResponseChars) }
-                    ?: return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.TOO_LARGE)
-                OpenCodeProtocolResult.Success(body to headerName?.let { connection.getHeaderField(it) })
+                val body =
+                    connection.inputStream.bufferedReader().use { reader ->
+                        readBounded(reader, maxResponseChars)
+                    }
+                        ?: return OpenCodeProtocolResult.Failure(
+                            OpenCodeProtocolResult.Failure.Kind.TOO_LARGE
+                        )
+                OpenCodeProtocolResult.Success(
+                    body to headerName?.let { connection.getHeaderField(it) }
+                )
             } finally {
                 connection.disconnect()
             }
@@ -2440,7 +2974,13 @@ internal object OpenCodeServerProtocol {
         connectTimeoutMillis: Int,
         readTimeoutMillis: Int,
     ): Boolean {
-        return httpPostJsonResult(url, basicAuthHeader, body, connectTimeoutMillis, readTimeoutMillis) is
+        return httpPostJsonResult(
+            url,
+            basicAuthHeader,
+            body,
+            connectTimeoutMillis,
+            readTimeoutMillis,
+        ) is
             OpenCodeProtocolResult.Success
     }
 

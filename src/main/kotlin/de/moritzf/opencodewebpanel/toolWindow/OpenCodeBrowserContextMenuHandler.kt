@@ -10,11 +10,11 @@ import org.cef.handler.CefContextMenuHandlerAdapter
 /**
  * Removes the context menu's built-in "View Page Source" entry.
  *
- * Chromium's handling for it opens the source in a popup browser, but JBCef never attaches
- * popup browsers to a window, so the entry silently does nothing. Instead of reimplementing
- * it, the gear menu's "Open Browser DevTools" provides full page inspection (elements,
- * console, network) through Chromium's own tooling. Paste uses the same IDE clipboard bridge
- * as the component-local shortcut; all other commands keep Chromium's native behavior.
+ * Chromium's handling for it opens the source in a popup browser, but JBCef never attaches popup
+ * browsers to a window, so the entry silently does nothing. Instead of reimplementing it, the gear
+ * menu's "Open Browser DevTools" provides full page inspection (elements, console, network) through
+ * Chromium's own tooling. Paste uses the same IDE clipboard bridge as the component-local shortcut;
+ * all other commands keep Chromium's native behavior.
  */
 internal class OpenCodeBrowserContextMenuHandler(
     private val paste: (() -> Unit)? = null,

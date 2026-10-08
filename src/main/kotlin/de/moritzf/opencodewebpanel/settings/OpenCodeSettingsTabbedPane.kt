@@ -7,9 +7,9 @@ import java.awt.Dimension
  * A [JBTabbedPane] whose preferred height follows the **selected** tab instead of the tallest one.
  *
  * `JTabbedPane` reports the maximum preferred size over all tabs, so the settings dialog wraps the
- * whole page in a scroll pane as soon as *any* tab is long — a short tab then shows a scrollbar
- * and a large empty area below its content. Reporting the selected tab's height instead lets the
- * dialog drop the scrollbar whenever the visible tab actually fits.
+ * whole page in a scroll pane as soon as *any* tab is long — a short tab then shows a scrollbar and
+ * a large empty area below its content. Reporting the selected tab's height instead lets the dialog
+ * drop the scrollbar whenever the visible tab actually fits.
  */
 internal class OpenCodeSettingsTabbedPane : JBTabbedPane() {
     init {
@@ -29,7 +29,10 @@ internal class OpenCodeSettingsTabbedPane : JBTabbedPane() {
             val tab = getComponentAt(index) ?: continue
             tallest = maxOf(tallest, tab.preferredSize.height)
         }
-        return Dimension(base.width, preferredHeightForSelectedTab(base.height, tallest, selectedHeight))
+        return Dimension(
+            base.width,
+            preferredHeightForSelectedTab(base.height, tallest, selectedHeight),
+        )
     }
 
     companion object {
@@ -38,7 +41,11 @@ internal class OpenCodeSettingsTabbedPane : JBTabbedPane() {
          * tab's height back, keeping whatever the tab strip and insets add. Never grows the
          * reported height, so a tab that is the tallest one is unaffected.
          */
-        fun preferredHeightForSelectedTab(baseHeight: Int, tallestTabHeight: Int, selectedTabHeight: Int): Int {
+        fun preferredHeightForSelectedTab(
+            baseHeight: Int,
+            tallestTabHeight: Int,
+            selectedTabHeight: Int,
+        ): Int {
             val surplus = tallestTabHeight - selectedTabHeight
             if (surplus <= 0) return baseHeight
             return (baseHeight - surplus).coerceAtLeast(selectedTabHeight)

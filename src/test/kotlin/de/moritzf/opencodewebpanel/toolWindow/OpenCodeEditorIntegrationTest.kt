@@ -91,7 +91,10 @@ class OpenCodeEditorIntegrationTest : FileEditorManagerTestCase() {
         val file = requireNotNull(controller.editorFile)
         val manager = FileEditorManager.getInstance(project)
         manager.getEditors(file).single().component
-        val provider = FileEditorProvider.EP_FILE_EDITOR_PROVIDER.extensionList.single { it.editorTypeId == "ui-component-editor" }
+        val provider =
+            FileEditorProvider.EP_FILE_EDITOR_PROVIDER.extensionList.single {
+                it.editorTypeId == "ui-component-editor"
+            }
         // A native tab move can overlap construction of its successor and old-wrapper disposal.
         val successor = provider.createEditor(project, file)
         val shell = successor.component
@@ -110,7 +113,15 @@ class OpenCodeEditorIntegrationTest : FileEditorManagerTestCase() {
         val source = requireNotNull(editorManager.currentWindow)
         val code = LightVirtualFile("source.txt", "code")
         editorManager.openFile(code, source, FileEditorOpenOptions(requestFocus = true))
-        val target = requireNotNull(source.split(SwingConstants.VERTICAL, true, LightVirtualFile("code.txt", "code"), true))
+        val target =
+            requireNotNull(
+                source.split(
+                    SwingConstants.VERTICAL,
+                    true,
+                    LightVirtualFile("code.txt", "code"),
+                    true,
+                )
+            )
         editorManager.openFile(file, target, FileEditorOpenOptions(requestFocus = true))
         UIUtil.dispatchAllInvocationEvents()
         assertFalse(source.isFileOpen(file))
@@ -119,7 +130,12 @@ class OpenCodeEditorIntegrationTest : FileEditorManagerTestCase() {
         assertEquals(1, editorManager.getEditors(file).size)
         assertEquals(1, panel.loads)
         assertEquals(0, panel.disposals)
-        assertTrue(UIUtil.isAncestor(editorManager.getEditors(file).single().component, controller.component))
+        assertTrue(
+            UIUtil.isAncestor(
+                editorManager.getEditors(file).single().component,
+                controller.component,
+            )
+        )
         editorManager.openFile(code, source, FileEditorOpenOptions(requestFocus = true))
         assertTrue(OpenCodeChatInputService.getInstance(project).activatePanel())
         assertFalse(source.isFileOpen(file))
@@ -135,7 +151,9 @@ class OpenCodeEditorIntegrationTest : FileEditorManagerTestCase() {
         assertFalse(controller.isInEditor)
         manager.openFile(file, true)
         assertTrue(controller.isInEditor)
-        assertTrue(UIUtil.isAncestor(manager.getEditors(file).single().component, controller.component))
+        assertTrue(
+            UIUtil.isAncestor(manager.getEditors(file).single().component, controller.component)
+        )
         controller.moveToToolWindow()
         controller.moveToEditor()
         assertSame(file, controller.editorFile)
@@ -172,13 +190,22 @@ class OpenCodeEditorIntegrationTest : FileEditorManagerTestCase() {
         val deliveries = mutableListOf<OpenCodeChatInputService.Delivery>()
         var loads = 0
         var disposals = 0
+
         override fun prepareBrowserForReplacement() = CompletableFuture.completedFuture(Unit)
-        override fun checkAndLoadContent() { loads++ }
+
+        override fun checkAndLoadContent() {
+            loads++
+        }
+
         override fun dispatchChatBatch(delivery: OpenCodeChatInputService.Delivery): Boolean {
             deliveries += delivery
             return true
         }
+
         override fun onHostChanged() = Unit
-        override fun dispose() { disposals++ }
+
+        override fun dispose() {
+            disposals++
+        }
     }
 }

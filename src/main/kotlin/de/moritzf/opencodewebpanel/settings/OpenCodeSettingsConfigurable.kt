@@ -13,8 +13,8 @@ import com.intellij.openapi.ui.MessageDialogBuilder
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.ui.TextFieldWithBrowseButton
 import com.intellij.openapi.util.ThrowableComputable
-import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBCheckBox
+import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBPasswordField
 import com.intellij.ui.components.JBRadioButton
 import com.intellij.ui.dsl.builder.AlignX
@@ -39,103 +39,137 @@ import javax.swing.Timer
 
 class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
     private var panel: JComponent? = null
-    private val passwordField = JBPasswordField().apply {
-        columns = 40
-        toolTipText = "Password used for the local OpenCode web server"
-    }
-    private val showPasswordButton = JToggleButton(AllIcons.Actions.Show).apply {
-        toolTipText = "Show password"
-        accessibleContext.accessibleName = "Show password"
-    }
-    private val copyPasswordButton = JButton("Copy", AllIcons.Actions.Copy).apply {
-        toolTipText = "Copy password to clipboard"
-        accessibleContext.accessibleName = "Copy password"
-    }
-    private val copyPasswordFeedbackTimer = Timer(1_500) {
-        copyPasswordButton.apply {
-            text = "Copy"
-            icon = AllIcons.Actions.Copy
+    private val passwordField =
+        JBPasswordField().apply {
+            columns = 40
+            toolTipText = "Password used for the local OpenCode web server"
+        }
+    private val showPasswordButton =
+        JToggleButton(AllIcons.Actions.Show).apply {
+            toolTipText = "Show password"
+            accessibleContext.accessibleName = "Show password"
+        }
+    private val copyPasswordButton =
+        JButton("Copy", AllIcons.Actions.Copy).apply {
             toolTipText = "Copy password to clipboard"
             accessibleContext.accessibleName = "Copy password"
         }
-    }.apply { isRepeats = false }
-    private val generatePasswordButton = JButton("Generate").apply {
-        toolTipText = "Generate a new password; apply settings to save it"
-        accessibleContext.accessibleName = "Generate password"
-    }
+    private val copyPasswordFeedbackTimer =
+        Timer(1_500) {
+                copyPasswordButton.apply {
+                    text = "Copy"
+                    icon = AllIcons.Actions.Copy
+                    toolTipText = "Copy password to clipboard"
+                    accessibleContext.accessibleName = "Copy password"
+                }
+            }
+            .apply { isRepeats = false }
+    private val generatePasswordButton =
+        JButton("Generate").apply {
+            toolTipText = "Generate a new password; apply settings to save it"
+            accessibleContext.accessibleName = "Generate password"
+        }
 
     private val autoBinaryRadioButton = JBRadioButton("Auto detect")
     private val customBinaryRadioButton = JBRadioButton("OpenCode path")
     private val autoSbxRadioButton = JBRadioButton("Auto detect")
     private val customSbxRadioButton = JBRadioButton("Sbx path")
-    private val sbxPathField = TextFieldWithBrowseButton().apply {
-        textField.columns = 40
-        toolTipText = "Path to the sbx executable"
-        // The chooser stays usable in auto mode as a way to fill the path; only typing is
-        // custom-only. Never disable the whole component: disabling hides the browse button
-        // completely and it is not reliably shown again after re-enabling.
-        addBrowseFolderListener(null, FileChooserDescriptorFactory.createSingleFileNoJarsDescriptor())
-        addActionListener { customSbxRadioButton.isSelected = true }
-    }
-    private val detectSbxButton = JButton("Detect").apply {
-        toolTipText = "Auto-detect sbx and fill the path"
-        accessibleContext.accessibleName = "Detect sbx path"
-    }
-    private val sbxLoginHintLabel = JBLabel("Sign in with sbx login in a terminal. The panel does not embed OAuth.")
+    private val sbxPathField =
+        TextFieldWithBrowseButton().apply {
+            textField.columns = 40
+            toolTipText = "Path to the sbx executable"
+            // The chooser stays usable in auto mode as a way to fill the path; only typing is
+            // custom-only. Never disable the whole component: disabling hides the browse button
+            // completely and it is not reliably shown again after re-enabling.
+            addBrowseFolderListener(
+                null,
+                FileChooserDescriptorFactory.createSingleFileNoJarsDescriptor(),
+            )
+            addActionListener { customSbxRadioButton.isSelected = true }
+        }
+    private val detectSbxButton =
+        JButton("Detect").apply {
+            toolTipText = "Auto-detect sbx and fill the path"
+            accessibleContext.accessibleName = "Detect sbx path"
+        }
+    private val sbxLoginHintLabel =
+        JBLabel("Sign in with sbx login in a terminal. The panel does not embed OAuth.")
     private val sbxPolicyHintLabel = JBLabel("No sandbox network policy yet.")
-    private val setupChecklistLabel = JBLabel().apply {
-        foreground = UIUtil.getContextHelpForeground()
-    }
-    private val initSbxPolicyButton = JButton("Set up default network policy").apply {
-        toolTipText = "Runs Docker's balanced policy once on this computer so sandboxes can reach typical AI APIs and package sites"
-        accessibleContext.accessibleName = "Set up default sandbox network policy"
-    }
-    private val binaryPathField = TextFieldWithBrowseButton().apply {
-        textField.columns = 40
-        toolTipText = "Path to the opencode executable"
-        addBrowseFolderListener(null, FileChooserDescriptorFactory.createSingleFileNoJarsDescriptor())
-        addActionListener { customBinaryRadioButton.isSelected = true }
-    }
-    private val detectBinaryButton = JButton("Detect").apply {
-        toolTipText = "Auto-detect opencode and fill the path"
-        accessibleContext.accessibleName = "Detect OpenCode path"
-    }
+    private val setupChecklistLabel =
+        JBLabel().apply { foreground = UIUtil.getContextHelpForeground() }
+    private val initSbxPolicyButton =
+        JButton("Set up default network policy").apply {
+            toolTipText =
+                "Runs Docker's balanced policy once on this computer so sandboxes can reach typical AI APIs and package sites"
+            accessibleContext.accessibleName = "Set up default sandbox network policy"
+        }
+    private val binaryPathField =
+        TextFieldWithBrowseButton().apply {
+            textField.columns = 40
+            toolTipText = "Path to the opencode executable"
+            addBrowseFolderListener(
+                null,
+                FileChooserDescriptorFactory.createSingleFileNoJarsDescriptor(),
+            )
+            addActionListener { customBinaryRadioButton.isSelected = true }
+        }
+    private val detectBinaryButton =
+        JButton("Detect").apply {
+            toolTipText = "Auto-detect opencode and fill the path"
+            accessibleContext.accessibleName = "Detect OpenCode path"
+        }
     private val ideProxyRadioButton = JBRadioButton("Use IDE HTTP Proxy")
     private val environmentProxyRadioButton = JBRadioButton("Use environment variables")
     private val noProxyRadioButton = JBRadioButton("No proxy")
     private val enableServerLogsCheckBox = JBCheckBox("Write server logs to disk")
     private val openFileLinksInIdeCheckBox = JBCheckBox("Enable IDE navigation from OpenCode")
-    private val openExternalLinksInBrowserCheckBox = JBCheckBox("Open external HTTP links in the system browser")
+    private val openExternalLinksInBrowserCheckBox =
+        JBCheckBox("Open external HTTP links in the system browser")
     private val enableCodeNavigationCheckBox = JBCheckBox("Also navigate code references in chat")
-    private val openDiffsInIdeCheckBox = JBCheckBox("Open diffs in the IDE on Ctrl/Cmd+Click or Alt+Click")
+    private val openDiffsInIdeCheckBox =
+        JBCheckBox("Open diffs in the IDE on Ctrl/Cmd+Click or Alt+Click")
     private val enableChatFileDropCheckBox = JBCheckBox("Enable file drop and paste into chat")
     private val forceCompactLayoutCheckBox = JBCheckBox("Lock to compact view")
     private val hideWebsiteButtonCheckBox = JBCheckBox("Hide the OpenCode website button")
-    private val fasterPathHoverPreviewCheckBox = JBCheckBox("Faster path previews on tabs, projects, and sessions")
-    private val syncThemeWithIdeCheckBox = JBCheckBox("Sync OpenCode color scheme with the IDE theme")
+    private val fasterPathHoverPreviewCheckBox =
+        JBCheckBox("Faster path previews on tabs, projects, and sessions")
+    private val syncThemeWithIdeCheckBox =
+        JBCheckBox("Sync OpenCode color scheme with the IDE theme")
     private val suppressProjectSwitchPromptsCheckBox = JBCheckBox("Suppress project-switch prompts")
     private val mirrorBrowserCursorCheckBox = JBCheckBox("Mirror the web page mouse cursor")
-    private val recoverStalledEventStreamCheckBox = JBCheckBox("Reconnect the panel after a stalled connection")
-    private val recoverFailedChunkLoadsCheckBox = JBCheckBox("Reload the panel after a failed page chunk")
-    private val recoverStalledRendererCheckBox = JBCheckBox("Reload the panel when its renderer goes silent")
-    private val notifyOpenCodeUpdatesCheckBox = JBCheckBox("Show an update indicator when a newer matching OpenCode release is available")
-    private val enableSystemNotificationsCheckBox = JBCheckBox("Forward OpenCode system notifications to the IDE")
-    private val enablePermissionNotificationActionsCheckBox = JBCheckBox("Offer Allow/Deny actions on permission notifications")
-    private val showAgentStatusBadgeCheckBox = JBCheckBox("Show agent status on the tool window icon")
-    private val warnForeignSessionCheckBox = JBCheckBox("Warn when a selected conversation belongs to another workspace")
-    private val autoContinueInterruptedSessionsCheckBox = JBCheckBox("Automatically continue interrupted conversations after recovery")
-    private val waitForIntellijMcpServerCheckBox = JBCheckBox("Wait for IntelliJ MCP server before starting OpenCode")
-    private val uiZoomSpinner = JSpinner(
-        SpinnerNumberModel(
-            OpenCodeSettingsState.DEFAULT_UI_ZOOM_PERCENT,
-            OpenCodeSettingsState.MIN_UI_ZOOM_PERCENT,
-            OpenCodeSettingsState.MAX_UI_ZOOM_PERCENT,
-            10,
-        ),
-    ).apply {
-        toolTipText = "Scale the embedded OpenCode UI"
-        accessibleContext.accessibleName = "OpenCode UI zoom percentage"
-    }
+    private val recoverStalledEventStreamCheckBox =
+        JBCheckBox("Reconnect the panel after a stalled connection")
+    private val recoverFailedChunkLoadsCheckBox =
+        JBCheckBox("Reload the panel after a failed page chunk")
+    private val recoverStalledRendererCheckBox =
+        JBCheckBox("Reload the panel when its renderer goes silent")
+    private val notifyOpenCodeUpdatesCheckBox =
+        JBCheckBox("Show an update indicator when a newer matching OpenCode release is available")
+    private val enableSystemNotificationsCheckBox =
+        JBCheckBox("Forward OpenCode system notifications to the IDE")
+    private val enablePermissionNotificationActionsCheckBox =
+        JBCheckBox("Offer Allow/Deny actions on permission notifications")
+    private val showAgentStatusBadgeCheckBox =
+        JBCheckBox("Show agent status on the tool window icon")
+    private val warnForeignSessionCheckBox =
+        JBCheckBox("Warn when a selected conversation belongs to another workspace")
+    private val autoContinueInterruptedSessionsCheckBox =
+        JBCheckBox("Automatically continue interrupted conversations after recovery")
+    private val waitForIntellijMcpServerCheckBox =
+        JBCheckBox("Wait for IntelliJ MCP server before starting OpenCode")
+    private val uiZoomSpinner =
+        JSpinner(
+                SpinnerNumberModel(
+                    OpenCodeSettingsState.DEFAULT_UI_ZOOM_PERCENT,
+                    OpenCodeSettingsState.MIN_UI_ZOOM_PERCENT,
+                    OpenCodeSettingsState.MAX_UI_ZOOM_PERCENT,
+                    10,
+                )
+            )
+            .apply {
+                toolTipText = "Scale the embedded OpenCode UI"
+                accessibleContext.accessibleName = "OpenCode UI zoom percentage"
+            }
     private val hintLabel = JBLabel().apply { isVisible = false }
     private val hiddenPasswordEchoChar = passwordField.echoChar
     private val passwordLoadGeneration = AtomicLong(0)
@@ -148,36 +182,144 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
         val checkBox: JBCheckBox,
         val read: OpenCodeSettingsState.() -> Boolean,
         val write: OpenCodeSettingsState.(Boolean) -> Unit,
-        /** When set, a change to this toggle is broadcast as [OpenCodeSettingsListener.uiSettingChanged]. */
+        /**
+         * When set, a change to this toggle is broadcast as
+         * [OpenCodeSettingsListener.uiSettingChanged].
+         */
         val uiSetting: OpenCodeUiSetting? = null,
     )
 
-    private val checkBoxSettingBindings = listOf(
-        CheckBoxSettingBinding(openFileLinksInIdeCheckBox, { openFileLinksInIde }, { value -> openFileLinksInIde = value }, OpenCodeUiSetting.FILE_LINK_NAVIGATION),
-        CheckBoxSettingBinding(openExternalLinksInBrowserCheckBox, { openExternalLinksInBrowser }, { value -> openExternalLinksInBrowser = value }, OpenCodeUiSetting.EXTERNAL_LINK_NAVIGATION),
-        CheckBoxSettingBinding(enableCodeNavigationCheckBox, { enableCodeNavigation }, { value -> enableCodeNavigation = value }, OpenCodeUiSetting.CODE_NAVIGATION),
-        CheckBoxSettingBinding(openDiffsInIdeCheckBox, { openDiffsInIde }, { value -> openDiffsInIde = value }, OpenCodeUiSetting.DIFF_NAVIGATION),
-        CheckBoxSettingBinding(enableChatFileDropCheckBox, { enableChatFileDrop }, { value -> enableChatFileDrop = value }, OpenCodeUiSetting.CHAT_FILE_DROP),
-        CheckBoxSettingBinding(forceCompactLayoutCheckBox, { forceCompactLayout }, { value -> forceCompactLayout = value }, OpenCodeUiSetting.COMPACT_LAYOUT),
-        CheckBoxSettingBinding(hideWebsiteButtonCheckBox, { hideWebsiteButton }, { value -> hideWebsiteButton = value }, OpenCodeUiSetting.HIDE_WEBSITE_BUTTON),
-        CheckBoxSettingBinding(fasterPathHoverPreviewCheckBox, { fasterPathHoverPreview }, { value -> fasterPathHoverPreview = value }, OpenCodeUiSetting.PATH_HOVER_PREVIEW),
-        CheckBoxSettingBinding(syncThemeWithIdeCheckBox, { syncThemeWithIde }, { value -> syncThemeWithIde = value }, OpenCodeUiSetting.IDE_THEME_SYNC),
-        CheckBoxSettingBinding(suppressProjectSwitchPromptsCheckBox, { suppressProjectSwitchPrompts }, { value -> suppressProjectSwitchPrompts = value }, OpenCodeUiSetting.PROJECT_SWITCH_PROMPT_SUPPRESSION),
-        CheckBoxSettingBinding(mirrorBrowserCursorCheckBox, { mirrorBrowserCursor }, { value -> mirrorBrowserCursor = value }, OpenCodeUiSetting.BROWSER_CURSOR_MIRROR),
-        CheckBoxSettingBinding(recoverStalledEventStreamCheckBox, { recoverStalledEventStream }, { value -> recoverStalledEventStream = value }, OpenCodeUiSetting.EVENT_STREAM_WATCHDOG),
-        CheckBoxSettingBinding(recoverFailedChunkLoadsCheckBox, { recoverFailedChunkLoads }, { value -> recoverFailedChunkLoads = value }, OpenCodeUiSetting.CHUNK_LOAD_RECOVERY),
-        CheckBoxSettingBinding(recoverStalledRendererCheckBox, { recoverStalledRenderer }, { value -> recoverStalledRenderer = value }, OpenCodeUiSetting.RENDERER_WATCHDOG),
-        // System notifications need no page interaction: the Kotlin-side event consumer
-        // re-checks the setting on every event.
-        CheckBoxSettingBinding(notifyOpenCodeUpdatesCheckBox, { notifyOpenCodeUpdates }, { value -> notifyOpenCodeUpdates = value }),
-        CheckBoxSettingBinding(enableSystemNotificationsCheckBox, { enableSystemNotifications }, { value -> enableSystemNotifications = value }),
-        CheckBoxSettingBinding(enablePermissionNotificationActionsCheckBox, { enablePermissionNotificationActions }, { value -> enablePermissionNotificationActions = value }),
-        CheckBoxSettingBinding(showAgentStatusBadgeCheckBox, { showAgentStatusBadge }, { value -> showAgentStatusBadge = value }, OpenCodeUiSetting.AGENT_STATUS_BADGE),
-        CheckBoxSettingBinding(warnForeignSessionCheckBox, { warnForeignSession }, { value -> warnForeignSession = value }, OpenCodeUiSetting.FOREIGN_SESSION_WARNING),
-        CheckBoxSettingBinding(autoContinueInterruptedSessionsCheckBox, { autoContinueInterruptedSessions }, { value -> autoContinueInterruptedSessions = value }),
-        CheckBoxSettingBinding(waitForIntellijMcpServerCheckBox, { waitForIntellijMcpServer }, { value -> waitForIntellijMcpServer = value }),
-        CheckBoxSettingBinding(enableServerLogsCheckBox, { enableServerLogs }, { value -> enableServerLogs = value }),
-    )
+    private val checkBoxSettingBindings =
+        listOf(
+            CheckBoxSettingBinding(
+                openFileLinksInIdeCheckBox,
+                { openFileLinksInIde },
+                { value -> openFileLinksInIde = value },
+                OpenCodeUiSetting.FILE_LINK_NAVIGATION,
+            ),
+            CheckBoxSettingBinding(
+                openExternalLinksInBrowserCheckBox,
+                { openExternalLinksInBrowser },
+                { value -> openExternalLinksInBrowser = value },
+                OpenCodeUiSetting.EXTERNAL_LINK_NAVIGATION,
+            ),
+            CheckBoxSettingBinding(
+                enableCodeNavigationCheckBox,
+                { enableCodeNavigation },
+                { value -> enableCodeNavigation = value },
+                OpenCodeUiSetting.CODE_NAVIGATION,
+            ),
+            CheckBoxSettingBinding(
+                openDiffsInIdeCheckBox,
+                { openDiffsInIde },
+                { value -> openDiffsInIde = value },
+                OpenCodeUiSetting.DIFF_NAVIGATION,
+            ),
+            CheckBoxSettingBinding(
+                enableChatFileDropCheckBox,
+                { enableChatFileDrop },
+                { value -> enableChatFileDrop = value },
+                OpenCodeUiSetting.CHAT_FILE_DROP,
+            ),
+            CheckBoxSettingBinding(
+                forceCompactLayoutCheckBox,
+                { forceCompactLayout },
+                { value -> forceCompactLayout = value },
+                OpenCodeUiSetting.COMPACT_LAYOUT,
+            ),
+            CheckBoxSettingBinding(
+                hideWebsiteButtonCheckBox,
+                { hideWebsiteButton },
+                { value -> hideWebsiteButton = value },
+                OpenCodeUiSetting.HIDE_WEBSITE_BUTTON,
+            ),
+            CheckBoxSettingBinding(
+                fasterPathHoverPreviewCheckBox,
+                { fasterPathHoverPreview },
+                { value -> fasterPathHoverPreview = value },
+                OpenCodeUiSetting.PATH_HOVER_PREVIEW,
+            ),
+            CheckBoxSettingBinding(
+                syncThemeWithIdeCheckBox,
+                { syncThemeWithIde },
+                { value -> syncThemeWithIde = value },
+                OpenCodeUiSetting.IDE_THEME_SYNC,
+            ),
+            CheckBoxSettingBinding(
+                suppressProjectSwitchPromptsCheckBox,
+                { suppressProjectSwitchPrompts },
+                { value -> suppressProjectSwitchPrompts = value },
+                OpenCodeUiSetting.PROJECT_SWITCH_PROMPT_SUPPRESSION,
+            ),
+            CheckBoxSettingBinding(
+                mirrorBrowserCursorCheckBox,
+                { mirrorBrowserCursor },
+                { value -> mirrorBrowserCursor = value },
+                OpenCodeUiSetting.BROWSER_CURSOR_MIRROR,
+            ),
+            CheckBoxSettingBinding(
+                recoverStalledEventStreamCheckBox,
+                { recoverStalledEventStream },
+                { value -> recoverStalledEventStream = value },
+                OpenCodeUiSetting.EVENT_STREAM_WATCHDOG,
+            ),
+            CheckBoxSettingBinding(
+                recoverFailedChunkLoadsCheckBox,
+                { recoverFailedChunkLoads },
+                { value -> recoverFailedChunkLoads = value },
+                OpenCodeUiSetting.CHUNK_LOAD_RECOVERY,
+            ),
+            CheckBoxSettingBinding(
+                recoverStalledRendererCheckBox,
+                { recoverStalledRenderer },
+                { value -> recoverStalledRenderer = value },
+                OpenCodeUiSetting.RENDERER_WATCHDOG,
+            ),
+            // System notifications need no page interaction: the Kotlin-side event consumer
+            // re-checks the setting on every event.
+            CheckBoxSettingBinding(
+                notifyOpenCodeUpdatesCheckBox,
+                { notifyOpenCodeUpdates },
+                { value -> notifyOpenCodeUpdates = value },
+            ),
+            CheckBoxSettingBinding(
+                enableSystemNotificationsCheckBox,
+                { enableSystemNotifications },
+                { value -> enableSystemNotifications = value },
+            ),
+            CheckBoxSettingBinding(
+                enablePermissionNotificationActionsCheckBox,
+                { enablePermissionNotificationActions },
+                { value -> enablePermissionNotificationActions = value },
+            ),
+            CheckBoxSettingBinding(
+                showAgentStatusBadgeCheckBox,
+                { showAgentStatusBadge },
+                { value -> showAgentStatusBadge = value },
+                OpenCodeUiSetting.AGENT_STATUS_BADGE,
+            ),
+            CheckBoxSettingBinding(
+                warnForeignSessionCheckBox,
+                { warnForeignSession },
+                { value -> warnForeignSession = value },
+                OpenCodeUiSetting.FOREIGN_SESSION_WARNING,
+            ),
+            CheckBoxSettingBinding(
+                autoContinueInterruptedSessionsCheckBox,
+                { autoContinueInterruptedSessions },
+                { value -> autoContinueInterruptedSessions = value },
+            ),
+            CheckBoxSettingBinding(
+                waitForIntellijMcpServerCheckBox,
+                { waitForIntellijMcpServer },
+                { value -> waitForIntellijMcpServer = value },
+            ),
+            CheckBoxSettingBinding(
+                enableServerLogsCheckBox,
+                { enableServerLogs },
+                { value -> enableServerLogs = value },
+            ),
+        )
 
     override fun getDisplayName(): String = "OpenCode Web Panel"
 
@@ -188,8 +330,9 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
             Logger.getInstance(OpenCodeSettingsConfigurable::class.java)
                 .error("Failed to create OpenCode Web Panel settings", error)
             JBLabel(
-                "<html>Failed to open OpenCode settings.<br>${error.javaClass.simpleName}: ${error.message.orEmpty()}</html>",
-            ).also { panel = it }
+                    "<html>Failed to open OpenCode settings.<br>${error.javaClass.simpleName}: ${error.message.orEmpty()}</html>"
+                )
+                .also { panel = it }
         }
     }
 
@@ -199,12 +342,16 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
         val serverSetupPanel = panel {
             group("OpenCode Launch") {
                 row {
-                    comment("Which runtime starts OpenCode. Host CLI runs opencode on this machine; Docker Sandbox runs it inside a Docker Sandbox. Runtime is chosen per project.")
+                    comment(
+                        "Which runtime starts OpenCode. Host CLI runs opencode on this machine; Docker Sandbox runs it inside a Docker Sandbox. Runtime is chosen per project."
+                    )
                 }
                 buttonsGroup("Host CLI — OpenCode executable:") {
                     row {
                         cell(autoBinaryRadioButton)
-                            .comment("Find opencode from PATH plus common install locations, including Homebrew, system paths, and npm locations on Windows.")
+                            .comment(
+                                "Find opencode from PATH plus common install locations, including Homebrew, system paths, and npm locations on Windows."
+                            )
                     }
                     row {
                         cell(customBinaryRadioButton).gap(RightGap.SMALL)
@@ -222,36 +369,32 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
                     }
                     row {
                         cell(customSbxRadioButton).gap(RightGap.SMALL)
-                        cell(sbxPathField)
-                            .resizableColumn()
-                            .align(AlignX.FILL)
-                            .gap(RightGap.SMALL)
+                        cell(sbxPathField).resizableColumn().align(AlignX.FILL).gap(RightGap.SMALL)
                         cell(detectSbxButton)
                     }
                 }
             }
             group("Authentication") {
                 row("Password:") {
-                    cell(passwordField)
-                        .resizableColumn()
-                        .align(AlignX.FILL)
-                        .gap(RightGap.SMALL)
+                    cell(passwordField).resizableColumn().align(AlignX.FILL).gap(RightGap.SMALL)
                     cell(showPasswordButton).gap(RightGap.SMALL)
                     cell(copyPasswordButton).gap(RightGap.SMALL)
                     cell(generatePasswordButton)
                 }
-                row {
-                    cell(hintLabel)
-                }
+                row { cell(hintLabel) }
             }
             buttonsGroup("HTTP proxy:") {
                 row {
                     cell(ideProxyRadioButton)
-                        .comment("Forward the IDE HTTP or SOCKS proxy, including auto-detect and PAC. PAC is resolved for a generic HTTPS target.")
+                        .comment(
+                            "Forward the IDE HTTP or SOCKS proxy, including auto-detect and PAC. PAC is resolved for a generic HTTPS target."
+                        )
                 }
                 row {
                     cell(environmentProxyRadioButton)
-                        .comment("Use HTTP_PROXY and HTTPS_PROXY from the environment the IDE was started with.")
+                        .comment(
+                            "Use HTTP_PROXY and HTTPS_PROXY from the environment the IDE was started with."
+                        )
                 }
                 row {
                     cell(noProxyRadioButton)
@@ -261,38 +404,36 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
                     comment(
                         "Applies to Host CLI only. Docker Sandboxes send provider traffic through the sandbox gateway; " +
                             "do not set HTTP_PROXY inside the VM. If your company requires an HTTP proxy, configure it " +
-                            "in Docker Sandboxes on the host — this setting does not control or bypass that proxy.",
+                            "in Docker Sandboxes on the host — this setting does not control or bypass that proxy."
                     )
                 }
             }
             group("Startup") {
                 row {
                     cell(waitForIntellijMcpServerCheckBox)
-                        .comment("If IntelliJ's MCP server is enabled, wait briefly for it to report that it is running before launching OpenCode.")
+                        .comment(
+                            "If IntelliJ's MCP server is enabled, wait briefly for it to report that it is running before launching OpenCode."
+                        )
                 }
             }
             group("Server Logs") {
                 row {
                     cell(enableServerLogsCheckBox)
-                        .comment("Persist OpenCode server output in the IDE log directory and prune old log files automatically.")
+                        .comment(
+                            "Persist OpenCode server output in the IDE log directory and prune old log files automatically."
+                        )
                 }
             }
             group("Docker Sandboxes") {
                 row {
                     comment(
                         "Prerequisites for Docker Sandbox runtimes (per project on " +
-                            "Tools → OpenCode Web Panel (Project)). Not needed for Host CLI.",
+                            "Tools → OpenCode Web Panel (Project)). Not needed for Host CLI."
                     )
                 }
-                row {
-                    cell(sbxLoginHintLabel)
-                }
-                row {
-                    cell(sbxPolicyHintLabel)
-                }
-                row {
-                    cell(setupChecklistLabel)
-                }
+                row { cell(sbxLoginHintLabel) }
+                row { cell(sbxPolicyHintLabel) }
+                row { cell(setupChecklistLabel) }
                 row {
                     cell(initSbxPolicyButton)
                         .comment(
@@ -301,10 +442,11 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
                                 "and denies everything else. This is machine-wide (every sbx sandbox on this " +
                                 "computer), not just this IDE. The plugin never runs it silently. " +
                                 "<a href=\"$SBX_POLICY_DOCS_URL\">Docker network defaults</a>",
-                            action = HyperlinkEventAction { event ->
-                                val href = event.url?.toString() ?: event.description
-                                if (!href.isNullOrBlank()) BrowserUtil.browse(href)
-                            },
+                            action =
+                                HyperlinkEventAction { event ->
+                                    val href = event.url?.toString() ?: event.description
+                                    if (!href.isNullOrBlank()) BrowserUtil.browse(href)
+                                },
                         )
                 }
             }
@@ -313,27 +455,39 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
             group("Browser Appearance") {
                 row("Zoom:") {
                     cell(uiZoomSpinner)
-                        .comment("Scale the embedded OpenCode UI. Default: ${OpenCodeSettingsState.DEFAULT_UI_ZOOM_PERCENT}%.")
+                        .comment(
+                            "Scale the embedded OpenCode UI. Default: ${OpenCodeSettingsState.DEFAULT_UI_ZOOM_PERCENT}%."
+                        )
                 }
                 row {
                     cell(forceCompactLayoutCheckBox)
-                        .comment("Keep the compact mobile layout even when the panel is wide, with a full-width Home session list in OpenCode 2.x. On: classic review panel. Off: OpenCode's native responsive layout and redesigned desktop review panel.")
+                        .comment(
+                            "Keep the compact mobile layout even when the panel is wide, with a full-width Home session list in OpenCode 2.x. On: classic review panel. Off: OpenCode's native responsive layout and redesigned desktop review panel."
+                        )
                 }
                 row {
                     cell(hideWebsiteButtonCheckBox)
-                        .comment("Hide OpenCode's floating help button that opens the OpenCode website. It only overlaps the message box in the panel. Turn off if an OpenCode update needs the control visible again.")
+                        .comment(
+                            "Hide OpenCode's floating help button that opens the OpenCode website. It only overlaps the message box in the panel. Turn off if an OpenCode update needs the control visible again."
+                        )
                 }
                 row {
                     cell(fasterPathHoverPreviewCheckBox)
-                        .comment("Session tabs wait 2s in OpenCode; the panel shows that path preview after 250ms. Home project rows get the same preview so duplicate names stay distinguishable. Turn off if an OpenCode update clashes with the overlay.")
+                        .comment(
+                            "Session tabs wait 2s in OpenCode; the panel shows that path preview after 250ms. Home project rows get the same preview so duplicate names stay distinguishable. Turn off if an OpenCode update clashes with the overlay."
+                        )
                 }
                 row {
                     cell(syncThemeWithIdeCheckBox)
-                        .comment("Patches the browser's prefers-color-scheme media query to match the IntelliJ theme. Only affects OpenCode when its color scheme is set to System.")
+                        .comment(
+                            "Patches the browser's prefers-color-scheme media query to match the IntelliJ theme. Only affects OpenCode when its color scheme is set to System."
+                        )
                 }
                 row {
                     cell(mirrorBrowserCursorCheckBox)
-                        .comment("Apply the hovered page element's cursor style to the panel, like a regular browser would. Fixes the embedded browser never showing text or link cursors and resize cursors getting stuck.")
+                        .comment(
+                            "Apply the hovered page element's cursor style to the panel, like a regular browser would. Fixes the embedded browser never showing text or link cursors and resize cursors getting stuck."
+                        )
                 }
             }
             group("IDE Navigation") {
@@ -349,70 +503,97 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
                 }
                 row {
                     cell(openDiffsInIdeCheckBox)
-                        .comment("Ctrl+Click (Cmd+Click on macOS) or Alt+Click a diff in chat or in the changes list to open it in the IDE's diff viewer. F4 then jumps to the original file.")
+                        .comment(
+                            "Ctrl+Click (Cmd+Click on macOS) or Alt+Click a diff in chat or in the changes list to open it in the IDE's diff viewer. F4 then jumps to the original file."
+                        )
                 }
             }
             group("Link Handling") {
                 row {
                     cell(openExternalLinksInBrowserCheckBox)
-                        .comment("Open external HTTP and HTTPS links in the system browser instead of navigating the embedded panel.")
+                        .comment(
+                            "Open external HTTP and HTTPS links in the system browser instead of navigating the embedded panel."
+                        )
                 }
             }
             group("Chat File Input") {
                 row {
                     cell(enableChatFileDropCheckBox)
-                        .comment("Use OpenCode's native handling for project file references and file attachments.")
+                        .comment(
+                            "Use OpenCode's native handling for project file references and file attachments."
+                        )
                 }
             }
             group("OpenCode Event Handling") {
                 row {
                     cell(notifyOpenCodeUpdatesCheckBox)
-                        .comment("Shows a lightning bolt on the OpenCode tool-window title bar. Hover for the version; click to upgrade a sandbox or copy the Host CLI command. 1.x checks npm opencode-ai; 2.x checks @opencode/cli. Does not suggest switching major versions.")
+                        .comment(
+                            "Shows a lightning bolt on the OpenCode tool-window title bar. Hover for the version; click to upgrade a sandbox or copy the Host CLI command. 1.x checks npm opencode-ai; 2.x checks @opencode/cli. Does not suggest switching major versions."
+                        )
                 }
                 row {
                     cell(enableSystemNotificationsCheckBox)
-                        .comment("Show OpenCode browser notifications as IntelliJ notifications and route notification clicks back to OpenCode.")
+                        .comment(
+                            "Show OpenCode browser notifications as IntelliJ notifications and route notification clicks back to OpenCode."
+                        )
                 }
                 indent {
                     row {
                         cell(enablePermissionNotificationActionsCheckBox)
-                            .comment("Answer agent permission requests directly from the IDE notification without switching to the panel.")
+                            .comment(
+                                "Answer agent permission requests directly from the IDE notification without switching to the panel."
+                            )
                     }
                 }
                 row {
                     cell(suppressProjectSwitchPromptsCheckBox)
-                        .comment("Hide OpenCode in-app prompts that ask this panel to switch to another session or project for approval.")
+                        .comment(
+                            "Hide OpenCode in-app prompts that ask this panel to switch to another session or project for approval."
+                        )
                 }
                 row {
                     cell(showAgentStatusBadgeCheckBox)
-                        .comment("Overlay the tool window icon with a live indicator while the agent works and a warning while it awaits your input.")
+                        .comment(
+                            "Overlay the tool window icon with a live indicator while the agent works and a warning while it awaits your input."
+                        )
                 }
                 row {
                     cell(warnForeignSessionCheckBox)
-                        .comment("Off by default. Show an IDE warning and a bright red border around the panel when the conversation's directory is not this project's OpenCode directory, including a session OpenCode restores on startup. Does not block opening it. Symlink spellings and sandbox guest paths count as the same folder.")
+                        .comment(
+                            "Off by default. Show an IDE warning and a bright red border around the panel when the conversation's directory is not this project's OpenCode directory, including a session OpenCode restores on startup. Does not block opening it. Symlink spellings and sandbox guest paths count as the same folder."
+                        )
                 }
                 row {
                     cell(autoContinueInterruptedSessionsCheckBox)
-                        .comment("Send a continuation prompt to recently active sessions after the server restarts or recovers, if their last assistant turn was interrupted.")
+                        .comment(
+                            "Send a continuation prompt to recently active sessions after the server restarts or recovers, if their last assistant turn was interrupted."
+                        )
                 }
                 row {
                     cell(recoverStalledEventStreamCheckBox)
-                        .comment("On OpenCode 1.18, reconnect when sleep or a network change leaves the panel's connection silent. This prevents answered permission prompts and new messages from getting stuck. OpenCode 2 handles this natively; no connection patch is injected there.")
+                        .comment(
+                            "On OpenCode 1.18, reconnect when sleep or a network change leaves the panel's connection silent. This prevents answered permission prompts and new messages from getting stuck. OpenCode 2 handles this natively; no connection patch is injected there."
+                        )
                 }
                 row {
                     cell(recoverFailedChunkLoadsCheckBox)
-                        .comment("Reload the page once when a lazy-loaded OpenCode chunk fails (\"Failed to fetch dynamically imported module\"), which leaves the page stuck behind OpenCode's error boundary until reloaded. CEF only reports main-frame failures to the IDE; without this the boundary sits there until you restart the panel manually.")
+                        .comment(
+                            "Reload the page once when a lazy-loaded OpenCode chunk fails (\"Failed to fetch dynamically imported module\"), which leaves the page stuck behind OpenCode's error boundary until reloaded. CEF only reports main-frame failures to the IDE; without this the boundary sits there until you restart the panel manually."
+                        )
                 }
                 row {
                     cell(recoverStalledRendererCheckBox)
-                        .comment("Watch the page's heartbeat and reload it when the embedded browser goes silent without an error (a stuck or dead JCEF renderer, as happens with out-of-process browser mode). Persistent stalls recreate the panel; a failure card with Retry is the fallback.")
+                        .comment(
+                            "Watch the page's heartbeat and reload it when the embedded browser goes silent without an error (a stuck or dead JCEF renderer, as happens with out-of-process browser mode). Persistent stalls recreate the panel; a failure card with Retry is the fallback."
+                        )
                 }
             }
         }
-        panel = OpenCodeSettingsTabbedPane().apply {
-            addTab("OpenCode Server Setup", serverSetupPanel)
-            addTab("OpenCode UI Settings", uiSettingsPanel)
-        }
+        panel =
+            OpenCodeSettingsTabbedPane().apply {
+                addTab("OpenCode Server Setup", serverSetupPanel)
+                addTab("OpenCode UI Settings", uiSettingsPanel)
+            }
         reset()
         return panel!!
     }
@@ -425,11 +606,19 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
         val sbxBinaryModeModified = selectedSbxBinaryMode() != settings.sbxBinaryModeValue()
         val sbxBinaryPathModified = sbxPath() != settings.sbxBinaryPath.trim()
         val proxyModified = isProxySettingModified(settings)
-        val checkBoxSettingsModified = checkBoxSettingBindings.any { it.checkBox.isSelected != it.read(settings) }
-        val uiZoomModified = uiZoomPercent() != OpenCodeSettingsState.sanitizeUiZoomPercent(settings.uiZoomPercent)
-        return passwordModified || binaryModeModified ||
-            binaryPathModified || sbxBinaryModeModified || sbxBinaryPathModified ||
-            proxyModified || checkBoxSettingsModified || uiZoomModified
+        val checkBoxSettingsModified = checkBoxSettingBindings.any {
+            it.checkBox.isSelected != it.read(settings)
+        }
+        val uiZoomModified =
+            uiZoomPercent() != OpenCodeSettingsState.sanitizeUiZoomPercent(settings.uiZoomPercent)
+        return passwordModified ||
+            binaryModeModified ||
+            binaryPathModified ||
+            sbxBinaryModeModified ||
+            sbxBinaryPathModified ||
+            proxyModified ||
+            checkBoxSettingsModified ||
+            uiZoomModified
     }
 
     override fun apply() {
@@ -479,33 +668,44 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
         updateUiDependencyControls()
         val registry = OpenCodeServerBackendRegistry.getInstance()
         val passwordChanged = oldPassword != nextPassword
-        val nativeChanged = oldBinaryMode != nextBinaryMode || oldBinaryPath != nextBinaryPath ||
-            oldProxyMode != settings.proxyModeValue()
-        val sbxChanged = oldSbxBinaryMode != nextSbxBinaryMode || oldSbxBinaryPath != nextSbxBinaryPath
+        val nativeChanged =
+            oldBinaryMode != nextBinaryMode ||
+                oldBinaryPath != nextBinaryPath ||
+                oldProxyMode != settings.proxyModeValue()
+        val sbxChanged =
+            oldSbxBinaryMode != nextSbxBinaryMode || oldSbxBinaryPath != nextSbxBinaryPath
         if (passwordChanged || nativeChanged || sbxChanged) {
             if (passwordChanged || nativeChanged) registry.stopAllNativeBackends()
             if (passwordChanged || sbxChanged) registry.stopAllSbxBackends()
-            val scope = when {
-                passwordChanged || (nativeChanged && sbxChanged) -> OpenCodeRestartScope.ALL
-                nativeChanged -> OpenCodeRestartScope.NATIVE
-                else -> OpenCodeRestartScope.SBX
-            }
-            ApplicationManager.getApplication().messageBus
+            val scope =
+                when {
+                    passwordChanged || (nativeChanged && sbxChanged) -> OpenCodeRestartScope.ALL
+                    nativeChanged -> OpenCodeRestartScope.NATIVE
+                    else -> OpenCodeRestartScope.SBX
+                }
+            ApplicationManager.getApplication()
+                .messageBus
                 .syncPublisher(OpenCodeSettingsListener.TOPIC)
                 .serverRestartRequested(scope)
         }
         if (oldUiZoomPercent != nextUiZoomPercent) {
-            ApplicationManager.getApplication().messageBus
+            ApplicationManager.getApplication()
+                .messageBus
                 .syncPublisher(OpenCodeSettingsListener.TOPIC)
                 .uiZoomChanged(nextUiZoomPercent)
         }
         if (pendingBroadcasts.isNotEmpty()) {
-            val publisher = ApplicationManager.getApplication().messageBus
-                .syncPublisher(OpenCodeSettingsListener.TOPIC)
-            pendingBroadcasts.forEach { (setting, enabled) -> publisher.uiSettingChanged(setting, enabled) }
+            val publisher =
+                ApplicationManager.getApplication()
+                    .messageBus
+                    .syncPublisher(OpenCodeSettingsListener.TOPIC)
+            pendingBroadcasts.forEach { (setting, enabled) ->
+                publisher.uiSettingChanged(setting, enabled)
+            }
         }
         if (oldSystemNotificationsEnabled != settings.enableSystemNotifications) {
-            ApplicationManager.getApplication().messageBus
+            ApplicationManager.getApplication()
+                .messageBus
                 .syncPublisher(OpenCodeSettingsListener.TOPIC)
                 .systemNotificationsChanged(settings.enableSystemNotifications)
         }
@@ -543,34 +743,39 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
         passwordLoadGeneration.incrementAndGet()
     }
 
-    private fun resolveAndSavePasswordOffEdt(editedPassword: String?): OpenCodePasswordStore.PasswordUpdate {
+    private fun resolveAndSavePasswordOffEdt(
+        editedPassword: String?
+    ): OpenCodePasswordStore.PasswordUpdate {
         val store = OpenCodePasswordStore.getInstance()
-        val operation = ThrowableComputable<OpenCodePasswordStore.PasswordUpdate, Exception> {
-            store.resolveAndSaveBlocking(editedPassword)
-        }
+        val operation =
+            ThrowableComputable<OpenCodePasswordStore.PasswordUpdate, Exception> {
+                store.resolveAndSaveBlocking(editedPassword)
+            }
         val app = ApplicationManager.getApplication()
         return try {
             if (app.isDispatchThread && !app.isUnitTestMode) {
-                ProgressManager.getInstance().runProcessWithProgressSynchronously(
-                    operation,
-                    "Saving OpenCode Password",
-                    false,
-                    null,
-                )
+                ProgressManager.getInstance()
+                    .runProcessWithProgressSynchronously(
+                        operation,
+                        "Saving OpenCode Password",
+                        false,
+                        null,
+                    )
             } else {
                 operation.compute()
             }
         } catch (error: Exception) {
-            passwordLoadError = "Could not save password to secure storage: ${error.message ?: error::class.java.simpleName}"
+            passwordLoadError =
+                "Could not save password to secure storage: ${error.message ?: error::class.java.simpleName}"
             updatePasswordHint()
             throw ConfigurationException(passwordLoadError!!)
         }
     }
 
     /**
-     * The controls are fields of this configurable, so they survive `disposeUIResources()` and
-     * a later `createComponent()`; registering listeners per creation would stack duplicates
-     * that fire actions (e.g. password generation) multiple times per click.
+     * The controls are fields of this configurable, so they survive `disposeUIResources()` and a
+     * later `createComponent()`; registering listeners per creation would stack duplicates that
+     * fire actions (e.g. password generation) multiple times per click.
      */
     private fun installControlListenersOnce() {
         if (controlListenersInstalled) return
@@ -608,13 +813,15 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
     private fun password(): String? = String(passwordField.password).trim().ifBlank { null }
 
     private fun selectedBinaryMode(): OpenCodeBinaryMode {
-        return if (customBinaryRadioButton.isSelected) OpenCodeBinaryMode.CUSTOM else OpenCodeBinaryMode.AUTO
+        return if (customBinaryRadioButton.isSelected) OpenCodeBinaryMode.CUSTOM
+        else OpenCodeBinaryMode.AUTO
     }
 
     private fun binaryPath(): String = binaryPathField.text.trim()
 
     private fun selectedSbxBinaryMode(): OpenCodeBinaryMode {
-        return if (customSbxRadioButton.isSelected) OpenCodeBinaryMode.CUSTOM else OpenCodeBinaryMode.AUTO
+        return if (customSbxRadioButton.isSelected) OpenCodeBinaryMode.CUSTOM
+        else OpenCodeBinaryMode.AUTO
     }
 
     private fun sbxPath(): String = sbxPathField.text.trim()
@@ -632,7 +839,10 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
     }
 
     private fun uiZoomPercent(): Int {
-        return OpenCodeSettingsState.sanitizeUiZoomPercent((uiZoomSpinner.value as? Number)?.toInt() ?: OpenCodeSettingsState.DEFAULT_UI_ZOOM_PERCENT)
+        return OpenCodeSettingsState.sanitizeUiZoomPercent(
+            (uiZoomSpinner.value as? Number)?.toInt()
+                ?: OpenCodeSettingsState.DEFAULT_UI_ZOOM_PERCENT
+        )
     }
 
     private fun loadPasswordField() {
@@ -652,25 +862,33 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
 
         ApplicationManager.getApplication().executeOnPooledThread {
             val result = runCatching { store.loadFreshBlocking() }
-            ApplicationManager.getApplication().invokeLater({
-                if (generation != passwordLoadGeneration.get()) return@invokeLater
-                passwordLoading = false
-                result.fold(
-                    onSuccess = { loadedPassword ->
-                        savedPassword = loadedPassword
-                        val currentFieldValue = password()
-                        if (currentFieldValue == fieldValueAtRequest || currentFieldValue == savedPasswordAtRequest) {
-                            setPasswordText(loadedPassword)
-                        }
+            ApplicationManager.getApplication()
+                .invokeLater(
+                    {
+                        if (generation != passwordLoadGeneration.get()) return@invokeLater
+                        passwordLoading = false
+                        result.fold(
+                            onSuccess = { loadedPassword ->
+                                savedPassword = loadedPassword
+                                val currentFieldValue = password()
+                                if (
+                                    currentFieldValue == fieldValueAtRequest ||
+                                        currentFieldValue == savedPasswordAtRequest
+                                ) {
+                                    setPasswordText(loadedPassword)
+                                }
+                            },
+                            onFailure = { error ->
+                                if (cachedPassword == null) {
+                                    passwordLoadError =
+                                        "Could not load password from secure storage: ${error.message ?: error::class.java.simpleName}"
+                                }
+                            },
+                        )
+                        updatePasswordHint()
                     },
-                    onFailure = { error ->
-                        if (cachedPassword == null) {
-                            passwordLoadError = "Could not load password from secure storage: ${error.message ?: error::class.java.simpleName}"
-                        }
-                    },
+                    passwordLoadModality(),
                 )
-                updatePasswordHint()
-            }, passwordLoadModality())
         }
     }
 
@@ -737,68 +955,82 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
 
     private fun consentToSbxPolicy() {
         val settings = OpenCodeSettingsState.getInstance()
-        val executable = OpenCodeServerProtocol.resolveExecutableForLaunch(
-            if (customSbxRadioButton.isSelected) sbxPath() else settings.sbxExecutablePath(),
-        )
-        // Captured on the EDT: a pooled thread's invokeLater would otherwise wait for Settings to close.
+        val executable =
+            OpenCodeServerProtocol.resolveExecutableForLaunch(
+                if (customSbxRadioButton.isSelected) sbxPath() else settings.sbxExecutablePath()
+            )
+        // Captured on the EDT: a pooled thread's invokeLater would otherwise wait for Settings to
+        // close.
         val modality = ModalityState.stateForComponent(initSbxPolicyButton)
         initSbxPolicyButton.isEnabled = false
         ApplicationManager.getApplication().executeOnPooledThread {
-            val existing = SbxProcessRunner.run(SbxCli.buildPolicyLsCommand(executable), emptyMap(), 30_000L)
+            val existing =
+                SbxProcessRunner.run(SbxCli.buildPolicyLsCommand(executable), emptyMap(), 30_000L)
             val initialized = existing.exitCode == 0 && SbxCli.policyIsInitialized(existing.stdout)
-            ApplicationManager.getApplication().invokeLater({
-                if (initialized) {
-                    // `sbx policy init` is one-time; never replace a policy set up elsewhere.
-                    settings.sbxNetworkPolicyConsent = true
-                    Messages.showInfoMessage(
-                        panel ?: initSbxPolicyButton,
-                        "This computer already has a sandbox network policy. The plugin uses it and does not change it.",
-                        "Sandbox Network Policy",
-                    )
-                    if (panel != null) updateRuntimeControls()
-                    return@invokeLater
-                }
-                initializeSbxPolicy(executable, modality)
-            }, modality)
+            ApplicationManager.getApplication()
+                .invokeLater(
+                    {
+                        if (initialized) {
+                            // `sbx policy init` is one-time; never replace a policy set up
+                            // elsewhere.
+                            settings.sbxNetworkPolicyConsent = true
+                            Messages.showInfoMessage(
+                                panel ?: initSbxPolicyButton,
+                                "This computer already has a sandbox network policy. The plugin uses it and does not change it.",
+                                "Sandbox Network Policy",
+                            )
+                            if (panel != null) updateRuntimeControls()
+                            return@invokeLater
+                        }
+                        initializeSbxPolicy(executable, modality)
+                    },
+                    modality,
+                )
         }
     }
 
     private fun initializeSbxPolicy(executable: String, modality: ModalityState) {
-        val confirmed = MessageDialogBuilder.yesNo(
-            "Set up sandbox network policy",
-            "Docker Sandboxes start with no internet. This runs sbx policy init balanced once " +
-                "on this computer: typical AI APIs and package sites are allowed, and everything " +
-                "else stays blocked.\n\n" +
-                "It applies to every sandbox on this machine, including ones outside IntelliJ. " +
-                "The plugin will not change the policy again afterwards.",
-        )
-            .yesText("Set up policy")
-            .noText("Cancel")
-            .icon(Messages.getWarningIcon())
-            .ask(panel)
+        val confirmed =
+            MessageDialogBuilder.yesNo(
+                    "Set up sandbox network policy",
+                    "Docker Sandboxes start with no internet. This runs sbx policy init balanced once " +
+                        "on this computer: typical AI APIs and package sites are allowed, and everything " +
+                        "else stays blocked.\n\n" +
+                        "It applies to every sandbox on this machine, including ones outside IntelliJ. " +
+                        "The plugin will not change the policy again afterwards.",
+                )
+                .yesText("Set up policy")
+                .noText("Cancel")
+                .icon(Messages.getWarningIcon())
+                .ask(panel)
         if (!confirmed) {
             if (panel != null) updateRuntimeControls()
             return
         }
         val settings = OpenCodeSettingsState.getInstance()
         ApplicationManager.getApplication().executeOnPooledThread {
-            val result = SbxProcessRunner.run(
-                SbxCli.buildPolicyInitCommand(executable),
-                emptyMap(),
-                60_000L,
-            )
-            ApplicationManager.getApplication().invokeLater({
-                if (result.exitCode == 0) {
-                    settings.sbxNetworkPolicyConsent = true
-                } else {
-                    Messages.showErrorDialog(
-                        panel ?: initSbxPolicyButton,
-                        "sbx policy init failed (exit ${result.exitCode}).\n${result.output.takeLast(2000)}",
-                        "Sandbox Network Policy",
-                    )
-                }
-                if (panel != null) updateRuntimeControls()
-            }, modality)
+            val result =
+                SbxProcessRunner.run(
+                    SbxCli.buildPolicyInitCommand(executable),
+                    emptyMap(),
+                    60_000L,
+                )
+            ApplicationManager.getApplication()
+                .invokeLater(
+                    {
+                        if (result.exitCode == 0) {
+                            settings.sbxNetworkPolicyConsent = true
+                        } else {
+                            Messages.showErrorDialog(
+                                panel ?: initSbxPolicyButton,
+                                "sbx policy init failed (exit ${result.exitCode}).\n${result.output.takeLast(2000)}",
+                                "Sandbox Network Policy",
+                            )
+                        }
+                        if (panel != null) updateRuntimeControls()
+                    },
+                    modality,
+                )
         }
     }
 
@@ -806,17 +1038,21 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
         val currentPassword = password()
         val loadError = passwordLoadError
         var isError = false
-        val hint = when {
-            passwordLoading && currentPassword == null -> "Loading password from secure storage..."
-            loadError != null -> {
-                isError = true
-                loadError
+        val hint =
+            when {
+                passwordLoading && currentPassword == null ->
+                    "Loading password from secure storage..."
+                loadError != null -> {
+                    isError = true
+                    loadError
+                }
+                currentPassword == null && savedPassword == null ->
+                    "No password yet; apply settings to generate and store one."
+                currentPassword != savedPassword -> "Apply settings to save the updated password."
+                else -> null
             }
-            currentPassword == null && savedPassword == null -> "No password yet; apply settings to generate and store one."
-            currentPassword != savedPassword -> "Apply settings to save the updated password."
-            else -> null
-        }
-        hintLabel.foreground = if (isError) UIUtil.getErrorForeground() else UIUtil.getContextHelpForeground()
+        hintLabel.foreground =
+            if (isError) UIUtil.getErrorForeground() else UIUtil.getContextHelpForeground()
         hintLabel.text = hint.orEmpty()
         hintLabel.isVisible = hint != null
         copyPasswordButton.isEnabled = currentPassword != null
@@ -834,28 +1070,39 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
 
     private fun updateRuntimeControls() {
         val consented = OpenCodeSettingsState.getInstance().sbxNetworkPolicyConsent
-        sbxPolicyHintLabel.text = if (consented) {
-            "Default network policy is set on this machine. The plugin will not change it again."
-        } else {
-            "No sandbox network policy yet. Sandboxes cannot reach the internet until you set one up."
-        }
+        sbxPolicyHintLabel.text =
+            if (consented) {
+                "Default network policy is set on this machine. The plugin will not change it again."
+            } else {
+                "No sandbox network policy yet. Sandboxes cannot reach the internet until you set one up."
+            }
         initSbxPolicyButton.isEnabled = !consented
-        val executable = if (customSbxRadioButton.isSelected) sbxPath() else OpenCodeSettingsState.getInstance().sbxExecutablePath()
+        val executable =
+            if (customSbxRadioButton.isSelected) sbxPath()
+            else OpenCodeSettingsState.getInstance().sbxExecutablePath()
         val sbxFound = OpenCodeServerProtocol.detectExecutablePath(executable) != null
-        setupChecklistLabel.text = "<html>" +
-            de.moritzf.opencodewebpanel.server.SbxSetupChecklist.format(
-                de.moritzf.opencodewebpanel.server.SbxSetupChecklist.appSteps(sbxFound, consented),
-            ).replace("\n", "<br>") + "</html>"
+        setupChecklistLabel.text =
+            "<html>" +
+                de.moritzf.opencodewebpanel.server.SbxSetupChecklist.format(
+                        de.moritzf.opencodewebpanel.server.SbxSetupChecklist.appSteps(
+                            sbxFound,
+                            consented,
+                        )
+                    )
+                    .replace("\n", "<br>") +
+                "</html>"
         updateSbxControls()
         updateBinaryControls()
     }
 
     private fun updateUiDependencyControls() {
         enableCodeNavigationCheckBox.isEnabled = openFileLinksInIdeCheckBox.isSelected
-        enablePermissionNotificationActionsCheckBox.isEnabled = enableSystemNotificationsCheckBox.isSelected
+        enablePermissionNotificationActionsCheckBox.isEnabled =
+            enableSystemNotificationsCheckBox.isSelected
     }
 
     companion object {
-        private const val SBX_POLICY_DOCS_URL = "https://docs.docker.com/ai/sandboxes/security/defaults/"
+        private const val SBX_POLICY_DOCS_URL =
+            "https://docs.docker.com/ai/sandboxes/security/defaults/"
     }
 }

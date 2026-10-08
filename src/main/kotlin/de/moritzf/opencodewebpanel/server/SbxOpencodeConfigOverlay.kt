@@ -10,8 +10,9 @@ internal object SbxOpencodeConfigOverlay {
     const val XDG_CONFIG_HOME_ENV = "XDG_CONFIG_HOME"
 
     fun hostConfigDir(): Path {
-        val base = System.getenv(XDG_CONFIG_HOME_ENV)?.takeIf { it.isNotBlank() }
-            ?: Path.of(System.getProperty("user.home"), ".config").toString()
+        val base =
+            System.getenv(XDG_CONFIG_HOME_ENV)?.takeIf { it.isNotBlank() }
+                ?: Path.of(System.getProperty("user.home"), ".config").toString()
         return Path.of(base, "opencode").toAbsolutePath().normalize()
     }
 
@@ -22,11 +23,12 @@ internal object SbxOpencodeConfigOverlay {
     fun hostLegacyConfigPath(): Path = hostConfigDir().resolve("config.json")
 
     fun hostConfigShareMount(
-        exists: (Path) -> Boolean = { Files.isDirectory(it) },
+        exists: (Path) -> Boolean = { Files.isDirectory(it) }
     ): SbxExtraMount? {
         val host = hostConfigDir()
         if (!exists(host)) return null
-        val hostStr = runCatching { host.toAbsolutePath().normalize().toString() }.getOrNull() ?: return null
+        val hostStr =
+            runCatching { host.toAbsolutePath().normalize().toString() }.getOrNull() ?: return null
         // sbx mounts the host path as-is, read-only (`path:ro`). Do not symlink over
         // the sandbox agent's managed config directory.
         return SbxExtraMount(hostStr, hostStr, readOnly = true)
@@ -52,9 +54,10 @@ internal object SbxOpencodeConfigOverlay {
         hostConfigJson: String? = if (shareHostConfig) readHostConfig() else null,
     ): String? {
         val root = JsonObject()
-        val hostMcp = if (shareHostConfig) {
-            parseObject(hostConfigJson)?.get("mcp")?.takeIf { it.isJsonObject }?.asJsonObject
-        } else null
+        val hostMcp =
+            if (shareHostConfig) {
+                parseObject(hostConfigJson)?.get("mcp")?.takeIf { it.isJsonObject }?.asJsonObject
+            } else null
         val nested = hostMcp?.get("servers")?.takeIf { it.isJsonObject }?.asJsonObject
         // Preserve the source schema, including enabled/disabled, timeout and OAuth fields.
         // OpenCode 2 migrates legacy documents itself; wrapping legacy entries in mcp.servers
@@ -63,7 +66,8 @@ internal object SbxOpencodeConfigOverlay {
         (nested ?: hostMcp)?.entrySet()?.forEach { (name, value) ->
             val server = value.takeIf { it.isJsonObject }?.asJsonObject ?: return@forEach
             val rewritten = server.stringMember("url")?.let(::rewriteLoopbackUrl) ?: return@forEach
-            mcpServersObject(root, nativeV2).add(name, server.deepCopy().apply { addProperty("url", rewritten) })
+            mcpServersObject(root, nativeV2)
+                .add(name, server.deepCopy().apply { addProperty("url", rewritten) })
         }
         if (ideaMcpPort != null) {
             val servers = mcpServersObject(root, nativeV2)
@@ -98,7 +102,11 @@ internal object SbxOpencodeConfigOverlay {
         var merged: JsonObject? = null
         for (path in listOf(legacyPath, jsonPath, jsoncPath)) {
             if (!Files.isRegularFile(path)) continue
-            val text = runCatching { Files.readString(path) }.getOrNull()?.trim()?.takeIf { it.isNotEmpty() } ?: continue
+            val text =
+                runCatching { Files.readString(path) }
+                    .getOrNull()
+                    ?.trim()
+                    ?.takeIf { it.isNotEmpty() } ?: continue
             val parsed = parseObject(text) ?: continue
             merged = merged?.let { deepMerge(it, parsed) } ?: parsed
         }
@@ -152,7 +160,10 @@ internal object SbxOpencodeConfigOverlay {
                     }
                     '*' -> {
                         index += 2
-                        while (index + 1 < text.length && !(text[index] == '*' && text[index + 1] == '/')) index++
+                        while (
+                            index + 1 < text.length &&
+                                !(text[index] == '*' && text[index + 1] == '/')
+                        ) index++
                         index = (index + 2).coerceAtMost(text.length)
                         continue
                     }
@@ -216,10 +227,14 @@ internal object SbxOpencodeConfigOverlay {
 
     private fun parseObject(json: String?): JsonObject? {
         if (json.isNullOrBlank()) return null
-        return runCatching { JsonParser.parseString(json) }.getOrNull()
-            ?.takeIf { it.isJsonObject }?.asJsonObject
-            ?: runCatching { JsonParser.parseString(stripJsonc(json)) }.getOrNull()
-                ?.takeIf { it.isJsonObject }?.asJsonObject
+        return runCatching { JsonParser.parseString(json) }
+            .getOrNull()
+            ?.takeIf { it.isJsonObject }
+            ?.asJsonObject
+            ?: runCatching { JsonParser.parseString(stripJsonc(json)) }
+                .getOrNull()
+                ?.takeIf { it.isJsonObject }
+                ?.asJsonObject
     }
 
     private fun ideaMcpObject(port: Int, nativeV2: Boolean): JsonObject {
@@ -229,5 +244,4 @@ internal object SbxOpencodeConfigOverlay {
             if (nativeV2) addProperty("disabled", false) else addProperty("enabled", true)
         }
     }
-
 }

@@ -9,12 +9,16 @@ class OpenCodeDropWindowFocusRecoveryTest {
         var restored = 0
         val requests = mutableListOf<Runnable>()
         val nativeReplies = mutableListOf<(Boolean) -> Unit>()
-        val recovery = OpenCodeDropWindowFocusRecovery(
-            isEligible = { eligible },
-            checkNativeFocus = { nativeReplies += it },
-            restoreFocus = { restored++; eligible = false },
-            schedule = { request, _ -> requests += request },
-        )
+        val recovery =
+            OpenCodeDropWindowFocusRecovery(
+                isEligible = { eligible },
+                checkNativeFocus = { nativeReplies += it },
+                restoreFocus = {
+                    restored++
+                    eligible = false
+                },
+                schedule = { request, _ -> requests += request },
+            )
     }
 
     @Test

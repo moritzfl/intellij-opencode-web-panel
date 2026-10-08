@@ -12,7 +12,8 @@ data class OpenCodeStartupProgress(
     val expectedQuietMillis: Long,
     val recentOutput: List<String>,
 ) {
-    val takingLonger: Boolean get() = stageElapsedMillis > expectedQuietMillis && quietMillis > 30_000L
+    val takingLonger: Boolean
+        get() = stageElapsedMillis > expectedQuietMillis && quietMillis > 30_000L
 }
 
 /** Separate from server-generation time, which interrupted-session recovery relies on. */
@@ -71,8 +72,15 @@ internal class OpenCodeStartupProgressTracker(private val nanoTime: () -> Long =
         if (attempt < 0) return null
         val now = stopped ?: nanoTime()
         fun elapsed(since: Long) = TimeUnit.NANOSECONDS.toMillis(now - since).coerceAtLeast(0)
-        return OpenCodeStartupProgress(stage, explanation, elapsed(started), elapsed(stageStarted),
-            elapsed(lastActivity), expectedQuietMillis, output.toList())
+        return OpenCodeStartupProgress(
+            stage,
+            explanation,
+            elapsed(started),
+            elapsed(stageStarted),
+            elapsed(lastActivity),
+            expectedQuietMillis,
+            output.toList(),
+        )
     }
 
     private fun append(line: String) {
@@ -83,26 +91,30 @@ internal class OpenCodeStartupProgressTracker(private val nanoTime: () -> Long =
 }
 
 /** Explanations describe actual work, without claiming that a silent process is healthy. */
-internal fun startupStageExplanation(stage: String): String = when {
-    stage.contains("Creating sandbox", true) || stage.contains("Create sandbox", true) ->
-        "Docker may download images and install your kits. First-time setup can take several minutes."
-    stage.contains("kit", true) ->
-        "Docker is applying the configured tools and environment. Image preparation and package downloads can take several minutes."
-    stage.contains("Installing", true) || stage.contains("Upgrading", true) || stage.contains("Downloading", true) ->
-        "Downloading and installing OpenCode in the sandbox. Download speed and package setup determine how long this takes."
-    stage.contains("mount", true) ->
-        "Preparing workspace and session folders. Docker may need to start the virtual machine first."
-    stage.contains("MCP", true) ->
-        "Waiting for IntelliJ's MCP tools to become available before starting OpenCode."
-    stage.contains("daemon", true) || stage.contains("Checking Docker", true) ->
-        "Checking the Docker Sandboxes service and virtualization support. This step may produce no output."
-    stage.contains("List", true) || stage.contains("Verify sandbox", true) ->
-        "Reading sandbox state and verifying this project's sandbox."
-    stage.contains("Waiting for OpenCode", true) || stage.contains("port", true) ->
-        "Waiting for OpenCode to answer on its local port. The page opens automatically when it is ready."
-    stage.contains("Checking OpenCode", true) ->
-        "Checking that the configured OpenCode binary is available and can run."
-    stage.contains("Stop", true) || stage.contains("Remove", true) ->
-        "Finishing the previous process before starting again."
-    else -> "OpenCode is loading its configuration and plugins. The page opens automatically when it is ready."
-}
+internal fun startupStageExplanation(stage: String): String =
+    when {
+        stage.contains("Creating sandbox", true) || stage.contains("Create sandbox", true) ->
+            "Docker may download images and install your kits. First-time setup can take several minutes."
+        stage.contains("kit", true) ->
+            "Docker is applying the configured tools and environment. Image preparation and package downloads can take several minutes."
+        stage.contains("Installing", true) ||
+            stage.contains("Upgrading", true) ||
+            stage.contains("Downloading", true) ->
+            "Downloading and installing OpenCode in the sandbox. Download speed and package setup determine how long this takes."
+        stage.contains("mount", true) ->
+            "Preparing workspace and session folders. Docker may need to start the virtual machine first."
+        stage.contains("MCP", true) ->
+            "Waiting for IntelliJ's MCP tools to become available before starting OpenCode."
+        stage.contains("daemon", true) || stage.contains("Checking Docker", true) ->
+            "Checking the Docker Sandboxes service and virtualization support. This step may produce no output."
+        stage.contains("List", true) || stage.contains("Verify sandbox", true) ->
+            "Reading sandbox state and verifying this project's sandbox."
+        stage.contains("Waiting for OpenCode", true) || stage.contains("port", true) ->
+            "Waiting for OpenCode to answer on its local port. The page opens automatically when it is ready."
+        stage.contains("Checking OpenCode", true) ->
+            "Checking that the configured OpenCode binary is available and can run."
+        stage.contains("Stop", true) || stage.contains("Remove", true) ->
+            "Finishing the previous process before starting again."
+        else ->
+            "OpenCode is loading its configuration and plugins. The page opens automatically when it is ready."
+    }

@@ -272,6 +272,7 @@ If a shape changed, fix the matching parser and its unit test, then update this 
 
 ## Verification
 
+- Kotlin formatting: `./gradlew ktfmtFormat` (here: `rtk ./gradlew ktfmtFormat`) formats main/test sources and root Gradle Kotlin scripts with ktfmt's KotlinLang style (four spaces, 100 columns). Run it before `check` and before committing Kotlin changes. `check` includes ktfmt's checks; formatting-only validation is `./gradlew ktfmtCheck`. Formatter plugin version lives in `gradle/libs.versions.toml`.
 - Primary: `./gradlew check` (use `rtk ./gradlew check` in this environment). Run after Kotlin, Gradle, plugin-descriptor, settings, protocol, or lifecycle changes.
 - `.github/workflows/jcef.yml` runs weekly and on manual dispatch against the latest stable 1.x / 2.x (`opencode-ai@1` / `@opencode/cli@2`, installed versions logged) with Xvfb and the platform JCEF runtime. Five live tests cover first-document callbacks, replacement, editor transfers, clipboard delivery, and a delayed Wayland clipboard source; skipped tests fail this lane. The headful Gradle classpath puts the platform's patched `module-intellij.libraries.jsvg.jar` before the charts module's incompatible embedded copy (baseline 2025.3.5 otherwise throws `IllegalAccessError` rendering editor-tab icons). Installed-IDE and Windows/Wayland validation remain separate.
 - README-only changes need no Gradle check unless they touch the plugin-description block between the `<!-- Plugin description -->` markers.

@@ -5,11 +5,11 @@ import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.util.Disposer
 import com.intellij.testFramework.ApplicationRule
 import de.moritzf.opencodewebpanel.features.OpenCodeChatInputService
+import java.util.concurrent.CompletableFuture
+import javax.swing.JPanel
 import org.junit.Assert.*
 import org.junit.ClassRule
 import org.junit.Test
-import java.util.concurrent.CompletableFuture
-import javax.swing.JPanel
 
 class OpenCodePanelControllerTest {
     @Test
@@ -53,7 +53,10 @@ class OpenCodePanelControllerTest {
         val candidates = ArrayDeque(listOf(first, failed, retry))
         lateinit var controller: OpenCodePanelController
         onEdt {
-            controller = OpenCodePanelController(ProjectManager.getInstance().defaultProject) { candidates.removeFirst() }
+            controller =
+                OpenCodePanelController(ProjectManager.getInstance().defaultProject) {
+                    candidates.removeFirst()
+                }
             controller.ensurePanel()
             controller.replacePanel()
         }
@@ -78,7 +81,10 @@ class OpenCodePanelControllerTest {
         val next = TestPanel()
         val candidates = ArrayDeque(listOf(first, next))
         onEdt {
-            val controller = OpenCodePanelController(ProjectManager.getInstance().defaultProject) { candidates.removeFirst() }
+            val controller =
+                OpenCodePanelController(ProjectManager.getInstance().defaultProject) {
+                    candidates.removeFirst()
+                }
             controller.ensurePanel()
             controller.replacePanel()
             Disposer.dispose(controller)
@@ -98,7 +104,10 @@ class OpenCodePanelControllerTest {
         val candidates = ArrayDeque(listOf(first, next))
         lateinit var controller: OpenCodePanelController
         onEdt {
-            controller = OpenCodePanelController(ProjectManager.getInstance().defaultProject) { candidates.removeFirst() }
+            controller =
+                OpenCodePanelController(ProjectManager.getInstance().defaultProject) {
+                    candidates.removeFirst()
+                }
             controller.ensurePanel()
             controller.showFailure()
             assertEquals(1, first.disposals)
@@ -119,17 +128,27 @@ class OpenCodePanelControllerTest {
         val deliveries = mutableListOf<OpenCodeChatInputService.Delivery>()
         var loads = 0
         var disposals = 0
+
         override fun prepareBrowserForReplacement() = ready
-        override fun checkAndLoadContent() { loads++ }
+
+        override fun checkAndLoadContent() {
+            loads++
+        }
+
         override fun dispatchChatBatch(delivery: OpenCodeChatInputService.Delivery): Boolean {
             deliveries += delivery
             return true
         }
+
         override fun onHostChanged() = Unit
-        override fun dispose() { disposals++ }
+
+        override fun dispose() {
+            disposals++
+        }
     }
 
-    private fun onEdt(action: () -> Unit) = ApplicationManager.getApplication().invokeAndWait(action)
+    private fun onEdt(action: () -> Unit) =
+        ApplicationManager.getApplication().invokeAndWait(action)
 
     companion object {
         @ClassRule @JvmField val application = ApplicationRule()

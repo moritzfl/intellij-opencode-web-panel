@@ -23,15 +23,20 @@ internal object OpenCodeClipboardText {
                     }
                     result.toString()
                 }
-            }.getOrNull()
+            }
+                .getOrNull()
             if (!text.isNullOrEmpty()) return text
         }
         return null
     }
 
     private fun flavors(transferable: Transferable): List<DataFlavor> = runCatching {
-        transferable.transferDataFlavors.filter {
-            it == DataFlavor.stringFlavor || (it.isFlavorTextType && it.isMimeTypeEqual("text/plain"))
-        }.sortedBy { if (it == DataFlavor.stringFlavor) 0 else 1 }
-    }.getOrDefault(emptyList())
+        transferable.transferDataFlavors
+            .filter {
+                it == DataFlavor.stringFlavor ||
+                    (it.isFlavorTextType && it.isMimeTypeEqual("text/plain"))
+            }
+            .sortedBy { if (it == DataFlavor.stringFlavor) 0 else 1 }
+    }
+        .getOrDefault(emptyList())
 }

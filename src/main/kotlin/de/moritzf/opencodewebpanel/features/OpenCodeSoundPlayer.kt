@@ -9,9 +9,9 @@ import javax.sound.sampled.AudioSystem
 import javax.sound.sampled.LineEvent
 
 /**
- * Plays bundled OpenCode notification sounds (WAV copies of the SPA's AAC assets) on a
- * background thread. JetBrains' JCEF ships without proprietary codecs, so OpenCode's own
- * `.aac` cues never decode in the embedded page; playing WAV via Java Sound sidesteps that.
+ * Plays bundled OpenCode notification sounds (WAV copies of the SPA's AAC assets) on a background
+ * thread. JetBrains' JCEF ships without proprietary codecs, so OpenCode's own `.aac` cues never
+ * decode in the embedded page; playing WAV via Java Sound sidesteps that.
  */
 internal object OpenCodeSoundPlayer {
     private const val DEBOUNCE_MILLIS = 400L
@@ -30,10 +30,12 @@ internal object OpenCodeSoundPlayer {
 
     private fun play(soundId: String) {
         val resource = "/sounds/$soundId.wav"
-        val input = OpenCodeSoundPlayer::class.java.getResourceAsStream(resource) ?: run {
-            thisLogger().warn("OpenCode sound resource missing: $resource")
-            return
-        }
+        val input =
+            OpenCodeSoundPlayer::class.java.getResourceAsStream(resource)
+                ?: run {
+                    thisLogger().warn("OpenCode sound resource missing: $resource")
+                    return
+                }
         try {
             AudioSystem.getAudioInputStream(input.buffered()).use { audio ->
                 val clip = AudioSystem.getClip()

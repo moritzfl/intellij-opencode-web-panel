@@ -6,8 +6,8 @@ import com.intellij.openapi.project.Project
 import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsState
 
 /**
- * Application-wide map from canonical directory to the OpenCode backend that owns that origin.
- * Host CLI and Docker Sandbox are both one process per workspace.
+ * Application-wide map from canonical directory to the OpenCode backend that owns that origin. Host
+ * CLI and Docker Sandbox are both one process per workspace.
  */
 class OpenCodeServerBackendRegistry : Disposable {
 
@@ -17,7 +17,8 @@ class OpenCodeServerBackendRegistry : Disposable {
 
     companion object {
         fun getInstance(): OpenCodeServerBackendRegistry {
-            return ApplicationManager.getApplication().getService(OpenCodeServerBackendRegistry::class.java)
+            return ApplicationManager.getApplication()
+                .getService(OpenCodeServerBackendRegistry::class.java)
         }
     }
 
@@ -27,14 +28,16 @@ class OpenCodeServerBackendRegistry : Disposable {
 
     fun backendFor(project: Project?): OpenCodeServerBackend {
         if (project == null || project.isDisposed) return nativeBackend()
-        val directory = OpenCodeProjectSettingsState.getInstance(project)
-            .effectiveProjectDirectory(project.basePath)
+        val directory =
+            OpenCodeProjectSettingsState.getInstance(project)
+                .effectiveProjectDirectory(project.basePath)
         return backendForCanonicalDirectory(directory)
     }
 
     fun backendForCanonicalDirectory(canonicalDirectory: String?): OpenCodeServerBackend {
-        val directory = OpenCodeServerProtocol.canonicalOpenCodeDirectory(canonicalDirectory)
-            ?: canonicalDirectory?.trim()?.takeIf { it.isNotBlank() }
+        val directory =
+            OpenCodeServerProtocol.canonicalOpenCodeDirectory(canonicalDirectory)
+                ?: canonicalDirectory?.trim()?.takeIf { it.isNotBlank() }
         if (directory == null) {
             synchronized(lock) {
                 return nativeBackends.getOrPut("") { SharedOpenCodeServerManager("") }
@@ -54,7 +57,11 @@ class OpenCodeServerBackendRegistry : Disposable {
 
     fun backend(backendId: String): OpenCodeServerBackend? {
         synchronized(lock) {
-            nativeBackends.values.firstOrNull { it.backendId == backendId }?.let { return it }
+            nativeBackends.values
+                .firstOrNull { it.backendId == backendId }
+                ?.let {
+                    return it
+                }
             return sbxBackends.values.firstOrNull { it.backendId == backendId }
         }
     }

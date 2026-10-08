@@ -6,8 +6,8 @@ import de.moritzf.opencodewebpanel.server.objectMember
 import de.moritzf.opencodewebpanel.server.stringMember
 
 /**
- * OpenCode web sound preferences from the mirrored `settings.v3` localStorage snapshot.
- * Defaults match OpenCode's SPA (`packages/app/src/context/settings.tsx`).
+ * OpenCode web sound preferences from the mirrored `settings.v3` localStorage snapshot. Defaults
+ * match OpenCode's SPA (`packages/app/src/context/settings.tsx`).
  */
 internal data class OpenCodeSoundSettings(
     val agentEnabled: Boolean = true,
@@ -35,28 +35,30 @@ internal data class OpenCodeSoundSettings(
 internal fun parseOpenCodeSoundSettings(snapshot: String?): OpenCodeSoundSettings {
     val defaults = OpenCodeSoundSettings()
     return runCatching {
-        val snapshotObject = JsonParser.parseString(snapshot.orEmpty())
-            .takeIf { it.isJsonObject }
-            ?.asJsonObject
-            ?: return defaults
-        val settingsValue = snapshotObject.get("settings.v3")
-            ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }
-            ?.asString
-            ?: return defaults
-        val settings = JsonParser.parseString(settingsValue)
-            .takeIf { it.isJsonObject }
-            ?.asJsonObject
-            ?: return defaults
-        val sounds = settings.objectMember("sounds") ?: return defaults
-        OpenCodeSoundSettings(
-            agentEnabled = sounds.booleanMember("agentEnabled") ?: defaults.agentEnabled,
-            agent = normalizeSoundId(sounds.stringMember("agent"), defaults.agent),
-            permissionsEnabled = sounds.booleanMember("permissionsEnabled") ?: defaults.permissionsEnabled,
-            permissions = normalizeSoundId(sounds.stringMember("permissions"), defaults.permissions),
-            errorsEnabled = sounds.booleanMember("errorsEnabled") ?: defaults.errorsEnabled,
-            errors = normalizeSoundId(sounds.stringMember("errors"), defaults.errors),
-        )
-    }.getOrDefault(defaults)
+            val snapshotObject =
+                JsonParser.parseString(snapshot.orEmpty()).takeIf { it.isJsonObject }?.asJsonObject
+                    ?: return defaults
+            val settingsValue =
+                snapshotObject
+                    .get("settings.v3")
+                    ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }
+                    ?.asString ?: return defaults
+            val settings =
+                JsonParser.parseString(settingsValue).takeIf { it.isJsonObject }?.asJsonObject
+                    ?: return defaults
+            val sounds = settings.objectMember("sounds") ?: return defaults
+            OpenCodeSoundSettings(
+                agentEnabled = sounds.booleanMember("agentEnabled") ?: defaults.agentEnabled,
+                agent = normalizeSoundId(sounds.stringMember("agent"), defaults.agent),
+                permissionsEnabled =
+                    sounds.booleanMember("permissionsEnabled") ?: defaults.permissionsEnabled,
+                permissions =
+                    normalizeSoundId(sounds.stringMember("permissions"), defaults.permissions),
+                errorsEnabled = sounds.booleanMember("errorsEnabled") ?: defaults.errorsEnabled,
+                errors = normalizeSoundId(sounds.stringMember("errors"), defaults.errors),
+            )
+        }
+        .getOrDefault(defaults)
 }
 
 private fun normalizeSoundId(id: String?, fallback: String): String {

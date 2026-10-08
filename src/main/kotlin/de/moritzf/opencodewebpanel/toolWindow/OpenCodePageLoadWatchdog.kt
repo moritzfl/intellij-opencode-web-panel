@@ -5,9 +5,9 @@ import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 /**
  * Pure policy for retrying a hung embedded page load.
  *
- * Never interrupt a navigation that has already started and is still within [DEFAULT_TIMEOUT_MILLIS].
- * `stopLoad` + `loadURL` during that window is what left the first panel stuck on
- * "Opening the OpenCode page…".
+ * Never interrupt a navigation that has already started and is still within
+ * [DEFAULT_TIMEOUT_MILLIS]. `stopLoad` + `loadURL` during that window is what left the first panel
+ * stuck on "Opening the OpenCode page…".
  */
 internal object OpenCodePageLoadWatchdog {
     const val DEFAULT_TIMEOUT_MILLIS = 20_000
@@ -16,9 +16,9 @@ internal object OpenCodePageLoadWatchdog {
 
     /**
      * How long a *first* navigation may wait for CDP document-start before loading anyway.
-     * Restart's new JCEF often never completes the about:blank bootstrap; sitting on
-     * “Opening the OpenCode page…” for [DOCUMENT_START_INSTALL_TIMEOUT_MILLIS] is worse
-     * than using the onLoadStart fallback.
+     * Restart's new JCEF often never completes the about:blank bootstrap; sitting on “Opening the
+     * OpenCode page…” for [DOCUMENT_START_INSTALL_TIMEOUT_MILLIS] is worse than using the
+     * onLoadStart fallback.
      */
     const val DOCUMENT_START_WAIT_BEFORE_LOAD_MILLIS = 2_000L
 
@@ -35,8 +35,7 @@ internal object OpenCodePageLoadWatchdog {
     }
 
     fun retryTarget(serverUrl: String, requestedUrl: String?, currentUrl: String?): String {
-        return requestedUrl
-            ?.takeIf { OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, it) }
+        return requestedUrl?.takeIf { OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, it) }
             ?: currentUrl?.takeIf { OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, it) }
             ?: OpenCodeServerProtocol.buildServerSessionUrl(serverUrl)
     }

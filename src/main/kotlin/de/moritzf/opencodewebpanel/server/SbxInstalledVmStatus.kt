@@ -5,7 +5,8 @@ internal data class SbxCreateSettingStatus(
     val desired: String,
     val installed: String?,
 ) {
-    val pending: Boolean get() = installed != null && installed != desired
+    val pending: Boolean
+        get() = installed != null && installed != desired
 }
 
 internal object SbxInstalledVmStatus {
@@ -35,9 +36,10 @@ internal object SbxInstalledVmStatus {
         }
         val pending = statuses.filter { it.pending }
         if (pending.isEmpty()) return null
-        return "Pending until Reset Sandbox: " + pending.joinToString("; ") { status ->
-            "${status.label} (installed ${status.installed}, desired ${status.desired})"
-        }
+        return "Pending until Reset Sandbox: " +
+            pending.joinToString("; ") { status ->
+                "${status.label} (installed ${status.installed}, desired ${status.desired})"
+            }
     }
 
     private fun yesNo(value: Boolean): String = if (value) "on" else "off"

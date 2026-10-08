@@ -13,7 +13,10 @@ import de.moritzf.opencodewebpanel.server.SbxCli
 // Roaming is disabled deliberately: the state mixes machine-specific values (binary path,
 // fixed port) and the mirrored OpenCode settings snapshot (theme/language/model/`settings.v3`),
 // none of which belong in Settings Sync or exported settings.
-@State(name = "OpenCodeWebPanelSettings", storages = [Storage("opencode-web-panel.xml", roamingType = RoamingType.DISABLED)])
+@State(
+    name = "OpenCodeWebPanelSettings",
+    storages = [Storage("opencode-web-panel.xml", roamingType = RoamingType.DISABLED)],
+)
 @Service(Service.Level.APP)
 class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
     var runtimeMode: String = OpenCodeRuntimeMode.HOST.name
@@ -50,7 +53,10 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
     var enableSystemNotifications: Boolean = true
     var enablePermissionNotificationActions: Boolean = true
     var showAgentStatusBadge: Boolean = true
-    /** Off until the user opts in. Warn when a selected conversation's directory is not this workspace. */
+    /**
+     * Off until the user opts in. Warn when a selected conversation's directory is not this
+     * workspace.
+     */
     var warnForeignSession: Boolean = false
     var autoContinueInterruptedSessions: Boolean = true
     var waitForIntellijMcpServer: Boolean = true
@@ -99,10 +105,10 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
         autoContinueInterruptedSessions = state.autoContinueInterruptedSessions
         waitForIntellijMcpServer = state.waitForIntellijMcpServer
         enableServerLogs = state.enableServerLogs
-        openCodeLocalStorageSnapshot = sanitizeOpenCodeLocalStorageSnapshot(state.openCodeLocalStorageSnapshot)
-        val legacySnapshots = sanitizeLocalStorageSnapshotsByBackend(
-            state.openCodeLocalStorageSnapshotsByBackend,
-        )
+        openCodeLocalStorageSnapshot =
+            sanitizeOpenCodeLocalStorageSnapshot(state.openCodeLocalStorageSnapshot)
+        val legacySnapshots =
+            sanitizeLocalStorageSnapshotsByBackend(state.openCodeLocalStorageSnapshotsByBackend)
         if (openCodeLocalStorageSnapshot == "{}") {
             openCodeLocalStorageSnapshot = firstNonEmptySnapshot(legacySnapshots.values)
         }
@@ -112,7 +118,8 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
     fun localStorageSnapshot(backendId: String = OpenCodeServerBackend.NATIVE_ID): String {
         val shared = sanitizeOpenCodeLocalStorageSnapshot(openCodeLocalStorageSnapshot)
         if (shared != "{}") return shared
-        val keyed = sanitizeOpenCodeLocalStorageSnapshot(openCodeLocalStorageSnapshotsByBackend[backendId])
+        val keyed =
+            sanitizeOpenCodeLocalStorageSnapshot(openCodeLocalStorageSnapshotsByBackend[backendId])
         if (keyed != "{}") return keyed
         return firstNonEmptySnapshot(openCodeLocalStorageSnapshotsByBackend.values)
     }
@@ -129,7 +136,8 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
 
     fun binaryModeValue(): OpenCodeBinaryMode = OpenCodeBinaryMode.fromStorageValue(binaryMode)
 
-    fun sbxBinaryModeValue(): OpenCodeBinaryMode = OpenCodeBinaryMode.fromStorageValue(sbxBinaryMode)
+    fun sbxBinaryModeValue(): OpenCodeBinaryMode =
+        OpenCodeBinaryMode.fromStorageValue(sbxBinaryMode)
 
     fun proxyModeValue(): OpenCodeProxyMode = OpenCodeProxyMode.fromStorageValue(proxyMode)
 
@@ -147,7 +155,8 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
     fun executablePath(): String {
         return when (binaryModeValue()) {
             OpenCodeBinaryMode.AUTO -> OpenCodeServerProtocol.DEFAULT_EXECUTABLE
-            OpenCodeBinaryMode.CUSTOM -> binaryPath.ifBlank { OpenCodeServerProtocol.DEFAULT_EXECUTABLE }
+            OpenCodeBinaryMode.CUSTOM ->
+                binaryPath.ifBlank { OpenCodeServerProtocol.DEFAULT_EXECUTABLE }
         }
     }
 
@@ -187,12 +196,15 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
 
         fun sanitizeOpenCodeLocalStorageSnapshot(snapshot: String?): String {
             val text = snapshot?.trim().orEmpty()
-            if (text.isBlank() || text.length > MAX_OPEN_CODE_LOCAL_STORAGE_SNAPSHOT_CHARS) return "{}"
+            if (text.isBlank() || text.length > MAX_OPEN_CODE_LOCAL_STORAGE_SNAPSHOT_CHARS)
+                return "{}"
             if (!text.startsWith('{') || !text.endsWith('}')) return "{}"
             return text
         }
 
-        fun sanitizeLocalStorageSnapshotsByBackend(source: Map<String, String>?): MutableMap<String, String> {
+        fun sanitizeLocalStorageSnapshotsByBackend(
+            source: Map<String, String>?
+        ): MutableMap<String, String> {
             val result = HashMap<String, String>()
             source.orEmpty().forEach { (key, value) ->
                 val id = key.trim()
@@ -204,16 +216,15 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
         }
 
         private fun firstNonEmptySnapshot(source: Collection<String>): String {
-            return source.map(::sanitizeOpenCodeLocalStorageSnapshot).firstOrNull { it != "{}" } ?: "{}"
+            return source.map(::sanitizeOpenCodeLocalStorageSnapshot).firstOrNull { it != "{}" }
+                ?: "{}"
         }
-
     }
 }
 
 enum class OpenCodeBinaryMode {
     AUTO,
-    CUSTOM,
-    ;
+    CUSTOM;
 
     companion object {
         fun fromStorageValue(value: String?): OpenCodeBinaryMode {
@@ -224,8 +235,7 @@ enum class OpenCodeBinaryMode {
 
 enum class OpenCodeRuntimeMode {
     HOST,
-    DOCKER_SANDBOX,
-    ;
+    DOCKER_SANDBOX;
 
     companion object {
         fun fromStorageValue(value: String?): OpenCodeRuntimeMode {
@@ -236,8 +246,7 @@ enum class OpenCodeRuntimeMode {
 
 enum class OpenCodePortMode {
     AUTO,
-    FIXED,
-    ;
+    FIXED;
 
     companion object {
         fun fromStorageValue(value: String?): OpenCodePortMode {
@@ -249,8 +258,7 @@ enum class OpenCodePortMode {
 enum class OpenCodeProxyMode {
     IDE,
     ENVIRONMENT,
-    NONE,
-    ;
+    NONE;
 
     companion object {
         fun fromStorageValue(value: String?): OpenCodeProxyMode {

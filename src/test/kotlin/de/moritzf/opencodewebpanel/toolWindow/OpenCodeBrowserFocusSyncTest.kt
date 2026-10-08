@@ -16,13 +16,14 @@ class OpenCodeBrowserFocusSyncTest {
         focusOwner: Component?,
         active: Boolean = true,
         recorder: Recorder,
-    ) = OpenCodeBrowserFocusSync(
-        component = { component },
-        isActive = { active },
-        setBrowserFocus = { recorder.calls.add(it) },
-        focusOwner = { focusOwner },
-        runOnUiThread = { it.run() },
-    )
+    ) =
+        OpenCodeBrowserFocusSync(
+            component = { component },
+            isActive = { active },
+            setBrowserFocus = { recorder.calls.add(it) },
+            focusOwner = { focusOwner },
+            runOnUiThread = { it.run() },
+        )
 
     @Test
     fun reassertsChromiumFocusWhenBrowserComponentOwnsFocus() {
@@ -69,7 +70,8 @@ class OpenCodeBrowserFocusSyncTest {
         val component = JPanel()
         val recorder = Recorder()
 
-        sync(component, focusOwner = component, active = false, recorder = recorder).reassertIfFocused()
+        sync(component, focusOwner = component, active = false, recorder = recorder)
+            .reassertIfFocused()
 
         assertEquals(emptyList<Boolean>(), recorder.calls)
     }

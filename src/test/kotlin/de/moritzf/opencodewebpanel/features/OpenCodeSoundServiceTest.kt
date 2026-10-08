@@ -107,7 +107,13 @@ class OpenCodeSoundServiceTest {
         sessions["ses_native"] = OpenCodeServerProtocol.SessionInfo("Done", parentID = null)
         sessions["ses_sbx"] = OpenCodeServerProtocol.SessionInfo("Done", parentID = null)
         handle(event("session.status", """{"sessionID":"ses_native","status":{"type":"busy"}}"""))
-        handle(event("session.status", """{"sessionID":"ses_sbx","status":{"type":"busy"}}""", backendId = SBX))
+        handle(
+            event(
+                "session.status",
+                """{"sessionID":"ses_sbx","status":{"type":"busy"}}""",
+                backendId = SBX,
+            )
+        )
         // A new server generation on one backend must only invalidate that backend's sessions.
         OpenCodeSoundService.handleConnected(SBX, 1)
         handle(event("session.idle", """{"sessionID":"ses_native"}"""))
@@ -126,7 +132,11 @@ class OpenCodeSoundServiceTest {
         sessions["ses_1"] = OpenCodeServerProtocol.SessionInfo("Done", parentID = null)
         val seen = mutableListOf<String>()
         OpenCodeSoundService.handleEvent(
-            event("session.status", """{"sessionID":"ses_1","status":{"type":"busy"}}""", backendId = SBX),
+            event(
+                "session.status",
+                """{"sessionID":"ses_1","status":{"type":"busy"}}""",
+                backendId = SBX,
+            ),
             settings = defaults,
             fetchSession = { backendId, _, sessionID ->
                 seen += backendId
@@ -179,7 +189,10 @@ class OpenCodeSoundServiceTest {
     fun usesCustomSoundIdsFromSettings() {
         sessions["ses_1"] = OpenCodeServerProtocol.SessionInfo("Done", parentID = null)
         val custom = defaults.copy(agent = "alert-05", permissions = "yup-01", errors = "nope-12")
-        handle(event("session.status", """{"sessionID":"ses_1","status":{"type":"busy"}}"""), settings = custom)
+        handle(
+            event("session.status", """{"sessionID":"ses_1","status":{"type":"busy"}}"""),
+            settings = custom,
+        )
         handle(event("session.idle", """{"sessionID":"ses_1"}"""), settings = custom)
         handle(event("permission.asked", """{"id":"per_1"}"""), settings = custom)
         handle(event("session.error", """{"sessionID":"ses_1"}"""), settings = custom)

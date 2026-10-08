@@ -20,11 +20,13 @@ class OpenCodeSoundSettingsTest {
 
     @Test
     fun readsSoundsFromSettingsV3() {
-        val snapshot = """
+        val snapshot =
+            """
             {
               "settings.v3":"{\"sounds\":{\"agentEnabled\":false,\"agent\":\"alert-03\",\"permissionsEnabled\":true,\"permissions\":\"yup-02\",\"errorsEnabled\":false,\"errors\":\"nope-01\"}}"
             }
-        """.trimIndent()
+            """
+                .trimIndent()
         val settings = parseOpenCodeSoundSettings(snapshot)
         assertFalse(settings.agentEnabled)
         assertEquals("alert-03", settings.agent)
@@ -36,11 +38,13 @@ class OpenCodeSoundSettingsTest {
 
     @Test
     fun unknownSoundIdsFallBackToDefaults() {
-        val snapshot = """
+        val snapshot =
+            """
             {
               "settings.v3":"{\"sounds\":{\"agent\":\"not-a-real-sound\",\"permissions\":\"\",\"errors\":\"alert-99\"}}"
             }
-        """.trimIndent()
+            """
+                .trimIndent()
         val settings = parseOpenCodeSoundSettings(snapshot)
         assertEquals(OpenCodeSoundSettings.DEFAULT_AGENT, settings.agent)
         assertEquals(OpenCodeSoundSettings.DEFAULT_PERMISSIONS, settings.permissions)

@@ -11,7 +11,6 @@ import de.moritzf.opencodewebpanel.settings.OpenCodePasswordStore
 import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsState
 import de.moritzf.opencodewebpanel.settings.OpenCodeProxyMode
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
-import org.jetbrains.annotations.TestOnly
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.nio.file.Path
@@ -19,10 +18,10 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
+import org.jetbrains.annotations.TestOnly
 
-class SharedOpenCodeServerManager(
-    private val canonicalDirectory: String,
-) : OpenCodeServerBackend, Disposable {
+class SharedOpenCodeServerManager(private val canonicalDirectory: String) :
+    OpenCodeServerBackend, Disposable {
 
     companion object {
         private const val SERVER_START_TIMEOUT_MILLIS = 60_000L
@@ -84,8 +83,7 @@ class SharedOpenCodeServerManager(
 
     // Written when a periodic-check cycle is (re)started and then only touched by the
     // single-threaded scheduler; volatile covers the cross-thread handoff.
-    @Volatile
-    private var lastPeriodicCheckMillis = 0L
+    @Volatile private var lastPeriodicCheckMillis = 0L
     private var preferredBasePath: String? = null
     private var lastPortArgument = OpenCodeServerProtocol.DYNAMIC_PORT
     private var consecutiveStartFailures = 0
@@ -95,7 +93,8 @@ class SharedOpenCodeServerManager(
     private val scheduler = Executors.newSingleThreadScheduledExecutor { runnable ->
         Thread(runnable, "OpenCode-Server-Checker-$backendId").apply { isDaemon = true }
     }
-    // Serializes dispose + process kill so settings-driven stop and restart never race on a fixed port.
+    // Serializes dispose + process kill so settings-driven stop and restart never race on a fixed
+    // port.
     private val stopExecutor = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "OpenCode-Server-Stop-$backendId").apply { isDaemon = true }
     }
@@ -124,13 +123,14 @@ class SharedOpenCodeServerManager(
 
         val url = getServerUrl()
         if (url != null) {
-            val validationId = synchronized(lock) {
-                pendingStarts.add(callback)
-                if (starting) return
-                starting = true
-                allowHealthRestart = true
-                (++startSequence).also { startupProgress.begin(it) }
-            }
+            val validationId =
+                synchronized(lock) {
+                    pendingStarts.add(callback)
+                    if (starting) return
+                    starting = true
+                    allowHealthRestart = true
+                    (++startSequence).also { startupProgress.begin(it) }
+                }
             // Keep RUNNING while merely validating a healthy server; flipping to STARTING here
             // would flash the status strip in every open panel on each tool-window load.
             if (getLifecycleState() != OpenCodeServerLifecycleState.RUNNING) {
@@ -142,13 +142,14 @@ class SharedOpenCodeServerManager(
             return
         }
 
-        val startId = synchronized(lock) {
-            pendingStarts.add(callback)
-            if (starting) return
-            starting = true
-            allowHealthRestart = true
-            (++startSequence).also { startupProgress.begin(it) }
-        }
+        val startId =
+            synchronized(lock) {
+                pendingStarts.add(callback)
+                if (starting) return
+                starting = true
+                allowHealthRestart = true
+                (++startSequence).also { startupProgress.begin(it) }
+            }
 
         setLifecycleState(OpenCodeServerLifecycleState.STARTING)
         // Drain the stop queue first. After an explicit Stop the kill is still running on
@@ -160,12 +161,24 @@ class SharedOpenCodeServerManager(
             destroyCurrentProcess()
             val backoffMillis = remainingStartBackoffMillis()
             if (backoffMillis > 0) {
-                startupProgress.step(startId, "Waiting before retry…", "Pausing briefly after the last failed start. OpenCode will retry automatically.", backoffMillis)
-                thisLogger().warn("Delaying OpenCode server start after recent failure by ${backoffMillis}ms")
+                startupProgress.step(
+                    startId,
+                    "Waiting before retry…",
+                    "Pausing briefly after the last failed start. OpenCode will retry automatically.",
+                    backoffMillis,
+                )
+                thisLogger()
+                    .warn(
+                        "Delaying OpenCode server start after recent failure by ${backoffMillis}ms"
+                    )
                 scheduler.schedule(
                     {
                         if (isCurrentStart(startId)) {
-                            startOpenCodeServer(project.takeUnless { it.isDisposed }, basePath, startId)
+                            startOpenCodeServer(
+                                project.takeUnless { it.isDisposed },
+                                basePath,
+                                startId,
+                            )
                         }
                     },
                     backoffMillis,
@@ -177,7 +190,12 @@ class SharedOpenCodeServerManager(
         }
     }
 
-    private fun validateExistingServerOrStart(project: Project, projectBasePath: String?, url: String, startId: Long) {
+    private fun validateExistingServerOrStart(
+        project: Project,
+        projectBasePath: String?,
+        url: String,
+        startId: Long,
+    ) {
         if (!isCurrentStart(startId)) return
         if (checkServerRespondingWithConfirmation(url)) {
             if (getServerVersion() == null) refreshServerVersion()
@@ -196,14 +214,13 @@ class SharedOpenCodeServerManager(
     /**
      * Whether browser requests and auth challenges may use the current server credentials.
      *
-     * True when the last origin and password are known — independent of launcher process
-     * liveness and of live [getServerUrl], because stop/restart nulls the live URL while
-     * the parked JCEF page still retries. On Windows the launcher also exits after spawning
-     * the real server while the endpoint stays up.
+     * True when the last origin and password are known — independent of launcher process liveness
+     * and of live [getServerUrl], because stop/restart nulls the live URL while the parked JCEF
+     * page still retries. On Windows the launcher also exits after spawning the real server while
+     * the endpoint stays up.
      */
-    override fun isServerReadyForAuth(): Boolean = synchronized(lock) {
-        !authServerUrl.isNullOrBlank() && !authServerPassword.isNullOrBlank()
-    }
+    override fun isServerReadyForAuth(): Boolean =
+        synchronized(lock) { !authServerUrl.isNullOrBlank() && !authServerPassword.isNullOrBlank() }
 
     override fun getAuthServerUrl(): String? = synchronized(lock) { authServerUrl }
 
@@ -226,19 +243,22 @@ class SharedOpenCodeServerManager(
             try {
                 checkServerHealth()
             } catch (e: Exception) {
-                thisLogger().warn("OpenCode health check after browser failure failed: ${e.message}")
+                thisLogger()
+                    .warn("OpenCode health check after browser failure failed: ${e.message}")
             }
         }
     }
 
-    override fun getLifecycleState(): OpenCodeServerLifecycleState = synchronized(lock) { lifecycleState }
+    override fun getLifecycleState(): OpenCodeServerLifecycleState =
+        synchronized(lock) { lifecycleState }
 
     @TestOnly
     fun setServerRunning(running: Boolean) {
-        synchronized(lock) {
-            serverRunning = running
-        }
-        setLifecycleState(if (running) OpenCodeServerLifecycleState.RUNNING else OpenCodeServerLifecycleState.STOPPED)
+        synchronized(lock) { serverRunning = running }
+        setLifecycleState(
+            if (running) OpenCodeServerLifecycleState.RUNNING
+            else OpenCodeServerLifecycleState.STOPPED
+        )
     }
 
     fun getServerProcess(): Process? = synchronized(lock) { serverProcess }
@@ -251,57 +271,68 @@ class SharedOpenCodeServerManager(
 
     override fun getWireProtocol(): OpenCodeWireProtocol = synchronized(lock) { wireProtocol }
 
-    /** Returns an unsupported version once, so several open panels do not show duplicate warnings. */
-    override fun consumeUnsupportedServerVersionWarning(): String? = synchronized(lock) {
-        val version = serverVersion?.trim()?.takeIf { it.isNotEmpty() } ?: return@synchronized null
-        if (!OpenCodeServerProtocol.isOpenCodeVersionUnsupported(version) || unsupportedVersionWarningShownFor == version) {
-            return@synchronized null
+    /**
+     * Returns an unsupported version once, so several open panels do not show duplicate warnings.
+     */
+    override fun consumeUnsupportedServerVersionWarning(): String? =
+        synchronized(lock) {
+            val version =
+                serverVersion?.trim()?.takeIf { it.isNotEmpty() } ?: return@synchronized null
+            if (
+                !OpenCodeServerProtocol.isOpenCodeVersionUnsupported(version) ||
+                    unsupportedVersionWarningShownFor == version
+            ) {
+                return@synchronized null
+            }
+            unsupportedVersionWarningShownFor = version
+            version
         }
-        unsupportedVersionWarningShownFor = version
-        version
-    }
 
     override fun startFailureMessage(): String? = null
 
     /** Returns true once when the running server would make the embedded page use permission v2. */
-    override fun consumeV2ProtocolWarning(): Boolean = synchronized(lock) {
-        if (v2ProtocolWarningShown || wireProtocol != OpenCodeWireProtocol.V1_18_EMBEDDED_V2) {
-            return@synchronized false
+    override fun consumeV2ProtocolWarning(): Boolean =
+        synchronized(lock) {
+            if (v2ProtocolWarningShown || wireProtocol != OpenCodeWireProtocol.V1_18_EMBEDDED_V2) {
+                return@synchronized false
+            }
+            v2ProtocolWarningShown = true
+            true
         }
-        v2ProtocolWarningShown = true
-        true
-    }
 
     /**
-     * Increments each time a new server process is launched (0 while none was ever started).
-     * Lets callers distinguish "the server actually restarted" from mere revalidation of a
-     * healthy server, e.g. to run one-shot recovery work per server process.
+     * Increments each time a new server process is launched (0 while none was ever started). Lets
+     * callers distinguish "the server actually restarted" from mere revalidation of a healthy
+     * server, e.g. to run one-shot recovery work per server process.
      */
     override fun getServerGeneration(): Long = synchronized(lock) { serverGeneration }
 
     /**
-     * Wall-clock time the current server generation's process was launched (0 while none was
-     * ever started). Anything created after this instant happened on the live server and can
-     * therefore not have been interrupted by the previous server's death.
+     * Wall-clock time the current server generation's process was launched (0 while none was ever
+     * started). Anything created after this instant happened on the live server and can therefore
+     * not have been interrupted by the previous server's death.
      */
-    override fun getServerGenerationStartedAtMillis(): Long = synchronized(lock) { serverGenerationStartedAtMillis }
+    override fun getServerGenerationStartedAtMillis(): Long =
+        synchronized(lock) { serverGenerationStartedAtMillis }
 
     /** Best-effort, informational only: refreshes the reported OpenCode version off the EDT. */
     private fun refreshServerVersion() {
-        val target = synchronized(lock) {
-            ServerProbeTarget(
-                url = serverUrl ?: return,
-                password = serverPassword ?: return,
-                generation = serverGeneration,
-            )
-        }
+        val target =
+            synchronized(lock) {
+                ServerProbeTarget(
+                    url = serverUrl ?: return,
+                    password = serverPassword ?: return,
+                    generation = serverGeneration,
+                )
+            }
         val auth = OpenCodeServerProtocol.buildBasicAuthHeader(target.password)
         val version = OpenCodeServerProtocol.fetchServerVersion(target.url, auth)
         val protocol = OpenCodeServerProtocol.detectWireProtocol(target.url, auth)
         synchronized(lock) {
-            if (serverUrl == target.url &&
-                serverPassword == target.password &&
-                serverGeneration == target.generation
+            if (
+                serverUrl == target.url &&
+                    serverPassword == target.password &&
+                    serverGeneration == target.generation
             ) {
                 serverVersion = version
                 wireProtocol = protocol
@@ -336,15 +367,16 @@ class SharedOpenCodeServerManager(
     override fun stopServer(onStopped: () -> Unit) {
         try {
             val callbacks: List<StartCallback>
-            val resources = synchronized(lock) {
-                startupProgress.finish(startSequence)
-                startSequence++
-                starting = false
-                allowHealthRestart = false
-                callbacks = pendingStarts.toList()
-                pendingStarts.clear()
-                detachServerResources()
-            }
+            val resources =
+                synchronized(lock) {
+                    startupProgress.finish(startSequence)
+                    startSequence++
+                    starting = false
+                    allowHealthRestart = false
+                    callbacks = pendingStarts.toList()
+                    pendingStarts.clear()
+                    detachServerResources()
+                }
 
             setLifecycleState(OpenCodeServerLifecycleState.STOPPED)
             notifyStartCallbacks(callbacks, success = false)
@@ -371,14 +403,15 @@ class SharedOpenCodeServerManager(
             return
         }
         val resources: ServerResourcesToStop
-        val startId = synchronized(lock) {
-            pendingStarts.add(callback)
-            if (starting) return
-            starting = true
-            allowHealthRestart = true
-            resources = detachServerResources()
-            (++startSequence).also { startupProgress.begin(it) }
-        }
+        val startId =
+            synchronized(lock) {
+                pendingStarts.add(callback)
+                if (starting) return
+                starting = true
+                allowHealthRestart = true
+                resources = detachServerResources()
+                (++startSequence).also { startupProgress.begin(it) }
+            }
 
         setLifecycleState(OpenCodeServerLifecycleState.RESTARTING)
         // Wait for the previous process to finish stopping before binding a new one (fixed port).
@@ -392,14 +425,15 @@ class SharedOpenCodeServerManager(
     }
 
     private fun detachServerResources(): ServerResourcesToStop {
-        val resources = ServerResourcesToStop(
-            checkScheduledFuture,
-            serverProcess,
-            serverProcessDescendants,
-            serverUrl,
-            serverPassword,
-            wireProtocol,
-        )
+        val resources =
+            ServerResourcesToStop(
+                checkScheduledFuture,
+                serverProcess,
+                serverProcessDescendants,
+                serverUrl,
+                serverPassword,
+                wireProtocol,
+            )
         checkScheduledFuture = null
         serverProcess = null
         serverProcessDescendants = emptyList()
@@ -415,7 +449,11 @@ class SharedOpenCodeServerManager(
 
     private fun stopResources(resources: ServerResourcesToStop) {
         resources.future?.cancel(true)
-        disposeServerResources(resources.serverUrl, resources.serverPassword, resources.wireProtocol)
+        disposeServerResources(
+            resources.serverUrl,
+            resources.serverPassword,
+            resources.wireProtocol,
+        )
         processTerminator.destroy(resources.process, resources.processDescendants)
     }
 
@@ -434,7 +472,8 @@ class SharedOpenCodeServerManager(
                 try {
                     after?.invoke()
                 } catch (e: Exception) {
-                    thisLogger().error("Error after stopping OpenCode server resources: ${e.message}")
+                    thisLogger()
+                        .error("Error after stopping OpenCode server resources: ${e.message}")
                 }
             }
         }
@@ -450,16 +489,17 @@ class SharedOpenCodeServerManager(
 
     override fun dispose() {
         try {
-            val resources = synchronized(lock) {
-                disposed = true
-                startSequence++
-                starting = false
-                allowHealthRestart = false
-                authServerUrl = null
-                authServerPassword = null
-                pendingStarts.clear()
-                detachServerResources()
-            }
+            val resources =
+                synchronized(lock) {
+                    disposed = true
+                    startSequence++
+                    starting = false
+                    allowHealthRestart = false
+                    authServerUrl = null
+                    authServerPassword = null
+                    pendingStarts.clear()
+                    detachServerResources()
+                }
             setLifecycleState(OpenCodeServerLifecycleState.STOPPED)
             // On IDE shutdown wait for the kill (bounded) so we do not orphan the server process.
             val finished = CountDownLatch(1)
@@ -486,42 +526,46 @@ class SharedOpenCodeServerManager(
             if (checkScheduledFuture != null) return
 
             lastPeriodicCheckMillis = System.currentTimeMillis()
-            checkScheduledFuture = scheduler.scheduleAtFixedRate(
-                {
-                    try {
-                        publishResumeFromSuspendIfDetected()
-                        checkServerHealth()
-                    } catch (e: Exception) {
-                        thisLogger().error("Error during periodic check: ${e.message}")
-                    }
-                },
-                OpenCodeServerProtocol.CHECK_INTERVAL_SECONDS,
-                OpenCodeServerProtocol.CHECK_INTERVAL_SECONDS,
-                TimeUnit.SECONDS,
-            )
+            checkScheduledFuture =
+                scheduler.scheduleAtFixedRate(
+                    {
+                        try {
+                            publishResumeFromSuspendIfDetected()
+                            checkServerHealth()
+                        } catch (e: Exception) {
+                            thisLogger().error("Error during periodic check: ${e.message}")
+                        }
+                    },
+                    OpenCodeServerProtocol.CHECK_INTERVAL_SECONDS,
+                    OpenCodeServerProtocol.CHECK_INTERVAL_SECONDS,
+                    TimeUnit.SECONDS,
+                )
         }
         thisLogger().info("Started periodic server health check")
     }
 
     /**
      * The periodic check runs on a fixed monotonic-clock rate, so an oversized wall-clock gap
-     * between two runs means the machine was suspended in between. Listeners use this to
-     * recover sessions whose turn the suspend severed; publish before the health check so the
-     * signal is not lost when the check ends up restarting the server.
+     * between two runs means the machine was suspended in between. Listeners use this to recover
+     * sessions whose turn the suspend severed; publish before the health check so the signal is not
+     * lost when the check ends up restarting the server.
      */
     private fun publishResumeFromSuspendIfDetected() {
         val now = System.currentTimeMillis()
         val previous = lastPeriodicCheckMillis
         lastPeriodicCheckMillis = now
-        val gap = OpenCodeServerProtocol.detectSuspendGapMillis(
-            previous,
-            now,
-            TimeUnit.SECONDS.toMillis(OpenCodeServerProtocol.CHECK_INTERVAL_SECONDS),
-        ) ?: return
-        thisLogger().info("Detected resume from a ~${gap / 1000}s system suspend; notifying listeners")
+        val gap =
+            OpenCodeServerProtocol.detectSuspendGapMillis(
+                previous,
+                now,
+                TimeUnit.SECONDS.toMillis(OpenCodeServerProtocol.CHECK_INTERVAL_SECONDS),
+            ) ?: return
+        thisLogger()
+            .info("Detected resume from a ~${gap / 1000}s system suspend; notifying listeners")
         globalEventStream.reconnectNow()
         try {
-            ApplicationManager.getApplication().messageBus
+            ApplicationManager.getApplication()
+                .messageBus
                 .syncPublisher(OpenCodeSuspendResumeListener.TOPIC)
                 .resumedFromSuspend(lastAliveMillis = previous, resumedAtMillis = now)
         } catch (e: Exception) {
@@ -530,26 +574,30 @@ class SharedOpenCodeServerManager(
     }
 
     private fun cancelPeriodicCheck(mayInterruptIfRunning: Boolean = false) {
-        val future = synchronized(lock) {
-            checkScheduledFuture.also { checkScheduledFuture = null }
-        }
+        val future =
+            synchronized(lock) { checkScheduledFuture.also { checkScheduledFuture = null } }
         future?.cancel(mayInterruptIfRunning)
     }
 
     private fun checkServerHealth() {
         val url = getServerUrl()
-        if (url == null || !isHealthRestartAllowed() || checkServerRespondingWithConfirmation(url)) return
+        if (url == null || !isHealthRestartAllowed() || checkServerRespondingWithConfirmation(url))
+            return
 
         // Confirmation can sleep for several seconds. Abort if stop/settings/dispose changed
         // the world while we were probing — never resurrect an explicitly stopped server.
         if (getServerUrl() != url || isDisposed() || !isHealthRestartAllowed()) {
-            thisLogger().info("Skipping OpenCode health restart; server state changed during confirmation")
+            thisLogger()
+                .info("Skipping OpenCode health restart; server state changed during confirmation")
             return
         }
 
         val backoffMillis = remainingStartBackoffMillis()
         if (backoffMillis > 0) {
-            thisLogger().warn("Skipping OpenCode server restart during startup backoff for ${backoffMillis}ms")
+            thisLogger()
+                .warn(
+                    "Skipping OpenCode server restart during startup backoff for ${backoffMillis}ms"
+                )
             return
         }
 
@@ -569,7 +617,8 @@ class SharedOpenCodeServerManager(
     /** Reserves and publishes a health restart under one lock so stop cannot be overtaken. */
     private fun reserveHealthRestart(url: String): HealthRestartReservation? {
         return synchronized(lock) {
-            if (starting || disposed || !allowHealthRestart || serverUrl != url) return@synchronized null
+            if (starting || disposed || !allowHealthRestart || serverUrl != url)
+                return@synchronized null
             starting = true
             val startId = ++startSequence
             startupProgress.begin(startId)
@@ -582,17 +631,20 @@ class SharedOpenCodeServerManager(
     }
 
     @TestOnly
-    internal fun reserveHealthRestartForTests(url: String): Boolean = reserveHealthRestart(url) != null
+    internal fun reserveHealthRestartForTests(url: String): Boolean =
+        reserveHealthRestart(url) != null
 
-    private fun isHealthRestartAllowed(): Boolean = synchronized(lock) { allowHealthRestart && !disposed }
+    private fun isHealthRestartAllowed(): Boolean =
+        synchronized(lock) { allowHealthRestart && !disposed }
 
     private fun startOpenCodeServer(project: Project?, projectBasePath: String?, startId: Long) {
         if (project != null) {
-            val task = object : Backgroundable(project, "Starting OpenCode server", true) {
-                override fun run(indicator: ProgressIndicator) {
-                    runOpenCodeServerStart(project, projectBasePath, startId, indicator)
+            val task =
+                object : Backgroundable(project, "Starting OpenCode server", true) {
+                    override fun run(indicator: ProgressIndicator) {
+                        runOpenCodeServerStart(project, projectBasePath, startId, indicator)
+                    }
                 }
-            }
             ProgressManager.getInstance().run(task)
             return
         }
@@ -630,17 +682,23 @@ class SharedOpenCodeServerManager(
             val password = OpenCodePasswordStore.getInstance().ensurePasswordBlocking()
             val settings = OpenCodeSettingsState.getInstance()
             indicator?.text = "Starting OpenCode…"
-            startupProgress.step(startId, "Starting OpenCode…", startupStageExplanation("Starting OpenCode"), SERVER_START_TIMEOUT_MILLIS)
+            startupProgress.step(
+                startId,
+                "Starting OpenCode…",
+                startupStageExplanation("Starting OpenCode"),
+                SERVER_START_TIMEOUT_MILLIS,
+            )
             val port = portArgumentFor(project)
             val executable = settings.executablePath()
-            val processBuilder = OpenCodeServerProtocol.createProcessBuilder(
-                projectBasePath,
-                password,
-                port,
-                executable,
-                httpProxy = OpenCodeProcessProxyEnvironment.resolveFromSettings(settings),
-                stripInheritedProxy = settings.proxyModeValue() == OpenCodeProxyMode.NONE,
-            )
+            val processBuilder =
+                OpenCodeServerProtocol.createProcessBuilder(
+                    projectBasePath,
+                    password,
+                    port,
+                    executable,
+                    httpProxy = OpenCodeProcessProxyEnvironment.resolveFromSettings(settings),
+                    stripInheritedProxy = settings.proxyModeValue() == OpenCodeProxyMode.NONE,
+                )
             serverLogBuffer.startNewFile()
             process = processBuilder.start()
 
@@ -651,40 +709,51 @@ class SharedOpenCodeServerManager(
 
             val reader = BufferedReader(InputStreamReader(process.inputStream))
             val urlLatch = CountDownLatch(1)
-            val logThread = Thread({
-                try {
-                    reader.useLines { lines ->
-                        lines.forEach { line ->
-                            // Server output goes to the dedicated log file; keep the IDE log
-                            // at debug so idea.log does not mirror every server line.
-                            val safeLine = line.replace(password, "[redacted]")
-                            thisLogger().debug(safeLine)
-                            serverLogBuffer.append(safeLine)
-                            startupProgress.output(startId, safeLine)
-                            OpenCodeServerProtocol.parseServerUrl(line)?.let { url ->
-                                if (setServerUrlForStart(startId, url)) {
-                                    urlLatch.countDown()
+            val logThread =
+                Thread(
+                    {
+                        try {
+                            reader.useLines { lines ->
+                                lines.forEach { line ->
+                                    // Server output goes to the dedicated log file; keep the IDE
+                                    // log
+                                    // at debug so idea.log does not mirror every server line.
+                                    val safeLine = line.replace(password, "[redacted]")
+                                    thisLogger().debug(safeLine)
+                                    serverLogBuffer.append(safeLine)
+                                    startupProgress.output(startId, safeLine)
+                                    OpenCodeServerProtocol.parseServerUrl(line)?.let { url ->
+                                        if (setServerUrlForStart(startId, url)) {
+                                            urlLatch.countDown()
+                                        }
+                                    }
                                 }
                             }
+                        } catch (e: Exception) {
+                            thisLogger().info("Stopped reading OpenCode output: ${e.message}")
+                            serverLogBuffer.append("Stopped reading OpenCode output: ${e.message}")
                         }
-                    }
-                } catch (e: Exception) {
-                    thisLogger().info("Stopped reading OpenCode output: ${e.message}")
-                    serverLogBuffer.append("Stopped reading OpenCode output: ${e.message}")
-                }
-                if (isCurrentStart(startId)) {
-                    thisLogger().warn("OpenCode process output stream ended; triggering immediate health check")
-                    ApplicationManager.getApplication().executeOnPooledThread {
-                        if (isCurrentStart(startId)) checkServerHealth()
-                    }
-                }
-            }, "OpenCode-Output-Reader")
+                        if (isCurrentStart(startId)) {
+                            thisLogger()
+                                .warn(
+                                    "OpenCode process output stream ended; triggering immediate health check"
+                                )
+                            ApplicationManager.getApplication().executeOnPooledThread {
+                                if (isCurrentStart(startId)) checkServerHealth()
+                            }
+                        }
+                    },
+                    "OpenCode-Output-Reader",
+                )
             logThread.isDaemon = true
             logThread.start()
 
             val startTime = System.currentTimeMillis()
 
-            while (isCurrentStart(startId) && (System.currentTimeMillis() - startTime) < SERVER_START_TIMEOUT_MILLIS) {
+            while (
+                isCurrentStart(startId) &&
+                    (System.currentTimeMillis() - startTime) < SERVER_START_TIMEOUT_MILLIS
+            ) {
                 if (indicator?.isCanceled == true) {
                     destroyCurrentProcess()
                     clearServerStateForStart(startId)
@@ -720,11 +789,12 @@ class SharedOpenCodeServerManager(
                 setServerRunningForStart(startId)
                 finishStart(startId, success = true)
             } else {
-                val reason = if (url == null) {
-                    "listen URL not found in process output"
-                } else {
-                    "not responding at $url"
-                }
+                val reason =
+                    if (url == null) {
+                        "listen URL not found in process output"
+                    } else {
+                        "not responding at $url"
+                    }
                 thisLogger().error("Failed to start OpenCode server: $reason")
                 destroyCurrentProcess()
                 clearServerStateForStart(startId)
@@ -750,9 +820,9 @@ class SharedOpenCodeServerManager(
     }
 
     /**
-     * Refreshes the descendant snapshot of the launcher process while it is still alive.
-     * On Windows the launcher exits after spawning the real server, so this snapshot is
-     * the only handle for stopping the server later; keep the last non-empty snapshot.
+     * Refreshes the descendant snapshot of the launcher process while it is still alive. On Windows
+     * the launcher exits after spawning the real server, so this snapshot is the only handle for
+     * stopping the server later; keep the last non-empty snapshot.
      */
     private fun captureDescendants(
         startId: Long,
@@ -770,7 +840,12 @@ class SharedOpenCodeServerManager(
 
     private fun waitForIntellijMcpServerIfNeeded(startId: Long): Boolean {
         val initialStatus = IntellijMcpServerStartup.currentStatus()
-        if (!IntellijMcpServerStartup.shouldWaitFor(initialStatus, OpenCodeSettingsState.getInstance().waitForIntellijMcpServer)) {
+        if (
+            !IntellijMcpServerStartup.shouldWaitFor(
+                initialStatus,
+                OpenCodeSettingsState.getInstance().waitForIntellijMcpServer,
+            )
+        ) {
             if (initialStatus.state == IntellijMcpServerStartupState.UNAVAILABLE) {
                 thisLogger().warn(initialStatus.message)
             } else {
@@ -795,7 +870,8 @@ class SharedOpenCodeServerManager(
         ) {
             IntellijMcpServerWaitResult.READY -> true
             IntellijMcpServerWaitResult.TIMED_OUT -> {
-                thisLogger().warn("Timed out waiting for IntelliJ MCP server; starting OpenCode anyway")
+                thisLogger()
+                    .warn("Timed out waiting for IntelliJ MCP server; starting OpenCode anyway")
                 true
             }
             IntellijMcpServerWaitResult.CANCELLED -> false
@@ -803,14 +879,18 @@ class SharedOpenCodeServerManager(
     }
 
     private fun finishStart(startId: Long, success: Boolean) {
-        val callbacks = synchronized(lock) {
-            if (startId != startSequence) return
-            starting = false
-            startupProgress.finish(startId)
-            pendingStarts.toList().also { pendingStarts.clear() }
-        }
+        val callbacks =
+            synchronized(lock) {
+                if (startId != startSequence) return
+                starting = false
+                startupProgress.finish(startId)
+                pendingStarts.toList().also { pendingStarts.clear() }
+            }
 
-        setLifecycleState(if (success) OpenCodeServerLifecycleState.RUNNING else OpenCodeServerLifecycleState.FAILED)
+        setLifecycleState(
+            if (success) OpenCodeServerLifecycleState.RUNNING
+            else OpenCodeServerLifecycleState.FAILED
+        )
 
         if (success) {
             recordStartSuccess()
@@ -846,20 +926,21 @@ class SharedOpenCodeServerManager(
     private fun portArgumentFor(project: Project?): String {
         if (project != null && !project.isDisposed) {
             val settings = OpenCodeProjectSettingsState.getInstance(project)
-            lastPortArgument = SbxLaunchSpec.portArgument(
-                settings.effectiveProjectDirectory(project.basePath),
-                settings.portArgument(),
-            )
+            lastPortArgument =
+                SbxLaunchSpec.portArgument(
+                    settings.effectiveProjectDirectory(project.basePath),
+                    settings.portArgument(),
+                )
         }
         return lastPortArgument
     }
 
     /**
      * Probes the server once and, on failure, confirms with slower retries before declaring it
-     * dead. Right after the machine resumes from sleep a healthy server can need several seconds
-     * to answer again; a single 2s probe here used to restart it spuriously, killing sessions
-     * that would have survived the sleep untouched. A genuinely dead server fails each probe
-     * fast (connection refused), so this only adds the inter-probe delays to real recoveries.
+     * dead. Right after the machine resumes from sleep a healthy server can need several seconds to
+     * answer again; a single 2s probe here used to restart it spuriously, killing sessions that
+     * would have survived the sleep untouched. A genuinely dead server fails each probe fast
+     * (connection refused), so this only adds the inter-probe delays to real recoveries.
      */
     private fun checkServerRespondingWithConfirmation(serverUrl: String): Boolean {
         if (checkServerResponding(serverUrl)) return true
@@ -871,10 +952,13 @@ class SharedOpenCodeServerManager(
                 return false
             }
             thisLogger().info("Confirming failed OpenCode health check (attempt ${attempt + 1})")
-            if (checkServerResponding(
+            if (
+                checkServerResponding(
                     serverUrl,
-                    connectTimeoutMillis = OpenCodeServerProtocol.HEALTH_CHECK_CONFIRMATION_TIMEOUT_MILLIS,
-                    readTimeoutMillis = OpenCodeServerProtocol.HEALTH_CHECK_CONFIRMATION_TIMEOUT_MILLIS,
+                    connectTimeoutMillis =
+                        OpenCodeServerProtocol.HEALTH_CHECK_CONFIRMATION_TIMEOUT_MILLIS,
+                    readTimeoutMillis =
+                        OpenCodeServerProtocol.HEALTH_CHECK_CONFIRMATION_TIMEOUT_MILLIS,
                 )
             ) {
                 return true
@@ -890,36 +974,41 @@ class SharedOpenCodeServerManager(
     ): Boolean {
         val password = getServerPassword()
         if (password.isNullOrBlank()) {
-            thisLogger().info("OpenCode health check skipped because no server password is available")
+            thisLogger()
+                .info("OpenCode health check skipped because no server password is available")
             return false
         }
-        val responding = OpenCodeServerProtocol.checkServerResponding(
-            serverUrl,
-            OpenCodeServerProtocol.buildBasicAuthHeader(password),
-            connectTimeoutMillis,
-            readTimeoutMillis,
-        )
+        val responding =
+            OpenCodeServerProtocol.checkServerResponding(
+                serverUrl,
+                OpenCodeServerProtocol.buildBasicAuthHeader(password),
+                connectTimeoutMillis,
+                readTimeoutMillis,
+            )
         val processAlive = getServerProcess()?.isAlive == true
         if (responding && !processAlive) {
             // Normal steady state on Windows, where the launcher exits after spawning the
             // real server - log once per start instead of on every periodic health check.
-            val firstNotice = synchronized(lock) {
-                (!launcherExitNoticeLogged).also { launcherExitNoticeLogged = true }
-            }
+            val firstNotice =
+                synchronized(lock) {
+                    (!launcherExitNoticeLogged).also { launcherExitNoticeLogged = true }
+                }
             if (firstNotice) {
-                thisLogger().info("OpenCode server is responding although the tracked launcher process has exited")
+                thisLogger()
+                    .info(
+                        "OpenCode server is responding although the tracked launcher process has exited"
+                    )
             }
         } else if (!responding) {
-            val reason = if (processAlive) "server did not respond" else "tracked process is not alive"
+            val reason =
+                if (processAlive) "server did not respond" else "tracked process is not alive"
             thisLogger().info("OpenCode health check failed for $serverUrl ($reason)")
         }
         return responding
     }
 
     private fun remainingStartBackoffMillis(nowMillis: Long = System.currentTimeMillis()): Long {
-        return synchronized(lock) {
-            (nextStartAllowedAtMillis - nowMillis).coerceAtLeast(0L)
-        }
+        return synchronized(lock) { (nextStartAllowedAtMillis - nowMillis).coerceAtLeast(0L) }
     }
 
     private fun recordStartSuccess() {
@@ -930,33 +1019,38 @@ class SharedOpenCodeServerManager(
     }
 
     private fun recordStartFailure(nowMillis: Long = System.currentTimeMillis()) {
-        val delayMillis = synchronized(lock) {
-            consecutiveStartFailures += 1
-            OpenCodeServerProtocol.startFailureBackoffMillis(consecutiveStartFailures).also { delay ->
-                nextStartAllowedAtMillis = nowMillis + delay
+        val delayMillis =
+            synchronized(lock) {
+                consecutiveStartFailures += 1
+                OpenCodeServerProtocol.startFailureBackoffMillis(consecutiveStartFailures).also {
+                    delay ->
+                    nextStartAllowedAtMillis = nowMillis + delay
+                }
             }
-        }
-        thisLogger().warn("OpenCode server start failed; next automatic start allowed in ${delayMillis}ms")
+        thisLogger()
+            .warn("OpenCode server start failed; next automatic start allowed in ${delayMillis}ms")
     }
 
     private fun destroyCurrentProcess() {
-        val resources = synchronized(lock) {
-            val detached = ServerResourcesToStop(
-                future = null,
-                process = serverProcess,
-                processDescendants = serverProcessDescendants,
-                serverUrl = serverUrl,
-                serverPassword = serverPassword,
-                wireProtocol = wireProtocol,
-            )
-            serverProcess = null
-            serverProcessDescendants = emptyList()
-            serverUrl = null
-            serverPassword = null
-            serverVersion = null
-            wireProtocol = OpenCodeWireProtocol.UNKNOWN
-            detached
-        }
+        val resources =
+            synchronized(lock) {
+                val detached =
+                    ServerResourcesToStop(
+                        future = null,
+                        process = serverProcess,
+                        processDescendants = serverProcessDescendants,
+                        serverUrl = serverUrl,
+                        serverPassword = serverPassword,
+                        wireProtocol = wireProtocol,
+                    )
+                serverProcess = null
+                serverProcessDescendants = emptyList()
+                serverUrl = null
+                serverPassword = null
+                serverVersion = null
+                wireProtocol = OpenCodeWireProtocol.UNKNOWN
+                detached
+            }
         stopResources(resources)
     }
 
@@ -968,15 +1062,17 @@ class SharedOpenCodeServerManager(
         // Dispose via HTTP whenever credentials remain — do not require the launcher process
         // to still be alive (normal steady state on Windows after the launcher exits).
         if (serverUrl.isNullOrBlank() || password.isNullOrBlank()) return
-        val disposed = OpenCodeServerProtocol.disposeServer(
-            serverUrl,
-            OpenCodeServerProtocol.buildBasicAuthHeader(password),
-            wireProtocol = wireProtocol,
-        )
+        val disposed =
+            OpenCodeServerProtocol.disposeServer(
+                serverUrl,
+                OpenCodeServerProtocol.buildBasicAuthHeader(password),
+                wireProtocol = wireProtocol,
+            )
         if (disposed) {
             thisLogger().info("Disposed OpenCode server resources before stopping process")
         } else {
-            thisLogger().warn("Could not dispose OpenCode server resources gracefully; terminating process")
+            thisLogger()
+                .warn("Could not dispose OpenCode server resources gracefully; terminating process")
         }
     }
 
@@ -1042,30 +1138,35 @@ class SharedOpenCodeServerManager(
     }
 
     private fun setLifecycleState(state: OpenCodeServerLifecycleState) {
-        val changed = synchronized(lock) {
-            if (lifecycleState == state) {
-                false
-            } else {
-                lifecycleState = state
-                true
+        val changed =
+            synchronized(lock) {
+                if (lifecycleState == state) {
+                    false
+                } else {
+                    lifecycleState = state
+                    true
+                }
             }
-        }
         if (changed) {
             updateGlobalEventStream(state)
             try {
-                ApplicationManager.getApplication().messageBus
+                ApplicationManager.getApplication()
+                    .messageBus
                     .syncPublisher(OpenCodeServerLifecycleListener.TOPIC)
                     .stateChanged(state, backendId)
             } catch (e: Exception) {
-                thisLogger().warn("Could not publish OpenCode server lifecycle state ${state.name}: ${e.message}")
+                thisLogger()
+                    .warn(
+                        "Could not publish OpenCode server lifecycle state ${state.name}: ${e.message}"
+                    )
             }
         }
     }
 
     /**
-     * Keeps the JVM-side `/global/event` reader in lockstep with the server lifecycle: one
-     * stream while the server runs, none otherwise. Restarts route through a non-RUNNING
-     * state first, so a new server process always gets a fresh stream with fresh credentials.
+     * Keeps the JVM-side `/global/event` reader in lockstep with the server lifecycle: one stream
+     * while the server runs, none otherwise. Restarts route through a non-RUNNING state first, so a
+     * new server process always gets a fresh stream with fresh credentials.
      */
     private fun updateGlobalEventStream(state: OpenCodeServerLifecycleState) {
         if (state != OpenCodeServerLifecycleState.RUNNING) {

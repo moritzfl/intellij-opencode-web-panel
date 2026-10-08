@@ -9,22 +9,35 @@ import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
 internal class OpenCodeLocalStorageBridge(
     private val browser: JBCefBrowser,
     private val serverManager: OpenCodeServerBackend,
-    /** Null when the page-to-JVM callback channel could not be created; no sync is installed then. */
+    /**
+     * Null when the page-to-JVM callback channel could not be created; no sync is installed then.
+     */
     private val syncCallback: () -> String?,
 ) {
     fun restore(frameUrl: String?) {
         val serverUrl = serverManager.getServerUrl() ?: return
         if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, frameUrl)) return
-        val snapshot = OpenCodeSettingsState.getInstance().localStorageSnapshot(serverManager.backendId)
-        val script = OpenCodeBrowserSnippets.buildRestoreOpenCodeLocalStorageScript(snapshot) ?: return
-        browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
+        val snapshot =
+            OpenCodeSettingsState.getInstance().localStorageSnapshot(serverManager.backendId)
+        val script =
+            OpenCodeBrowserSnippets.buildRestoreOpenCodeLocalStorageScript(snapshot) ?: return
+        browser.cefBrowser.executeJavaScript(
+            script,
+            OpenCodeServerProtocol.buildServerRootUrl(serverUrl),
+            0,
+        )
     }
 
     fun installSync(frameUrl: String?) {
         val serverUrl = serverManager.getServerUrl() ?: return
         if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, frameUrl)) return
-        val script = OpenCodeBrowserSnippets.buildSyncOpenCodeLocalStorageScript(syncCallback()) ?: return
-        browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
+        val script =
+            OpenCodeBrowserSnippets.buildSyncOpenCodeLocalStorageScript(syncCallback()) ?: return
+        browser.cefBrowser.executeJavaScript(
+            script,
+            OpenCodeServerProtocol.buildServerRootUrl(serverUrl),
+            0,
+        )
     }
 
     fun sync(snapshot: String?) {

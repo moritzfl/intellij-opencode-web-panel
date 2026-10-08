@@ -34,8 +34,8 @@ internal class OpenCodeServerLogBuffer(
             setCurrentFile(
                 createLogFile(
                     "========== OpenCode server start/restart via OpenCode Web Panel at $startedAt ==========" +
-                        System.lineSeparator(),
-                ),
+                        System.lineSeparator()
+                )
             )
             currentLogFile
         }
@@ -43,7 +43,11 @@ internal class OpenCodeServerLogBuffer(
 
     fun currentOrLatestFile(): Path? {
         synchronized(fileLock) {
-            currentLogFile?.takeIf { Files.isRegularFile(it) }?.let { return it }
+            currentLogFile
+                ?.takeIf { Files.isRegularFile(it) }
+                ?.let {
+                    return it
+                }
         }
         if (!Files.isDirectory(logDir)) return null
         return try {
@@ -65,18 +69,19 @@ internal class OpenCodeServerLogBuffer(
     }
 
     /**
-     * Best-effort retention: delete logs older than [maxLogAge], then keep only
-     * the [maxLogFiles] newest files. Failures never block server startup.
+     * Best-effort retention: delete logs older than [maxLogAge], then keep only the [maxLogFiles]
+     * newest files. Failures never block server startup.
      */
     fun pruneOldLogs() {
         if (!Files.isDirectory(logDir)) return
         try {
             Files.list(logDir).use { entries ->
-                val files = entries
-                    .filter(Files::isRegularFile)
-                    .filter { it.fileName.toString().endsWith(LOG_FILE_EXTENSION) }
-                    .toList()
-                    .toMutableList()
+                val files =
+                    entries
+                        .filter(Files::isRegularFile)
+                        .filter { it.fileName.toString().endsWith(LOG_FILE_EXTENSION) }
+                        .toList()
+                        .toMutableList()
                 val cutoffMillis = System.currentTimeMillis() - maxLogAge.toMillis()
                 files.removeIf { deleteIfOlderThan(it, cutoffMillis) }
                 if (files.size > maxLogFiles) {
@@ -87,8 +92,7 @@ internal class OpenCodeServerLogBuffer(
                     }
                 }
             }
-        } catch (_: IOException) {
-        }
+        } catch (_: IOException) {}
     }
 
     private fun createLogFile(initialContent: String = ""): Path? {
@@ -122,20 +126,24 @@ internal class OpenCodeServerLogBuffer(
     }
 
     private fun appendToCurrentFile(line: String) {
-        val lineBytes = line.toByteArray(StandardCharsets.UTF_8).size + System.lineSeparator().length
-        val file = synchronized(fileLock) {
-            var target = currentLogFile ?: setCurrentFile(createLogFile())
-            // A single long-running server process would otherwise grow one file without
-            // bound; age/count retention only ever sees whole files.
-            if (target != null && currentLogFileBytes + lineBytes > maxLogFileBytes) {
-                val rotationHeader = "========== log continues (size limit reached) ==========" + System.lineSeparator()
-                // On a failed rotation (e.g. same-millisecond name collision) keep the old
-                // file rather than dropping output; the next append retries.
-                createLogFile(rotationHeader)?.let { target = setCurrentFile(it) }
-            }
-            currentLogFileBytes += lineBytes
-            target
-        } ?: return
+        val lineBytes =
+            line.toByteArray(StandardCharsets.UTF_8).size + System.lineSeparator().length
+        val file =
+            synchronized(fileLock) {
+                var target = currentLogFile ?: setCurrentFile(createLogFile())
+                // A single long-running server process would otherwise grow one file without
+                // bound; age/count retention only ever sees whole files.
+                if (target != null && currentLogFileBytes + lineBytes > maxLogFileBytes) {
+                    val rotationHeader =
+                        "========== log continues (size limit reached) ==========" +
+                            System.lineSeparator()
+                    // On a failed rotation (e.g. same-millisecond name collision) keep the old
+                    // file rather than dropping output; the next append retries.
+                    createLogFile(rotationHeader)?.let { target = setCurrentFile(it) }
+                }
+                currentLogFileBytes += lineBytes
+                target
+            } ?: return
         writeLine(file, line)
     }
 
@@ -179,8 +187,7 @@ internal class OpenCodeServerLogBuffer(
     private fun deleteQuietly(path: Path) {
         try {
             Files.deleteIfExists(path)
-        } catch (_: IOException) {
-        }
+        } catch (_: IOException) {}
     }
 
     companion object {
@@ -202,19 +209,20 @@ internal class OpenCodeServerLogBuffer(
             return try {
                 val size = Files.size(file)
                 val fromStart = size <= TAIL_MAX_BYTES
-                val decoded = if (fromStart) {
-                    Files.readString(file, StandardCharsets.UTF_8)
-                } else {
-                    Files.newByteChannel(file).use { channel ->
-                        channel.position(size - TAIL_MAX_BYTES)
-                        val buffer = java.nio.ByteBuffer.allocate(TAIL_MAX_BYTES)
-                        while (buffer.hasRemaining() && channel.read(buffer) >= 0) {
-                            // keep reading until the tail window is full or EOF
+                val decoded =
+                    if (fromStart) {
+                        Files.readString(file, StandardCharsets.UTF_8)
+                    } else {
+                        Files.newByteChannel(file).use { channel ->
+                            channel.position(size - TAIL_MAX_BYTES)
+                            val buffer = java.nio.ByteBuffer.allocate(TAIL_MAX_BYTES)
+                            while (buffer.hasRemaining() && channel.read(buffer) >= 0) {
+                                // keep reading until the tail window is full or EOF
+                            }
+                            buffer.flip()
+                            String(buffer.array(), 0, buffer.limit(), StandardCharsets.UTF_8)
                         }
-                        buffer.flip()
-                        String(buffer.array(), 0, buffer.limit(), StandardCharsets.UTF_8)
                     }
-                }
                 val text = if (fromStart) decoded else dropIncompleteLeadingLine(decoded)
                 text.lines().filter { it.isNotBlank() }.takeLast(maxLines)
             } catch (_: Exception) {

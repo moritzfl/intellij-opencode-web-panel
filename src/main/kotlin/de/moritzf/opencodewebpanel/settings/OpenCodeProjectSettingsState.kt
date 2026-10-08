@@ -12,7 +12,10 @@ import de.moritzf.opencodewebpanel.server.SbxLaunchSpec
 // Shareable .idea file for team-visible project settings (custom OpenCode directory, XML port
 // fallback). Path-macro substitution keeps project-relative paths portable. getState() is null
 // while those stay at defaults so a one-shot in-memory port-import flag cannot create the file.
-@State(name = "OpenCodeWebPanelProjectSettings", storages = [Storage("opencode-web-panel-project.xml")])
+@State(
+    name = "OpenCodeWebPanelProjectSettings",
+    storages = [Storage("opencode-web-panel-project.xml")],
+)
 @Service(Service.Level.PROJECT)
 class OpenCodeProjectSettingsState : PersistentStateComponent<OpenCodeProjectSettingsState> {
     var projectDirectoryMode: String = OpenCodeProjectDirectoryMode.AUTO.name
@@ -31,7 +34,8 @@ class OpenCodeProjectSettingsState : PersistentStateComponent<OpenCodeProjectSet
     }
 
     override fun loadState(state: OpenCodeProjectSettingsState) {
-        projectDirectoryMode = OpenCodeProjectDirectoryMode.fromStorageValue(state.projectDirectoryMode).name
+        projectDirectoryMode =
+            OpenCodeProjectDirectoryMode.fromStorageValue(state.projectDirectoryMode).name
         openCodeProjectDirectory = sanitizeProjectDirectory(state.openCodeProjectDirectory)
         portMode = OpenCodePortMode.fromStorageValue(state.portMode).name
         fixedPort = OpenCodeSettingsState.sanitizePort(state.fixedPort)
@@ -62,8 +66,10 @@ class OpenCodeProjectSettingsState : PersistentStateComponent<OpenCodeProjectSet
     private fun importLegacyApplicationPortIfNeeded() {
         synchronized(this) {
             if (portImportedFromApplication) return
-            if (portModeValue() == OpenCodePortMode.AUTO &&
-                OpenCodeSettingsState.sanitizePort(fixedPort) == OpenCodeSettingsState.DEFAULT_FIXED_PORT
+            if (
+                portModeValue() == OpenCodePortMode.AUTO &&
+                    OpenCodeSettingsState.sanitizePort(fixedPort) ==
+                        OpenCodeSettingsState.DEFAULT_FIXED_PORT
             ) {
                 val app = OpenCodeSettingsState.getInstance()
                 portMode = app.portMode
@@ -76,7 +82,10 @@ class OpenCodeProjectSettingsState : PersistentStateComponent<OpenCodeProjectSet
     fun effectiveProjectDirectory(ideProjectBasePath: String?): String? {
         return when (projectDirectoryModeValue()) {
             OpenCodeProjectDirectoryMode.AUTO -> autoDetectedProjectDirectory(ideProjectBasePath)
-            OpenCodeProjectDirectoryMode.CUSTOM -> openCodeProjectDirectory.ifBlank { autoDetectedProjectDirectory(ideProjectBasePath).orEmpty() }.ifBlank { null }
+            OpenCodeProjectDirectoryMode.CUSTOM ->
+                openCodeProjectDirectory
+                    .ifBlank { autoDetectedProjectDirectory(ideProjectBasePath).orEmpty() }
+                    .ifBlank { null }
         }
     }
 
@@ -106,8 +115,7 @@ class OpenCodeProjectSettingsState : PersistentStateComponent<OpenCodeProjectSet
 
 enum class OpenCodeProjectDirectoryMode {
     AUTO,
-    CUSTOM,
-    ;
+    CUSTOM;
 
     companion object {
         fun fromStorageValue(value: String?): OpenCodeProjectDirectoryMode {

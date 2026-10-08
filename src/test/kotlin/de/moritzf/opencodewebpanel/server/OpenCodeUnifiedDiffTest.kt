@@ -8,7 +8,8 @@ class OpenCodeUnifiedDiffTest {
 
     @Test
     fun firstChangedLineIndexSkipsHunkContext() {
-        val patch = """
+        val patch =
+            """
             --- a/foo.txt
             +++ b/foo.txt
             @@ -1,3 +1,3 @@
@@ -16,19 +17,22 @@ class OpenCodeUnifiedDiffTest {
             -old
             +new
              line3
-        """.trimIndent()
+            """
+                .trimIndent()
         assertEquals(1, OpenCodeUnifiedDiff.firstChangedLineIndex(patch))
     }
 
     @Test
     fun firstChangedLineIndexUsesNewFileStartForAdditions() {
-        val patch = """
+        val patch =
+            """
             --- /dev/null
             +++ b/new.txt
             @@ -0,0 +1,2 @@
             +alpha
             +beta
-        """.trimIndent()
+            """
+                .trimIndent()
         assertEquals(0, OpenCodeUnifiedDiff.firstChangedLineIndex(patch))
     }
 
@@ -36,12 +40,15 @@ class OpenCodeUnifiedDiffTest {
     fun firstChangedLineIndexReturnsNullWithoutHunks() {
         assertNull(OpenCodeUnifiedDiff.firstChangedLineIndex(null))
         assertNull(OpenCodeUnifiedDiff.firstChangedLineIndex(""))
-        assertNull(OpenCodeUnifiedDiff.firstChangedLineIndex("diff --git a/x b/x\n--- a/x\n+++ b/x\n"))
+        assertNull(
+            OpenCodeUnifiedDiff.firstChangedLineIndex("diff --git a/x b/x\n--- a/x\n+++ b/x\n")
+        )
     }
 
     @Test
     fun reconstructsModifiedHunkAndSkipsHeaderNoise() {
-        val patch = """
+        val patch =
+            """
             diff --git a/foo.txt b/foo.txt
             index 1111111..2222222 100644
             --- a/foo.txt
@@ -51,7 +58,8 @@ class OpenCodeUnifiedDiffTest {
             -old
             +new
              line3
-        """.trimIndent()
+            """
+                .trimIndent()
         val sides = OpenCodeUnifiedDiff.sides(patch)!!
         assertEquals("line1\nold\nline3", sides.before)
         assertEquals("line1\nnew\nline3", sides.after)
@@ -59,13 +67,15 @@ class OpenCodeUnifiedDiffTest {
 
     @Test
     fun addedFileHasEmptyBefore() {
-        val patch = """
+        val patch =
+            """
             --- /dev/null
             +++ b/new.txt
             @@ -0,0 +1,2 @@
             +alpha
             +beta
-        """.trimIndent()
+            """
+                .trimIndent()
         val sides = OpenCodeUnifiedDiff.sides(patch)!!
         assertEquals("", sides.before)
         assertEquals("alpha\nbeta", sides.after)
@@ -73,11 +83,13 @@ class OpenCodeUnifiedDiffTest {
 
     @Test
     fun deletedFileHasEmptyAfter() {
-        val patch = """
+        val patch =
+            """
             @@ -1,2 +0,0 @@
             -alpha
             -beta
-        """.trimIndent()
+            """
+                .trimIndent()
         val sides = OpenCodeUnifiedDiff.sides(patch)!!
         assertEquals("alpha\nbeta", sides.before)
         assertEquals("", sides.after)
@@ -85,7 +97,8 @@ class OpenCodeUnifiedDiffTest {
 
     @Test
     fun concatenatesMultipleHunks() {
-        val patch = """
+        val patch =
+            """
             @@ -1,2 +1,2 @@
              a
             -b
@@ -94,7 +107,8 @@ class OpenCodeUnifiedDiffTest {
              y
             -z
             +Z
-        """.trimIndent()
+            """
+                .trimIndent()
         val sides = OpenCodeUnifiedDiff.sides(patch)!!
         assertEquals("a\nb\ny\nz", sides.before)
         assertEquals("a\nB\ny\nZ", sides.after)
@@ -102,7 +116,8 @@ class OpenCodeUnifiedDiffTest {
 
     @Test
     fun ignoresNoNewlineMarker() {
-        val patch = "@@ -1 +1 @@\n-a\n\\ No newline at end of file\n+b\n\\ No newline at end of file"
+        val patch =
+            "@@ -1 +1 @@\n-a\n\\ No newline at end of file\n+b\n\\ No newline at end of file"
         val sides = OpenCodeUnifiedDiff.sides(patch)!!
         assertEquals("a", sides.before)
         assertEquals("b", sides.after)
@@ -139,8 +154,9 @@ class OpenCodeUnifiedDiffTest {
                 index 123..456 100644
                 --- a/x
                 +++ b/x
-                """.trimIndent(),
-            ),
+                """
+                    .trimIndent()
+            )
         )
     }
 }

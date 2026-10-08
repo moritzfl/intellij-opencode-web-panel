@@ -10,15 +10,21 @@ import org.junit.Test
 class SbxInstalledVmStatusTest {
     @Test
     fun pendingWhenCreateSnapshotDiffers() {
-        val spec = SbxLaunchSpec.fromSettings(OpenCodeSettingsState(), "/tmp/p").copy(
-            memory = "8g",
-            useSandbox = true,
-            openCodeVersion = SbxOpenCodeVersion.V1,
-        )
-        val record = SbxSandboxRecord(
-            "id", "ide-ocwp-x", "opencode", "/tmp/p",
-            createSnapshot = SbxCli.createSnapshot("4g", "2", true, emptyList()),
-        )
+        val spec =
+            SbxLaunchSpec.fromSettings(OpenCodeSettingsState(), "/tmp/p")
+                .copy(
+                    memory = "8g",
+                    useSandbox = true,
+                    openCodeVersion = SbxOpenCodeVersion.V1,
+                )
+        val record =
+            SbxSandboxRecord(
+                "id",
+                "ide-ocwp-x",
+                "opencode",
+                "/tmp/p",
+                createSnapshot = SbxCli.createSnapshot("4g", "2", true, emptyList()),
+            )
         val statuses = SbxInstalledVmStatus.settings(spec, record)
         assertTrue(statuses.single { it.label == "Memory" }.pending)
         assertFalse(statuses.single { it.label == "CPUs" }.pending)

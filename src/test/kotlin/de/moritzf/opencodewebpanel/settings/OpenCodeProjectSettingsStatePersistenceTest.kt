@@ -31,10 +31,11 @@ class OpenCodeProjectSettingsStatePersistenceTest {
 
     @Test
     fun getInstancePersistsCopiedLegacyAppPort() {
-        val appSettings = OpenCodeSettingsState().apply {
-            portMode = OpenCodePortMode.FIXED.name
-            fixedPort = 49123
-        }
+        val appSettings =
+            OpenCodeSettingsState().apply {
+                portMode = OpenCodePortMode.FIXED.name
+                fixedPort = 49123
+            }
         val loaded = getInstance(appSettings)
         assertEquals(OpenCodePortMode.FIXED, loaded.portModeValue())
         assertEquals(49123, loaded.fixedPort)

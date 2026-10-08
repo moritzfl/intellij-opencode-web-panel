@@ -33,23 +33,28 @@ internal class OpenCodeAddFileToChatAction : DumbAwareAction() {
         val project = e.project
         // Only yield to the add-selection action inside the editor popup itself; other menus
         // (project view, editor tabs) should offer the file action even while text is selected.
-        val yieldsToSelectionAction = e.place == ActionPlaces.EDITOR_POPUP &&
-            e.getData(CommonDataKeys.EDITOR)?.selectionModel?.hasSelection() == true
-        e.presentation.isEnabledAndVisible = project != null &&
-            !yieldsToSelectionAction &&
-            OpenCodeSettingsState.getInstance().enableChatFileDrop &&
-            fileReferenceTexts(e, project).isNotEmpty()
+        val yieldsToSelectionAction =
+            e.place == ActionPlaces.EDITOR_POPUP &&
+                e.getData(CommonDataKeys.EDITOR)?.selectionModel?.hasSelection() == true
+        e.presentation.isEnabledAndVisible =
+            project != null &&
+                !yieldsToSelectionAction &&
+                OpenCodeSettingsState.getInstance().enableChatFileDrop &&
+                fileReferenceTexts(e, project).isNotEmpty()
     }
 
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 
     private fun fileReferenceTexts(e: AnActionEvent, project: Project): List<String> {
-        val files = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY)?.toList()
-            ?: listOfNotNull(e.getData(CommonDataKeys.VIRTUAL_FILE))
+        val files =
+            e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY)?.toList()
+                ?: listOfNotNull(e.getData(CommonDataKeys.VIRTUAL_FILE))
         val projectDirectory = openCodeProjectDirectory(project) ?: return emptyList()
         return files
             .filter { it.isInLocalFileSystem && !it.isDirectory }
-            .mapNotNull { OpenCodeServerProtocol.localFileDropText(File(it.path), projectDirectory) }
+            .mapNotNull {
+                OpenCodeServerProtocol.localFileDropText(File(it.path), projectDirectory)
+            }
             .distinct()
     }
 }
@@ -69,9 +74,10 @@ internal class OpenCodeAddSelectionToChatAction : DumbAwareAction() {
     }
 
     override fun update(e: AnActionEvent) {
-        e.presentation.isEnabledAndVisible = e.project != null &&
-            OpenCodeSettingsState.getInstance().enableChatFileDrop &&
-            e.getData(CommonDataKeys.EDITOR)?.selectionModel?.hasSelection() == true
+        e.presentation.isEnabledAndVisible =
+            e.project != null &&
+                OpenCodeSettingsState.getInstance().enableChatFileDrop &&
+                e.getData(CommonDataKeys.EDITOR)?.selectionModel?.hasSelection() == true
     }
 
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
@@ -81,10 +87,15 @@ internal class OpenCodeAddSelectionToChatAction : DumbAwareAction() {
         val selectedText = selection.selectedText?.takeIf { it.isNotBlank() } ?: return emptyList()
         val document = editor.document
         val startLine = document.getLineNumber(selection.selectionStart) + 1
-        val endLine = document.getLineNumber((selection.selectionEnd - 1).coerceAtLeast(selection.selectionStart)) + 1
+        val endLine =
+            document.getLineNumber(
+                (selection.selectionEnd - 1).coerceAtLeast(selection.selectionStart)
+            ) + 1
         val projectDirectory = openCodeProjectDirectory(project)
         val localFile = file?.takeIf { it.isInLocalFileSystem }?.let { File(it.path) }
-        val reference = localFile?.let { OpenCodeServerProtocol.localFileDropText(it, projectDirectory) }
+        val reference = localFile?.let {
+            OpenCodeServerProtocol.localFileDropText(it, projectDirectory)
+        }
         val displayedPath = reference?.removePrefix("file:") ?: file?.name ?: "selection"
         val fenceLanguage = file?.extension.orEmpty()
         val snippet = buildString {
@@ -110,7 +121,8 @@ internal class OpenCodeAddSelectionToChatAction : DumbAwareAction() {
 }
 
 private fun openCodeProjectDirectory(project: Project): String? {
-    return OpenCodeProjectSettingsState.getInstance(project).effectiveOpenCodeDirectory(project.basePath)
+    return OpenCodeProjectSettingsState.getInstance(project)
+        .effectiveOpenCodeDirectory(project.basePath)
 }
 
 private fun sendToOpenCodeChat(project: Project, texts: List<String>) {
@@ -119,6 +131,8 @@ private fun sendToOpenCodeChat(project: Project, texts: List<String>) {
     // Bring the panel forward; if the texts were queued because the page is not ready yet, the
     // activation triggers content creation and the panel flushes the queue once loaded.
     if (!service.activatePanel()) {
-        ToolWindowManager.getInstance(project).getToolWindow(OPEN_CODE_TOOL_WINDOW_ID)?.activate(null, true)
+        ToolWindowManager.getInstance(project)
+            .getToolWindow(OPEN_CODE_TOOL_WINDOW_ID)
+            ?.activate(null, true)
     }
 }

@@ -1,17 +1,17 @@
 package de.moritzf.opencodewebpanel.server
 
+import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeFalse
 import org.junit.Test
-import java.util.concurrent.TimeUnit
 
 class OpenCodeProcessTerminatorTest {
 
     /**
-     * Simulates the Windows launcher pattern on POSIX: the launched process spawns a
-     * long-lived child and exits. destroy() must fall back to the descendant handles
-     * captured while the launcher was alive, otherwise the child is orphaned.
+     * Simulates the Windows launcher pattern on POSIX: the launched process spawns a long-lived
+     * child and exits. destroy() must fall back to the descendant handles captured while the
+     * launcher was alive, otherwise the child is orphaned.
      */
     @Test
     fun destroyKillsCapturedDescendantsAfterLauncherExits() {
@@ -25,7 +25,10 @@ class OpenCodeProcessTerminatorTest {
                 descendants = terminator.descendantHandles(launcher)
                 if (descendants.isEmpty()) Thread.sleep(50)
             }
-            assertTrue("expected to capture descendants while the launcher is alive", descendants.isNotEmpty())
+            assertTrue(
+                "expected to capture descendants while the launcher is alive",
+                descendants.isNotEmpty(),
+            )
 
             assertTrue("launcher should exit on its own", launcher.waitFor(10, TimeUnit.SECONDS))
             val orphans = descendants.filter { it.isAlive }

@@ -1,12 +1,12 @@
 package de.moritzf.opencodewebpanel.server
 
+import java.net.InetSocketAddress
+import java.net.Proxy
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.net.InetSocketAddress
-import java.net.Proxy
 
 class OpenCodeProcessProxyEnvironmentTest {
 
@@ -82,7 +82,7 @@ class OpenCodeProcessProxyEnvironmentTest {
         assertEquals(
             "http://[::1]:8080",
             OpenCodeProcessProxyEnvironment.formatProxyUrl(
-                IdeHttpProxy(IdeHttpProxy.Protocol.HTTP, "::1", 8080),
+                IdeHttpProxy(IdeHttpProxy.Protocol.HTTP, "::1", 8080)
             ),
         )
     }
@@ -134,8 +134,14 @@ class OpenCodeProcessProxyEnvironmentTest {
     fun applyIgnoresBlankOrInvalidIdeProxy() {
         val environment = mutableMapOf("PATH" to "/usr/bin")
 
-        OpenCodeProcessProxyEnvironment.apply(environment, IdeHttpProxy(IdeHttpProxy.Protocol.HTTP, "", 7897))
-        OpenCodeProcessProxyEnvironment.apply(environment, IdeHttpProxy(IdeHttpProxy.Protocol.HTTP, "host", 0))
+        OpenCodeProcessProxyEnvironment.apply(
+            environment,
+            IdeHttpProxy(IdeHttpProxy.Protocol.HTTP, "", 7897),
+        )
+        OpenCodeProcessProxyEnvironment.apply(
+            environment,
+            IdeHttpProxy(IdeHttpProxy.Protocol.HTTP, "host", 0),
+        )
 
         assertEquals(mapOf("PATH" to "/usr/bin"), environment)
         assertNull(env(environment, "HTTP_PROXY"))
@@ -143,13 +149,14 @@ class OpenCodeProcessProxyEnvironmentTest {
 
     @Test
     fun stripRemovesInheritedProxyVariables() {
-        val environment = mutableMapOf(
-            "HTTP_PROXY" to "http://corp:8080",
-            "https_proxy" to "http://corp:8080",
-            "ALL_PROXY" to "socks5://corp:1080",
-            "NO_PROXY" to "localhost",
-            "PATH" to "/usr/bin",
-        )
+        val environment =
+            mutableMapOf(
+                "HTTP_PROXY" to "http://corp:8080",
+                "https_proxy" to "http://corp:8080",
+                "ALL_PROXY" to "socks5://corp:1080",
+                "NO_PROXY" to "localhost",
+                "PATH" to "/usr/bin",
+            )
 
         OpenCodeProcessProxyEnvironment.strip(environment)
 
@@ -162,12 +169,14 @@ class OpenCodeProcessProxyEnvironmentTest {
 
     @Test
     fun fromJavaProxyMapsHttpAndSocksAddresses() {
-        val http = OpenCodeProcessProxyEnvironment.fromJavaProxy(
-            Proxy(Proxy.Type.HTTP, InetSocketAddress.createUnresolved("127.0.0.1", 7897)),
-        )
-        val socks = OpenCodeProcessProxyEnvironment.fromJavaProxy(
-            Proxy(Proxy.Type.SOCKS, InetSocketAddress.createUnresolved("10.0.0.1", 1080)),
-        )
+        val http =
+            OpenCodeProcessProxyEnvironment.fromJavaProxy(
+                Proxy(Proxy.Type.HTTP, InetSocketAddress.createUnresolved("127.0.0.1", 7897))
+            )
+        val socks =
+            OpenCodeProcessProxyEnvironment.fromJavaProxy(
+                Proxy(Proxy.Type.SOCKS, InetSocketAddress.createUnresolved("10.0.0.1", 1080))
+            )
 
         assertEquals(IdeHttpProxy(IdeHttpProxy.Protocol.HTTP, "127.0.0.1", 7897), http)
         assertEquals(IdeHttpProxy(IdeHttpProxy.Protocol.SOCKS, "10.0.0.1", 1080), socks)
@@ -178,8 +187,8 @@ class OpenCodeProcessProxyEnvironmentTest {
         assertNull(OpenCodeProcessProxyEnvironment.fromJavaProxy(Proxy.NO_PROXY))
         assertNull(
             OpenCodeProcessProxyEnvironment.fromJavaProxy(
-                Proxy(Proxy.Type.HTTP, InetSocketAddress.createUnresolved("proxy.example", 0)),
-            ),
+                Proxy(Proxy.Type.HTTP, InetSocketAddress.createUnresolved("proxy.example", 0))
+            )
         )
     }
 

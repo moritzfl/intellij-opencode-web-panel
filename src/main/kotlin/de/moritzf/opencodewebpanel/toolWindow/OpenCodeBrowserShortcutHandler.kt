@@ -11,12 +11,12 @@ import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.ui.jcef.JBCefBrowser
 import de.moritzf.opencodewebpanel.browser.OpenCodeBrowserSnippets
-import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
+import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
 import java.net.URI
-import org.cef.browser.CefFrame
 import javax.swing.JComponent
+import org.cef.browser.CefFrame
 
 internal const val OPEN_CODE_ZOOM_IN_ACTION_ID = "OpenCodeWebPanel.ZoomIn"
 internal const val OPEN_CODE_ZOOM_OUT_ACTION_ID = "OpenCodeWebPanel.ZoomOut"
@@ -103,18 +103,24 @@ internal class OpenCodeBrowserShortcutHandler(
 
         // The native browser child wins over JBCefBrowser's macOS Paste action on its parent.
         // Use the live IDE keymap (including Shift+Insert/remaps), never an AWT key dispatcher.
-        val pasteAction = object : DumbAwareAction() {
-            override fun actionPerformed(e: AnActionEvent) = paste()
-        }
+        val pasteAction =
+            object : DumbAwareAction() {
+                override fun actionPerformed(e: AnActionEvent) = paste()
+            }
         pasteAction.registerCustomShortcutSet(
-            checkNotNull(ActionManager.getInstance().getAction(IdeActions.ACTION_PASTE)).shortcutSet,
+            checkNotNull(ActionManager.getInstance().getAction(IdeActions.ACTION_PASTE))
+                .shortcutSet,
             browser.browserComponent as? JComponent ?: browser.component,
             parentDisposable,
         )
 
         OpenCodeBrowserCommand.entries.forEach(::registerOpenCodeCommand)
-        registerZoomAction(OPEN_CODE_ZOOM_IN_ACTION_ID) { OpenCodeZoom.apply(OpenCodeZoom::zoomedIn) }
-        registerZoomAction(OPEN_CODE_ZOOM_OUT_ACTION_ID) { OpenCodeZoom.apply(OpenCodeZoom::zoomedOut) }
+        registerZoomAction(OPEN_CODE_ZOOM_IN_ACTION_ID) {
+            OpenCodeZoom.apply(OpenCodeZoom::zoomedIn)
+        }
+        registerZoomAction(OPEN_CODE_ZOOM_OUT_ACTION_ID) {
+            OpenCodeZoom.apply(OpenCodeZoom::zoomedOut)
+        }
         registerZoomAction(OPEN_CODE_RESET_ZOOM_ACTION_ID) {
             OpenCodeZoom.apply { OpenCodeSettingsState.DEFAULT_UI_ZOOM_PERCENT }
         }
@@ -141,7 +147,8 @@ internal class OpenCodeBrowserShortcutHandler(
 
                 override fun update(e: AnActionEvent) {
                     val serverUrl = serverManager.getServerUrl()
-                    e.presentation.isEnabled = isCommandAvailable(command, serverUrl, browser.cefBrowser.url)
+                    e.presentation.isEnabled =
+                        isCommandAvailable(command, serverUrl, browser.cefBrowser.url)
                 }
 
                 override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
@@ -159,9 +166,10 @@ internal class OpenCodeBrowserShortcutHandler(
     }
 
     private fun registerShortcut(actionID: String, action: AnAction) {
-        val source = checkNotNull(ActionManager.getInstance().getAction(actionID)) {
-            "Missing shortcut action $actionID"
-        }
+        val source =
+            checkNotNull(ActionManager.getInstance().getAction(actionID)) {
+                "Missing shortcut action $actionID"
+            }
         action.registerCustomShortcutSet(source.shortcutSet, browser.component, parentDisposable)
     }
 
@@ -174,46 +182,61 @@ internal class OpenCodeBrowserShortcutHandler(
             val serverUrl = serverManager.getServerUrl() ?: return
             val pageUrl = browser.cefBrowser.url
             if (!isCommandAvailable(command, serverUrl, pageUrl)) return
-            val keybinds = resolveOpenCodeKeybinds(
-                command,
-                OpenCodeSettingsState.getInstance().localStorageSnapshot(serverManager.backendId),
+            val keybinds =
+                resolveOpenCodeKeybinds(
+                    command,
+                    OpenCodeSettingsState.getInstance()
+                        .localStorageSnapshot(serverManager.backendId),
+                )
+            val script =
+                OpenCodeBrowserSnippets.buildShortcutDispatchScript(
+                    keybinds.newLayout,
+                    keybinds.classic,
+                ) ?: return
+            browser.cefBrowser.executeJavaScript(
+                script,
+                OpenCodeServerProtocol.buildServerRootUrl(serverUrl),
+                0,
             )
-            val script = OpenCodeBrowserSnippets.buildShortcutDispatchScript(
-                keybinds.newLayout,
-                keybinds.classic,
-            ) ?: return
-            browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
         }
 
-        fun resolveOpenCodeKeybinds(command: OpenCodeBrowserCommand, snapshot: String?): OpenCodeResolvedKeybinds {
+        fun resolveOpenCodeKeybinds(
+            command: OpenCodeBrowserCommand,
+            snapshot: String?,
+        ): OpenCodeResolvedKeybinds {
             val custom = runCatching {
-                val snapshotObject = JsonParser.parseString(snapshot.orEmpty())
-                    .takeIf { it.isJsonObject }
-                    ?.asJsonObject
-                    ?: return@runCatching emptyMap()
-                val settingsValue = snapshotObject.get("settings.v3")
-                    ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }
-                    ?.asString
-                    ?: return@runCatching emptyMap()
-                val settings = JsonParser.parseString(settingsValue)
-                    .takeIf { it.isJsonObject }
-                    ?.asJsonObject
-                    ?: return@runCatching emptyMap()
-                val keybinds = settings.get("keybinds")
-                    ?.takeIf { it.isJsonObject }
-                    ?.asJsonObject
-                    ?: return@runCatching emptyMap()
-                keybinds.entrySet().mapNotNull { (commandID, value) ->
-                    value.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }
-                        ?.asString
-                        ?.let { commandID to it }
-                }.toMap()
-            }.getOrDefault(emptyMap())
-
-            fun resolve(bindings: List<OpenCodeCommandBinding>): List<String> = bindings.mapNotNull { binding ->
-                val keybind = binding.commandID?.let(custom::get) ?: binding.defaultKeybind
-                keybind.takeUnless { it.isBlank() || it.equals("none", ignoreCase = true) }
+                val snapshotObject =
+                    JsonParser.parseString(snapshot.orEmpty())
+                        .takeIf { it.isJsonObject }
+                        ?.asJsonObject ?: return@runCatching emptyMap()
+                val settingsValue =
+                    snapshotObject
+                        .get("settings.v3")
+                        ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }
+                        ?.asString ?: return@runCatching emptyMap()
+                val settings =
+                    JsonParser.parseString(settingsValue).takeIf { it.isJsonObject }?.asJsonObject
+                        ?: return@runCatching emptyMap()
+                val keybinds =
+                    settings.get("keybinds")?.takeIf { it.isJsonObject }?.asJsonObject
+                        ?: return@runCatching emptyMap()
+                keybinds
+                    .entrySet()
+                    .mapNotNull { (commandID, value) ->
+                        value
+                            .takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }
+                            ?.asString
+                            ?.let { commandID to it }
+                    }
+                    .toMap()
             }
+                .getOrDefault(emptyMap())
+
+            fun resolve(bindings: List<OpenCodeCommandBinding>): List<String> =
+                bindings.mapNotNull { binding ->
+                    val keybind = binding.commandID?.let(custom::get) ?: binding.defaultKeybind
+                    keybind.takeUnless { it.isBlank() || it.equals("none", ignoreCase = true) }
+                }
 
             return OpenCodeResolvedKeybinds(
                 newLayout = resolve(command.newLayoutBindings),
@@ -221,7 +244,11 @@ internal class OpenCodeBrowserShortcutHandler(
             )
         }
 
-        fun isCommandAvailable(command: OpenCodeBrowserCommand, serverUrl: String?, pageUrl: String?): Boolean {
+        fun isCommandAvailable(
+            command: OpenCodeBrowserCommand,
+            serverUrl: String?,
+            pageUrl: String?,
+        ): Boolean {
             return OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, pageUrl) &&
                 (!command.composerOnly || isComposerRoute(pageUrl))
         }

@@ -1,5 +1,8 @@
 package de.moritzf.opencodewebpanel.server
 
+import java.nio.file.Files
+import java.nio.file.Path
+import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -8,9 +11,6 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
-import java.nio.file.Files
-import java.nio.file.Path
-import java.util.concurrent.TimeUnit
 
 class SbxGuestVersionTest {
     @get:Rule val temp = TemporaryFolder()
@@ -21,9 +21,11 @@ class SbxGuestVersionTest {
     fun setup() {
         assumeTrue(Files.isExecutable(Path.of("/bin/sh")))
         bin = Files.createDirectories(temp.root.toPath().resolve("bin"))
-        // Production Linux guests have GNU timeout; this shim executes the test binaries on macOS too.
+        // Production Linux guests have GNU timeout; this shim executes the test binaries on macOS
+        // too.
         executable(bin.resolve("timeout"), "shift 3; exec \"\$@\"")
-        guestBinary = Files.createDirectories(temp.root.toPath().resolve(".opencode/bin")).resolve("opencode")
+        guestBinary =
+            Files.createDirectories(temp.root.toPath().resolve(".opencode/bin")).resolve("opencode")
     }
 
     @Test
@@ -41,7 +43,8 @@ class SbxGuestVersionTest {
             executable(guestBinary, "printf '%s\\n' '$version'")
             assertEquals(version, 0, probe().exitCode)
         }
-        for (version in listOf("1.18.23", "opencode v3.0.0", "unknown", "log says version=2.0.11")) {
+        for (version in
+            listOf("1.18.23", "opencode v3.0.0", "unknown", "log says version=2.0.11")) {
             executable(guestBinary, "printf '%s\\n' '$version'")
             val invalid = probe()
             assertEquals(version, 45, invalid.exitCode)
@@ -77,13 +80,20 @@ class SbxGuestVersionTest {
     private fun probe(): SbxCommandResult = runScript(SbxCli.GUEST_V2_VERSION_SCRIPT)
 
     private fun runScript(script: String): SbxCommandResult {
-        val process = ProcessBuilder("/bin/sh", "-c", script).redirectErrorStream(true).apply {
-            environment().clear()
-            environment()["HOME"] = temp.root.toString()
-            environment()["PATH"] = "$bin:/usr/bin:/bin"
-        }.start()
+        val process =
+            ProcessBuilder("/bin/sh", "-c", script)
+                .redirectErrorStream(true)
+                .apply {
+                    environment().clear()
+                    environment()["HOME"] = temp.root.toString()
+                    environment()["PATH"] = "$bin:/usr/bin:/bin"
+                }
+                .start()
         assertTrue(process.waitFor(5, TimeUnit.SECONDS))
-        return SbxCommandResult(process.exitValue(), process.inputStream.bufferedReader().use { it.readText() })
+        return SbxCommandResult(
+            process.exitValue(),
+            process.inputStream.bufferedReader().use { it.readText() },
+        )
     }
 
     private fun executable(path: Path, script: String) {

@@ -4,14 +4,17 @@ import com.intellij.openapi.project.Project
 import java.nio.file.Path
 
 /**
- * Process/URL owner behind one OpenCode web origin. One instance per canonical
- * project directory for both Host CLI and Docker Sandbox.
+ * Process/URL owner behind one OpenCode web origin. One instance per canonical project directory
+ * for both Host CLI and Docker Sandbox.
  */
 interface OpenCodeServerBackend {
     val backendId: String
 
-    /** False when this backend publishes a dynamic host port (SBX) and must not offer Auto/Fixed. */
-    val offersHostPortControls: Boolean get() = true
+    /**
+     * False when this backend publishes a dynamic host port (SBX) and must not offer Auto/Fixed.
+     */
+    val offersHostPortControls: Boolean
+        get() = true
 
     fun ensureStarted(
         project: Project,
@@ -33,26 +36,42 @@ interface OpenCodeServerBackend {
     )
 
     fun getServerUrl(): String?
+
     fun getServerPassword(): String?
+
     /**
-     * Last origin that may receive Basic auth. Survives stop/restart so a parked
-     * JCEF document does not 401 into Chromium's login dialog.
+     * Last origin that may receive Basic auth. Survives stop/restart so a parked JCEF document does
+     * not 401 into Chromium's login dialog.
      */
     fun getAuthServerUrl(): String? = getServerUrl()
+
     fun getAuthPassword(): String? = getServerPassword()
+
     fun getServerVersion(): String?
+
     fun getWireProtocol(): OpenCodeWireProtocol = OpenCodeWireProtocol.UNKNOWN
+
     fun getLifecycleState(): OpenCodeServerLifecycleState
+
     fun getServerGeneration(): Long
+
     fun getServerGenerationStartedAtMillis(): Long
+
     /** Current attempt's elapsed time and output, not the previous process's uptime. */
     fun getStartupProgress(): OpenCodeStartupProgress? = null
+
     fun isServerReadyForAuth(): Boolean
+
     fun verifyServerNow(callbackActive: () -> Boolean = { true }, onHealthy: () -> Unit)
+
     fun getServerLogFile(): Path?
+
     fun consumeUnsupportedServerVersionWarning(): String?
+
     fun consumeV2ProtocolWarning(): Boolean
+
     fun consumeCreateStaleWarning(): List<String> = emptyList()
+
     fun startFailureMessage(): String? = null
 
     companion object {

@@ -37,7 +37,7 @@ class OpenCodeSettingsStateTest {
             OpenCodeSettingsState().apply {
                 sbxMemory = "8G"
                 sbxCpus = "4"
-            },
+            }
         )
         assertEquals("8g", settings.sbxMemoryValue())
         assertEquals("4", settings.sbxCpusValue())
@@ -45,7 +45,7 @@ class OpenCodeSettingsStateTest {
             OpenCodeSettingsState().apply {
                 sbxMemory = "huge"
                 sbxCpus = "99"
-            },
+            }
         )
         assertEquals("4g", settings.sbxMemoryValue())
         assertEquals("2", settings.sbxCpusValue())
@@ -54,10 +54,11 @@ class OpenCodeSettingsStateTest {
     @Test
     fun sbxExecutablePathUsesSbxByDefault() {
         assertEquals("sbx", OpenCodeSettingsState().sbxExecutablePath())
-        val settings = OpenCodeSettingsState().apply {
-            sbxBinaryMode = OpenCodeBinaryMode.CUSTOM.name
-            sbxBinaryPath = "/opt/homebrew/bin/sbx"
-        }
+        val settings =
+            OpenCodeSettingsState().apply {
+                sbxBinaryMode = OpenCodeBinaryMode.CUSTOM.name
+                sbxBinaryPath = "/opt/homebrew/bin/sbx"
+            }
         assertEquals("/opt/homebrew/bin/sbx", settings.sbxExecutablePath())
     }
 
@@ -68,30 +69,33 @@ class OpenCodeSettingsStateTest {
 
     @Test
     fun portArgumentUsesSanitizedFixedPort() {
-        val settings = OpenCodeSettingsState().apply {
-            portMode = OpenCodePortMode.FIXED.name
-            fixedPort = 8181
-        }
+        val settings =
+            OpenCodeSettingsState().apply {
+                portMode = OpenCodePortMode.FIXED.name
+                fixedPort = 8181
+            }
 
         assertEquals("8181", settings.portArgument())
     }
 
     @Test
     fun invalidFixedPortFallsBackToDefault() {
-        val settings = OpenCodeSettingsState().apply {
-            portMode = OpenCodePortMode.FIXED.name
-            fixedPort = 99999
-        }
+        val settings =
+            OpenCodeSettingsState().apply {
+                portMode = OpenCodePortMode.FIXED.name
+                fixedPort = 99999
+            }
 
         assertEquals(OpenCodeSettingsState.DEFAULT_FIXED_PORT.toString(), settings.portArgument())
     }
 
     @Test
     fun unknownPortModeFallsBackToAuto() {
-        val settings = OpenCodeSettingsState().apply {
-            portMode = "legacy-value"
-            fixedPort = 8181
-        }
+        val settings =
+            OpenCodeSettingsState().apply {
+                portMode = "legacy-value"
+                fixedPort = 8181
+            }
 
         assertEquals(OpenCodePortMode.AUTO, settings.portModeValue())
         assertEquals("0", settings.portArgument())
@@ -104,20 +108,22 @@ class OpenCodeSettingsStateTest {
 
     @Test
     fun executablePathUsesCustomPathWhenConfigured() {
-        val settings = OpenCodeSettingsState().apply {
-            binaryMode = OpenCodeBinaryMode.CUSTOM.name
-            binaryPath = "/custom/bin/opencode"
-        }
+        val settings =
+            OpenCodeSettingsState().apply {
+                binaryMode = OpenCodeBinaryMode.CUSTOM.name
+                binaryPath = "/custom/bin/opencode"
+            }
 
         assertEquals("/custom/bin/opencode", settings.executablePath())
     }
 
     @Test
     fun customBinaryWithoutPathFallsBackToOpencode() {
-        val settings = OpenCodeSettingsState().apply {
-            binaryMode = OpenCodeBinaryMode.CUSTOM.name
-            binaryPath = ""
-        }
+        val settings =
+            OpenCodeSettingsState().apply {
+                binaryMode = OpenCodeBinaryMode.CUSTOM.name
+                binaryPath = ""
+            }
 
         assertEquals("opencode", settings.executablePath())
     }
@@ -136,10 +142,11 @@ class OpenCodeSettingsStateTest {
 
     @Test
     fun unknownBinaryModeFallsBackToAuto() {
-        val settings = OpenCodeSettingsState().apply {
-            binaryMode = "legacy-value"
-            binaryPath = "/custom/bin/opencode"
-        }
+        val settings =
+            OpenCodeSettingsState().apply {
+                binaryMode = "legacy-value"
+                binaryPath = "/custom/bin/opencode"
+            }
 
         assertEquals(OpenCodeBinaryMode.AUTO, settings.binaryModeValue())
         assertEquals("opencode", settings.executablePath())
@@ -147,7 +154,10 @@ class OpenCodeSettingsStateTest {
 
     @Test
     fun uiZoomPercentUsesDefaultValue() {
-        assertEquals(OpenCodeSettingsState.DEFAULT_UI_ZOOM_PERCENT, OpenCodeSettingsState().uiZoomPercent)
+        assertEquals(
+            OpenCodeSettingsState.DEFAULT_UI_ZOOM_PERCENT,
+            OpenCodeSettingsState().uiZoomPercent,
+        )
     }
 
     @Test
@@ -197,11 +207,7 @@ class OpenCodeSettingsStateTest {
     fun notifyOpenCodeUpdatesDefaultsOnAndLoads() {
         assertTrue(OpenCodeSettingsState().notifyOpenCodeUpdates)
         val settings = OpenCodeSettingsState()
-        settings.loadState(
-            OpenCodeSettingsState().apply {
-                notifyOpenCodeUpdates = false
-            },
-        )
+        settings.loadState(OpenCodeSettingsState().apply { notifyOpenCodeUpdates = false })
         assertFalse(settings.notifyOpenCodeUpdates)
     }
 
@@ -254,10 +260,11 @@ class OpenCodeSettingsStateTest {
 
     @Test
     fun codeNavigationIsEffectiveOnlyWhenIdeNavigationIsEnabled() {
-        val settings = OpenCodeSettingsState().apply {
-            openFileLinksInIde = false
-            enableCodeNavigation = true
-        }
+        val settings =
+            OpenCodeSettingsState().apply {
+                openFileLinksInIde = false
+                enableCodeNavigation = true
+            }
 
         assertEquals(false, settings.effectiveCodeNavigationEnabled())
 
@@ -309,7 +316,9 @@ class OpenCodeSettingsStateTest {
     fun invalidOpenCodeLocalStorageSnapshotFallsBackToEmptyObject() {
         val settings = OpenCodeSettingsState()
 
-        settings.loadState(OpenCodeSettingsState().apply { openCodeLocalStorageSnapshot = "not-json" })
+        settings.loadState(
+            OpenCodeSettingsState().apply { openCodeLocalStorageSnapshot = "not-json" }
+        )
 
         assertEquals("{}", settings.openCodeLocalStorageSnapshot)
     }
@@ -340,12 +349,13 @@ class OpenCodeSettingsStateTest {
         val settings = OpenCodeSettingsState()
         settings.loadState(
             OpenCodeSettingsState().apply {
-                openCodeLocalStorageSnapshotsByBackend = hashMapOf(
-                    OpenCodeServerBackend.NATIVE_ID to """{"leak":true}""",
-                    "sbx:bad" to "not-json",
-                    "sbx:ok" to """{"ok":true}""",
-                )
-            },
+                openCodeLocalStorageSnapshotsByBackend =
+                    hashMapOf(
+                        OpenCodeServerBackend.NATIVE_ID to """{"leak":true}""",
+                        "sbx:bad" to "not-json",
+                        "sbx:ok" to """{"ok":true}""",
+                    )
+            }
         )
         assertTrue(settings.openCodeLocalStorageSnapshotsByBackend.isEmpty())
         assertEquals("""{"ok":true}""", settings.openCodeLocalStorageSnapshot)
@@ -355,16 +365,23 @@ class OpenCodeSettingsStateTest {
 
     @Test
     fun projectSettingsUseIdeProjectRootByDefault() {
-        assertEquals(OpenCodeProjectDirectoryMode.AUTO, OpenCodeProjectSettingsState().projectDirectoryModeValue())
-        assertEquals("/tmp/project", OpenCodeProjectSettingsState().effectiveProjectDirectory("/tmp/project"))
+        assertEquals(
+            OpenCodeProjectDirectoryMode.AUTO,
+            OpenCodeProjectSettingsState().projectDirectoryModeValue(),
+        )
+        assertEquals(
+            "/tmp/project",
+            OpenCodeProjectSettingsState().effectiveProjectDirectory("/tmp/project"),
+        )
     }
 
     @Test
     fun projectSettingsOverrideIdeProjectRoot() {
-        val settings = OpenCodeProjectSettingsState().apply {
-            projectDirectoryMode = OpenCodeProjectDirectoryMode.CUSTOM.name
-            openCodeProjectDirectory = "/tmp/opencode-project"
-        }
+        val settings =
+            OpenCodeProjectSettingsState().apply {
+                projectDirectoryMode = OpenCodeProjectDirectoryMode.CUSTOM.name
+                openCodeProjectDirectory = "/tmp/opencode-project"
+            }
 
         assertEquals("/tmp/opencode-project", settings.effectiveProjectDirectory("/tmp/project"))
     }
@@ -377,7 +394,7 @@ class OpenCodeSettingsStateTest {
             OpenCodeProjectSettingsState().apply {
                 projectDirectoryMode = OpenCodeProjectDirectoryMode.CUSTOM.name
                 openCodeProjectDirectory = "  /tmp/opencode-project  "
-            },
+            }
         )
 
         assertEquals(OpenCodeProjectDirectoryMode.CUSTOM, settings.projectDirectoryModeValue())
@@ -396,7 +413,9 @@ class OpenCodeSettingsStateTest {
     fun projectSettingsUnknownModeFallsBackToAuto() {
         val settings = OpenCodeProjectSettingsState()
 
-        settings.loadState(OpenCodeProjectSettingsState().apply { projectDirectoryMode = "legacy-value" })
+        settings.loadState(
+            OpenCodeProjectSettingsState().apply { projectDirectoryMode = "legacy-value" }
+        )
 
         assertEquals(OpenCodeProjectDirectoryMode.AUTO, settings.projectDirectoryModeValue())
     }
@@ -410,25 +429,29 @@ class OpenCodeSettingsStateTest {
     fun importedDefaultPortFlagIsNotPersisted() {
         val settings = OpenCodeProjectSettingsState().apply { portImportedFromApplication = true }
         assertNull(settings.getState())
-        settings.loadState(OpenCodeProjectSettingsState().apply { portImportedFromApplication = true })
+        settings.loadState(
+            OpenCodeProjectSettingsState().apply { portImportedFromApplication = true }
+        )
         assertNull(settings.getState())
     }
 
     @Test
     fun customProjectDirectoryIsPersisted() {
-        val settings = OpenCodeProjectSettingsState().apply {
-            projectDirectoryMode = OpenCodeProjectDirectoryMode.CUSTOM.name
-            openCodeProjectDirectory = "/tmp/opencode"
-        }
+        val settings =
+            OpenCodeProjectSettingsState().apply {
+                projectDirectoryMode = OpenCodeProjectDirectoryMode.CUSTOM.name
+                openCodeProjectDirectory = "/tmp/opencode"
+            }
         assertSame(settings, settings.getState())
     }
 
     @Test
     fun nonDefaultProjectPortIsPersisted() {
-        val settings = OpenCodeProjectSettingsState().apply {
-            portMode = OpenCodePortMode.FIXED.name
-            fixedPort = 8181
-        }
+        val settings =
+            OpenCodeProjectSettingsState().apply {
+                portMode = OpenCodePortMode.FIXED.name
+                fixedPort = 8181
+            }
         assertNotNull(settings.getState())
         assertSame(settings, settings.getState())
     }
@@ -440,20 +463,22 @@ class OpenCodeSettingsStateTest {
 
     @Test
     fun projectPortArgumentUsesSanitizedFixedPort() {
-        val settings = OpenCodeProjectSettingsState().apply {
-            portMode = OpenCodePortMode.FIXED.name
-            fixedPort = 8181
-        }
+        val settings =
+            OpenCodeProjectSettingsState().apply {
+                portMode = OpenCodePortMode.FIXED.name
+                fixedPort = 8181
+            }
 
         assertEquals("8181", settings.portArgument())
     }
 
     @Test
     fun projectInvalidFixedPortFallsBackToDefault() {
-        val settings = OpenCodeProjectSettingsState().apply {
-            portMode = OpenCodePortMode.FIXED.name
-            fixedPort = 99999
-        }
+        val settings =
+            OpenCodeProjectSettingsState().apply {
+                portMode = OpenCodePortMode.FIXED.name
+                fixedPort = 99999
+            }
 
         assertEquals(OpenCodeSettingsState.DEFAULT_FIXED_PORT.toString(), settings.portArgument())
     }
@@ -465,7 +490,7 @@ class OpenCodeSettingsStateTest {
             OpenCodeProjectSettingsState().apply {
                 portMode = "legacy-value"
                 fixedPort = 8181
-            },
+            }
         )
 
         assertEquals(OpenCodePortMode.AUTO, settings.portModeValue())

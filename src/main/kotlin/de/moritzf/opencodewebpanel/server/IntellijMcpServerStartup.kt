@@ -10,28 +10,33 @@ internal object IntellijMcpServerStartup {
 
     fun currentStatus(): IntellijMcpServerStartupStatus {
         return runCatching {
-            val classLoader = mcpClassLoader()
-                ?: return IntellijMcpServerStartupStatus(
-                    IntellijMcpServerStartupState.NOT_CONFIGURED_OR_DISABLED,
-                    "IntelliJ MCP server plugin is not installed, disabled, or unavailable",
-                )
+            val classLoader =
+                mcpClassLoader()
+                    ?: return IntellijMcpServerStartupStatus(
+                        IntellijMcpServerStartupState.NOT_CONFIGURED_OR_DISABLED,
+                        "IntelliJ MCP server plugin is not installed, disabled, or unavailable",
+                    )
             statusForRuntimeState(
                 enabled = isMcpServerEnabled(classLoader),
                 service = mcpServerService(classLoader),
             )
-        }.getOrElse { error ->
-            IntellijMcpServerStartupStatus(
-                IntellijMcpServerStartupState.UNAVAILABLE,
-                "IntelliJ MCP server status is unavailable: ${error.message ?: error::class.java.simpleName}",
-            )
         }
+            .getOrElse { error ->
+                IntellijMcpServerStartupStatus(
+                    IntellijMcpServerStartupState.UNAVAILABLE,
+                    "IntelliJ MCP server status is unavailable: ${error.message ?: error::class.java.simpleName}",
+                )
+            }
     }
 
     fun shouldWaitFor(status: IntellijMcpServerStartupStatus, enabled: Boolean = true): Boolean {
         return enabled && status.state == IntellijMcpServerStartupState.ENABLED_NOT_RUNNING
     }
 
-    /** Polls until [stillWaiting] turns false (READY), the timeout expires, or the start is superseded. */
+    /**
+     * Polls until [stillWaiting] turns false (READY), the timeout expires, or the start is
+     * superseded.
+     */
     fun waitUntilReady(
         stillWaiting: () -> Boolean = { shouldWaitFor(currentStatus()) },
         isStillCurrent: () -> Boolean = { true },
@@ -57,41 +62,51 @@ internal object IntellijMcpServerStartup {
         return IntellijMcpServerWaitResult.CANCELLED
     }
 
-    internal fun statusForRuntimeState(enabled: Boolean?, service: Any?): IntellijMcpServerStartupStatus {
+    internal fun statusForRuntimeState(
+        enabled: Boolean?,
+        service: Any?,
+    ): IntellijMcpServerStartupStatus {
         return when {
-            enabled == false -> IntellijMcpServerStartupStatus(
-                IntellijMcpServerStartupState.NOT_CONFIGURED_OR_DISABLED,
-                "IntelliJ MCP server is disabled",
-            )
-            enabled == null -> IntellijMcpServerStartupStatus(
-                IntellijMcpServerStartupState.UNAVAILABLE,
-                "IntelliJ MCP server settings are unavailable",
-            )
-            service == null -> IntellijMcpServerStartupStatus(
-                IntellijMcpServerStartupState.UNAVAILABLE,
-                "IntelliJ MCP server service is unavailable",
-            )
+            enabled == false ->
+                IntellijMcpServerStartupStatus(
+                    IntellijMcpServerStartupState.NOT_CONFIGURED_OR_DISABLED,
+                    "IntelliJ MCP server is disabled",
+                )
+            enabled == null ->
+                IntellijMcpServerStartupStatus(
+                    IntellijMcpServerStartupState.UNAVAILABLE,
+                    "IntelliJ MCP server settings are unavailable",
+                )
+            service == null ->
+                IntellijMcpServerStartupStatus(
+                    IntellijMcpServerStartupState.UNAVAILABLE,
+                    "IntelliJ MCP server service is unavailable",
+                )
             isMcpServerRunning(service) -> {
                 val url = mcpServerSseUrl(service)
                 IntellijMcpServerStartupStatus(
                     IntellijMcpServerStartupState.ENABLED,
-                    if (url == null) "IntelliJ MCP server is running" else "IntelliJ MCP server is running at $url",
+                    if (url == null) "IntelliJ MCP server is running"
+                    else "IntelliJ MCP server is running at $url",
                 )
             }
-            else -> IntellijMcpServerStartupStatus(
-                IntellijMcpServerStartupState.ENABLED_NOT_RUNNING,
-                "IntelliJ MCP server is enabled but not running yet",
-            )
+            else ->
+                IntellijMcpServerStartupStatus(
+                    IntellijMcpServerStartupState.ENABLED_NOT_RUNNING,
+                    "IntelliJ MCP server is enabled but not running yet",
+                )
         }
     }
 
     private fun mcpClassLoader(): ClassLoader? {
         // Direct plugin descriptor lookup APIs are verifier-visible internal APIs in 2026.2.
         val pluginManagerClass = Class.forName(PLUGIN_MANAGER_CLASS)
-        val loadedPlugins = pluginManagerClass.getMethod("getLoadedPlugins").invoke(null) as? Iterable<*>
-            ?: return null
+        val loadedPlugins =
+            pluginManagerClass.getMethod("getLoadedPlugins").invoke(null) as? Iterable<*>
+                ?: return null
         return loadedPlugins.firstNotNullOfOrNull { descriptor ->
-            if (descriptor?.reflectValue("getPluginId")?.toString() != MCP_PLUGIN_ID) return@firstNotNullOfOrNull null
+            if (descriptor?.reflectValue("getPluginId")?.toString() != MCP_PLUGIN_ID)
+                return@firstNotNullOfOrNull null
             descriptor.reflectClassLoader("getPluginClassLoader")
         }
     }
@@ -114,7 +129,9 @@ internal object IntellijMcpServerStartup {
     }
 
     private fun mcpServerSseUrl(service: Any): String? {
-        return runCatching { service.javaClass.getMethod("getServerSseUrl").invoke(service) as? String }
+        return runCatching {
+            service.javaClass.getMethod("getServerSseUrl").invoke(service) as? String
+        }
             .getOrNull()
             ?.takeIf { it.isNotBlank() }
     }

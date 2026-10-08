@@ -17,8 +17,16 @@ class OpenCodeReleaseUpdatesTest {
 
     @Test
     fun parseNpmLatestVersionReadsVersionString() {
-        assertEquals("1.18.31", OpenCodeReleaseUpdates.parseNpmLatestVersion("""{"version":"1.18.31"}"""))
-        assertEquals("2.0.8", OpenCodeReleaseUpdates.parseNpmLatestVersion("""{"name":"@opencode/cli","version":"2.0.8"}"""))
+        assertEquals(
+            "1.18.31",
+            OpenCodeReleaseUpdates.parseNpmLatestVersion("""{"version":"1.18.31"}"""),
+        )
+        assertEquals(
+            "2.0.8",
+            OpenCodeReleaseUpdates.parseNpmLatestVersion(
+                """{"name":"@opencode/cli","version":"2.0.8"}"""
+            ),
+        )
         assertNull(OpenCodeReleaseUpdates.parseNpmLatestVersion("""{"name":"x"}"""))
         assertNull(OpenCodeReleaseUpdates.parseNpmLatestVersion("not json"))
         assertNull(OpenCodeReleaseUpdates.parseNpmLatestVersion("""{"version":1}"""))
@@ -45,31 +53,31 @@ class OpenCodeReleaseUpdatesTest {
     @Test
     fun evaluateFetchesCatalogForInstalledMajor() {
         val fetched = mutableListOf<String>()
-        val notice = OpenCodeReleaseUpdates.evaluate(
-            installed = "2.0.5",
-            fetch = { url ->
-                fetched.add(url)
-                """{"version":"2.0.8"}"""
-            },
-        )
+        val notice =
+            OpenCodeReleaseUpdates.evaluate(
+                installed = "2.0.5",
+                fetch = { url ->
+                    fetched.add(url)
+                    """{"version":"2.0.8"}"""
+                },
+            )
         assertEquals(listOf(OpenCodeReleaseUpdates.NPM_V2_LATEST_URL), fetched)
         assertEquals(OpenCodeReleaseUpdates.Notice("2.0.5", "2.0.8"), notice)
     }
 
     @Test
     fun evaluateUsesV1CatalogFor1x() {
-        val notice = OpenCodeReleaseUpdates.evaluate(
-            installed = "1.18.25",
-            fetch = { """{"version":"1.18.31"}""" },
-        )
+        val notice =
+            OpenCodeReleaseUpdates.evaluate(
+                installed = "1.18.25",
+                fetch = { """{"version":"1.18.31"}""" },
+            )
         assertEquals(OpenCodeReleaseUpdates.Notice("1.18.25", "1.18.31"), notice)
     }
 
     @Test
     fun evaluateReturnsNullWhenFetchFails() {
-        assertNull(
-            OpenCodeReleaseUpdates.evaluate("2.0.5", fetch = { null }),
-        )
+        assertNull(OpenCodeReleaseUpdates.evaluate("2.0.5", fetch = { null }))
     }
 
     @Test

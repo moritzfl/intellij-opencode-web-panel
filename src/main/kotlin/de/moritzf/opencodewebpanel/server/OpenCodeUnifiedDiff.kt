@@ -1,9 +1,9 @@
 package de.moritzf.opencodewebpanel.server
 
 /**
- * Reconstructs the "before" and "after" text of a single file from its unified-diff `patch`
- * string, so the changed regions can be shown in IntelliJ's two-pane diff viewer without a VCS
- * plugin dependency (the platform ships `TextFilePatch` but not a `PatchReader`/`PatchDiffRequest`).
+ * Reconstructs the "before" and "after" text of a single file from its unified-diff `patch` string,
+ * so the changed regions can be shown in IntelliJ's two-pane diff viewer without a VCS plugin
+ * dependency (the platform ships `TextFilePatch` but not a `PatchReader`/`PatchDiffRequest`).
  *
  * Only the hunk bodies are reconstructed — a unified diff carries no content for the unchanged
  * regions between hunks, so the result is a faithful "patch preview" of the changes, not a full
@@ -15,18 +15,30 @@ object OpenCodeUnifiedDiff {
     data class Sides(val before: String, val after: String)
 
     /** Lines that precede the first hunk and describe the file, not its content. */
-    private val HEADER_PREFIXES = listOf(
-        "diff ", "index ", "--- ", "+++ ", "old mode", "new mode", "similarity ",
-        "rename ", "copy ", "deleted file", "new file", "Binary files", "GIT binary patch",
-    )
+    private val HEADER_PREFIXES =
+        listOf(
+            "diff ",
+            "index ",
+            "--- ",
+            "+++ ",
+            "old mode",
+            "new mode",
+            "similarity ",
+            "rename ",
+            "copy ",
+            "deleted file",
+            "new file",
+            "Binary files",
+            "GIT binary patch",
+        )
 
     /**
-     * Splits [patch] into the reconstructed before/after hunk text. Returns null when the patch
-     * has no textual hunks to show (empty, header-only, or binary).
+     * Splits [patch] into the reconstructed before/after hunk text. Returns null when the patch has
+     * no textual hunks to show (empty, header-only, or binary).
      */
     /**
-     * 0-based line in the *after* file of the first addition or deletion.
-     * Context lines at the start of a hunk are skipped.
+     * 0-based line in the *after* file of the first addition or deletion. Context lines at the
+     * start of a hunk are skipped.
      */
     fun firstChangedLineIndex(patch: String?): Int? {
         if (patch.isNullOrBlank()) return null
@@ -34,7 +46,8 @@ object OpenCodeUnifiedDiff {
         var newLine: Int? = null
         for (line in lines) {
             if (line.startsWith("@@")) {
-                val match = Regex("""^@@\s+-\d+(?:,\d+)?\s+\+(\d+)(?:,\d+)?\s+@@""").find(line) ?: continue
+                val match =
+                    Regex("""^@@\s+-\d+(?:,\d+)?\s+\+(\d+)(?:,\d+)?\s+@@""").find(line) ?: continue
                 newLine = match.groupValues[1].toIntOrNull() ?: continue
                 continue
             }

@@ -28,9 +28,9 @@ internal object OpenCodeInjectedFeaturePolicy {
     /**
      * Chooses the browser action for a runtime feature toggle.
      *
-     * Returns [Action.RELOAD] when the feature is (or must be) off so prior injections are
-     * dropped by a full page load; [Action.INJECT] when it is on and a script is available;
-     * [Action.NONE] when the browser is not on the OpenCode page or no script can be built.
+     * Returns [Action.RELOAD] when the feature is (or must be) off so prior injections are dropped
+     * by a full page load; [Action.INJECT] when it is on and a script is available; [Action.NONE]
+     * when the browser is not on the OpenCode page or no script can be built.
      *
      * @param enabled the value the user just set for this feature
      * @param enabledInSettings current settings gate (usually matches [enabled] after apply)

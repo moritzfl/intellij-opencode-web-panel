@@ -11,12 +11,12 @@ import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.ui.jcef.JBCefBrowser
 import com.intellij.ui.jcef.JBCefBrowserBase
-import com.intellij.util.concurrency.AppExecutorUtil
 import com.intellij.util.Alarm
+import com.intellij.util.concurrency.AppExecutorUtil
 import de.moritzf.opencodewebpanel.browser.OpenCodeBrowserSnippets
 import de.moritzf.opencodewebpanel.browser.OpenCodeJsQuery
-import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
+import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
 import java.awt.Image
 import java.awt.KeyboardFocusManager
@@ -34,10 +34,11 @@ import javax.swing.JComponent
 import javax.swing.TransferHandler
 import org.cef.handler.CefDragHandler
 
-internal fun createOpenCodeDropPreparationExecutor() = AppExecutorUtil.createBoundedApplicationPoolExecutor(
-    "OpenCode File Drop Preparation",
-    1,
-)
+internal fun createOpenCodeDropPreparationExecutor() =
+    AppExecutorUtil.createBoundedApplicationPoolExecutor(
+        "OpenCode File Drop Preparation",
+        1,
+    )
 
 internal class OpenCodeFileDropHandler(
     private val project: Project,
@@ -64,16 +65,25 @@ internal class OpenCodeFileDropHandler(
         // covers even large retina screenshots while keeping the transient buffer ~100 MB.
         internal const val MAX_IMAGE_PIXELS = 25_000_000L
 
-        internal fun shouldReadNonFileDropFlavors(droppedFiles: List<File>): Boolean = droppedFiles.isEmpty()
+        internal fun shouldReadNonFileDropFlavors(droppedFiles: List<File>): Boolean =
+            droppedFiles.isEmpty()
 
         internal fun afterDropShouldRestoreBrowserFocus(
             focusInsideBrowser: Boolean,
             focusOwnerMissing: Boolean,
         ): Boolean = focusOwnerMissing || focusInsideBrowser
 
-        internal fun shouldUseDroppedImageFlavor(droppedFiles: List<File>, projectDirectory: String?): Boolean {
+        internal fun shouldUseDroppedImageFlavor(
+            droppedFiles: List<File>,
+            projectDirectory: String?,
+        ): Boolean {
             if (droppedFiles.isEmpty()) return true
-            if (droppedFiles.any { OpenCodeServerProtocol.localFileDropText(it, projectDirectory) != null }) return false
+            if (
+                droppedFiles.any {
+                    OpenCodeServerProtocol.localFileDropText(it, projectDirectory) != null
+                }
+            )
+                return false
             return droppedFiles.none { Files.isRegularFile(it.toPath()) }
         }
 
@@ -88,8 +98,9 @@ internal class OpenCodeFileDropHandler(
             currentDirectory: String?,
             browserUrl: String?,
         ): Boolean {
-            val sameDirectory = (initialDirectory == null && currentDirectory == null) ||
-                OpenCodeServerProtocol.isSameFilesystemPath(initialDirectory, currentDirectory)
+            val sameDirectory =
+                (initialDirectory == null && currentDirectory == null) ||
+                    OpenCodeServerProtocol.isSameFilesystemPath(initialDirectory, currentDirectory)
             return initialDocumentRevision == currentDocumentRevision &&
                 initialServerGeneration == currentServerGeneration &&
                 initialServerUrl == currentServerUrl &&
@@ -109,15 +120,19 @@ internal class OpenCodeFileDropHandler(
                 ByteArrayOutputStream().use { stream ->
                     if (ImageIO.write(bufferedImage, "png", stream)) stream.toByteArray() else null
                 }
-            }.getOrNull()?.takeIf { it.isNotEmpty() }
+            }
+                .getOrNull()
+                ?.takeIf { it.isNotEmpty() }
         }
 
         private fun toBufferedImage(image: Image): BufferedImage? {
             val width = image.getWidth(null)
             val height = image.getHeight(null)
             if (width <= 0 || height <= 0) return null
-            // Off-screen buffer used only to encode the clipboard image to PNG bytes; it must match the
-            // source pixel dimensions exactly, so UIUtil.createImage()'s HiDPI scaling is intentionally avoided.
+            // Off-screen buffer used only to encode the clipboard image to PNG bytes; it must match
+            // the
+            // source pixel dimensions exactly, so UIUtil.createImage()'s HiDPI scaling is
+            // intentionally avoided.
             @Suppress("UndesirableClassUsage")
             val buffered = BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB)
             val graphics = buffered.createGraphics()
@@ -147,11 +162,21 @@ internal class OpenCodeFileDropHandler(
                     if (!pending.isCurrent()) return@invokeLater
                     when (result) {
                         "native" -> nativePaste()
-                        "stale" -> showFileDropWarning(listOf("The paste destination changed before the clipboard was ready."))
-                        "rejected" -> showFileDropWarning(listOf("The clipboard could not be inserted into this field."))
+                        "stale" ->
+                            showFileDropWarning(
+                                listOf(
+                                    "The paste destination changed before the clipboard was ready."
+                                )
+                            )
+                        "rejected" ->
+                            showFileDropWarning(
+                                listOf("The clipboard could not be inserted into this field.")
+                            )
                     }
                 } else if (result != "1") {
-                    showFileDropWarning(listOf("Open a conversation and close any dialog before adding files."))
+                    showFileDropWarning(
+                        listOf("Open a conversation and close any dialog before adding files.")
+                    )
                 }
             }
             null
@@ -166,58 +191,73 @@ internal class OpenCodeFileDropHandler(
 
     fun install() {
         installDragHandler()
-        val handler = object : TransferHandler() {
-            override fun canImport(support: TransferSupport): Boolean {
-                if (!OpenCodeSettingsState.getInstance().enableChatFileDrop) return false
-                if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverManager.getServerUrl(), browser.cefBrowser.url)) return false
-                if (!support.isDataFlavorSupported(DataFlavor.javaFileListFlavor) &&
-                    !supportsText(support.transferable) &&
-                    !supportsImageDrop(support)
-                ) {
-                    return false
+        val handler =
+            object : TransferHandler() {
+                override fun canImport(support: TransferSupport): Boolean {
+                    if (!OpenCodeSettingsState.getInstance().enableChatFileDrop) return false
+                    if (
+                        !OpenCodeServerProtocol.isOpenCodeServerPage(
+                            serverManager.getServerUrl(),
+                            browser.cefBrowser.url,
+                        )
+                    )
+                        return false
+                    if (
+                        !support.isDataFlavorSupported(DataFlavor.javaFileListFlavor) &&
+                            !supportsText(support.transferable) &&
+                            !supportsImageDrop(support)
+                    ) {
+                        return false
+                    }
+                    if (support.isDrop) support.dropAction = COPY
+                    return true
                 }
-                if (support.isDrop) support.dropAction = COPY
-                return true
-            }
 
-            override fun importData(support: TransferSupport): Boolean {
-                if (!canImport(support)) return false
-                try {
-                    val droppedFiles = runCatching {
-                        @Suppress("UNCHECKED_CAST")
-                        support.transferable.getTransferData(DataFlavor.javaFileListFlavor) as? List<File>
-                    }.getOrNull().orEmpty()
-                    // File drops already carry a usable javaFileList. Reading the extra image/text
-                    // flavors Finder and Project View attach happens inside the native drop
-                    // callback and is enough to leave macOS AWT without a key window — typing
-                    // then dies in every IDE text field until focus is fully reset.
-                    val pendingImages = if (shouldReadNonFileDropFlavors(droppedFiles)) {
-                        droppedImages(support.transferable)
-                    } else {
-                        emptyList()
+                override fun importData(support: TransferSupport): Boolean {
+                    if (!canImport(support)) return false
+                    try {
+                        val droppedFiles = runCatching {
+                            @Suppress("UNCHECKED_CAST")
+                            support.transferable.getTransferData(DataFlavor.javaFileListFlavor)
+                                as? List<File>
+                        }
+                            .getOrNull()
+                            .orEmpty()
+                        // File drops already carry a usable javaFileList. Reading the extra
+                        // image/text
+                        // flavors Finder and Project View attach happens inside the native drop
+                        // callback and is enough to leave macOS AWT without a key window — typing
+                        // then dies in every IDE text field until focus is fully reset.
+                        val pendingImages =
+                            if (shouldReadNonFileDropFlavors(droppedFiles)) {
+                                droppedImages(support.transferable)
+                            } else {
+                                emptyList()
+                            }
+                        val text =
+                            if (shouldReadNonFileDropFlavors(droppedFiles)) {
+                                droppedTextPayload(support.transferable)
+                            } else {
+                                null
+                            }
+                        val fileReferenceText = text?.takeIf { it.startsWith("file:") }
+                        val textToDispatch =
+                            if (pendingImages.isNotEmpty()) fileReferenceText else text
+                        return dispatchDroppedData(droppedFiles, textToDispatch, pendingImages)
+                    } finally {
+                        scheduleRestoreInputAfterExternalDrop()
                     }
-                    val text = if (shouldReadNonFileDropFlavors(droppedFiles)) {
-                        droppedTextPayload(support.transferable)
-                    } else {
-                        null
-                    }
-                    val fileReferenceText = text?.takeIf { it.startsWith("file:") }
-                    val textToDispatch = if (pendingImages.isNotEmpty()) fileReferenceText else text
-                    return dispatchDroppedData(droppedFiles, textToDispatch, pendingImages)
-                } finally {
-                    scheduleRestoreInputAfterExternalDrop()
                 }
             }
-        }
         installTransferHandler(browser.component, handler)
         (browser.browserComponent as? JComponent)?.let { installTransferHandler(it, handler) }
     }
 
     private fun installTransferHandler(component: JComponent, handler: TransferHandler) {
         component.transferHandler = handler
-        component.components
-            .filterIsInstance<JComponent>()
-            .forEach { installTransferHandler(it, handler) }
+        component.components.filterIsInstance<JComponent>().forEach {
+            installTransferHandler(it, handler)
+        }
     }
 
     private fun installDragHandler() {
@@ -251,7 +291,11 @@ internal class OpenCodeFileDropHandler(
     private fun scheduleRestoreInputAfterExternalDrop() {
         ApplicationManager.getApplication().invokeLater {
             restoreInputAfterExternalDrop()
-            if (!isDisposed() && SystemInfo.isMac && OpenCodeSettingsState.getInstance().enableChatFileDrop) {
+            if (
+                !isDisposed() &&
+                    SystemInfo.isMac &&
+                    OpenCodeSettingsState.getInstance().enableChatFileDrop
+            ) {
                 OpenCodeMacDropWindowFocus.afterDrop(browser.component, pasteAlarm) {
                     !isDisposed() && OpenCodeSettingsState.getInstance().enableChatFileDrop
                 }
@@ -266,7 +310,12 @@ internal class OpenCodeFileDropHandler(
         // swallows typing in every IDE editor.
         browser.cefBrowser.setFocus(false)
         val owner = currentFocusOwner()
-        if (afterDropShouldRestoreBrowserFocus(owner != null && isBrowserFocusOwner(owner), owner == null)) {
+        if (
+            afterDropShouldRestoreBrowserFocus(
+                owner != null && isBrowserFocusOwner(owner),
+                owner == null,
+            )
+        ) {
             KeyboardFocusManager.getCurrentKeyboardFocusManager().clearGlobalFocusOwner()
             // Briefly route focus to a non-browser Swing ancestor before returning to the
             // browser. A pure `requestFocusInWindow()` on the browser component is a no-op
@@ -292,11 +341,10 @@ internal class OpenCodeFileDropHandler(
     }
 
     /**
-     * Returns a nearby non-browser Swing component that can receive focus so the browser
-     * component experiences a real focus transition. Skipping the round trip leaves a
-     * stale IME peer attached after a macOS screenshot drop (IDE-wide typing freeze). The
-     * tool-window root panel is used when available; otherwise the top-level ancestor's
-     * focus traversal root.
+     * Returns a nearby non-browser Swing component that can receive focus so the browser component
+     * experiences a real focus transition. Skipping the round trip leaves a stale IME peer attached
+     * after a macOS screenshot drop (IDE-wide typing freeze). The tool-window root panel is used
+     * when available; otherwise the top-level ancestor's focus traversal root.
      */
     private fun findFocusRoundTripTarget(): java.awt.Component? {
         val parent = browser.component.parent
@@ -310,28 +358,49 @@ internal class OpenCodeFileDropHandler(
         if (!canBridgePaste() || !pasteClipboardData()) nativePaste()
     }
 
-    fun canBridgePaste(): Boolean = !isDisposed() && OpenCodeSettingsState.getInstance().enableChatFileDrop &&
-        dropResultQuery.isAvailable && OpenCodeServerProtocol.isOpenCodeServerPage(serverManager.getServerUrl(), browser.cefBrowser.url)
+    fun canBridgePaste(): Boolean =
+        !isDisposed() &&
+            OpenCodeSettingsState.getInstance().enableChatFileDrop &&
+            dropResultQuery.isAvailable &&
+            OpenCodeServerProtocol.isOpenCodeServerPage(
+                serverManager.getServerUrl(),
+                browser.cefBrowser.url,
+            )
 
     private fun nativePaste() {
-        if (!isDisposed()) (browser.cefBrowser.focusedFrame ?: browser.cefBrowser.mainFrame)?.paste()
+        if (!isDisposed())
+            (browser.cefBrowser.focusedFrame ?: browser.cefBrowser.mainFrame)?.paste()
     }
 
     private fun pasteClipboardData(): Boolean {
         val transferables = clipboardTransferables()
-        val files = transferables
-            .flatMap { clipboardFiles(it) }
-            .distinctBy { it.toPath().toAbsolutePath().normalize() }
-        val pendingImages = if (files.isEmpty()) {
-            pendingImages(transferables, fileNamePrefix = "pasted-image", warningDescription = "pasted image")
-        } else {
-            emptyList()
-        }
-        // File/image owners advertise incidental text (paths, HTML captions). Read only one payload.
-        val text = if (files.isEmpty() && pendingImages.isEmpty()) {
-            transferables.firstNotNullOfOrNull { droppedTextPayload(it) }
-        } else null
-        if (files.isEmpty() && pendingImages.isEmpty() && text == null && waylandClipboardReader == null) return false
+        val files =
+            transferables
+                .flatMap { clipboardFiles(it) }
+                .distinctBy { it.toPath().toAbsolutePath().normalize() }
+        val pendingImages =
+            if (files.isEmpty()) {
+                pendingImages(
+                    transferables,
+                    fileNamePrefix = "pasted-image",
+                    warningDescription = "pasted image",
+                )
+            } else {
+                emptyList()
+            }
+        // File/image owners advertise incidental text (paths, HTML captions). Read only one
+        // payload.
+        val text =
+            if (files.isEmpty() && pendingImages.isEmpty()) {
+                transferables.firstNotNullOfOrNull { droppedTextPayload(it) }
+            } else null
+        if (
+            files.isEmpty() &&
+                pendingImages.isEmpty() &&
+                text == null &&
+                waylandClipboardReader == null
+        )
+            return false
         return dispatchDroppedData(files, text, pendingImages, clipboardPaste = true)
     }
 
@@ -341,8 +410,13 @@ internal class OpenCodeFileDropHandler(
         pendingImages: List<PendingDroppedImage> = emptyList(),
         clipboardPaste: Boolean = false,
     ): Boolean {
-        if (files.isEmpty() && textPlain.isNullOrEmpty() && pendingImages.isEmpty() &&
-            !(clipboardPaste && waylandClipboardReader != null)) return false
+        if (
+            files.isEmpty() &&
+                textPlain.isNullOrEmpty() &&
+                pendingImages.isEmpty() &&
+                !(clipboardPaste && waylandClipboardReader != null)
+        )
+            return false
         val projectDirectory = openCodeProjectDirectory()
         val serverUrl = serverManager.getServerUrl() ?: return false
         val serverGeneration = serverManager.getServerGeneration()
@@ -350,29 +424,38 @@ internal class OpenCodeFileDropHandler(
         val batchID = "${if (clipboardPaste) "paste" else "drop"}-${nextDropID.incrementAndGet()}"
         val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
         val contextIsCurrent = {
-            !isDisposed() && OpenCodeSettingsState.getInstance().enableChatFileDrop && dispatchContextMatches(
-                initialDocumentRevision = documentRevision,
-                currentDocumentRevision = browserDocumentRevision(),
-                initialServerGeneration = serverGeneration,
-                currentServerGeneration = serverManager.getServerGeneration(),
-                initialServerUrl = serverUrl,
-                currentServerUrl = serverManager.getServerUrl(),
-                initialDirectory = projectDirectory,
-                currentDirectory = openCodeProjectDirectory(),
-                browserUrl = browser.cefBrowser.url,
-            )
+            !isDisposed() &&
+                OpenCodeSettingsState.getInstance().enableChatFileDrop &&
+                dispatchContextMatches(
+                    initialDocumentRevision = documentRevision,
+                    currentDocumentRevision = browserDocumentRevision(),
+                    initialServerGeneration = serverGeneration,
+                    currentServerGeneration = serverManager.getServerGeneration(),
+                    initialServerUrl = serverUrl,
+                    currentServerUrl = serverManager.getServerUrl(),
+                    initialDirectory = projectDirectory,
+                    currentDirectory = openCodeProjectDirectory(),
+                    browserUrl = browser.cefBrowser.url,
+                )
         }
         if (clipboardPaste) {
             val timeout = Runnable {
                 if (pendingPastes.remove(batchID) != null && contextIsCurrent()) {
-                    // Never retry a timed-out acknowledgement: the page may already have inserted it.
-                    showFileDropWarning(listOf("The paste could not be confirmed. Check the field before trying again."))
+                    // Never retry a timed-out acknowledgement: the page may already have inserted
+                    // it.
+                    showFileDropWarning(
+                        listOf(
+                            "The paste could not be confirmed. Check the field before trying again."
+                        )
+                    )
                 }
             }
             pendingPastes[batchID] = PendingPaste(contextIsCurrent, timeout)
             pasteAlarm.addRequest(timeout, 30_000)
             browser.cefBrowser.executeJavaScript(
-                OpenCodeBrowserSnippets.buildCaptureClipboardPasteScript(batchID, enabled = true)!!, rootUrl, 0,
+                OpenCodeBrowserSnippets.buildCaptureClipboardPasteScript(batchID, enabled = true)!!,
+                rootUrl,
+                0,
             )
         }
 
@@ -381,74 +464,115 @@ internal class OpenCodeFileDropHandler(
             // Capture above precedes this slow read. Keep the same ordered worker, destination
             // checks and acknowledgement for shortcut/menu paste on every platform.
             val wayland = if (clipboardPaste) waylandClipboardReader?.invoke() else null
-            if (wayland === OpenCodeWaylandClipboard.Result.TooLarge ||
-                (wayland is OpenCodeWaylandClipboard.Result.Text && wayland.value.isEmpty())) {
+            if (
+                wayland === OpenCodeWaylandClipboard.Result.TooLarge ||
+                    (wayland is OpenCodeWaylandClipboard.Result.Text && wayland.value.isEmpty())
+            ) {
                 ApplicationManager.getApplication().invokeLater {
                     pendingPastes.remove(batchID)?.let { pasteAlarm.cancelRequest(it.timeout) }
-                    if (wayland === OpenCodeWaylandClipboard.Result.TooLarge && contextIsCurrent()) {
-                        showFileDropWarning(listOf("The clipboard text exceeds the ${OpenCodeClipboardText.MAX_CHARS} character limit."))
+                    if (
+                        wayland === OpenCodeWaylandClipboard.Result.TooLarge && contextIsCurrent()
+                    ) {
+                        showFileDropWarning(
+                            listOf(
+                                "The clipboard text exceeds the ${OpenCodeClipboardText.MAX_CHARS} character limit."
+                            )
+                        )
                     }
                 }
                 return@execute
             }
-            val data = when (wayland) {
-                is OpenCodeWaylandClipboard.Result.Text -> PendingDroppedData(emptyList(), wayland.value, emptyList())
-                else -> PendingDroppedData(files, textPlain, pendingImages)
-            }
-            val nativeFallback = wayland === OpenCodeWaylandClipboard.Result.Unavailable &&
-                data.files.isEmpty() && data.images.isEmpty() && data.text == null
-            val classifiedFiles = data.files.map { file ->
-                file to OpenCodeServerProtocol.localFileDropText(file, projectDirectory)
-            }
+            val data =
+                when (wayland) {
+                    is OpenCodeWaylandClipboard.Result.Text ->
+                        PendingDroppedData(emptyList(), wayland.value, emptyList())
+                    else -> PendingDroppedData(files, textPlain, pendingImages)
+                }
+            val nativeFallback =
+                wayland === OpenCodeWaylandClipboard.Result.Unavailable &&
+                    data.files.isEmpty() &&
+                    data.images.isEmpty() &&
+                    data.text == null
+            val classifiedFiles =
+                data.files.map { file ->
+                    file to OpenCodeServerProtocol.localFileDropText(file, projectDirectory)
+                }
             val fileTextDrops = classifiedFiles.mapNotNull { it.second }
-            val textDrops = if (clipboardPaste) fileTextDrops else fileTextDrops.ifEmpty { droppedTextPlainItems(data.files, data.text) }
+            val textDrops =
+                if (clipboardPaste) fileTextDrops
+                else fileTextDrops.ifEmpty { droppedTextPlainItems(data.files, data.text) }
             val filesToForward = classifiedFiles.filter { it.second == null }.map { it.first }
             val selection = selectDroppedFiles(filesToForward)
-            val preparedImages = if (data.images.isNotEmpty() && shouldUseDroppedImageFlavor(data.files, projectDirectory)) {
-                prepareDroppedImages(data.images)
-            } else {
-                PreparedDroppedImages(emptyList(), emptyList())
-            }
+            val preparedImages =
+                if (
+                    data.images.isNotEmpty() &&
+                        shouldUseDroppedImageFlavor(data.files, projectDirectory)
+                ) {
+                    prepareDroppedImages(data.images)
+                } else {
+                    PreparedDroppedImages(emptyList(), emptyList())
+                }
             val warnings = selection.rejectionMessages + preparedImages.rejectionMessages
             if (warnings.isNotEmpty()) showFileDropWarning(warnings)
-            val payloads = selection.acceptedFiles.mapNotNull {
-                droppedFilePayload(it).also { payload ->
-                    if (payload == null) showFileDropWarning(listOf("${it.name} could not be read or exceeds the file size limit."))
-                }
-            } + preparedImages.payloads
+            val payloads =
+                selection.acceptedFiles.mapNotNull {
+                    droppedFilePayload(it).also { payload ->
+                        if (payload == null)
+                            showFileDropWarning(
+                                listOf(
+                                    "${it.name} could not be read or exceeds the file size limit."
+                                )
+                            )
+                    }
+                } + preparedImages.payloads
             if (!clipboardPaste && textDrops.isEmpty() && payloads.isEmpty()) return@execute
             ApplicationManager.getApplication().invokeLater {
                 if (clipboardPaste && batchID !in pendingPastes) return@invokeLater
                 if (contextIsCurrent()) {
-                    val script = if (clipboardPaste) OpenCodeBrowserSnippets.buildClipboardPasteScript(
-                        files = payloads,
-                        text = data.text,
-                        fileReferences = textDrops,
-                        batchId = batchID,
-                        resultCallback = dropResultQuery.inject("batchId + '\\n' + result"),
-                        enabled = true,
-                        nativeFallback = nativeFallback,
-                    ) else OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(
-                        payloads,
-                        textPlain = textDrops,
-                        enabled = OpenCodeSettingsState.getInstance().enableChatFileDrop,
-                        batchId = batchID,
-                        resultCallback = dropResultQuery.inject("batchId + '\\n' + (accepted ? '1' : '0')"),
-                        focusPrompt = isFocusInsideBrowser(),
-                    )
+                    val script =
+                        if (clipboardPaste)
+                            OpenCodeBrowserSnippets.buildClipboardPasteScript(
+                                files = payloads,
+                                text = data.text,
+                                fileReferences = textDrops,
+                                batchId = batchID,
+                                resultCallback = dropResultQuery.inject("batchId + '\\n' + result"),
+                                enabled = true,
+                                nativeFallback = nativeFallback,
+                            )
+                        else
+                            OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(
+                                payloads,
+                                textPlain = textDrops,
+                                enabled = OpenCodeSettingsState.getInstance().enableChatFileDrop,
+                                batchId = batchID,
+                                resultCallback =
+                                    dropResultQuery.inject(
+                                        "batchId + '\\n' + (accepted ? '1' : '0')"
+                                    ),
+                                focusPrompt = isFocusInsideBrowser(),
+                            )
                     if (script != null) {
                         val dispatch = {
-                            if (contextIsCurrent()) browser.cefBrowser.executeJavaScript(script, rootUrl, 0)
+                            if (contextIsCurrent())
+                                browser.cefBrowser.executeJavaScript(script, rootUrl, 0)
                         }
-                        // Keep the screenshot IME workaround, but finish its focus round trip before
+                        // Keep the screenshot IME workaround, but finish its focus round trip
+                        // before
                         // dispatch. Ordinary text and Linux/Wayland pastes must not reset focus.
-                        if (clipboardPaste && SystemInfo.isMac && (data.files.isNotEmpty() || data.images.isNotEmpty())) {
+                        if (
+                            clipboardPaste &&
+                                SystemInfo.isMac &&
+                                (data.files.isNotEmpty() || data.images.isNotEmpty())
+                        ) {
                             restoreInputAfterExternalDrop(dispatch)
                         } else dispatch()
                     }
                 } else if (!isDisposed()) {
                     pendingPastes.remove(batchID)?.let { pasteAlarm.cancelRequest(it.timeout) }
-                    showFileDropWarning(listOf("The OpenCode page changed before the files were ready."))
+                    showFileDropWarning(
+                        listOf("The OpenCode page changed before the files were ready.")
+                    )
                 }
             }
         }
@@ -459,7 +583,11 @@ internal class OpenCodeFileDropHandler(
         if (!transferable.isDataFlavorSupported(DataFlavor.imageFlavor)) return emptyList()
         // The file checks that decide whether this image flavor is incidental run later on the
         // pooled preparation thread; only capture the Transferable's image on the EDT here.
-        return pendingImages(listOf(transferable), fileNamePrefix = "dropped-image", warningDescription = "dropped image")
+        return pendingImages(
+            listOf(transferable),
+            fileNamePrefix = "dropped-image",
+            warningDescription = "dropped image",
+        )
     }
 
     private fun pendingImages(
@@ -476,7 +604,8 @@ internal class OpenCodeFileDropHandler(
             if (transferable.isDataFlavorSupported(DataFlavor.imageFlavor)) {
                 transferable.getTransferData(DataFlavor.imageFlavor) as? Image
             } else null
-        }.getOrNull()
+        }
+            .getOrNull()
     }
 
     private fun prepareDroppedImages(images: List<PendingDroppedImage>): PreparedDroppedImages {
@@ -489,16 +618,18 @@ internal class OpenCodeFileDropHandler(
                 continue
             }
             if (bytes.size > MAX_DROPPED_FILE_BYTES) {
-                rejectionMessages += "The ${pending.warningDescription} is larger than ${formatFileSize(MAX_DROPPED_FILE_BYTES)}."
+                rejectionMessages +=
+                    "The ${pending.warningDescription} is larger than ${formatFileSize(MAX_DROPPED_FILE_BYTES)}."
                 continue
             }
             val timestamp = System.currentTimeMillis()
-            payloads += OpenCodeServerProtocol.DroppedFilePayload(
-                name = "${pending.fileNamePrefix}-$timestamp.png",
-                mime = "image/png",
-                lastModified = timestamp,
-                base64 = Base64.getEncoder().encodeToString(bytes),
-            )
+            payloads +=
+                OpenCodeServerProtocol.DroppedFilePayload(
+                    name = "${pending.fileNamePrefix}-$timestamp.png",
+                    mime = "image/png",
+                    lastModified = timestamp,
+                    base64 = Base64.getEncoder().encodeToString(bytes),
+                )
         }
         return PreparedDroppedImages(payloads, rejectionMessages)
     }
@@ -512,12 +643,18 @@ internal class OpenCodeFileDropHandler(
         // Native Wayland AWT can have fresher contents than the IDE clipboard-history cache.
         // Keep macOS on CopyPasteManager: incidental native flavor reads can disturb JCEF IME.
         if (waylandClipboardReader != null) {
-            val systemClipboard = runCatching { Toolkit.getDefaultToolkit().systemClipboard.getContents(null) }.getOrNull()
+            val systemClipboard = runCatching {
+                Toolkit.getDefaultToolkit().systemClipboard.getContents(null)
+            }
+                .getOrNull()
             if (systemClipboard != null) return listOf(systemClipboard)
         }
         val ideClipboard = runCatching { CopyPasteManager.getInstance().contents }.getOrNull()
         if (ideClipboard != null) return listOf(ideClipboard)
-        return listOfNotNull(runCatching { Toolkit.getDefaultToolkit().systemClipboard.getContents(null) }.getOrNull())
+        return listOfNotNull(
+            runCatching { Toolkit.getDefaultToolkit().systemClipboard.getContents(null) }
+                .getOrNull()
+        )
     }
 
     private fun selectDroppedFiles(files: List<File>): DroppedFileSelection {
@@ -536,11 +673,13 @@ internal class OpenCodeFileDropHandler(
                 return@forEach
             }
             if (size > MAX_DROPPED_FILE_BYTES) {
-                rejectionMessages += "${file.name} is larger than ${formatFileSize(MAX_DROPPED_FILE_BYTES)}."
+                rejectionMessages +=
+                    "${file.name} is larger than ${formatFileSize(MAX_DROPPED_FILE_BYTES)}."
                 return@forEach
             }
             if (totalBytes + size > MAX_DROPPED_FILES_TOTAL_BYTES) {
-                rejectionMessages += "${file.name} would exceed the total drop limit of ${formatFileSize(MAX_DROPPED_FILES_TOTAL_BYTES)}."
+                rejectionMessages +=
+                    "${file.name} would exceed the total drop limit of ${formatFileSize(MAX_DROPPED_FILES_TOTAL_BYTES)}."
                 return@forEach
             }
             acceptedFiles += file
@@ -576,17 +715,19 @@ internal class OpenCodeFileDropHandler(
             }
             return
         }
-        val group = NotificationGroupManager.getInstance()
-            .getNotificationGroup(OpenCodeServerProtocol.NOTIFICATION_GROUP_ID)
-            ?: return
+        val group =
+            NotificationGroupManager.getInstance()
+                .getNotificationGroup(OpenCodeServerProtocol.NOTIFICATION_GROUP_ID) ?: return
         val visibleMessages = rejectionMessages.take(3)
         val remaining = rejectionMessages.size - visibleMessages.size
         val suffix = if (remaining > 0) "; $remaining more skipped" else ""
-        group.createNotification(
-            "Could not add clipboard or dropped content to OpenCode",
-            notificationText(visibleMessages.joinToString("; ") + suffix),
-            NotificationType.WARNING,
-        ).notify(project)
+        group
+            .createNotification(
+                "Could not add clipboard or dropped content to OpenCode",
+                notificationText(visibleMessages.joinToString("; ") + suffix),
+                NotificationType.WARNING,
+            )
+            .notify(project)
     }
 
     private fun formatFileSize(bytes: Long): String {
@@ -600,7 +741,11 @@ internal class OpenCodeFileDropHandler(
 
     private data class PendingPaste(val isCurrent: () -> Boolean, val timeout: Runnable)
 
-    private data class PendingDroppedData(val files: List<File>, val text: String?, val images: List<PendingDroppedImage>)
+    private data class PendingDroppedData(
+        val files: List<File>,
+        val text: String?,
+        val images: List<PendingDroppedImage>,
+    )
 
     private data class PendingDroppedImage(
         val image: Image,
@@ -618,9 +763,10 @@ internal class OpenCodeFileDropHandler(
             val path = file.toPath()
             // Re-check the limit while reading: the file may have grown (e.g. an active log
             // file) between the size pre-check in selectDroppedFiles and this read.
-            val bytes = Files.newInputStream(path).use { stream ->
-                stream.readNBytes(MAX_DROPPED_FILE_BYTES.toInt() + 1)
-            }
+            val bytes =
+                Files.newInputStream(path).use { stream ->
+                    stream.readNBytes(MAX_DROPPED_FILE_BYTES.toInt() + 1)
+                }
             if (bytes.size > MAX_DROPPED_FILE_BYTES) return null
             OpenCodeServerProtocol.DroppedFilePayload(
                 name = file.name,
@@ -628,6 +774,7 @@ internal class OpenCodeFileDropHandler(
                 lastModified = file.lastModified(),
                 base64 = Base64.getEncoder().encodeToString(bytes),
             )
-        }.getOrNull()
+        }
+            .getOrNull()
     }
 }

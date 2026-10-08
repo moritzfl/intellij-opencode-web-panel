@@ -9,15 +9,15 @@ import java.util.concurrent.atomic.AtomicLong
 /**
  * Opt-in warning when the displayed conversation's directory is not this panel's workspace.
  *
- * Fires on a session change (SPA route, including a restored tab), not on every address
- * flicker of the same `ses_`. Does not block navigation. A missing directory or a failed
- * lookup is not a mismatch. Folders within the same Git worktree count as this workspace;
- * a linked worktree is different even when nested inside the mounted repository.
- * Symlink spellings and sandbox guest paths are resolved before this comparison.
+ * Fires on a session change (SPA route, including a restored tab), not on every address flicker of
+ * the same `ses_`. Does not block navigation. A missing directory or a failed lookup is not a
+ * mismatch. Folders within the same Git worktree count as this workspace; a linked worktree is
+ * different even when nested inside the mounted repository. Symlink spellings and sandbox guest
+ * paths are resolved before this comparison.
  *
- * [onOutline] receives the foreign session id while that conversation is on screen, and
- * null as soon as it is not. A reload of the same `ses_` reapplies the panel border
- * without posting another notification.
+ * [onOutline] receives the foreign session id while that conversation is on screen, and null as
+ * soon as it is not. A reload of the same `ses_` reapplies the panel border without posting another
+ * notification.
  */
 internal class OpenCodeForeignSessionWarning(
     private val enabled: () -> Boolean,
@@ -32,15 +32,14 @@ internal class OpenCodeForeignSessionWarning(
 ) {
     private val generation = AtomicLong()
 
-    @Volatile
-    private var displayedSessionID: String? = null
+    @Volatile private var displayedSessionID: String? = null
 
-    @Volatile
-    private var outlinedSessionID: String? = null
+    @Volatile private var outlinedSessionID: String? = null
 
     fun onDisplayedSessionChanged(sessionID: String?, force: Boolean = false) {
         if (!force && sessionID == displayedSessionID) {
-            // Repaint the panel border when this session is already foreign. A replaced host would otherwise have none.
+            // Repaint the panel border when this session is already foreign. A replaced host would
+            // otherwise have none.
             if (outlinedSessionID != null) reapplyOutline()
             return
         }
@@ -51,13 +50,17 @@ internal class OpenCodeForeignSessionWarning(
         outlinedSessionID = null
         clearWarning()
         onOutline(null)
-        if (!enabled() || sessionID == null || !OpenCodeServerProtocol.isSessionId(sessionID)) return
+        if (!enabled() || sessionID == null || !OpenCodeServerProtocol.isSessionId(sessionID))
+            return
         val workspace = workspaceDirectory()?.takeIf { it.isNotBlank() } ?: return
         executeAsync {
             if (!stillCurrent(token)) return@executeAsync
-            val info = runCatching { loadSession(sessionID) }
+            val info = runCatching {
+                loadSession(sessionID)
+            }
                 .onFailure { error ->
-                    thisLogger().debug("Could not load session $sessionID to check its directory", error)
+                    thisLogger()
+                        .debug("Could not load session $sessionID to check its directory", error)
                 }
                 .getOrNull()
             if (!stillCurrent(token)) return@executeAsync
@@ -65,7 +68,8 @@ internal class OpenCodeForeignSessionWarning(
             val guestPath = sandboxGuestPath(workspace)
             if (!stillCurrent(token)) return@executeAsync
             val directory = info?.directory
-            if (!OpenCodeForeignSessionPolicy.isForeign(directory, workspace, prefixes, guestPath)) return@executeAsync
+            if (!OpenCodeForeignSessionPolicy.isForeign(directory, workspace, prefixes, guestPath))
+                return@executeAsync
             if (!stillCurrent(token)) return@executeAsync
             outlinedSessionID = sessionID
             notify(
@@ -121,8 +125,13 @@ internal object OpenCodeForeignSessionPolicy {
         return !sameFolder(sessionWorktree.toString(), workspaceWorktree.toString())
     }
 
-    fun message(sessionTitle: String, sessionDirectory: String, workspaceDirectory: String): String {
-        val label = sessionTitle.trim().takeIf { it.isNotEmpty() }?.let { "\"$it\"" } ?: "This conversation"
+    fun message(
+        sessionTitle: String,
+        sessionDirectory: String,
+        workspaceDirectory: String,
+    ): String {
+        val label =
+            sessionTitle.trim().takeIf { it.isNotEmpty() }?.let { "\"$it\"" } ?: "This conversation"
         val sessionName = OpenCodeServerProtocol.projectDisplayName(sessionDirectory)
         val workspaceName = OpenCodeServerProtocol.projectDisplayName(workspaceDirectory)
         return "$label belongs to $sessionName ($sessionDirectory), not the current workspace " +
@@ -132,10 +141,11 @@ internal object OpenCodeForeignSessionPolicy {
     internal fun translateGuestPath(path: String, prefixes: List<Pair<String, String>>): String? {
         val posix = path.replace('\\', '/').trimEnd('/')
         if (posix.isEmpty()) return null
-        val match = prefixes.firstOrNull { (guest, _) ->
-            val prefix = guest.replace('\\', '/').trimEnd('/')
-            prefix.isNotEmpty() && pathHasPrefix(posix, prefix)
-        } ?: return null
+        val match =
+            prefixes.firstOrNull { (guest, _) ->
+                val prefix = guest.replace('\\', '/').trimEnd('/')
+                prefix.isNotEmpty() && pathHasPrefix(posix, prefix)
+            } ?: return null
         val guest = match.first.replace('\\', '/').trimEnd('/')
         val host = match.second.replace('\\', '/').trimEnd('/')
         val suffix = if (posix.length == guest.length) "" else posix.substring(guest.length)
@@ -148,8 +158,9 @@ internal object OpenCodeForeignSessionPolicy {
 
     /** A linked worktree's `.git` is a file; stop there instead of finding the parent's `.git`. */
     private fun gitWorktreeRoot(path: String): Path? {
-        var directory = runCatching { Path.of(path).toRealPath() }.getOrNull()
-            ?.takeIf(Files::isDirectory) ?: return null
+        var directory =
+            runCatching { Path.of(path).toRealPath() }.getOrNull()?.takeIf(Files::isDirectory)
+                ?: return null
         while (true) {
             val dotGit = directory.resolve(".git")
             if (Files.isDirectory(dotGit) || Files.isRegularFile(dotGit)) return directory

@@ -13,6 +13,17 @@ import com.intellij.testFramework.DisposableRule
 import com.intellij.testFramework.replaceService
 import de.moritzf.opencodewebpanel.settings.OpenCodeBinaryMode
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.lang.reflect.Proxy
+import java.nio.file.Path
+import java.util.Collections
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import javax.swing.SwingUtilities
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -25,32 +36,15 @@ import org.junit.ClassRule
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
-import java.io.ByteArrayInputStream
-import java.io.ByteArrayOutputStream
-import java.io.File
-import java.lang.reflect.Proxy
-import java.nio.file.Path
-import java.util.Collections
-import java.util.concurrent.CompletableFuture
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.ExecutionException
-import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
-import javax.swing.SwingUtilities
 
 class SbxOpenCodeServerBackendTest {
     companion object {
-        @ClassRule
-        @JvmField
-        val application = ApplicationRule()
+        @ClassRule @JvmField val application = ApplicationRule()
     }
 
-    @get:Rule
-    val disposable = DisposableRule()
+    @get:Rule val disposable = DisposableRule()
 
-    @get:Rule
-    val temp = TemporaryFolder()
+    @get:Rule val temp = TemporaryFolder()
 
     private val executor = Executors.newSingleThreadExecutor()
     private val calls = Collections.synchronizedList(mutableListOf<String>())
@@ -70,38 +64,59 @@ class SbxOpenCodeServerBackendTest {
 
     // The production path already supports projects disposed before the queued start executes.
     // This avoids creating progress UI while still exercising ensure/restart/reset themselves.
-    private val project = Proxy.newProxyInstance(Project::class.java.classLoader, arrayOf(Project::class.java)) { _, method, _ ->
-        when (method.name) {
-            "isDisposed" -> true
-            "toString" -> "Disposed sandbox-test project"
-            else -> error("Unexpected project access: ${method.name}")
-        }
-    } as Project
+    private val project =
+        Proxy.newProxyInstance(Project::class.java.classLoader, arrayOf(Project::class.java)) {
+            _,
+            method,
+            _ ->
+            when (method.name) {
+                "isDisposed" -> true
+                "toString" -> "Disposed sandbox-test project"
+                else -> error("Unexpected project access: ${method.name}")
+            }
+        } as Project
 
     @Before
     fun setUp() {
         directory = temp.root.toPath().toRealPath().toString()
-        record = SbxSandboxRecord("owned-id", SbxCli.sandboxName(directory), "opencode", directory, createSnapshot = "")
+        record =
+            SbxSandboxRecord(
+                "owned-id",
+                SbxCli.sandboxName(directory),
+                "opencode",
+                directory,
+                createSnapshot = "",
+            )
         store.save(directory, record)
-        val settings = OpenCodeSettingsState().apply {
-            enableServerLogs = false
-            sbxBinaryMode = OpenCodeBinaryMode.CUSTOM.name
-            // Only executable detection touches this file. Every CLI command goes to the fake below.
-            sbxBinaryPath = Path.of(System.getProperty("java.home"), "bin", if (File.separatorChar == '\\') "java.exe" else "java").toString()
-        }
-        ApplicationManager.getApplication().replaceService(OpenCodeSettingsState::class.java, settings, disposable.disposable)
-        backend = SbxOpenCodeServerBackend(
-            directory,
-            SbxCommandRunner { command, _, _, cwd ->
-                assertFalse("CLI must never run on EDT", SwingUtilities.isEventDispatchThread())
-                if (command[1] == "create") createWorkingDirectory = cwd
-                calls += command[1]
-                behavior(command)
-            },
-            { store },
-            executor,
-            trustCheck = { _, _ -> trusted },
-        )
+        val settings =
+            OpenCodeSettingsState().apply {
+                enableServerLogs = false
+                sbxBinaryMode = OpenCodeBinaryMode.CUSTOM.name
+                // Only executable detection touches this file. Every CLI command goes to the fake
+                // below.
+                sbxBinaryPath =
+                    Path.of(
+                            System.getProperty("java.home"),
+                            "bin",
+                            if (File.separatorChar == '\\') "java.exe" else "java",
+                        )
+                        .toString()
+            }
+        ApplicationManager.getApplication()
+            .replaceService(OpenCodeSettingsState::class.java, settings, disposable.disposable)
+        backend =
+            SbxOpenCodeServerBackend(
+                directory,
+                SbxCommandRunner { command, _, _, cwd ->
+                    assertFalse("CLI must never run on EDT", SwingUtilities.isEventDispatchThread())
+                    if (command[1] == "create") createWorkingDirectory = cwd
+                    calls += command[1]
+                    behavior(command)
+                },
+                { store },
+                executor,
+                trustCheck = { _, _ -> trusted },
+            )
     }
 
     @After
@@ -118,7 +133,11 @@ class SbxOpenCodeServerBackendTest {
 
     @Test
     fun setupChecksRunOnSerialWorkerAfterPendingStop() {
-        assertNotNull(SbxLaunchSpec.persist(SbxLaunchSpec.fromSettings(OpenCodeSettingsState.getInstance(), directory)))
+        assertNotNull(
+            SbxLaunchSpec.persist(
+                SbxLaunchSpec.fromSettings(OpenCodeSettingsState.getInstance(), directory)
+            )
+        )
         behavior = { command ->
             when (command[1]) {
                 "ls" -> listed(if (calls.contains("stop")) "stopped" else "running")
@@ -153,7 +172,8 @@ class SbxOpenCodeServerBackendTest {
             when (command[1]) {
                 "daemon" -> {
                     daemonCommands += command
-                    if (command.last() == "--detach") SbxCommandResult(2, "unknown flag: --detach") else SbxCommandResult(0, "started")
+                    if (command.last() == "--detach") SbxCommandResult(2, "unknown flag: --detach")
+                    else SbxCommandResult(0, "started")
                 }
                 "ls" -> SbxCommandResult(19, "stop after daemon")
                 else -> SbxCommandResult(0, "")
@@ -165,7 +185,10 @@ class SbxOpenCodeServerBackendTest {
 
         val executable = daemonCommands.first().first()
         assertEquals(
-            listOf(SbxCli.buildDaemonStartCommand(executable), SbxCli.buildLegacyDaemonStartCommand(executable)),
+            listOf(
+                SbxCli.buildDaemonStartCommand(executable),
+                SbxCli.buildLegacyDaemonStartCommand(executable),
+            ),
             daemonCommands,
         )
         assertEquals(SbxFailureKind.COMMAND_FAILED, backend.lastFailure())
@@ -245,51 +268,61 @@ class SbxOpenCodeServerBackendTest {
         val stages = mutableListOf<String?>()
         val extra = Executors.newSingleThreadExecutor()
         lateinit var streaming: SbxOpenCodeServerBackend
-        streaming = SbxOpenCodeServerBackend(
-            directory,
-            object : SbxCommandRunner {
-                override fun run(
-                    command: List<String>,
-                    env: Map<String, String>,
-                    timeoutMillis: Long,
-                    workingDirectory: Path?,
-                ): SbxCommandResult {
-                    assertFalse("CLI must never run on EDT", SwingUtilities.isEventDispatchThread())
-                    calls += command[1]
-                    return behavior(command)
-                }
-
-                override fun run(
-                    command: List<String>,
-                    env: Map<String, String>,
-                    timeoutMillis: Long,
-                    workingDirectory: Path?,
-                    onOutputLine: (String) -> Unit,
-                ): SbxCommandResult {
-                    if (decodedGuestScript(command)?.contains(SbxCli.V2_INSTALL_URL) == true) {
+        streaming =
+            SbxOpenCodeServerBackend(
+                directory,
+                object : SbxCommandRunner {
+                    override fun run(
+                        command: List<String>,
+                        env: Map<String, String>,
+                        timeoutMillis: Long,
+                        workingDirectory: Path?,
+                    ): SbxCommandResult {
+                        assertFalse(
+                            "CLI must never run on EDT",
+                            SwingUtilities.isEventDispatchThread(),
+                        )
                         calls += command[1]
-                        onOutputLine("## 2.8%")
-                        stages += streaming.startupStage()
-                        onOutputLine("####################################                                 50.0%")
-                        stages += streaming.startupStage()
-                        onOutputLine("Installing OpenCode version: 2.0.8")
-                        stages += streaming.startupStage()
-                        return SbxCommandResult(0, "")
+                        return behavior(command)
                     }
-                    val result = run(command, env, timeoutMillis, workingDirectory)
-                    emitCapturedOutputLines(result.output, onOutputLine)
-                    return result
-                }
-            },
-            { store },
-            extra,
-            trustCheck = { _, _ -> trusted },
-        )
+
+                    override fun run(
+                        command: List<String>,
+                        env: Map<String, String>,
+                        timeoutMillis: Long,
+                        workingDirectory: Path?,
+                        onOutputLine: (String) -> Unit,
+                    ): SbxCommandResult {
+                        if (decodedGuestScript(command)?.contains(SbxCli.V2_INSTALL_URL) == true) {
+                            calls += command[1]
+                            onOutputLine("## 2.8%")
+                            stages += streaming.startupStage()
+                            onOutputLine(
+                                "####################################                                 50.0%"
+                            )
+                            stages += streaming.startupStage()
+                            onOutputLine("Installing OpenCode version: 2.0.8")
+                            stages += streaming.startupStage()
+                            return SbxCommandResult(0, "")
+                        }
+                        val result = run(command, env, timeoutMillis, workingDirectory)
+                        emitCapturedOutputLines(result.output, onOutputLine)
+                        return result
+                    }
+                },
+                { store },
+                extra,
+                trustCheck = { _, _ -> trusted },
+            )
         try {
             streaming.installOpenCodeV2(project)
             extra.submit {}.get(10, TimeUnit.SECONDS)
             assertEquals(
-                listOf(OPENCODE_DOWNLOAD_STAGE, OPENCODE_DOWNLOAD_STAGE, "Installing OpenCode version: 2.0.8"),
+                listOf(
+                    OPENCODE_DOWNLOAD_STAGE,
+                    OPENCODE_DOWNLOAD_STAGE,
+                    "Installing OpenCode version: 2.0.8",
+                ),
                 stages,
             )
         } finally {
@@ -302,29 +335,35 @@ class SbxOpenCodeServerBackendTest {
     @Test
     fun startInstallsV2FromSpecWhenGuestBinMissing() {
         val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
-        val spec = SbxLaunchSpec.fromSettings(settings, directory).copy(
-            useSandbox = true,
-            openCodeVersion = SbxOpenCodeVersion.V2,
-            enableIntellijMcp = false,
-        )
+        val spec =
+            SbxLaunchSpec.fromSettings(settings, directory)
+                .copy(
+                    useSandbox = true,
+                    openCodeVersion = SbxOpenCodeVersion.V2,
+                    enableIntellijMcp = false,
+                )
         assertNotNull(SbxLaunchSpec.persist(spec))
-        store.save(directory, record.copy(kits = SbxCli.normalizeLineList(spec.kits.joinToString("\n"))))
+        store.save(
+            directory,
+            record.copy(kits = SbxCli.normalizeLineList(spec.kits.joinToString("\n"))),
+        )
         var probed = false
         var installed = false
         behavior = { command ->
             when (command[1]) {
                 "ls" -> listed("stopped")
-                "exec" -> when {
-                    decodedGuestScript(command)?.contains(SbxCli.V2_INSTALL_URL) == true -> {
-                        installed = true
-                        SbxCommandResult(1, "install blocked")
+                "exec" ->
+                    when {
+                        decodedGuestScript(command)?.contains(SbxCli.V2_INSTALL_URL) == true -> {
+                            installed = true
+                            SbxCommandResult(1, "install blocked")
+                        }
+                        decodedGuestScript(command) == SbxCli.GUEST_V2_VERSION_SCRIPT -> {
+                            probed = true
+                            SbxCommandResult(SbxCli.GUEST_V2_MISSING_EXIT_CODE, "")
+                        }
+                        else -> SbxCommandResult(0, "")
                     }
-                    decodedGuestScript(command) == SbxCli.GUEST_V2_VERSION_SCRIPT -> {
-                        probed = true
-                        SbxCommandResult(SbxCli.GUEST_V2_MISSING_EXIT_CODE, "")
-                    }
-                    else -> SbxCommandResult(0, "")
-                }
                 else -> SbxCommandResult(0, "")
             }
         }
@@ -338,25 +377,32 @@ class SbxOpenCodeServerBackendTest {
     @Test
     fun startSkipsV2InstallWhenGuestBinPresent() {
         val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
-        val spec = SbxLaunchSpec.fromSettings(settings, directory).copy(
-            useSandbox = true,
-            openCodeVersion = SbxOpenCodeVersion.V2,
-            enableIntellijMcp = false,
-        )
+        val spec =
+            SbxLaunchSpec.fromSettings(settings, directory)
+                .copy(
+                    useSandbox = true,
+                    openCodeVersion = SbxOpenCodeVersion.V2,
+                    enableIntellijMcp = false,
+                )
         assertNotNull(SbxLaunchSpec.persist(spec))
-        store.save(directory, record.copy(kits = SbxCli.normalizeLineList(spec.kits.joinToString("\n"))))
+        store.save(
+            directory,
+            record.copy(kits = SbxCli.normalizeLineList(spec.kits.joinToString("\n"))),
+        )
         var installed = false
         behavior = { command ->
             when (command[1]) {
                 "ls" -> listed("stopped")
-                "exec" -> when {
-                    decodedGuestScript(command)?.contains(SbxCli.V2_INSTALL_URL) == true -> {
-                        installed = true
-                        SbxCommandResult(1, "should not install")
+                "exec" ->
+                    when {
+                        decodedGuestScript(command)?.contains(SbxCli.V2_INSTALL_URL) == true -> {
+                            installed = true
+                            SbxCommandResult(1, "should not install")
+                        }
+                        decodedGuestScript(command) == SbxCli.GUEST_V2_VERSION_SCRIPT ->
+                            SbxCommandResult(0, "opencode v2.0.11")
+                        else -> SbxCommandResult(0, "")
                     }
-                    decodedGuestScript(command) == SbxCli.GUEST_V2_VERSION_SCRIPT -> SbxCommandResult(0, "opencode v2.0.11")
-                    else -> SbxCommandResult(0, "")
-                }
                 else -> SbxCommandResult(0, "")
             }
         }
@@ -368,9 +414,14 @@ class SbxOpenCodeServerBackendTest {
     @Test
     fun leftoverGuestServeIsKilledBeforeLaunch() {
         val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
-        val spec = SbxLaunchSpec.fromSettings(settings, directory).copy(useSandbox = true, enableIntellijMcp = false)
+        val spec =
+            SbxLaunchSpec.fromSettings(settings, directory)
+                .copy(useSandbox = true, enableIntellijMcp = false)
         assertNotNull(SbxLaunchSpec.persist(spec))
-        store.save(directory, record.copy(kits = SbxCli.normalizeLineList(spec.kits.joinToString("\n"))))
+        store.save(
+            directory,
+            record.copy(kits = SbxCli.normalizeLineList(spec.kits.joinToString("\n"))),
+        )
         var pkills = 0
         behavior = { command ->
             when (command[1]) {
@@ -406,15 +457,26 @@ class SbxOpenCodeServerBackendTest {
     @Test
     fun invalidV2BinaryDoesNotInstallOrStartServe() {
         val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
-        assertNotNull(SbxLaunchSpec.persist(SbxLaunchSpec.fromSettings(settings, directory).copy(
-            useSandbox = true, openCodeVersion = SbxOpenCodeVersion.V2, enableIntellijMcp = false,
-        )))
+        assertNotNull(
+            SbxLaunchSpec.persist(
+                SbxLaunchSpec.fromSettings(settings, directory)
+                    .copy(
+                        useSandbox = true,
+                        openCodeVersion = SbxOpenCodeVersion.V2,
+                        enableIntellijMcp = false,
+                    )
+            )
+        )
         behavior = { command ->
             when {
                 command[1] == "ls" -> listed("stopped")
-                decodedGuestScript(command) == SbxCli.GUEST_V2_VERSION_SCRIPT -> SbxCommandResult(45, "Expected OpenCode 2.x; got 1.18.23")
-                decodedGuestScript(command)?.contains(SbxCli.V2_INSTALL_URL) == true -> error("An invalid installed binary must not be treated as absent")
-                command.contains("serve") || decodedGuestScript(command)?.contains("'serve'") == true -> error("Invalid binary must not serve")
+                decodedGuestScript(command) == SbxCli.GUEST_V2_VERSION_SCRIPT ->
+                    SbxCommandResult(45, "Expected OpenCode 2.x; got 1.18.23")
+                decodedGuestScript(command)?.contains(SbxCli.V2_INSTALL_URL) == true ->
+                    error("An invalid installed binary must not be treated as absent")
+                command.contains("serve") ||
+                    decodedGuestScript(command)?.contains("'serve'") == true ->
+                    error("Invalid binary must not serve")
                 else -> SbxCommandResult(0, "")
             }
         }
@@ -431,8 +493,10 @@ class SbxOpenCodeServerBackendTest {
         val original = behavior
         behavior = { command ->
             when {
-                decodedGuestScript(command)?.contains(SbxCli.V2_INSTALL_URL) == true -> SbxCommandResult(0, "installer complete")
-                decodedGuestScript(command) == SbxCli.GUEST_V2_VERSION_SCRIPT -> SbxCommandResult(45, "version command failed")
+                decodedGuestScript(command)?.contains(SbxCli.V2_INSTALL_URL) == true ->
+                    SbxCommandResult(0, "installer complete")
+                decodedGuestScript(command) == SbxCli.GUEST_V2_VERSION_SCRIPT ->
+                    SbxCommandResult(45, "version command failed")
                 else -> original(command)
             }
         }
@@ -455,9 +519,13 @@ class SbxOpenCodeServerBackendTest {
     @Test
     fun appendedKitsPreserveSandboxAndCheckpointSuccessfulAdditions() {
         val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
-        val spec = SbxLaunchSpec.fromSettings(settings, directory).copy(
-            useSandbox = true, kits = listOf("./first-kit", "./second-kit"), enableIntellijMcp = false,
-        )
+        val spec =
+            SbxLaunchSpec.fromSettings(settings, directory)
+                .copy(
+                    useSandbox = true,
+                    kits = listOf("./first-kit", "./second-kit"),
+                    enableIntellijMcp = false,
+                )
         assertNotNull(SbxLaunchSpec.persist(spec))
         acknowledge(spec)
         val added = mutableListOf<String>()
@@ -467,7 +535,8 @@ class SbxOpenCodeServerBackendTest {
                 "kit" -> {
                     assertEquals("add", command[2])
                     added += command.last()
-                    if (command.last() == "./second-kit") SbxCommandResult(21, "unsupported kit field")
+                    if (command.last() == "./second-kit")
+                        SbxCommandResult(21, "unsupported kit field")
                     else SbxCommandResult(0, "kit added")
                 }
                 else -> SbxCommandResult(0, "")
@@ -491,10 +560,16 @@ class SbxOpenCodeServerBackendTest {
     fun projectSpecControlsProvisioningAndCreateFailureIsReported() {
         store.remove(directory)
         val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
-        val spec = SbxLaunchSpec.fromSettings(settings, directory).copy(
-            useSandbox = true, memory = "8g", cpus = "4", kits = listOf("./opencode-network-kit"),
-            hostPort = 49123, enableIntellijMcp = false,
-        )
+        val spec =
+            SbxLaunchSpec.fromSettings(settings, directory)
+                .copy(
+                    useSandbox = true,
+                    memory = "8g",
+                    cpus = "4",
+                    kits = listOf("./opencode-network-kit"),
+                    hostPort = 49123,
+                    enableIntellijMcp = false,
+                )
         assertNotNull(SbxLaunchSpec.persist(spec))
         acknowledge(spec)
         var createArgs: List<String>? = null
@@ -514,13 +589,19 @@ class SbxOpenCodeServerBackendTest {
         assertEquals(Path.of(directory), createWorkingDirectory)
         assertEquals(
             SbxCli.buildCreateCommand(
-                settings.sbxBinaryPath, record.name, directory,
-                memory = "8g", cpus = "4", hostPort = 49123, kits = spec.kits,
-                extraWorkspaces = SbxCli.extraMountCreateArgs(
-                    SbxCli.sandboxProtectMounts(directory, spec.kits) +
-                        listOf(SbxCli.persistSandboxMount(record.name)),
-                    directory,
-                ),
+                settings.sbxBinaryPath,
+                record.name,
+                directory,
+                memory = "8g",
+                cpus = "4",
+                hostPort = 49123,
+                kits = spec.kits,
+                extraWorkspaces =
+                    SbxCli.extraMountCreateArgs(
+                        SbxCli.sandboxProtectMounts(directory, spec.kits) +
+                            listOf(SbxCli.persistSandboxMount(record.name)),
+                        directory,
+                    ),
             ),
             createArgs,
         )
@@ -534,26 +615,56 @@ class SbxOpenCodeServerBackendTest {
         store.remove(directory)
         val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
         assertFalse(settings.enableServerLogs)
-        assertNotNull(SbxLaunchSpec.persist(SbxLaunchSpec.fromSettings(settings, directory).copy(
-            useSandbox = true, enableIntellijMcp = false,
-        )))
+        assertNotNull(
+            SbxLaunchSpec.persist(
+                SbxLaunchSpec.fromSettings(settings, directory)
+                    .copy(
+                        useSandbox = true,
+                        enableIntellijMcp = false,
+                    )
+            )
+        )
         lateinit var subject: SbxOpenCodeServerBackend
         var observedDuringCreate: OpenCodeStartupProgress? = null
-        val runner = object : SbxCommandRunner {
-            override fun run(command: List<String>, env: Map<String, String>, timeoutMillis: Long, workingDirectory: Path?) =
-                if (command[1] == "ls") SbxCommandResult(0, """{"sandboxes":[]}""") else SbxCommandResult(0, "")
+        val runner =
+            object : SbxCommandRunner {
+                override fun run(
+                    command: List<String>,
+                    env: Map<String, String>,
+                    timeoutMillis: Long,
+                    workingDirectory: Path?,
+                ) =
+                    if (command[1] == "ls") SbxCommandResult(0, """{"sandboxes":[]}""")
+                    else SbxCommandResult(0, "")
 
-            override fun run(command: List<String>, env: Map<String, String>, timeoutMillis: Long, workingDirectory: Path?, onOutputLine: (String) -> Unit): SbxCommandResult {
-                if (command[1] != "create") return run(command, env, timeoutMillis, workingDirectory)
-                onOutputLine("Downloaded base image layer")
-                observedDuringCreate = subject.getStartupProgress()
-                assertEquals("Creating sandbox…", ProgressManager.getGlobalProgressIndicator()?.text)
-                assertEquals(0L, subject.getServerGenerationStartedAtMillis())
-                return SbxCommandResult(21, "stop after progress probe")
+                override fun run(
+                    command: List<String>,
+                    env: Map<String, String>,
+                    timeoutMillis: Long,
+                    workingDirectory: Path?,
+                    onOutputLine: (String) -> Unit,
+                ): SbxCommandResult {
+                    if (command[1] != "create")
+                        return run(command, env, timeoutMillis, workingDirectory)
+                    onOutputLine("Downloaded base image layer")
+                    observedDuringCreate = subject.getStartupProgress()
+                    assertEquals(
+                        "Creating sandbox…",
+                        ProgressManager.getGlobalProgressIndicator()?.text,
+                    )
+                    assertEquals(0L, subject.getServerGenerationStartedAtMillis())
+                    return SbxCommandResult(21, "stop after progress probe")
+                }
             }
-        }
         val worker = Executors.newSingleThreadExecutor()
-        subject = SbxOpenCodeServerBackend(directory, runner, { store }, worker, trustCheck = { _, _ -> true })
+        subject =
+            SbxOpenCodeServerBackend(
+                directory,
+                runner,
+                { store },
+                worker,
+                trustCheck = { _, _ -> true },
+            )
         try {
             subject.ensureStarted(project, directory, { false }, {}, {})
             worker.submit {}.get(10, TimeUnit.SECONDS)
@@ -572,10 +683,14 @@ class SbxOpenCodeServerBackendTest {
         store.remove(directory)
         trusted = false
         OpenCodeSettingsState.getInstance().sbxNetworkPolicyConsent = true
-        val spec = SbxLaunchSpec.fromSettings(OpenCodeSettingsState.getInstance(), directory)
-            .copy(useSandbox = true, enableIntellijMcp = false)
+        val spec =
+            SbxLaunchSpec.fromSettings(OpenCodeSettingsState.getInstance(), directory)
+                .copy(useSandbox = true, enableIntellijMcp = false)
         assertNotNull(SbxLaunchSpec.persist(spec))
-        behavior = { command -> if (command[1] == "ls") SbxCommandResult(0, """{"sandboxes":[]}""") else SbxCommandResult(0, "") }
+        behavior = { command ->
+            if (command[1] == "ls") SbxCommandResult(0, """{"sandboxes":[]}""")
+            else SbxCommandResult(0, "")
+        }
         backend.ensureStarted(project, directory, { false }, {}, {})
         drain()
         assertFalse(calls.contains("create"))
@@ -589,10 +704,13 @@ class SbxOpenCodeServerBackendTest {
         val outsideDir = java.nio.file.Files.createTempDirectory("ocwp-outside").toRealPath()
         outsideDir.toFile().deleteOnExit()
         val outside = outsideDir.toString()
-        val spec = SbxLaunchSpec.fromSettings(OpenCodeSettingsState.getInstance(), directory).copy(
-            useSandbox = true, enableIntellijMcp = false,
-            extraMounts = listOf(SbxExtraMount(outside, outside)),
-        )
+        val spec =
+            SbxLaunchSpec.fromSettings(OpenCodeSettingsState.getInstance(), directory)
+                .copy(
+                    useSandbox = true,
+                    enableIntellijMcp = false,
+                    extraMounts = listOf(SbxExtraMount(outside, outside)),
+                )
         assertNotNull(SbxLaunchSpec.persist(spec))
         behavior = { command ->
             when (command[1]) {
@@ -605,7 +723,11 @@ class SbxOpenCodeServerBackendTest {
         drain()
         assertFalse(calls.contains("create"))
         assertEquals(SbxFailureKind.EXPOSURE_UNCONFIRMED, backend.lastFailure())
-        assertTrue(backend.startFailureMessage()!!.contains("Host path mounted read-write: ${SbxCli.posixPath(outside)}"))
+        assertTrue(
+            backend
+                .startFailureMessage()!!
+                .contains("Host path mounted read-write: ${SbxCli.posixPath(outside)}")
+        )
 
         // A spec edited while the consent dialog is open must not inherit its acknowledgement.
         assertNotNull(SbxLaunchSpec.persist(spec.copy(shareHostOpencodeConfig = true)))
@@ -632,7 +754,9 @@ class SbxOpenCodeServerBackendTest {
     fun createThatCannotBeListedRemovesTheNewNameAndStoresNoRecord() {
         store.remove(directory)
         val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
-        val spec = SbxLaunchSpec.fromSettings(settings, directory).copy(useSandbox = true, enableIntellijMcp = false)
+        val spec =
+            SbxLaunchSpec.fromSettings(settings, directory)
+                .copy(useSandbox = true, enableIntellijMcp = false)
         assertNotNull(SbxLaunchSpec.persist(spec))
         behavior = { command ->
             when (command[1]) {
@@ -653,9 +777,14 @@ class SbxOpenCodeServerBackendTest {
     @Test
     fun extraWorkspaceFirstDoesNotMarkOwnedSandboxForeign() {
         val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
-        val spec = SbxLaunchSpec.fromSettings(settings, directory).copy(useSandbox = true, enableIntellijMcp = false)
+        val spec =
+            SbxLaunchSpec.fromSettings(settings, directory)
+                .copy(useSandbox = true, enableIntellijMcp = false)
         assertNotNull(SbxLaunchSpec.persist(spec))
-        store.save(directory, record.copy(kits = SbxCli.normalizeLineList(spec.kits.joinToString("\n"))))
+        store.save(
+            directory,
+            record.copy(kits = SbxCli.normalizeLineList(spec.kits.joinToString("\n"))),
+        )
         val persist = SbxCli.sandboxPersistDataHome(record.name)
         val protect = "$directory/opencode-sbx"
         behavior = { command ->
@@ -675,9 +804,13 @@ class SbxOpenCodeServerBackendTest {
 
     @Test
     fun runtimeStartFailureExplainsThatMountLinkWasNotReached() {
-        val message = startWithLinkFailure(
-            SbxCommandResult(1, "error: failed to start sandbox: start runtime: request failed: 500 Internal Server Error"),
-        )
+        val message =
+            startWithLinkFailure(
+                SbxCommandResult(
+                    1,
+                    "error: failed to start sandbox: start runtime: request failed: 500 Internal Server Error",
+                )
+            )
 
         assertTrue(message.startsWith("Docker Sandboxes could not start the sandbox VM."))
         assertTrue(message.contains("mount-link script did not run"))
@@ -690,9 +823,12 @@ class SbxOpenCodeServerBackendTest {
 
     @Test
     fun linkTimeoutExplainsThatStoppedVmMayBeStarting() {
-        val message = startWithLinkFailure(SbxCommandResult(-1, "\nCommand timed out after 30000ms"))
+        val message =
+            startWithLinkFailure(SbxCommandResult(-1, "\nCommand timed out after 30000ms"))
 
-        assertTrue(message.startsWith("Docker Sandboxes did not respond while preparing sandbox mounts."))
+        assertTrue(
+            message.startsWith("Docker Sandboxes did not respond while preparing sandbox mounts.")
+        )
         assertTrue(message.contains("stopped VM"))
         assertTrue(message.contains("sbx daemon status"))
         assertTrue(message.contains("Link extra mount failed (exit -1)"))
@@ -712,12 +848,20 @@ class SbxOpenCodeServerBackendTest {
     fun readOnlyWorkspaceSuffixDoesNotRecreateExistingVm() {
         val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
         val mount = temp.newFolder("shared-config").toPath().toRealPath().toString()
-        val spec = SbxLaunchSpec.fromSettings(settings, directory).copy(
-            useSandbox = true, openCodeVersion = SbxOpenCodeVersion.V2, enableIntellijMcp = false,
-            extraMounts = listOf(SbxExtraMount(mount, "/home/agent/shared-config", readOnly = true)),
-        )
+        val spec =
+            SbxLaunchSpec.fromSettings(settings, directory)
+                .copy(
+                    useSandbox = true,
+                    openCodeVersion = SbxOpenCodeVersion.V2,
+                    enableIntellijMcp = false,
+                    extraMounts =
+                        listOf(SbxExtraMount(mount, "/home/agent/shared-config", readOnly = true)),
+                )
         assertNotNull(SbxLaunchSpec.persist(spec))
-        store.save(directory, record.copy(kits = SbxCli.normalizeLineList(spec.kits.joinToString("\n"))))
+        store.save(
+            directory,
+            record.copy(kits = SbxCli.normalizeLineList(spec.kits.joinToString("\n"))),
+        )
         behavior = { command ->
             when (command[1]) {
                 "ls" -> listed("stopped", listOf(directory, "$mount:ro"))
@@ -735,21 +879,27 @@ class SbxOpenCodeServerBackendTest {
     @Test
     fun livePortApplyRemapsWithoutStoppingTheVm() {
         val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
-        val spec = SbxLaunchSpec.fromSettings(settings, directory).copy(
-            useSandbox = true, hostPort = 49123, enableIntellijMcp = false,
-        )
+        val spec =
+            SbxLaunchSpec.fromSettings(settings, directory)
+                .copy(
+                    useSandbox = true,
+                    hostPort = 49123,
+                    enableIntellijMcp = false,
+                )
         assertNotNull(SbxLaunchSpec.persist(spec))
         behavior = { command ->
             when (command[1]) {
                 "ls" -> listed("running")
-                "ports" -> when {
-                    command.contains("--unpublish") -> SbxCommandResult(0, "")
-                    command.contains("--publish") -> SbxCommandResult(0, "")
-                    else -> SbxCommandResult(
-                        0,
-                        """[{"host_ip":"127.0.0.1","host_port":49161,"sandbox_port":4096,"protocol":"tcp4"}]""",
-                    )
-                }
+                "ports" ->
+                    when {
+                        command.contains("--unpublish") -> SbxCommandResult(0, "")
+                        command.contains("--publish") -> SbxCommandResult(0, "")
+                        else ->
+                            SbxCommandResult(
+                                0,
+                                """[{"host_ip":"127.0.0.1","host_port":49161,"sandbox_port":4096,"protocol":"tcp4"}]""",
+                            )
+                    }
                 else -> SbxCommandResult(0, "")
             }
         }
@@ -766,36 +916,64 @@ class SbxOpenCodeServerBackendTest {
     @Test
     fun takenFixedPortKeepsTheRunningMappingAndReportsTheError() {
         val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
-        assertNotNull(SbxLaunchSpec.persist(SbxLaunchSpec.fromSettings(settings, directory).copy(
-            useSandbox = true, hostPort = 49123, enableIntellijMcp = false,
-        )))
+        assertNotNull(
+            SbxLaunchSpec.persist(
+                SbxLaunchSpec.fromSettings(settings, directory)
+                    .copy(
+                        useSandbox = true,
+                        hostPort = 49123,
+                        enableIntellijMcp = false,
+                    )
+            )
+        )
         val portCommands = mutableListOf<String>()
         behavior = { command ->
             when (command[1]) {
                 "ls" -> listed("running")
-                "ports" -> when {
-                    command.contains("--publish") -> { portCommands += "publish"; SbxCommandResult(1, "address already in use") }
-                    command.contains("--unpublish") -> { portCommands += "unpublish"; SbxCommandResult(0, "") }
-                    else -> SbxCommandResult(0, """[{"host_ip":"127.0.0.1","host_port":49161,"sandbox_port":4096,"protocol":"tcp4"}]""")
-                }
+                "ports" ->
+                    when {
+                        command.contains("--publish") -> {
+                            portCommands += "publish"
+                            SbxCommandResult(1, "address already in use")
+                        }
+                        command.contains("--unpublish") -> {
+                            portCommands += "unpublish"
+                            SbxCommandResult(0, "")
+                        }
+                        else ->
+                            SbxCommandResult(
+                                0,
+                                """[{"host_ip":"127.0.0.1","host_port":49161,"sandbox_port":4096,"protocol":"tcp4"}]""",
+                            )
+                    }
                 else -> SbxCommandResult(0, "")
             }
         }
         var error: String? = null
         val done = CountDownLatch(1)
-        backend.applyLiveSettings { error = it; done.countDown() }
+        backend.applyLiveSettings {
+            error = it
+            done.countDown()
+        }
         assertTrue(done.await(5, TimeUnit.SECONDS))
         assertEquals(listOf("publish"), portCommands)
         assertTrue(error!!.contains("address already in use"))
-        assertNull("Record keeps the port that is actually published", store.recordFor(directory)!!.hostPort)
+        assertNull(
+            "Record keeps the port that is actually published",
+            store.recordFor(directory)!!.hostPort,
+        )
     }
 
     @Test
     fun liveKitApplyAppendsWithoutStoppingTheVm() {
         val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
-        val spec = SbxLaunchSpec.fromSettings(settings, directory).copy(
-            useSandbox = true, kits = listOf("./first-kit", "./second-kit"), enableIntellijMcp = false,
-        )
+        val spec =
+            SbxLaunchSpec.fromSettings(settings, directory)
+                .copy(
+                    useSandbox = true,
+                    kits = listOf("./first-kit", "./second-kit"),
+                    enableIntellijMcp = false,
+                )
         assertNotNull(SbxLaunchSpec.persist(spec))
         store.save(directory, record.copy(kits = "./first-kit"))
         val added = mutableListOf<String>()
@@ -825,7 +1003,10 @@ class SbxOpenCodeServerBackendTest {
         assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS))
         val stopped = CountDownLatch(1)
         backend.stopServer { stopped.countDown() }
-        assertTrue("Rejected lifecycle work must still hand off", stopped.await(5, TimeUnit.SECONDS))
+        assertTrue(
+            "Rejected lifecycle work must still hand off",
+            stopped.await(5, TimeUnit.SECONDS),
+        )
     }
 
     @Test
@@ -854,12 +1035,14 @@ class SbxOpenCodeServerBackendTest {
     @Test
     fun adoptedSandboxIsNotDeletedWhenProvisioningDiffers() {
         val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
-        val spec = SbxLaunchSpec.fromSettings(settings, directory).copy(
-            useSandbox = true,
-            kits = listOf("./new-kit"),
-            extraMounts = listOf(SbxExtraMount("/tmp/docs", "/home/agent/docs")),
-            enableIntellijMcp = false,
-        )
+        val spec =
+            SbxLaunchSpec.fromSettings(settings, directory)
+                .copy(
+                    useSandbox = true,
+                    kits = listOf("./new-kit"),
+                    extraMounts = listOf(SbxExtraMount("/tmp/docs", "/home/agent/docs")),
+                    enableIntellijMcp = false,
+                )
         assertNotNull(SbxLaunchSpec.persist(spec))
         store.save(directory, record.copy(adopted = true, kits = ""))
         behavior = { command ->
@@ -879,9 +1062,13 @@ class SbxOpenCodeServerBackendTest {
     @Test
     fun adoptedSandboxNeverReceivesKitAdds() {
         val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
-        val spec = SbxLaunchSpec.fromSettings(settings, directory).copy(
-            useSandbox = true, kits = listOf("./team-kit"), enableIntellijMcp = false,
-        )
+        val spec =
+            SbxLaunchSpec.fromSettings(settings, directory)
+                .copy(
+                    useSandbox = true,
+                    kits = listOf("./team-kit"),
+                    enableIntellijMcp = false,
+                )
         assertNotNull(SbxLaunchSpec.persist(spec))
         store.save(directory, record.copy(adopted = true, kits = ""))
         behavior = { command ->
@@ -903,13 +1090,30 @@ class SbxOpenCodeServerBackendTest {
     fun startNeverRecreatesWhenThePulledSpecNeedsANewVm() {
         val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
         val removed = "/tmp/ocwp-removed-mount"
-        for ((spec, recordKits, workspaces) in listOf(
-            Triple(SbxLaunchSpec.fromSettings(settings, directory).copy(kits = listOf("./b", "./a")), "./a\n./b", listOf(directory)),
-            Triple(SbxLaunchSpec.fromSettings(settings, directory).copy(shareHostOpencodeConfig = true), "", listOf(directory)),
-            Triple(SbxLaunchSpec.fromSettings(settings, directory), "", listOf(directory, removed)),
-        )) {
+        for ((spec, recordKits, workspaces) in
+            listOf(
+                Triple(
+                    SbxLaunchSpec.fromSettings(settings, directory)
+                        .copy(kits = listOf("./b", "./a")),
+                    "./a\n./b",
+                    listOf(directory),
+                ),
+                Triple(
+                    SbxLaunchSpec.fromSettings(settings, directory)
+                        .copy(shareHostOpencodeConfig = true),
+                    "",
+                    listOf(directory),
+                ),
+                Triple(
+                    SbxLaunchSpec.fromSettings(settings, directory),
+                    "",
+                    listOf(directory, removed),
+                ),
+            )) {
             calls.clear()
-            assertNotNull(SbxLaunchSpec.persist(spec.copy(useSandbox = true, enableIntellijMcp = false)))
+            assertNotNull(
+                SbxLaunchSpec.persist(spec.copy(useSandbox = true, enableIntellijMcp = false))
+            )
             store.save(directory, record.copy(kits = recordKits))
             behavior = { command ->
                 when (command[1]) {
@@ -931,13 +1135,22 @@ class SbxOpenCodeServerBackendTest {
     @Test
     fun resetRemovesTheVmThatStartRefusedToRecreate() {
         val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
-        assertNotNull(SbxLaunchSpec.persist(SbxLaunchSpec.fromSettings(settings, directory).copy(
-            useSandbox = true, enableIntellijMcp = false, kits = listOf("./b"),
-        )))
+        assertNotNull(
+            SbxLaunchSpec.persist(
+                SbxLaunchSpec.fromSettings(settings, directory)
+                    .copy(
+                        useSandbox = true,
+                        enableIntellijMcp = false,
+                        kits = listOf("./b"),
+                    )
+            )
+        )
         store.save(directory, record.copy(kits = "./a"))
         behavior = { command ->
             when (command[1]) {
-                "ls" -> if (calls.contains("rm")) SbxCommandResult(0, """{"sandboxes":[]}""") else listed("running")
+                "ls" ->
+                    if (calls.contains("rm")) SbxCommandResult(0, """{"sandboxes":[]}""")
+                    else listed("running")
                 "create" -> SbxCommandResult(21, "stop after create")
                 else -> SbxCommandResult(0, "")
             }
@@ -951,10 +1164,19 @@ class SbxOpenCodeServerBackendTest {
     @Test
     fun missingMountPathIsSkippedInsteadOfDestroyingTheVm() {
         val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
-        assertNotNull(SbxLaunchSpec.persist(SbxLaunchSpec.fromSettings(settings, directory).copy(
-            useSandbox = true, enableIntellijMcp = false,
-            extraMounts = listOf(SbxExtraMount("/definitely/missing/ocwp-mount", "/home/agent/data")),
-        )))
+        assertNotNull(
+            SbxLaunchSpec.persist(
+                SbxLaunchSpec.fromSettings(settings, directory)
+                    .copy(
+                        useSandbox = true,
+                        enableIntellijMcp = false,
+                        extraMounts =
+                            listOf(
+                                SbxExtraMount("/definitely/missing/ocwp-mount", "/home/agent/data")
+                            ),
+                    )
+            )
+        )
         store.save(directory, record)
         behavior = { command ->
             when (command[1]) {
@@ -976,13 +1198,19 @@ class SbxOpenCodeServerBackendTest {
         val other = "/tmp/other-project"
         store.save(other, SbxSandboxRecord("other-id", "ide-ocwp-other", "opencode", other))
         val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
-        assertNotNull(SbxLaunchSpec.persist(SbxLaunchSpec.fromSettings(settings, directory).copy(useSandbox = true, enableIntellijMcp = false)))
+        assertNotNull(
+            SbxLaunchSpec.persist(
+                SbxLaunchSpec.fromSettings(settings, directory)
+                    .copy(useSandbox = true, enableIntellijMcp = false)
+            )
+        )
         behavior = { command ->
             when (command[1]) {
-                "ls" -> SbxCommandResult(
-                    0,
-                    """{"sandboxes":[{"id":"other-id","name":"ide-ocwp-other","agent":"opencode","status":"running","workspaces":${jsonWorkspaces(listOf(other, directory))}}]}""",
-                )
+                "ls" ->
+                    SbxCommandResult(
+                        0,
+                        """{"sandboxes":[{"id":"other-id","name":"ide-ocwp-other","agent":"opencode","status":"running","workspaces":${jsonWorkspaces(listOf(other, directory))}}]}""",
+                    )
                 "create" -> SbxCommandResult(21, "stop after create")
                 else -> SbxCommandResult(0, "")
             }
@@ -1003,11 +1231,17 @@ class SbxOpenCodeServerBackendTest {
         behavior = { command ->
             if (command[1] == "diagnose") {
                 val indicator = ProgressManager.getInstance().progressIndicator
-                assertTrue("Exercise the real UI indicator, not the disposed-project fallback", indicator is BackgroundableProcessIndicator)
-                Disposer.register(indicator as Disposable, Disposable {
-                    disposedOnEdt.set(SwingUtilities.isEventDispatchThread())
-                    disposed.countDown()
-                })
+                assertTrue(
+                    "Exercise the real UI indicator, not the disposed-project fallback",
+                    indicator is BackgroundableProcessIndicator,
+                )
+                Disposer.register(
+                    indicator as Disposable,
+                    Disposable {
+                        disposedOnEdt.set(SwingUtilities.isEventDispatchThread())
+                        disposed.countDown()
+                    },
+                )
             }
             original(command)
         }
@@ -1032,7 +1266,9 @@ class SbxOpenCodeServerBackendTest {
 
     @Test
     fun failedRemovalKeepsOwnershipAndDoesNotStart() {
-        behavior = { command -> if (command[1] == "ls") listed() else SbxCommandResult(9, "remove refused") }
+        behavior = { command ->
+            if (command[1] == "ls") listed() else SbxCommandResult(9, "remove refused")
+        }
         backend.resetSandbox(project, { false }, {}, {})
         drain()
         assertEquals(record, store.recordFor(directory))
@@ -1069,35 +1305,47 @@ class SbxOpenCodeServerBackendTest {
         assertEquals(listOf("ls"), calls.toList())
     }
 
-
-
     @Test
     fun healthyPublishedUrlSkipsDeadMappingsAndUsesALaterPort() {
-        val ports = listOf(
-            SbxPortMapping("127.0.0.1", 49154, 4096, "tcp4"),
-            SbxPortMapping("127.0.0.1", 49156, 4096, "tcp4"),
-        )
+        val ports =
+            listOf(
+                SbxPortMapping("127.0.0.1", 49154, 4096, "tcp4"),
+                SbxPortMapping("127.0.0.1", 49156, 4096, "tcp4"),
+            )
         val probed = mutableListOf<String>()
-        val url = healthyPublishedSandboxUrl(ports, desiredHostPort = null, password = "probe") { candidate, _ ->
-            probed += candidate
-            candidate.endsWith(":49156")
-        }
+        val url =
+            healthyPublishedSandboxUrl(ports, desiredHostPort = null, password = "probe") {
+                candidate,
+                _ ->
+                probed += candidate
+                candidate.endsWith(":49156")
+            }
         assertEquals("http://127.0.0.1:49156", url)
         assertEquals(listOf("http://127.0.0.1:49154", "http://127.0.0.1:49156"), probed)
     }
 
     @Test
     fun exitedServeFailsBeforeAnotherHealthOrPortAttempt() {
-        val process = object : Process() {
-            override fun getOutputStream() = ByteArrayOutputStream()
-            override fun getInputStream() = ByteArrayInputStream(byteArrayOf())
-            override fun getErrorStream() = ByteArrayInputStream(byteArrayOf())
-            override fun waitFor() = 23
-            override fun exitValue() = 23
-            override fun destroy() = Unit
-            override fun isAlive() = false
-        }
-        val error = assertThrows(SbxCommandFailure::class.java) { checkSbxServeAlive(process) { "serve failed" } }
+        val process =
+            object : Process() {
+                override fun getOutputStream() = ByteArrayOutputStream()
+
+                override fun getInputStream() = ByteArrayInputStream(byteArrayOf())
+
+                override fun getErrorStream() = ByteArrayInputStream(byteArrayOf())
+
+                override fun waitFor() = 23
+
+                override fun exitValue() = 23
+
+                override fun destroy() = Unit
+
+                override fun isAlive() = false
+            }
+        val error =
+            assertThrows(SbxCommandFailure::class.java) {
+                checkSbxServeAlive(process) { "serve failed" }
+            }
         assertTrue(error.message!!.contains("exit 23"))
         assertEquals("serve failed", error.output)
     }
@@ -1134,9 +1382,14 @@ class SbxOpenCodeServerBackendTest {
 
     private fun startWithLinkFailure(result: SbxCommandResult): String {
         val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
-        val spec = SbxLaunchSpec.fromSettings(settings, directory).copy(useSandbox = true, enableIntellijMcp = false)
+        val spec =
+            SbxLaunchSpec.fromSettings(settings, directory)
+                .copy(useSandbox = true, enableIntellijMcp = false)
         assertNotNull(SbxLaunchSpec.persist(spec))
-        store.save(directory, record.copy(kits = SbxCli.normalizeLineList(spec.kits.joinToString("\n"))))
+        store.save(
+            directory,
+            record.copy(kits = SbxCli.normalizeLineList(spec.kits.joinToString("\n"))),
+        )
         val persist = SbxCli.sandboxPersistDataHome(record.name)
         behavior = { command ->
             when (command[1]) {
@@ -1154,13 +1407,20 @@ class SbxOpenCodeServerBackendTest {
 
     private fun acknowledge(spec: SbxLaunchSpec) {
         spec.kits.filter(SbxCli::isLocalKitRef).forEach { ref ->
-            val kit = java.nio.file.Files.createDirectories(java.nio.file.Path.of(directory).resolve(ref))
+            val kit =
+                java.nio.file.Files.createDirectories(java.nio.file.Path.of(directory).resolve(ref))
             java.nio.file.Files.writeString(kit.resolve("spec.yaml"), "kind: mixin\n")
         }
-        store.acknowledgeExposure(directory, SbxExposure.of(SbxLaunchSpec.load(directory) ?: spec, directory).fingerprint)
+        store.acknowledgeExposure(
+            directory,
+            SbxExposure.of(SbxLaunchSpec.load(directory) ?: spec, directory).fingerprint,
+        )
     }
 
-    private fun listed(status: String = "running", workspaces: List<String> = listOf(directory)): SbxCommandResult {
+    private fun listed(
+        status: String = "running",
+        workspaces: List<String> = listOf(directory),
+    ): SbxCommandResult {
         return SbxCommandResult(
             0,
             """{"sandboxes":[{"id":"owned-id","name":"${record.name}","agent":"opencode","status":"$status","workspaces":${jsonWorkspaces(workspaces)}}]}""",

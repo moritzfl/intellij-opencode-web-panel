@@ -8,9 +8,15 @@ import org.junit.Test
 class OpenCodeRendererWatchdogPolicyTest {
     @Test
     fun hiddenPagesAreNotMonitored() {
-        assertFalse(OpenCodeRendererWatchdogPolicy.shouldMonitor(panelShowing = true, pageVisible = false))
-        assertFalse(OpenCodeRendererWatchdogPolicy.shouldMonitor(panelShowing = false, pageVisible = true))
-        assertTrue(OpenCodeRendererWatchdogPolicy.shouldMonitor(panelShowing = true, pageVisible = true))
+        assertFalse(
+            OpenCodeRendererWatchdogPolicy.shouldMonitor(panelShowing = true, pageVisible = false)
+        )
+        assertFalse(
+            OpenCodeRendererWatchdogPolicy.shouldMonitor(panelShowing = false, pageVisible = true)
+        )
+        assertTrue(
+            OpenCodeRendererWatchdogPolicy.shouldMonitor(panelShowing = true, pageVisible = true)
+        )
     }
 
     @Test
@@ -59,7 +65,8 @@ class OpenCodeRendererWatchdogPolicyTest {
                 consecutiveStalls = 1,
                 recreatesAfterStall = 0,
                 nowMillis = 100_000L,
-                lastRecoveryAtMillis = 100_000L - OpenCodeRendererWatchdogPolicy.RECOVERY_COOLDOWN_MILLIS + 1,
+                lastRecoveryAtMillis =
+                    100_000L - OpenCodeRendererWatchdogPolicy.RECOVERY_COOLDOWN_MILLIS + 1,
             ),
         )
     }
@@ -98,7 +105,7 @@ class OpenCodeRendererWatchdogPolicyTest {
                 pagePainted = false,
                 loadSucceeded = false,
                 loadGaveUp = false,
-            ),
+            )
         )
         assertFalse(
             OpenCodeRendererWatchdogPolicy.isPageReadyForRendererWatchdog(
@@ -106,7 +113,7 @@ class OpenCodeRendererWatchdogPolicyTest {
                 pagePainted = false,
                 loadSucceeded = false,
                 loadGaveUp = false,
-            ),
+            )
         )
         assertTrue(
             OpenCodeRendererWatchdogPolicy.isPageReadyForRendererWatchdog(
@@ -114,7 +121,7 @@ class OpenCodeRendererWatchdogPolicyTest {
                 pagePainted = true,
                 loadSucceeded = true,
                 loadGaveUp = false,
-            ),
+            )
         )
         assertTrue(
             OpenCodeRendererWatchdogPolicy.isPageReadyForRendererWatchdog(
@@ -122,7 +129,7 @@ class OpenCodeRendererWatchdogPolicyTest {
                 pagePainted = false,
                 loadSucceeded = false,
                 loadGaveUp = true,
-            ),
+            )
         )
     }
 

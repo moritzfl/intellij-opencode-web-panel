@@ -10,8 +10,7 @@ import org.junit.Test
 
 /** Two JBCefBrowser instances on one origin — the first+second IDE window case. */
 class OpenCodeJcefTwoBrowserTest {
-    @get:Rule
-    val disposableRule = DisposableRule()
+    @get:Rule val disposableRule = DisposableRule()
 
     @Before
     fun setUp() {
@@ -50,8 +49,6 @@ class OpenCodeJcefTwoBrowserTest {
     }
 
     companion object {
-        @ClassRule
-        @JvmField
-        val appRule = ApplicationRule()
+        @ClassRule @JvmField val appRule = ApplicationRule()
     }
 }

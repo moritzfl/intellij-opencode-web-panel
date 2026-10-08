@@ -11,7 +11,8 @@ internal object OpenCodeHostPaths {
 
     fun serverDirectory(backendId: String, hostDirectory: String?): String? {
         val directory = hostDirectory?.takeIf { it.isNotBlank() } ?: return null
-        return if (OpenCodeServerBackend.isNative(backendId)) directory else SbxCli.guestBindPath(directory)
+        return if (OpenCodeServerBackend.isNative(backendId)) directory
+        else SbxCli.guestBindPath(directory)
     }
 
     fun guestToHostPrefixes(
@@ -23,7 +24,10 @@ internal object OpenCodeHostPaths {
         if (OpenCodeServerBackend.isNative(backendId)) return emptyList()
         val spec = (SbxLaunchSpec.inspect(dir) as? SbxLaunchSpecInspection.Valid)?.spec
         val extra = spec?.let { SbxCli.resolveExtraMounts(it.extraMounts, dir) }.orEmpty()
-        val persist = spec?.takeIf { it.persistSandboxSessions }?.let { SbxCli.sandboxPersistDataHome(it.name) }
+        val persist =
+            spec
+                ?.takeIf { it.persistSandboxSessions }
+                ?.let { SbxCli.sandboxPersistDataHome(it.name) }
         return SbxCli.guestToHostPathMappings(dir, extra, persist)
     }
 }

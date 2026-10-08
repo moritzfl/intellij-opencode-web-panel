@@ -10,22 +10,30 @@ import org.cef.handler.CefResourceRequestHandlerAdapter
 import org.cef.misc.BoolRef
 import org.cef.network.CefRequest
 
-/** Same job as the panel's [de.moritzf.opencodewebpanel.toolWindow.OpenCodeBrowserRequestHandler]: Basic auth on every resource. */
+/**
+ * Same job as the panel's [de.moritzf.opencodewebpanel.toolWindow.OpenCodeBrowserRequestHandler]:
+ * Basic auth on every resource.
+ */
 internal class OpenCodeJcefAuthHandler(
     private val serverOrigin: String,
     private val authorization: String,
     private val username: String = "opencode",
     private val password: String = "testpw123",
 ) : CefRequestHandlerAdapter() {
-    private val resourceHandler = object : CefResourceRequestHandlerAdapter() {
-        override fun onBeforeResourceLoad(browser: CefBrowser?, frame: CefFrame?, request: CefRequest?): Boolean {
-            val requestUrl = request?.url
-            if (OpenCodeServerProtocol.shouldSendBasicAuthHeader(serverOrigin, requestUrl)) {
-                request?.setHeaderByName("Authorization", authorization, true)
+    private val resourceHandler =
+        object : CefResourceRequestHandlerAdapter() {
+            override fun onBeforeResourceLoad(
+                browser: CefBrowser?,
+                frame: CefFrame?,
+                request: CefRequest?,
+            ): Boolean {
+                val requestUrl = request?.url
+                if (OpenCodeServerProtocol.shouldSendBasicAuthHeader(serverOrigin, requestUrl)) {
+                    request?.setHeaderByName("Authorization", authorization, true)
+                }
+                return false
             }
-            return false
         }
-    }
 
     override fun getResourceRequestHandler(
         browser: CefBrowser?,
@@ -47,7 +55,15 @@ internal class OpenCodeJcefAuthHandler(
         scheme: String?,
         callback: CefAuthCallback?,
     ): Boolean {
-        if (!OpenCodeServerProtocol.shouldHandleBasicAuthChallenge(serverOrigin, isProxy, host, port)) return false
+        if (
+            !OpenCodeServerProtocol.shouldHandleBasicAuthChallenge(
+                serverOrigin,
+                isProxy,
+                host,
+                port,
+            )
+        )
+            return false
         callback?.Continue(username, password)
         return callback != null
     }

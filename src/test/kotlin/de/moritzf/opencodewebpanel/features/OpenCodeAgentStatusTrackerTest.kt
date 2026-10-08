@@ -17,11 +17,26 @@ class OpenCodeAgentStatusTrackerTest {
         val state = OpenCodeAgentStatusState()
         assertEquals(OpenCodeAgentStatusState.IDLE, state.current())
 
-        assertTrue(state.applyEvent("session.status", properties("""{"sessionID":"ses_1","status":{"type":"busy"}}""")))
+        assertTrue(
+            state.applyEvent(
+                "session.status",
+                properties("""{"sessionID":"ses_1","status":{"type":"busy"}}"""),
+            )
+        )
         assertEquals(OpenCodeAgentStatusState.BUSY, state.current())
 
-        assertTrue(state.applyEvent("session.status", properties("""{"sessionID":"ses_2","status":{"type":"retry"}}""")))
-        assertTrue(state.applyEvent("session.status", properties("""{"sessionID":"ses_1","status":{"type":"idle"}}""")))
+        assertTrue(
+            state.applyEvent(
+                "session.status",
+                properties("""{"sessionID":"ses_2","status":{"type":"retry"}}"""),
+            )
+        )
+        assertTrue(
+            state.applyEvent(
+                "session.status",
+                properties("""{"sessionID":"ses_1","status":{"type":"idle"}}"""),
+            )
+        )
         assertEquals(OpenCodeAgentStatusState.BUSY, state.current())
 
         assertTrue(state.applyEvent("session.idle", properties("""{"sessionID":"ses_2"}""")))
@@ -31,7 +46,10 @@ class OpenCodeAgentStatusTrackerTest {
     @Test
     fun pendingRequestsOutrankBusySessions() {
         val state = OpenCodeAgentStatusState()
-        state.applyEvent("session.status", properties("""{"sessionID":"ses_1","status":{"type":"busy"}}"""))
+        state.applyEvent(
+            "session.status",
+            properties("""{"sessionID":"ses_1","status":{"type":"busy"}}"""),
+        )
         state.applyEvent("permission.asked", properties("""{"id":"per_1","sessionID":"ses_1"}"""))
         assertEquals(OpenCodeAgentStatusState.ATTENTION, state.current())
 
@@ -47,19 +65,30 @@ class OpenCodeAgentStatusTrackerTest {
 
     @Test
     fun isBusyStaysTrueWhileAPermissionIsPending() {
-        val tracker = OpenCodeAgentStatusTracker(
-            projectDirectory = { "/project" },
-            enabled = { true },
-            onStateChanged = { _, _ -> },
-            serverUrl = { "http://127.0.0.1:4096" },
-            serverPassword = { "pw" },
-            serverGeneration = { 1L },
+        val tracker =
+            OpenCodeAgentStatusTracker(
+                projectDirectory = { "/project" },
+                enabled = { true },
+                onStateChanged = { _, _ -> },
+                serverUrl = { "http://127.0.0.1:4096" },
+                serverPassword = { "pw" },
+                serverGeneration = { 1L },
+            )
+        tracker.eventReceived(
+            OpenCodeGlobalEvent(
+                "/project",
+                "session.status",
+                "evt_1",
+                properties("""{"sessionID":"ses_1","status":{"type":"busy"}}"""),
+            )
         )
         tracker.eventReceived(
-            OpenCodeGlobalEvent("/project", "session.status", "evt_1", properties("""{"sessionID":"ses_1","status":{"type":"busy"}}""")),
-        )
-        tracker.eventReceived(
-            OpenCodeGlobalEvent("/project", "permission.asked", "evt_2", properties("""{"id":"per_1"}""")),
+            OpenCodeGlobalEvent(
+                "/project",
+                "permission.asked",
+                "evt_2",
+                properties("""{"id":"per_1"}"""),
+            )
         )
         assertEquals(OpenCodeAgentStatusState.ATTENTION, tracker.currentState())
         assertTrue(tracker.isBusy())
@@ -69,9 +98,16 @@ class OpenCodeAgentStatusTrackerTest {
     fun irrelevantOrMalformedEventsDoNotAffectState() {
         val state = OpenCodeAgentStatusState()
         assertFalse(state.applyEvent("message.updated", properties("""{"sessionID":"ses_1"}""")))
-        assertFalse(state.applyEvent("session.status", properties("""{"status":{"type":"busy"}}""")))
+        assertFalse(
+            state.applyEvent("session.status", properties("""{"status":{"type":"busy"}}"""))
+        )
         assertFalse(state.applyEvent("session.status", properties("""{"sessionID":"ses_1"}""")))
-        assertFalse(state.applyEvent("session.status", properties("""{"sessionID":"ses_1","status":{"type":"queued"}}""")))
+        assertFalse(
+            state.applyEvent(
+                "session.status",
+                properties("""{"sessionID":"ses_1","status":{"type":"queued"}}"""),
+            )
+        )
         assertFalse(state.applyEvent("session.idle", properties("{}")))
         assertFalse(state.applyEvent("permission.asked", properties("""{"sessionID":"ses_1"}""")))
         assertFalse(state.applyEvent("permission.replied", properties("{}")))
@@ -81,7 +117,10 @@ class OpenCodeAgentStatusTrackerTest {
     @Test
     fun seedReplacesStateAndKeepsItOnNulls() {
         val state = OpenCodeAgentStatusState()
-        state.applyEvent("session.status", properties("""{"sessionID":"ses_stale","status":{"type":"busy"}}"""))
+        state.applyEvent(
+            "session.status",
+            properties("""{"sessionID":"ses_stale","status":{"type":"busy"}}"""),
+        )
         state.applyEvent("permission.asked", properties("""{"id":"per_stale"}"""))
 
         state.seed(busySessionIds = setOf("ses_1"), pendingRequestIds = emptyList())
@@ -103,22 +142,23 @@ class OpenCodeAgentStatusTrackerTest {
         val tasks = mutableListOf<() -> Unit>()
         val transitions = mutableListOf<String>()
         var directory = "/project-a"
-        val tracker = OpenCodeAgentStatusTracker(
-            projectDirectory = { directory },
-            enabled = { true },
-            onStateChanged = { state, _ -> transitions.add(state) },
-            serverUrl = { "http://127.0.0.1:4096" },
-            serverPassword = { "pw" },
-            serverGeneration = { 1L },
-            loadSnapshot = { _, _, requestedDirectory, _ ->
-                if (requestedDirectory == "/project-a") {
-                    OpenCodeAgentStatusSnapshot(setOf("ses_a"), emptyList())
-                } else {
-                    OpenCodeAgentStatusSnapshot(emptySet(), listOf("per_b"))
-                }
-            },
-            executeAsync = tasks::add,
-        )
+        val tracker =
+            OpenCodeAgentStatusTracker(
+                projectDirectory = { directory },
+                enabled = { true },
+                onStateChanged = { state, _ -> transitions.add(state) },
+                serverUrl = { "http://127.0.0.1:4096" },
+                serverPassword = { "pw" },
+                serverGeneration = { 1L },
+                loadSnapshot = { _, _, requestedDirectory, _ ->
+                    if (requestedDirectory == "/project-a") {
+                        OpenCodeAgentStatusSnapshot(setOf("ses_a"), emptyList())
+                    } else {
+                        OpenCodeAgentStatusSnapshot(emptySet(), listOf("per_b"))
+                    }
+                },
+                executeAsync = tasks::add,
+            )
 
         tracker.seed()
         directory = "/project-b"
@@ -134,26 +174,33 @@ class OpenCodeAgentStatusTrackerTest {
     @Test
     fun foreignBackendCannotSetOrClearStatusInTheSameDirectory() {
         val transitions = mutableListOf<String>()
-        val tracker = OpenCodeAgentStatusTracker(
-            projectDirectory = { "/project" },
-            enabled = { true },
-            onStateChanged = { state, _ -> transitions.add(state) },
-            serverUrl = { null },
-            serverPassword = { null },
-            serverGeneration = { 1L },
-            backendId = { "owned" },
-        )
-        val busy = OpenCodeGlobalEvent(
-            "/project", "session.status", "evt_busy",
-            properties("""{"sessionID":"ses_a","status":{"type":"busy"}}"""), backendId = "owned",
-        )
+        val tracker =
+            OpenCodeAgentStatusTracker(
+                projectDirectory = { "/project" },
+                enabled = { true },
+                onStateChanged = { state, _ -> transitions.add(state) },
+                serverUrl = { null },
+                serverPassword = { null },
+                serverGeneration = { 1L },
+                backendId = { "owned" },
+            )
+        val busy =
+            OpenCodeGlobalEvent(
+                "/project",
+                "session.status",
+                "evt_busy",
+                properties("""{"sessionID":"ses_a","status":{"type":"busy"}}"""),
+                backendId = "owned",
+            )
         tracker.eventReceived(busy.copy(backendId = "foreign"))
         assertTrue(transitions.isEmpty())
         tracker.eventReceived(busy)
-        tracker.eventReceived(busy.copy(
-            properties = properties("""{"sessionID":"ses_a","status":{"type":"idle"}}"""),
-            backendId = "foreign",
-        ))
+        tracker.eventReceived(
+            busy.copy(
+                properties = properties("""{"sessionID":"ses_a","status":{"type":"idle"}}"""),
+                backendId = "foreign",
+            )
+        )
         assertEquals(listOf(OpenCodeAgentStatusState.BUSY), transitions)
     }
 
@@ -162,24 +209,35 @@ class OpenCodeAgentStatusTrackerTest {
         val tasks = mutableListOf<() -> Unit>()
         val transitions = mutableListOf<String>()
         val directory = "/project"
-        val tracker = OpenCodeAgentStatusTracker(
-            projectDirectory = { directory },
-            enabled = { true },
-            onStateChanged = { state, _ -> transitions.add(state) },
-            serverUrl = { "http://127.0.0.1:4096" },
-            serverPassword = { "pw" },
-            serverGeneration = { 1L },
-            loadSnapshot = { _, _, _, _ -> OpenCodeAgentStatusSnapshot(emptySet(), null) },
-            executeAsync = tasks::add,
-        )
+        val tracker =
+            OpenCodeAgentStatusTracker(
+                projectDirectory = { directory },
+                enabled = { true },
+                onStateChanged = { state, _ -> transitions.add(state) },
+                serverUrl = { "http://127.0.0.1:4096" },
+                serverPassword = { "pw" },
+                serverGeneration = { 1L },
+                loadSnapshot = { _, _, _, _ -> OpenCodeAgentStatusSnapshot(emptySet(), null) },
+                executeAsync = tasks::add,
+            )
         tracker.eventReceived(
-            OpenCodeGlobalEvent(directory, "permission.asked", "evt_1", properties("""{"id":"per_1"}""")),
+            OpenCodeGlobalEvent(
+                directory,
+                "permission.asked",
+                "evt_1",
+                properties("""{"id":"per_1"}"""),
+            )
         )
 
         tracker.seed()
         tasks.single()()
         tracker.eventReceived(
-            OpenCodeGlobalEvent(directory, "permission.replied", "evt_2", properties("""{"requestID":"per_1"}""")),
+            OpenCodeGlobalEvent(
+                directory,
+                "permission.replied",
+                "evt_2",
+                properties("""{"requestID":"per_1"}"""),
+            )
         )
 
         assertEquals(
@@ -193,21 +251,29 @@ class OpenCodeAgentStatusTrackerTest {
         val tasks = mutableListOf<() -> Unit>()
         val callbacks = mutableListOf<Pair<String, Long>>()
         val directory = "/project"
-        val tracker = OpenCodeAgentStatusTracker(
-            projectDirectory = { directory },
-            enabled = { true },
-            onStateChanged = { state, revision -> callbacks.add(state to revision) },
-            serverUrl = { "http://127.0.0.1:4096" },
-            serverPassword = { "pw" },
-            serverGeneration = { 1L },
-            loadSnapshot = { _, _, _, _ -> OpenCodeAgentStatusSnapshot(setOf("ses_1"), emptyList()) },
-            executeAsync = tasks::add,
-        )
+        val tracker =
+            OpenCodeAgentStatusTracker(
+                projectDirectory = { directory },
+                enabled = { true },
+                onStateChanged = { state, revision -> callbacks.add(state to revision) },
+                serverUrl = { "http://127.0.0.1:4096" },
+                serverPassword = { "pw" },
+                serverGeneration = { 1L },
+                loadSnapshot = { _, _, _, _ ->
+                    OpenCodeAgentStatusSnapshot(setOf("ses_1"), emptyList())
+                },
+                executeAsync = tasks::add,
+            )
 
         tracker.seed()
         tasks.single()()
         tracker.eventReceived(
-            OpenCodeGlobalEvent(directory, "session.status", "evt_1", properties("""{"sessionID":"ses_1","status":{"type":"idle"}}""")),
+            OpenCodeGlobalEvent(
+                directory,
+                "session.status",
+                "evt_1",
+                properties("""{"sessionID":"ses_1","status":{"type":"idle"}}"""),
+            )
         )
 
         var displayed = OpenCodeAgentStatusState.IDLE
@@ -225,16 +291,19 @@ class OpenCodeAgentStatusTrackerTest {
     fun equivalentBusyEventKeepsQueuedBusyPresentationCurrent() {
         val tasks = mutableListOf<() -> Unit>()
         val callbacks = mutableListOf<Pair<String, Long>>()
-        val tracker = OpenCodeAgentStatusTracker(
-            projectDirectory = { "/project" },
-            enabled = { true },
-            onStateChanged = { state, revision -> callbacks.add(state to revision) },
-            serverUrl = { "http://127.0.0.1:4096" },
-            serverPassword = { "pw" },
-            serverGeneration = { 1L },
-            loadSnapshot = { _, _, _, _ -> OpenCodeAgentStatusSnapshot(setOf("ses_1"), emptyList()) },
-            executeAsync = tasks::add,
-        )
+        val tracker =
+            OpenCodeAgentStatusTracker(
+                projectDirectory = { "/project" },
+                enabled = { true },
+                onStateChanged = { state, revision -> callbacks.add(state to revision) },
+                serverUrl = { "http://127.0.0.1:4096" },
+                serverPassword = { "pw" },
+                serverGeneration = { 1L },
+                loadSnapshot = { _, _, _, _ ->
+                    OpenCodeAgentStatusSnapshot(setOf("ses_1"), emptyList())
+                },
+                executeAsync = tasks::add,
+            )
         tracker.seed()
         tasks.single()()
         val queued = callbacks.single()
@@ -245,7 +314,7 @@ class OpenCodeAgentStatusTrackerTest {
                 "session.status",
                 "evt_1",
                 properties("""{"sessionID":"ses_2","status":{"type":"busy"}}"""),
-            ),
+            )
         )
 
         assertTrue(tracker.isCurrentPresentation(queued.first, queued.second))

@@ -75,13 +75,14 @@ internal class OpenCodeWorkspaceRefreshCoordinator(
         const val DEFAULT_DEBOUNCE_MILLIS = 500L
         const val DEFAULT_MAX_WAIT_MILLIS = 4_000L
 
-        private val REFRESH_TRIGGER_TYPES = setOf(
-            "file.edited",
-            "file.watcher.updated",
-            "vcs.branch.updated",
-            // Deprecated predecessor of session.status; current servers emit both.
-            "session.idle",
-        )
+        private val REFRESH_TRIGGER_TYPES =
+            setOf(
+                "file.edited",
+                "file.watcher.updated",
+                "vcs.branch.updated",
+                // Deprecated predecessor of session.status; current servers emit both.
+                "session.idle",
+            )
 
         /**
          * Whether an event should nudge an IDE refresh. Working-tree edits and branch updates have

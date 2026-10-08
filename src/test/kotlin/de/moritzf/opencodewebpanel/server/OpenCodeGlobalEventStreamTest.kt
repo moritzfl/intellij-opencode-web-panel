@@ -1,17 +1,17 @@
 package de.moritzf.opencodewebpanel.server
 
 import com.sun.net.httpserver.HttpServer
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
-import org.junit.Assert.fail
-import org.junit.Test
 import java.net.InetSocketAddress
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
+import org.junit.Test
 
 class OpenCodeGlobalEventStreamTest {
 
@@ -32,7 +32,9 @@ class OpenCodeGlobalEventStreamTest {
     fun sseBlockDataIgnoresNonDataFields() {
         assertEquals(
             "payload",
-            OpenCodeGlobalEventStream.sseBlockData(": comment\nevent: message\nid: 7\ndata: payload"),
+            OpenCodeGlobalEventStream.sseBlockData(
+                ": comment\nevent: message\nid: 7\ndata: payload"
+            ),
         )
     }
 
@@ -47,18 +49,20 @@ class OpenCodeGlobalEventStreamTest {
 
     @Test
     fun parseGlobalEventReadsDirectoryTypeIdAndProperties() {
-        val event = OpenCodeGlobalEventStream.parseGlobalEvent(
-            """
-            {
-              "directory": "/tmp/project",
-              "payload": {
-                "id": "evt_1",
-                "type": "session.status",
-                "properties": {"sessionID": "ses_1", "status": {"type": "busy"}}
-              }
-            }
-            """.trimIndent(),
-        )!!
+        val event =
+            OpenCodeGlobalEventStream.parseGlobalEvent(
+                """
+                {
+                  "directory": "/tmp/project",
+                  "payload": {
+                    "id": "evt_1",
+                    "type": "session.status",
+                    "properties": {"sessionID": "ses_1", "status": {"type": "busy"}}
+                  }
+                }
+                """
+                    .trimIndent()
+            )!!
 
         assertEquals("/tmp/project", event.directory)
         assertEquals("session.status", event.type)
@@ -71,13 +75,13 @@ class OpenCodeGlobalEventStreamTest {
     fun parseGlobalEventRejectsMissingIdOrProperties() {
         assertNull(
             OpenCodeGlobalEventStream.parseGlobalEvent(
-                """{"directory":"/tmp/project","payload":{"type":"session.idle","properties":{}}}""",
-            ),
+                """{"directory":"/tmp/project","payload":{"type":"session.idle","properties":{}}}"""
+            )
         )
         assertNull(
             OpenCodeGlobalEventStream.parseGlobalEvent(
-                """{"directory":"/tmp/project","payload":{"id":"evt_1","type":"session.idle"}}""",
-            ),
+                """{"directory":"/tmp/project","payload":{"id":"evt_1","type":"session.idle"}}"""
+            )
         )
     }
 
@@ -113,18 +117,20 @@ class OpenCodeGlobalEventStreamTest {
 
     @Test
     fun parseCliEventReadsIdTypeDataAndLocationDirectory() {
-        val event = OpenCodeGlobalEventStream.parseCliEvent(
-            """
-            {
-              "id": "evt_1",
-              "created": 1,
-              "type": "permission.asked",
-              "location": {"directory": "/tmp/project"},
-              "data": {"id": "per_1", "sessionID": "ses_1", "action": "external_directory"}
-            }
-            """.trimIndent(),
-            fallbackDirectory = "/fallback",
-        )!!
+        val event =
+            OpenCodeGlobalEventStream.parseCliEvent(
+                """
+                {
+                  "id": "evt_1",
+                  "created": 1,
+                  "type": "permission.asked",
+                  "location": {"directory": "/tmp/project"},
+                  "data": {"id": "per_1", "sessionID": "ses_1", "action": "external_directory"}
+                }
+                """
+                    .trimIndent(),
+                fallbackDirectory = "/fallback",
+            )!!
         assertEquals("/tmp/project", event.directory)
         assertEquals("permission.asked", event.type)
         assertEquals("evt_1", event.recordId)
@@ -134,10 +140,11 @@ class OpenCodeGlobalEventStreamTest {
 
     @Test
     fun parseCliEventUsesFallbackDirectoryForServerConnected() {
-        val event = OpenCodeGlobalEventStream.parseCliEvent(
-            """{"id":"evt_connected","type":"server.connected","data":{}}""",
-            fallbackDirectory = "/Users/me/project",
-        )!!
+        val event =
+            OpenCodeGlobalEventStream.parseCliEvent(
+                """{"id":"evt_connected","type":"server.connected","data":{}}""",
+                fallbackDirectory = "/Users/me/project",
+            )!!
         assertEquals("/Users/me/project", event.directory)
         assertEquals("server.connected", event.type)
         assertEquals("evt_connected", event.recordId)
@@ -150,16 +157,17 @@ class OpenCodeGlobalEventStreamTest {
             OpenCodeGlobalEventStream.parseCliEvent(
                 """{"id":"evt_connected","type":"server.connected","data":{}}""",
                 fallbackDirectory = null,
-            ),
+            )
         )
     }
 
     @Test
     fun parseCliEventMapsExecutionStartedToBusyStatus() {
-        val event = OpenCodeGlobalEventStream.parseCliEvent(
-            """{"id":"evt_exec","type":"session.execution.started","data":{"sessionID":"ses_1"}}""",
-            fallbackDirectory = "/tmp/project",
-        )!!
+        val event =
+            OpenCodeGlobalEventStream.parseCliEvent(
+                """{"id":"evt_exec","type":"session.execution.started","data":{"sessionID":"ses_1"}}""",
+                fallbackDirectory = "/tmp/project",
+            )!!
         assertEquals("session.status", event.type)
         assertEquals("ses_1", event.properties.get("sessionID").asString)
         assertEquals("busy", event.properties.getAsJsonObject("status").get("type").asString)
@@ -167,27 +175,38 @@ class OpenCodeGlobalEventStreamTest {
 
     @Test
     fun parseCliEventMapsExecutionSucceededToIdleStatus() {
-        val event = OpenCodeGlobalEventStream.parseCliEvent(
-            """{"id":"evt_done","type":"session.execution.succeeded","data":{"sessionID":"ses_1"}}""",
-            fallbackDirectory = "/tmp/project",
-        )!!
+        val event =
+            OpenCodeGlobalEventStream.parseCliEvent(
+                """{"id":"evt_done","type":"session.execution.succeeded","data":{"sessionID":"ses_1"}}""",
+                fallbackDirectory = "/tmp/project",
+            )!!
         assertEquals("session.status", event.type)
         assertEquals("idle", event.properties.getAsJsonObject("status").get("type").asString)
     }
 
     @Test
     fun parseCliEventMatchesCapturedPermissionFixtures() {
-        val asked = OpenCodeGlobalEventStream.parseCliEvent(
-            javaClass.getResource("/de/moritzf/opencodewebpanel/server/wire/v2_cli/event-permission-asked.json")!!.readText(),
-            fallbackDirectory = "/fallback",
-        )!!
+        val asked =
+            OpenCodeGlobalEventStream.parseCliEvent(
+                javaClass
+                    .getResource(
+                        "/de/moritzf/opencodewebpanel/server/wire/v2_cli/event-permission-asked.json"
+                    )!!
+                    .readText(),
+                fallbackDirectory = "/fallback",
+            )!!
         assertEquals("permission.asked", asked.type)
         assertEquals("/Users/moritz/Desktop/git/intellij-opencode-web-ui", asked.directory)
         assertEquals("per_0ab82a936001Ab0k4zIgsRFD7a", asked.properties.get("id").asString)
-        val replied = OpenCodeGlobalEventStream.parseCliEvent(
-            javaClass.getResource("/de/moritzf/opencodewebpanel/server/wire/v2_cli/event-permission-replied.json")!!.readText(),
-            fallbackDirectory = "/fallback",
-        )!!
+        val replied =
+            OpenCodeGlobalEventStream.parseCliEvent(
+                javaClass
+                    .getResource(
+                        "/de/moritzf/opencodewebpanel/server/wire/v2_cli/event-permission-replied.json"
+                    )!!
+                    .readText(),
+                fallbackDirectory = "/fallback",
+            )!!
         assertEquals("permission.replied", replied.type)
         assertEquals("once", replied.properties.get("reply").asString)
         assertEquals("per_0ab82a936001Ab0k4zIgsRFD7a", replied.properties.get("requestID").asString)
@@ -197,10 +216,20 @@ class OpenCodeGlobalEventStreamTest {
     fun parseGlobalEventRejectsMalformedEvents() {
         assertNull(OpenCodeGlobalEventStream.parseGlobalEvent("not json"))
         assertNull(OpenCodeGlobalEventStream.parseGlobalEvent("[]"))
-        assertNull(OpenCodeGlobalEventStream.parseGlobalEvent("""{"payload": {"type": "session.idle"}}"""))
-        assertNull(OpenCodeGlobalEventStream.parseGlobalEvent("""{"directory": " ", "payload": {"type": "session.idle"}}"""))
+        assertNull(
+            OpenCodeGlobalEventStream.parseGlobalEvent("""{"payload": {"type": "session.idle"}}""")
+        )
+        assertNull(
+            OpenCodeGlobalEventStream.parseGlobalEvent(
+                """{"directory": " ", "payload": {"type": "session.idle"}}"""
+            )
+        )
         assertNull(OpenCodeGlobalEventStream.parseGlobalEvent("""{"directory": "/tmp"}"""))
-        assertNull(OpenCodeGlobalEventStream.parseGlobalEvent("""{"directory": "/tmp", "payload": {"properties": {}}}"""))
+        assertNull(
+            OpenCodeGlobalEventStream.parseGlobalEvent(
+                """{"directory": "/tmp", "payload": {"properties": {}}}"""
+            )
+        )
     }
 
     @Test
@@ -215,13 +244,12 @@ class OpenCodeGlobalEventStreamTest {
             exchange.sendResponseHeaders(200, 0)
             exchange.responseBody.use { body ->
                 body.write(
-                    (
-                        "data: {\"directory\":\"/tmp/project\",\"payload\":{\"id\":\"evt_1\",\"type\":\"session.idle\"," +
+                    ("data: {\"directory\":\"/tmp/project\",\"payload\":{\"id\":\"evt_1\",\"type\":\"session.idle\"," +
                             "\"properties\":{\"sessionID\":\"ses_1\"}}}\n\n" +
                             ": keep-alive\n\n" +
                             "data: {\"directory\":\"/tmp/project\",\"payload\":{\"id\":\"evt_2\",\"type\":\"permission.asked\"," +
-                            "\"properties\":{\"id\":\"per_1\"}}}\n\n"
-                        ).toByteArray(StandardCharsets.UTF_8),
+                            "\"properties\":{\"id\":\"per_1\"}}}\n\n")
+                        .toByteArray(StandardCharsets.UTF_8)
                 )
                 body.flush()
             }
@@ -232,17 +260,18 @@ class OpenCodeGlobalEventStreamTest {
         val connectedBackendIds = ConcurrentLinkedQueue<String>()
         val events = ConcurrentLinkedQueue<OpenCodeGlobalEvent>()
         val eventsLatch = CountDownLatch(2)
-        val listener = object : OpenCodeGlobalEventListener {
-            override fun connected(backendId: String) {
-                connectedBackendIds.add(backendId)
-                connectedLatch.countDown()
-            }
+        val listener =
+            object : OpenCodeGlobalEventListener {
+                override fun connected(backendId: String) {
+                    connectedBackendIds.add(backendId)
+                    connectedLatch.countDown()
+                }
 
-            override fun eventReceived(event: OpenCodeGlobalEvent) {
-                events.add(event)
-                eventsLatch.countDown()
+                override fun eventReceived(event: OpenCodeGlobalEvent) {
+                    events.add(event)
+                    eventsLatch.countDown()
+                }
             }
-        }
         val stream = OpenCodeGlobalEventStream(listener = { listener }, reconnectDelayMillis = 50L)
         try {
             stream.start("http://127.0.0.1:${server.address.port}", "Basic dGVzdA==")
@@ -279,11 +308,10 @@ class OpenCodeGlobalEventStreamTest {
             exchange.sendResponseHeaders(200, 0)
             exchange.responseBody.use { body ->
                 body.write(
-                    (
-                        "data: {\"id\":\"evt_c\",\"type\":\"server.connected\",\"data\":{}}\n\n" +
+                    ("data: {\"id\":\"evt_c\",\"type\":\"server.connected\",\"data\":{}}\n\n" +
                             ": heartbeat\n\n" +
-                            "data: {\"id\":\"evt_s\",\"type\":\"session.execution.started\",\"data\":{\"sessionID\":\"ses_1\"}}\n\n"
-                        ).toByteArray(StandardCharsets.UTF_8),
+                            "data: {\"id\":\"evt_s\",\"type\":\"session.execution.started\",\"data\":{\"sessionID\":\"ses_1\"}}\n\n")
+                        .toByteArray(StandardCharsets.UTF_8)
                 )
                 body.flush()
             }
@@ -292,16 +320,17 @@ class OpenCodeGlobalEventStreamTest {
         val events = ConcurrentLinkedQueue<OpenCodeGlobalEvent>()
         val eventsLatch = CountDownLatch(2)
         val connectedLatch = CountDownLatch(1)
-        val listener = object : OpenCodeGlobalEventListener {
-            override fun connected(backendId: String) {
-                connectedLatch.countDown()
-            }
+        val listener =
+            object : OpenCodeGlobalEventListener {
+                override fun connected(backendId: String) {
+                    connectedLatch.countDown()
+                }
 
-            override fun eventReceived(event: OpenCodeGlobalEvent) {
-                events.add(event)
-                eventsLatch.countDown()
+                override fun eventReceived(event: OpenCodeGlobalEvent) {
+                    events.add(event)
+                    eventsLatch.countDown()
+                }
             }
-        }
         val stream = OpenCodeGlobalEventStream(listener = { listener }, reconnectDelayMillis = 50L)
         try {
             stream.start(
@@ -316,7 +345,10 @@ class OpenCodeGlobalEventStreamTest {
             assertEquals("server.connected", received[0].type)
             assertEquals("/tmp/project", received[0].directory)
             assertEquals("session.status", received[1].type)
-            assertEquals("busy", received[1].properties.getAsJsonObject("status").get("type").asString)
+            assertEquals(
+                "busy",
+                received[1].properties.getAsJsonObject("status").get("type").asString,
+            )
             assertTrue(connections.get() >= 1)
         } finally {
             stream.stop()
@@ -334,7 +366,8 @@ class OpenCodeGlobalEventStreamTest {
             exchange.sendResponseHeaders(200, 0)
             exchange.responseBody.use { body ->
                 if (connectionNumber == 1) {
-                    // No blank line: keep appending so the block exceeds the cap and forces reconnect.
+                    // No blank line: keep appending so the block exceeds the cap and forces
+                    // reconnect.
                     body.write("data: ".toByteArray(StandardCharsets.UTF_8))
                     val chunk = "x".repeat(64 * 1024).toByteArray(StandardCharsets.UTF_8)
                     repeat((OpenCodeGlobalEventStream.MAX_SSE_BLOCK_CHARS / chunk.size) + 2) {
@@ -343,10 +376,9 @@ class OpenCodeGlobalEventStreamTest {
                     body.flush()
                 } else {
                     body.write(
-                        (
-                            "data: {\"directory\":\"/tmp/project\",\"payload\":{\"id\":\"evt_ok\",\"type\":\"session.idle\"," +
-                                "\"properties\":{\"sessionID\":\"ses_ok\"}}}\n\n"
-                            ).toByteArray(StandardCharsets.UTF_8),
+                        ("data: {\"directory\":\"/tmp/project\",\"payload\":{\"id\":\"evt_ok\",\"type\":\"session.idle\"," +
+                                "\"properties\":{\"sessionID\":\"ses_ok\"}}}\n\n")
+                            .toByteArray(StandardCharsets.UTF_8)
                     )
                     body.flush()
                 }
@@ -355,19 +387,23 @@ class OpenCodeGlobalEventStreamTest {
         server.start()
 
         val eventsLatch = CountDownLatch(1)
-        val stream = OpenCodeGlobalEventStream(
-            listener = {
-                object : OpenCodeGlobalEventListener {
-                    override fun eventReceived(event: OpenCodeGlobalEvent) {
-                        if (event.type == "session.idle") eventsLatch.countDown()
+        val stream =
+            OpenCodeGlobalEventStream(
+                listener = {
+                    object : OpenCodeGlobalEventListener {
+                        override fun eventReceived(event: OpenCodeGlobalEvent) {
+                            if (event.type == "session.idle") eventsLatch.countDown()
+                        }
                     }
-                }
-            },
-            reconnectDelayMillis = 50L,
-        )
+                },
+                reconnectDelayMillis = 50L,
+            )
         try {
             stream.start("http://127.0.0.1:${server.address.port}", "Basic dGVzdA==")
-            assertTrue("did not recover after oversized block", eventsLatch.await(10, TimeUnit.SECONDS))
+            assertTrue(
+                "did not recover after oversized block",
+                eventsLatch.await(10, TimeUnit.SECONDS),
+            )
             assertTrue(connections.get() >= 2)
         } finally {
             stream.stop()
@@ -387,16 +423,20 @@ class OpenCodeGlobalEventStreamTest {
             exchange.responseBody.use { it.write("{}".toByteArray()) }
         }
         server.start()
-        val stream = OpenCodeGlobalEventStream(
-            listener = {
-                object : OpenCodeGlobalEventListener {
-                    override fun connected(backendId: String) { connected.incrementAndGet() }
-                    override fun eventReceived(event: OpenCodeGlobalEvent) = Unit
-                }
-            },
-            reconnectDelayMillis = 20,
-            readTimeoutMillis = 100,
-        )
+        val stream =
+            OpenCodeGlobalEventStream(
+                listener = {
+                    object : OpenCodeGlobalEventListener {
+                        override fun connected(backendId: String) {
+                            connected.incrementAndGet()
+                        }
+
+                        override fun eventReceived(event: OpenCodeGlobalEvent) = Unit
+                    }
+                },
+                reconnectDelayMillis = 20,
+                readTimeoutMillis = 100,
+            )
         try {
             stream.start("http://127.0.0.1:${server.address.port}", "Basic test")
             val deadline = System.currentTimeMillis() + 3_000
@@ -423,10 +463,11 @@ class OpenCodeGlobalEventStreamTest {
             }
         }
         server.start()
-        val stream = OpenCodeGlobalEventStream(
-            reconnectDelayMillis = 20,
-            readTimeoutMillis = 100,
-        )
+        val stream =
+            OpenCodeGlobalEventStream(
+                reconnectDelayMillis = 20,
+                readTimeoutMillis = 100,
+            )
         try {
             stream.start("http://127.0.0.1:${server.address.port}", "Basic test")
             val deadline = System.currentTimeMillis() + 3_000
@@ -455,19 +496,20 @@ class OpenCodeGlobalEventStreamTest {
             }
         }
         server.start()
-        val stream = OpenCodeGlobalEventStream(
-            listener = {
-                object : OpenCodeGlobalEventListener {
-                    override fun connected(backendId: String) {
-                        connected.countDown()
-                    }
+        val stream =
+            OpenCodeGlobalEventStream(
+                listener = {
+                    object : OpenCodeGlobalEventListener {
+                        override fun connected(backendId: String) {
+                            connected.countDown()
+                        }
 
-                    override fun eventReceived(event: OpenCodeGlobalEvent) = Unit
-                }
-            },
-            reconnectDelayMillis = 50L,
-            readTimeoutMillis = 45_000,
-        )
+                        override fun eventReceived(event: OpenCodeGlobalEvent) = Unit
+                    }
+                },
+                reconnectDelayMillis = 50L,
+                readTimeoutMillis = 45_000,
+            )
         try {
             stream.start("http://127.0.0.1:${server.address.port}", "Basic dGVzdA==")
             assertTrue("stream did not connect", connected.await(5, TimeUnit.SECONDS))
@@ -493,14 +535,15 @@ class OpenCodeGlobalEventStreamTest {
         }
         server.start()
 
-        val stream = OpenCodeGlobalEventStream(
-            listener = {
-                object : OpenCodeGlobalEventListener {
-                    override fun eventReceived(event: OpenCodeGlobalEvent) = Unit
-                }
-            },
-            reconnectDelayMillis = 20L,
-        )
+        val stream =
+            OpenCodeGlobalEventStream(
+                listener = {
+                    object : OpenCodeGlobalEventListener {
+                        override fun eventReceived(event: OpenCodeGlobalEvent) = Unit
+                    }
+                },
+                reconnectDelayMillis = 20L,
+            )
         try {
             stream.start("http://127.0.0.1:${server.address.port}", "Basic dGVzdA==")
             waitUntil { connections.get() >= 1 }

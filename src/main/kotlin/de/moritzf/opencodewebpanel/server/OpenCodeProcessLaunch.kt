@@ -4,8 +4,8 @@ import java.io.File
 import java.nio.file.Files
 
 /**
- * Host CLI launch: command line, PATH lookup, and the serve [ProcessBuilder].
- * Call sites still go through [OpenCodeServerProtocol].
+ * Host CLI launch: command line, PATH lookup, and the serve [ProcessBuilder]. Call sites still go
+ * through [OpenCodeServerProtocol].
  */
 internal object OpenCodeProcessLaunch {
     private const val HOST = "127.0.0.1"
@@ -35,9 +35,7 @@ internal object OpenCodeProcessLaunch {
         httpProxy: IdeHttpProxy?,
         stripInheritedProxy: Boolean,
     ): ProcessBuilder {
-        val processBuilder = ProcessBuilder()
-            .command(command)
-            .redirectErrorStream(true)
+        val processBuilder = ProcessBuilder().command(command).redirectErrorStream(true)
 
         if (projectBasePath != null) {
             processBuilder.directory(File(projectBasePath))
@@ -58,7 +56,8 @@ internal object OpenCodeProcessLaunch {
         additionalPaths: List<String>? = null,
         environment: Map<String, String> = System.getenv(),
     ): String {
-        return (currentPath.split(File.pathSeparator) + (additionalPaths ?: commonExecutablePaths(environment)))
+        return (currentPath.split(File.pathSeparator) +
+                (additionalPaths ?: commonExecutablePaths(environment)))
             .filter { it.isNotBlank() }
             .distinct()
             .joinToString(File.pathSeparator)
@@ -76,10 +75,13 @@ internal object OpenCodeProcessLaunch {
             return commandFile.takeIf { it.isRunnableCommand() }?.absolutePath
         }
 
-        return path.split(pathSeparator)
+        return path
+            .split(pathSeparator)
             .asSequence()
             .filter { it.isNotBlank() }
-            .flatMap { directory -> candidateExecutableNames(command, osName).asSequence().map { File(directory, it) } }
+            .flatMap { directory ->
+                candidateExecutableNames(command, osName).asSequence().map { File(directory, it) }
+            }
             .firstOrNull { it.isRunnableCommand() }
             ?.absolutePath
     }
@@ -88,7 +90,8 @@ internal object OpenCodeProcessLaunch {
         executable: String = OpenCodeServerProtocol.DEFAULT_EXECUTABLE,
         path: String = resolvePath(),
     ): String {
-        return detectExecutablePath(executable, path) ?: executable.ifBlank { OpenCodeServerProtocol.DEFAULT_EXECUTABLE }
+        return detectExecutablePath(executable, path)
+            ?: executable.ifBlank { OpenCodeServerProtocol.DEFAULT_EXECUTABLE }
     }
 
     private fun commonExecutablePaths(environment: Map<String, String>): List<String> {
@@ -140,17 +143,25 @@ internal object OpenCodeProcessLaunch {
         val lower = executable.lowercase()
         val windowsExtensions = listOf(".cmd", ".exe", ".bat", ".ps1")
         if (!osName.startsWith("Windows", ignoreCase = true)) {
-            return (listOf(executable) + windowsExtensions.filterNot { lower.endsWith(it) }.map { executable + it }).distinct()
+            return (listOf(executable) +
+                    windowsExtensions.filterNot { lower.endsWith(it) }.map { executable + it })
+                .distinct()
         }
-        return (windowsExtensions.filterNot { lower.endsWith(it) }.map { executable + it } + executable).distinct()
+        return (windowsExtensions.filterNot { lower.endsWith(it) }.map { executable + it } +
+                executable)
+            .distinct()
     }
 
     private fun File.isRunnableCommand(): Boolean {
-        return Files.isRegularFile(toPath()) && (Files.isExecutable(toPath()) || hasWindowsCommandExtension(name))
+        return Files.isRegularFile(toPath()) &&
+            (Files.isExecutable(toPath()) || hasWindowsCommandExtension(name))
     }
 
     private fun hasWindowsCommandExtension(fileName: String): Boolean {
         val lower = fileName.lowercase()
-        return lower.endsWith(".cmd") || lower.endsWith(".exe") || lower.endsWith(".bat") || lower.endsWith(".ps1")
+        return lower.endsWith(".cmd") ||
+            lower.endsWith(".exe") ||
+            lower.endsWith(".bat") ||
+            lower.endsWith(".ps1")
     }
 }

@@ -1,12 +1,5 @@
 package de.moritzf.opencodewebpanel.features
 
-import org.junit.Assert.assertArrayEquals
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
-import org.junit.Test
 import java.awt.Color
 import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
@@ -15,6 +8,13 @@ import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import javax.imageio.ImageIO
+import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
 
 class OpenCodeFileDropHandlerTest {
     @Test
@@ -61,9 +61,17 @@ class OpenCodeFileDropHandlerTest {
         val bytes = OpenCodeFileDropHandler.encodeImageToPng(image)
 
         assertNotNull(bytes)
-        val pngSignature = byteArrayOf(
-            0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
-        )
+        val pngSignature =
+            byteArrayOf(
+                0x89.toByte(),
+                0x50,
+                0x4E,
+                0x47,
+                0x0D,
+                0x0A,
+                0x1A,
+                0x0A,
+            )
         assertArrayEquals(pngSignature, bytes!!.copyOfRange(0, pngSignature.size))
         val decoded = ImageIO.read(ByteArrayInputStream(bytes))
         assertEquals(4, decoded.width)
@@ -74,10 +82,12 @@ class OpenCodeFileDropHandlerTest {
     fun encodeImageToPngRejectsAbsurdPixelCounts() {
         // A reported size beyond the pixel cap must be rejected before any buffer allocation;
         // this image lies about its size, which is exactly the point — decoding never starts.
-        val hugeImage = object : BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB) {
-            override fun getWidth(observer: java.awt.image.ImageObserver?): Int = 100_000
-            override fun getHeight(observer: java.awt.image.ImageObserver?): Int = 100_000
-        }
+        val hugeImage =
+            object : BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB) {
+                override fun getWidth(observer: java.awt.image.ImageObserver?): Int = 100_000
+
+                override fun getHeight(observer: java.awt.image.ImageObserver?): Int = 100_000
+            }
 
         assertNull(OpenCodeFileDropHandler.encodeImageToPng(hugeImage))
     }
@@ -95,9 +105,24 @@ class OpenCodeFileDropHandlerTest {
 
     @Test
     fun afterDropRestoresBrowserFocusWhenDnDClearedFocusOwner() {
-        assertTrue(OpenCodeFileDropHandler.afterDropShouldRestoreBrowserFocus(focusInsideBrowser = false, focusOwnerMissing = true))
-        assertTrue(OpenCodeFileDropHandler.afterDropShouldRestoreBrowserFocus(focusInsideBrowser = true, focusOwnerMissing = false))
-        assertFalse(OpenCodeFileDropHandler.afterDropShouldRestoreBrowserFocus(focusInsideBrowser = false, focusOwnerMissing = false))
+        assertTrue(
+            OpenCodeFileDropHandler.afterDropShouldRestoreBrowserFocus(
+                focusInsideBrowser = false,
+                focusOwnerMissing = true,
+            )
+        )
+        assertTrue(
+            OpenCodeFileDropHandler.afterDropShouldRestoreBrowserFocus(
+                focusInsideBrowser = true,
+                focusOwnerMissing = false,
+            )
+        )
+        assertFalse(
+            OpenCodeFileDropHandler.afterDropShouldRestoreBrowserFocus(
+                focusInsideBrowser = false,
+                focusOwnerMissing = false,
+            )
+        )
     }
 
     @Test
@@ -109,7 +134,12 @@ class OpenCodeFileDropHandlerTest {
     fun shouldUseDroppedImageFlavorForNonFileDropWithoutProjectReference() {
         val directory = Files.createTempDirectory("opencode-drop-test")
         try {
-            assertTrue(OpenCodeFileDropHandler.shouldUseDroppedImageFlavor(listOf(directory.toFile()), null))
+            assertTrue(
+                OpenCodeFileDropHandler.shouldUseDroppedImageFlavor(
+                    listOf(directory.toFile()),
+                    null,
+                )
+            )
         } finally {
             Files.deleteIfExists(directory)
         }
@@ -123,7 +153,12 @@ class OpenCodeFileDropHandlerTest {
             Files.createDirectories(file.parent)
             Files.writeString(file, "fun main() {}")
 
-            assertFalse(OpenCodeFileDropHandler.shouldUseDroppedImageFlavor(listOf(file.toFile()), projectRoot.toString()))
+            assertFalse(
+                OpenCodeFileDropHandler.shouldUseDroppedImageFlavor(
+                    listOf(file.toFile()),
+                    projectRoot.toString(),
+                )
+            )
         } finally {
             projectRoot.toFile().deleteRecursively()
         }
@@ -135,7 +170,9 @@ class OpenCodeFileDropHandlerTest {
         try {
             Files.write(file, byteArrayOf(1, 2, 3))
 
-            assertFalse(OpenCodeFileDropHandler.shouldUseDroppedImageFlavor(listOf(file.toFile()), null))
+            assertFalse(
+                OpenCodeFileDropHandler.shouldUseDroppedImageFlavor(listOf(file.toFile()), null)
+            )
         } finally {
             Files.deleteIfExists(file)
         }
@@ -143,17 +180,18 @@ class OpenCodeFileDropHandlerTest {
 
     @Test
     fun dispatchContextMustStillMatchTheInitiatingDocumentAndServer() {
-        val matching = OpenCodeFileDropHandler.dispatchContextMatches(
-            initialDocumentRevision = 4,
-            currentDocumentRevision = 4,
-            initialServerGeneration = 2,
-            currentServerGeneration = 2,
-            initialServerUrl = "http://127.0.0.1:4096",
-            currentServerUrl = "http://127.0.0.1:4096",
-            initialDirectory = "C:\\Source\\Project",
-            currentDirectory = "c:/source/project/",
-            browserUrl = "http://127.0.0.1:4096/server/key/session/ses_1",
-        )
+        val matching =
+            OpenCodeFileDropHandler.dispatchContextMatches(
+                initialDocumentRevision = 4,
+                currentDocumentRevision = 4,
+                initialServerGeneration = 2,
+                currentServerGeneration = 2,
+                initialServerUrl = "http://127.0.0.1:4096",
+                currentServerUrl = "http://127.0.0.1:4096",
+                initialDirectory = "C:\\Source\\Project",
+                currentDirectory = "c:/source/project/",
+                browserUrl = "http://127.0.0.1:4096/server/key/session/ses_1",
+            )
         assertTrue(matching)
 
         assertTrue(
@@ -167,7 +205,7 @@ class OpenCodeFileDropHandlerTest {
                 initialDirectory = null,
                 currentDirectory = null,
                 browserUrl = "http://127.0.0.1:4096/server/key/session/ses_1",
-            ),
+            )
         )
 
         assertFalse(
@@ -181,7 +219,7 @@ class OpenCodeFileDropHandlerTest {
                 initialDirectory = "/project",
                 currentDirectory = "/project",
                 browserUrl = "http://127.0.0.1:4096/server/key/session/ses_2",
-            ),
+            )
         )
     }
 }

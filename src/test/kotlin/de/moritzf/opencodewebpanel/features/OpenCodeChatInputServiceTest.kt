@@ -10,7 +10,10 @@ class OpenCodeChatInputServiceTest {
     fun dispatchesInOrderAndWaitsForAcknowledgement() {
         val service = OpenCodeChatInputService()
         val submitted = mutableListOf<OpenCodeChatInputService.Delivery>()
-        service.setDispatcher { delivery -> submitted += delivery; true }
+        service.setDispatcher { delivery ->
+            submitted += delivery
+            true
+        }
 
         assertTrue(service.send(listOf("first", "second")))
         assertEquals(listOf("first"), submitted.map { it.batch.text })
@@ -28,7 +31,10 @@ class OpenCodeChatInputServiceTest {
     fun rejectedOrTimedOutBatchIsRequeuedWithoutDuplication() {
         val service = OpenCodeChatInputService()
         val submitted = mutableListOf<OpenCodeChatInputService.Delivery>()
-        service.setDispatcher { delivery -> submitted += delivery; true }
+        service.setDispatcher { delivery ->
+            submitted += delivery
+            true
+        }
         service.send(listOf("text"))
         val first = submitted.single()
 
@@ -48,7 +54,10 @@ class OpenCodeChatInputServiceTest {
     fun staleCallbackAndTimeoutCannotAffectRetriedAttempt() {
         val service = OpenCodeChatInputService()
         val submitted = mutableListOf<OpenCodeChatInputService.Delivery>()
-        service.setDispatcher { delivery -> submitted += delivery; true }
+        service.setDispatcher { delivery ->
+            submitted += delivery
+            true
+        }
         service.send(listOf("text"))
         val first = submitted.single()
         assertTrue(service.retryInFlight(first.attemptID))
@@ -66,7 +75,10 @@ class OpenCodeChatInputServiceTest {
     fun discardPendingDropsQueueAndIgnoresStaleAck() {
         val service = OpenCodeChatInputService()
         val submitted = mutableListOf<OpenCodeChatInputService.Delivery>()
-        service.setDispatcher { delivery -> submitted += delivery; true }
+        service.setDispatcher { delivery ->
+            submitted += delivery
+            true
+        }
         service.send(listOf("first", "second"))
         val first = submitted.single()
 

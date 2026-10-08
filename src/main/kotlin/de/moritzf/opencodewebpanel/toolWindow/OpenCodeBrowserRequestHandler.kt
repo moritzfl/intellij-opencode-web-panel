@@ -1,40 +1,55 @@
 package de.moritzf.opencodewebpanel.toolWindow
 
+import com.intellij.openapi.diagnostic.thisLogger
 import de.moritzf.opencodewebpanel.features.OpenCodeIdeNavigation
-import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
+import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
 import org.cef.browser.CefBrowser
 import org.cef.browser.CefFrame
 import org.cef.callback.CefAuthCallback
 import org.cef.handler.CefRequestHandler.TerminationStatus
+import org.cef.handler.CefRequestHandlerAdapter
 import org.cef.handler.CefResourceRequestHandler
 import org.cef.handler.CefResourceRequestHandlerAdapter
-import org.cef.handler.CefRequestHandlerAdapter
 import org.cef.misc.BoolRef
 import org.cef.network.CefRequest
-import com.intellij.openapi.diagnostic.thisLogger
 
 internal class OpenCodeBrowserRequestHandler(
     private val serverManager: OpenCodeServerBackend,
     private val ideNavigation: OpenCodeIdeNavigation,
     private val onRenderProcessCrash: () -> Unit = {},
 ) : CefRequestHandlerAdapter() {
-    private val resourceRequestHandler = object : CefResourceRequestHandlerAdapter() {
-        override fun onBeforeResourceLoad(browser: CefBrowser?, frame: CefFrame?, request: CefRequest?): Boolean {
-            val password = serverManager.getAuthPassword() ?: serverManager.getServerPassword() ?: return false
-            val requestUrl = request?.url ?: return false
-            val origin = serverManager.getAuthServerUrl() ?: serverManager.getServerUrl()
-            // Gate on last-known origin+password, not live URL: stop/upgrade nulls getServerUrl()
-            // while the parked page still retries, which would 401 into Chromium's login dialog.
-            if (serverManager.isServerReadyForAuth() &&
-                OpenCodeServerProtocol.shouldSendBasicAuthHeader(origin, requestUrl)
-            ) {
-                request.setHeaderByName("Authorization", OpenCodeServerProtocol.buildBasicAuthHeader(password), true)
+    private val resourceRequestHandler =
+        object : CefResourceRequestHandlerAdapter() {
+            override fun onBeforeResourceLoad(
+                browser: CefBrowser?,
+                frame: CefFrame?,
+                request: CefRequest?,
+            ): Boolean {
+                val password =
+                    serverManager.getAuthPassword()
+                        ?: serverManager.getServerPassword()
+                        ?: return false
+                val requestUrl = request?.url ?: return false
+                val origin = serverManager.getAuthServerUrl() ?: serverManager.getServerUrl()
+                // Gate on last-known origin+password, not live URL: stop/upgrade nulls
+                // getServerUrl()
+                // while the parked page still retries, which would 401 into Chromium's login
+                // dialog.
+                if (
+                    serverManager.isServerReadyForAuth() &&
+                        OpenCodeServerProtocol.shouldSendBasicAuthHeader(origin, requestUrl)
+                ) {
+                    request.setHeaderByName(
+                        "Authorization",
+                        OpenCodeServerProtocol.buildBasicAuthHeader(password),
+                        true,
+                    )
+                }
+                return false
             }
-            return false
         }
-    }
 
     override fun onBeforeBrowse(
         browser: CefBrowser?,
@@ -48,8 +63,12 @@ internal class OpenCodeBrowserRequestHandler(
             // Only the embedded OpenCode page may drive IDE file navigation: after the user
             // deliberately navigated the panel elsewhere, foreign content must not be able to
             // open files in the IDE through the custom scheme.
-            if (OpenCodeSettingsState.getInstance().openFileLinksInIde &&
-                OpenCodeServerProtocol.isOpenCodeServerPage(serverManager.getServerUrl(), browser?.url)
+            if (
+                OpenCodeSettingsState.getInstance().openFileLinksInIde &&
+                    OpenCodeServerProtocol.isOpenCodeServerPage(
+                        serverManager.getServerUrl(),
+                        browser?.url,
+                    )
             ) {
                 ideNavigation.openFileLinkInIde(
                     OpenCodeServerProtocol.openFileLinkHref(requestUrl),
@@ -62,9 +81,11 @@ internal class OpenCodeBrowserRequestHandler(
         // and scripted navigation never pass through DOM click listeners, so the main frame is
         // also kept on the OpenCode origin at the browser boundary. Same setting, same policy:
         // external http(s) targets open in the system browser instead of the panel.
-        if (frame?.isMain == true &&
-            OpenCodeSettingsState.getInstance().openExternalLinksInBrowser &&
-            OpenCodeServerProtocol.externalHttpUrl(requestUrl, serverManager.getServerUrl()) != null
+        if (
+            frame?.isMain == true &&
+                OpenCodeSettingsState.getInstance().openExternalLinksInBrowser &&
+                OpenCodeServerProtocol.externalHttpUrl(requestUrl, serverManager.getServerUrl()) !=
+                    null
         ) {
             ideNavigation.openExternalLinkInBrowser(requestUrl)
             return true
@@ -97,8 +118,19 @@ internal class OpenCodeBrowserRequestHandler(
         val password = serverManager.getAuthPassword() ?: serverManager.getServerPassword()
         val serverUrl = serverManager.getAuthServerUrl() ?: serverManager.getServerUrl()
         val ready = serverManager.isServerReadyForAuth()
-        val reply = OpenCodeServerProtocol.replyToBasicAuthChallenge(isProxy, host, port, serverUrl, password, ready)
-        thisLogger().info("jcef auth challenge host=$host port=$port proxy=$isProxy ready=$ready url=$serverUrl reply=$reply")
+        val reply =
+            OpenCodeServerProtocol.replyToBasicAuthChallenge(
+                isProxy,
+                host,
+                port,
+                serverUrl,
+                password,
+                ready,
+            )
+        thisLogger()
+            .info(
+                "jcef auth challenge host=$host port=$port proxy=$isProxy ready=$ready url=$serverUrl reply=$reply"
+            )
         return when (reply) {
             OpenCodeServerProtocol.BasicAuthChallengeReply.IGNORE -> false
             OpenCodeServerProtocol.BasicAuthChallengeReply.CANCEL -> {

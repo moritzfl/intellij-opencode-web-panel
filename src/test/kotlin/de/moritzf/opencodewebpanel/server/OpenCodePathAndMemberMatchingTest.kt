@@ -1,22 +1,35 @@
 package de.moritzf.opencodewebpanel.server
 
+import java.nio.file.Files
+import java.nio.file.Path
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.nio.file.Files
-import java.nio.file.Path
 
 class OpenCodePathAndMemberMatchingTest {
 
     @Test
     fun resolveFileLinkMatchesExactRelativeAndRootRelativePaths() {
         withTree("src/Main.kt", "docs/guide.md") { root ->
-            assertEquals(root.file("src/Main.kt"), OpenCodeServerProtocol.resolveFileLink("src/Main.kt", root.toString(), null)?.path)
-            assertEquals(root.file("src/Main.kt"), OpenCodeServerProtocol.resolveFileLink("/src/Main.kt", root.toString(), null)?.path)
-            assertEquals(root.file("src/Main.kt"), OpenCodeServerProtocol.resolveFileLink("./src/Main.kt", root.toString(), null)?.path)
-            assertEquals(root.file("docs/guide.md"), OpenCodeServerProtocol.resolveFileLink("docs/guide.md", root.toString(), null)?.path)
+            assertEquals(
+                root.file("src/Main.kt"),
+                OpenCodeServerProtocol.resolveFileLink("src/Main.kt", root.toString(), null)?.path,
+            )
+            assertEquals(
+                root.file("src/Main.kt"),
+                OpenCodeServerProtocol.resolveFileLink("/src/Main.kt", root.toString(), null)?.path,
+            )
+            assertEquals(
+                root.file("src/Main.kt"),
+                OpenCodeServerProtocol.resolveFileLink("./src/Main.kt", root.toString(), null)
+                    ?.path,
+            )
+            assertEquals(
+                root.file("docs/guide.md"),
+                OpenCodeServerProtocol.resolveFileLink("docs/guide.md", root.toString(), null)
+                    ?.path,
+            )
         }
     }
 
@@ -29,9 +42,14 @@ class OpenCodePathAndMemberMatchingTest {
             )
             assertEquals(
                 root.file("src/Main.kt"),
-                OpenCodeServerProtocol.resolveFileLink("src\\Main.kt:12", root.toString(), null)?.path,
+                OpenCodeServerProtocol.resolveFileLink("src\\Main.kt:12", root.toString(), null)
+                    ?.path,
             )
-            assertEquals(11, OpenCodeServerProtocol.resolveFileLink("src\\Main.kt:12", root.toString(), null)?.line)
+            assertEquals(
+                11,
+                OpenCodeServerProtocol.resolveFileLink("src\\Main.kt:12", root.toString(), null)
+                    ?.line,
+            )
         }
     }
 
@@ -39,10 +57,21 @@ class OpenCodePathAndMemberMatchingTest {
     fun resolveFileLinkGuessesMissingLeadingSegments() {
         withTree("packages/app/src/Main.kt") { root ->
             val nested = root.file("packages/app/src/Main.kt")
-            assertEquals(nested, OpenCodeServerProtocol.resolveFileLink("app/src/Main.kt", root.toString(), null)?.path)
-            assertEquals(nested, OpenCodeServerProtocol.resolveFileLink("src/Main.kt", root.toString(), null)?.path)
-            assertEquals(nested, OpenCodeServerProtocol.resolveFileLink("Main.kt", root.toString(), null)?.path)
-            val withLine = OpenCodeServerProtocol.resolveFileLink("src/Main.kt:9", root.toString(), null)
+            assertEquals(
+                nested,
+                OpenCodeServerProtocol.resolveFileLink("app/src/Main.kt", root.toString(), null)
+                    ?.path,
+            )
+            assertEquals(
+                nested,
+                OpenCodeServerProtocol.resolveFileLink("src/Main.kt", root.toString(), null)?.path,
+            )
+            assertEquals(
+                nested,
+                OpenCodeServerProtocol.resolveFileLink("Main.kt", root.toString(), null)?.path,
+            )
+            val withLine =
+                OpenCodeServerProtocol.resolveFileLink("src/Main.kt:9", root.toString(), null)
             assertEquals(nested, withLine?.path)
             assertEquals(8, withLine?.line)
         }
@@ -53,8 +82,15 @@ class OpenCodePathAndMemberMatchingTest {
         withTree("packages/app/src/Main.kt") { root ->
             val nested = root.file("packages/app/src/Main.kt")
             val inner = root.resolve("packages/app").toString()
-            assertEquals(nested, OpenCodeServerProtocol.resolveFileLink("packages/app/src/Main.kt", inner, null)?.path)
-            assertEquals(nested, OpenCodeServerProtocol.resolveFileLink("app/src/Main.kt", inner, null)?.path)
+            assertEquals(
+                nested,
+                OpenCodeServerProtocol.resolveFileLink("packages/app/src/Main.kt", inner, null)
+                    ?.path,
+            )
+            assertEquals(
+                nested,
+                OpenCodeServerProtocol.resolveFileLink("app/src/Main.kt", inner, null)?.path,
+            )
         }
     }
 
@@ -75,7 +111,10 @@ class OpenCodePathAndMemberMatchingTest {
                 resolve("shared-library/src/DocumentMapper.java:42")?.path,
             )
             assertEquals(41, resolve("shared-library/src/DocumentMapper.java:42")?.line)
-            assertEquals(root.file("shared-library/resources/Document.xsd"), resolve("shared-library/resources/Document.xsd")?.path)
+            assertEquals(
+                root.file("shared-library/resources/Document.xsd"),
+                resolve("shared-library/resources/Document.xsd")?.path,
+            )
         }
     }
 
@@ -88,7 +127,8 @@ class OpenCodePathAndMemberMatchingTest {
             )
             assertEquals(
                 root.file("c/src/nested/Main.kt"),
-                OpenCodeServerProtocol.resolveFileLink("src/nested/Main.kt", root.toString(), null)?.path,
+                OpenCodeServerProtocol.resolveFileLink("src/nested/Main.kt", root.toString(), null)
+                    ?.path,
             )
         }
     }
@@ -131,23 +171,49 @@ class OpenCodePathAndMemberMatchingTest {
             val guide = root.file("docs/guide.md")
             val spaced = root.file("docs/My File.md")
 
-            assertEquals(readme, OpenCodeServerProtocol.resolveFileLink("README.md", root.toString(), null)?.path)
-            assertEquals(readme, OpenCodeServerProtocol.resolveFileLink("./README.md", root.toString(), null)?.path)
-            assertEquals(guide, OpenCodeServerProtocol.resolveFileLink("docs/guide.md", root.toString(), null)?.path)
-            assertEquals(guide, OpenCodeServerProtocol.resolveFileLink("guide.md", root.toString(), null)?.path)
-            assertEquals(spaced, OpenCodeServerProtocol.resolveFileLink("docs/My%20File.md", root.toString(), null)?.path)
+            assertEquals(
+                readme,
+                OpenCodeServerProtocol.resolveFileLink("README.md", root.toString(), null)?.path,
+            )
+            assertEquals(
+                readme,
+                OpenCodeServerProtocol.resolveFileLink("./README.md", root.toString(), null)?.path,
+            )
+            assertEquals(
+                guide,
+                OpenCodeServerProtocol.resolveFileLink("docs/guide.md", root.toString(), null)
+                    ?.path,
+            )
+            assertEquals(
+                guide,
+                OpenCodeServerProtocol.resolveFileLink("guide.md", root.toString(), null)?.path,
+            )
+            assertEquals(
+                spaced,
+                OpenCodeServerProtocol.resolveFileLink("docs/My%20File.md", root.toString(), null)
+                    ?.path,
+            )
 
-            val heading = OpenCodeServerProtocol.resolveFileLink("docs/guide.md#installation", root.toString(), null)
+            val heading =
+                OpenCodeServerProtocol.resolveFileLink(
+                    "docs/guide.md#installation",
+                    root.toString(),
+                    null,
+                )
             assertEquals(guide, heading?.path)
             assertNull(heading?.line)
 
-            val line = OpenCodeServerProtocol.resolveFileLink("docs/guide.md#L12", root.toString(), null)
+            val line =
+                OpenCodeServerProtocol.resolveFileLink("docs/guide.md#L12", root.toString(), null)
             assertEquals(guide, line?.path)
             assertEquals(11, line?.line)
 
             val codeRef = OpenCodeServerProtocol.parseCodeReference("docs/guide.md")!!
             assertEquals("md", codeRef.extension)
-            assertEquals(guide, OpenCodeServerProtocol.resolveFileLink(codeRef.path, root.toString(), null)?.path)
+            assertEquals(
+                guide,
+                OpenCodeServerProtocol.resolveFileLink(codeRef.path, root.toString(), null)?.path,
+            )
         }
     }
 
@@ -225,9 +291,18 @@ class OpenCodePathAndMemberMatchingTest {
     @Test
     fun codeReferenceFileNamesAddSourceSuffixesAndOuterTypes() {
         val simple = OpenCodeServerProtocol.parseCodeReference("OpenCodeIdeNavigation")!!
-        assertEquals("OpenCodeIdeNavigation", OpenCodeServerProtocol.codeReferenceFileNames(simple).first())
-        assertTrue(OpenCodeServerProtocol.codeReferenceFileNames(simple).contains("OpenCodeIdeNavigation.kt"))
-        assertTrue(OpenCodeServerProtocol.codeReferenceFileNames(simple).contains("OpenCodeIdeNavigation.java"))
+        assertEquals(
+            "OpenCodeIdeNavigation",
+            OpenCodeServerProtocol.codeReferenceFileNames(simple).first(),
+        )
+        assertTrue(
+            OpenCodeServerProtocol.codeReferenceFileNames(simple)
+                .contains("OpenCodeIdeNavigation.kt")
+        )
+        assertTrue(
+            OpenCodeServerProtocol.codeReferenceFileNames(simple)
+                .contains("OpenCodeIdeNavigation.java")
+        )
 
         val file = OpenCodeServerProtocol.parseCodeReference("src/Main.kt")!!
         assertEquals(listOf("Main.kt"), OpenCodeServerProtocol.codeReferenceFileNames(file))
@@ -283,7 +358,7 @@ class OpenCodePathAndMemberMatchingTest {
             OpenCodeServerProtocol.pickDistinctPath(
                 listOf("/a/src/Main.kt", "/b/src/Main.kt"),
                 "src/Main.kt",
-            ),
+            )
         )
     }
 
@@ -301,12 +376,18 @@ class OpenCodePathAndMemberMatchingTest {
     @Test
     fun scoreFilePathSuffixRanksQualifiedAndExtensionlessReferences() {
         assertTrue(
-            OpenCodeServerProtocol.scoreFilePathSuffix("/repo/src/de/moritzf/Foo.kt", "de.moritzf.Foo") >
-                OpenCodeServerProtocol.scoreFilePathSuffix("/repo/src/other/Foo.kt", "de.moritzf.Foo"),
+            OpenCodeServerProtocol.scoreFilePathSuffix(
+                "/repo/src/de/moritzf/Foo.kt",
+                "de.moritzf.Foo",
+            ) >
+                OpenCodeServerProtocol.scoreFilePathSuffix(
+                    "/repo/src/other/Foo.kt",
+                    "de.moritzf.Foo",
+                )
         )
         assertTrue(
             OpenCodeServerProtocol.scoreFilePathSuffix("/repo/src/Foo.kt", "Foo") >
-                OpenCodeServerProtocol.scoreFilePathSuffix("/repo/src/Bar.kt", "Foo"),
+                OpenCodeServerProtocol.scoreFilePathSuffix("/repo/src/Bar.kt", "Foo")
         )
         assertEquals(0, OpenCodeServerProtocol.scoreFilePathSuffix("/repo/src/Bar.kt", "Foo"))
         assertTrue(OpenCodeServerProtocol.scoreFilePathSuffix("/repo/src/Main.kt", "src/Main") > 1)
@@ -314,13 +395,15 @@ class OpenCodePathAndMemberMatchingTest {
 
     @Test
     fun findMemberLineIndexPrefersDefinitionsOverEarlierCalls() {
-        val source = """
+        val source =
+            """
             package demo
             foo()
             // fun foo()
             fun foo() {}
             fun bar() {}
-        """.trimIndent()
+            """
+                .trimIndent()
         assertEquals(3, OpenCodeServerProtocol.findMemberLineIndex(source, "foo"))
         assertEquals(4, OpenCodeServerProtocol.findMemberLineIndex(source, "bar"))
         assertNull(OpenCodeServerProtocol.findMemberLineIndex(source, "missing"))
@@ -328,23 +411,27 @@ class OpenCodePathAndMemberMatchingTest {
 
     @Test
     fun findMemberLineIndexUnderstandsKotlinJavaAndPythonShapes() {
-        val kotlin = """
+        val kotlin =
+            """
             class Host {
                 fun <T> openFileLinkInIde(href: String?) {}
                 fun OpenCodeIdeNavigation.other() {}
                 val token = 1
             }
-        """.trimIndent()
+            """
+                .trimIndent()
         assertEquals(1, OpenCodeServerProtocol.findMemberLineIndex(kotlin, "openFileLinkInIde"))
         assertEquals(2, OpenCodeServerProtocol.findMemberLineIndex(kotlin, "other"))
         assertEquals(3, OpenCodeServerProtocol.findMemberLineIndex(kotlin, "token"))
 
-        val java = """
+        val java =
+            """
             public class Host {
                 foo();
                 public void foo(String href) {}
             }
-        """.trimIndent()
+            """
+                .trimIndent()
         assertEquals(2, OpenCodeServerProtocol.findMemberLineIndex(java, "foo"))
 
         val python = "def parse_path(value):\n    return value\n"
@@ -356,23 +443,27 @@ class OpenCodePathAndMemberMatchingTest {
 
     @Test
     fun classAndMethodPipelinePicksTheTypeFileAndMemberLine() {
-        val candidates = listOf(
-            "/repo/src/de/moritzf/OpenCodeIdeNavigation.kt",
-            "/repo/src/other/OpenCodeIdeNavigation.kt",
-            "/repo/src/de/moritzf/Foo.kt",
-        )
-        val source = """
+        val candidates =
+            listOf(
+                "/repo/src/de/moritzf/OpenCodeIdeNavigation.kt",
+                "/repo/src/other/OpenCodeIdeNavigation.kt",
+                "/repo/src/de/moritzf/Foo.kt",
+            )
+        val source =
+            """
             package de.moritzf
             class OpenCodeIdeNavigation {
                 fun openFileLinkInIde(href: String?) {}
             }
-        """.trimIndent()
+            """
+                .trimIndent()
 
-        val parsed = OpenCodeServerProtocol.parseCodeReference("de.moritzf.OpenCodeIdeNavigation.openFileLinkInIde()")!!
+        val parsed =
+            OpenCodeServerProtocol.parseCodeReference(
+                "de.moritzf.OpenCodeIdeNavigation.openFileLinkInIde()"
+            )!!
         val names = OpenCodeServerProtocol.codeReferenceFileNames(parsed).toSet()
-        val matching = candidates.filter { path ->
-            path.substringAfterLast('/') in names
-        }
+        val matching = candidates.filter { path -> path.substringAfterLast('/') in names }
         assertEquals(
             "/repo/src/de/moritzf/OpenCodeIdeNavigation.kt",
             OpenCodeServerProtocol.pickDistinctPath(matching, parsed.path),
@@ -384,18 +475,21 @@ class OpenCodePathAndMemberMatchingTest {
     fun innerClassMethodFallsBackToTheOuterTypeFile() {
         val parsed = OpenCodeServerProtocol.parseCodeReference("Foo.Bar.baz()")!!
         val names = OpenCodeServerProtocol.codeReferenceFileNames(parsed).toSet()
-        val picked = OpenCodeServerProtocol.pickDistinctPath(
-            listOf("/repo/src/Foo.kt").filter { it.substringAfterLast('/') in names },
-            parsed.path,
-        )
+        val picked =
+            OpenCodeServerProtocol.pickDistinctPath(
+                listOf("/repo/src/Foo.kt").filter { it.substringAfterLast('/') in names },
+                parsed.path,
+            )
         assertEquals("/repo/src/Foo.kt", picked)
-        val source = """
+        val source =
+            """
             class Foo {
                 class Bar {
                     fun baz() {}
                 }
             }
-        """.trimIndent()
+            """
+                .trimIndent()
         assertEquals(2, OpenCodeServerProtocol.findMemberLineIndex(source, parsed.memberName!!))
     }
 
@@ -407,19 +501,39 @@ class OpenCodePathAndMemberMatchingTest {
         ) { root ->
             assertEquals(
                 root.file("app/src/main/java/com/example/Foo.java"),
-                OpenCodeServerProtocol.resolveFileLink("com/example/Foo.java", root.toString(), null)?.path,
+                OpenCodeServerProtocol.resolveFileLink(
+                        "com/example/Foo.java",
+                        root.toString(),
+                        null,
+                    )
+                    ?.path,
             )
             assertEquals(
                 root.file("app/src/main/java/com/example/Foo.java"),
-                OpenCodeServerProtocol.resolveFileLink("java/com/example/Foo.java:80", root.toString(), null)?.path,
+                OpenCodeServerProtocol.resolveFileLink(
+                        "java/com/example/Foo.java:80",
+                        root.toString(),
+                        null,
+                    )
+                    ?.path,
             )
             assertEquals(
                 root.file("packages/web/src/components/Button.tsx"),
-                OpenCodeServerProtocol.resolveFileLink("components/Button.tsx", root.toString(), null)?.path,
+                OpenCodeServerProtocol.resolveFileLink(
+                        "components/Button.tsx",
+                        root.toString(),
+                        null,
+                    )
+                    ?.path,
             )
             assertEquals(
                 root.file("packages/web/src/components/Button.tsx"),
-                OpenCodeServerProtocol.resolveFileLink("src\\components\\Button.tsx", root.toString(), null)?.path,
+                OpenCodeServerProtocol.resolveFileLink(
+                        "src\\components\\Button.tsx",
+                        root.toString(),
+                        null,
+                    )
+                    ?.path,
             )
         }
     }
@@ -450,11 +564,13 @@ class OpenCodePathAndMemberMatchingTest {
 
     @Test
     fun findMemberLineIndexFindsBacktickKotlinNames() {
-        val source = """
+        val source =
+            """
             class Host {
                 fun `open file`() {}
             }
-        """.trimIndent()
+            """
+                .trimIndent()
         assertEquals(1, OpenCodeServerProtocol.findMemberLineIndex(source, "open file"))
     }
 
@@ -472,7 +588,8 @@ class OpenCodePathAndMemberMatchingTest {
             val absFoo = foo.toAbsolutePath().toString()
             val absMain = main.toAbsolutePath().toString()
 
-            fun resolve(ref: String) = OpenCodeServerProtocol.resolveFileLink(ref, root.toString(), null)
+            fun resolve(ref: String) =
+                OpenCodeServerProtocol.resolveFileLink(ref, root.toString(), null)
             fun parsed(ref: String) = OpenCodeServerProtocol.parseCodeReference(ref)!!
 
             assertEquals(foo, resolve(absFoo)?.path)
@@ -483,9 +600,18 @@ class OpenCodePathAndMemberMatchingTest {
             assertEquals(foo, resolve("\u202Asrc/main/kotlin/Foo.kt\u202C")?.path)
 
             assertEquals(absFoo, OpenCodeServerProtocol.normalizeNavigablePath("$absFoo:"))
-            assertEquals("Foo.kt:12", OpenCodeServerProtocol.normalizeNavigablePath("at com.example.Foo.bar(Foo.kt:12)"))
-            assertEquals("src/Foo.kt:10:5", OpenCodeServerProtocol.normalizeNavigablePath("src/Foo.kt:10:5:"))
-            assertEquals("/tmp/x.py:8", OpenCodeServerProtocol.normalizeNavigablePath("File \"/tmp/x.py\", line 8"))
+            assertEquals(
+                "Foo.kt:12",
+                OpenCodeServerProtocol.normalizeNavigablePath("at com.example.Foo.bar(Foo.kt:12)"),
+            )
+            assertEquals(
+                "src/Foo.kt:10:5",
+                OpenCodeServerProtocol.normalizeNavigablePath("src/Foo.kt:10:5:"),
+            )
+            assertEquals(
+                "/tmp/x.py:8",
+                OpenCodeServerProtocol.normalizeNavigablePath("File \"/tmp/x.py\", line 8"),
+            )
 
             val stack = parsed("at com.example.Foo.bar(Foo.kt:12)")
             assertEquals("Foo.kt", stack.fileName)
@@ -506,9 +632,10 @@ class OpenCodePathAndMemberMatchingTest {
             assertEquals(
                 foo,
                 OpenCodeServerProtocol.pickDistinctPath(
-                    listOf(foo.toString(), root.file("src/test/kotlin/Foo.kt").toString()),
-                    "src/main/kotlin/Foo.kt",
-                )?.let { java.nio.file.Path.of(it).normalize() },
+                        listOf(foo.toString(), root.file("src/test/kotlin/Foo.kt").toString()),
+                        "src/main/kotlin/Foo.kt",
+                    )
+                    ?.let { java.nio.file.Path.of(it).normalize() },
             )
         }
     }
@@ -584,7 +711,10 @@ class OpenCodePathAndMemberMatchingTest {
 
     @Test
     fun parseCodeReferenceStripsMethodCallToType() {
-        val method = OpenCodeServerProtocol.parseCodeReference("PackagingMailingBarcodeDefinition.isWithScanRule()")!!
+        val method =
+            OpenCodeServerProtocol.parseCodeReference(
+                "PackagingMailingBarcodeDefinition.isWithScanRule()"
+            )!!
         assertEquals("PackagingMailingBarcodeDefinition", method.fileName)
         assertEquals("PackagingMailingBarcodeDefinition", method.path)
         assertEquals("isWithScanRule", method.memberName)
@@ -592,11 +722,15 @@ class OpenCodePathAndMemberMatchingTest {
         assertNull(method.extension)
         assertNull(method.line)
 
-        val withLine = OpenCodeServerProtocol.parseCodeReference("PackagingMailingBarcodeDefinition.isWithScanRule()(L98)")!!
+        val withLine =
+            OpenCodeServerProtocol.parseCodeReference(
+                "PackagingMailingBarcodeDefinition.isWithScanRule()(L98)"
+            )!!
         assertEquals("PackagingMailingBarcodeDefinition", withLine.fileName)
         assertEquals(97, withLine.line)
 
-        val qualified = OpenCodeServerProtocol.parseCodeReference("java.util.Optional.of(Boolean.TRUE)")!!
+        val qualified =
+            OpenCodeServerProtocol.parseCodeReference("java.util.Optional.of(Boolean.TRUE)")!!
         assertEquals("Optional", qualified.fileName)
         assertEquals("java.util.Optional", qualified.path)
         assertEquals("java.util.Optional", qualified.qualifiedName)
@@ -614,7 +748,10 @@ class OpenCodePathAndMemberMatchingTest {
 
     @Test
     fun parseCodeReferenceAllowsSpacesWhenExtensionPresent() {
-        val ref = OpenCodeServerProtocol.parseCodeReference("Manuelle Verpackung und PM-Mobile.xml:L1063")!!
+        val ref =
+            OpenCodeServerProtocol.parseCodeReference(
+                "Manuelle Verpackung und PM-Mobile.xml:L1063"
+            )!!
         assertEquals("Manuelle Verpackung und PM-Mobile.xml", ref.path)
         assertEquals("xml", ref.extension)
         assertEquals(1062, ref.line)
@@ -629,10 +766,15 @@ class OpenCodePathAndMemberMatchingTest {
     @Test
     fun scoreFilePathSuffixPrefersTheLongerTrailingMatch() {
         assertTrue(
-            OpenCodeServerProtocol.scoreFilePathSuffix("/repo/packages/app/src/Main.kt", "src/Main.kt") >
-                OpenCodeServerProtocol.scoreFilePathSuffix("/repo/other/Main.kt", "src/Main.kt"),
+            OpenCodeServerProtocol.scoreFilePathSuffix(
+                "/repo/packages/app/src/Main.kt",
+                "src/Main.kt",
+            ) > OpenCodeServerProtocol.scoreFilePathSuffix("/repo/other/Main.kt", "src/Main.kt")
         )
-        assertEquals(0, OpenCodeServerProtocol.scoreFilePathSuffix("/repo/other/Util.kt", "src/Main.kt"))
+        assertEquals(
+            0,
+            OpenCodeServerProtocol.scoreFilePathSuffix("/repo/other/Util.kt", "src/Main.kt"),
+        )
     }
 
     private fun withTree(vararg files: String, block: (Path) -> Unit) {

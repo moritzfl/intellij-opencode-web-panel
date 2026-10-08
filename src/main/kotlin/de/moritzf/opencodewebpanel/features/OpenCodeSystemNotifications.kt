@@ -11,22 +11,22 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.ProjectManager
+import com.intellij.openapi.util.text.StringUtil
 import com.intellij.openapi.wm.IdeFrame
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.openapi.wm.ex.ToolWindowManagerListener
 import com.intellij.ui.jcef.JBCefBrowser
+import com.intellij.util.concurrency.AppExecutorUtil
 import de.moritzf.opencodewebpanel.server.OpenCodeGlobalEvent
 import de.moritzf.opencodewebpanel.server.OpenCodeGlobalEventListener
 import de.moritzf.opencodewebpanel.server.OpenCodeProtocolResult
-import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
-import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleListener
-import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
+import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleListener
+import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState
+import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsListener
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
-import com.intellij.openapi.util.text.StringUtil
-import com.intellij.util.concurrency.AppExecutorUtil
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
@@ -37,12 +37,12 @@ internal fun notificationText(value: String, maxLength: Int = 1000): String {
 
 /**
  * Shows IDE notifications for OpenCode events (response ready, session error, permission or
- * question asked) and dismisses them once they become obsolete. Events come from the
- * Kotlin-side `/global/event` stream via a single application-wide subscription; each
- * instance registers itself as the routing target for its project directory.
+ * question asked) and dismisses them once they become obsolete. Events come from the Kotlin-side
+ * `/global/event` stream via a single application-wide subscription; each instance registers itself
+ * as the routing target for its project directory.
  *
- * A notification is only shown while its project's panel is not in view; viewing the
- * notified session afterwards dismisses it, in either a tool window or an editor.
+ * A notification is only shown while its project's panel is not in view; viewing the notified
+ * session afterwards dismisses it, in either a tool window or an editor.
  */
 internal class OpenCodeSystemNotifications(
     private val project: Project,
@@ -55,32 +55,36 @@ internal class OpenCodeSystemNotifications(
     parentDisposable: Disposable,
 ) {
     @Volatile private var disposed = false
+
     init {
-        synchronized(targets) {
-            targets.add(this)
-        }
+        synchronized(targets) { targets.add(this) }
         ensureGlobalEventSubscription()
         OpenCodeSoundService.ensureInstalled()
         reconcilePendingRequests()
         // Interacting with the panel that shows a session dismisses that session's
         // notifications: the user has seen what the notification pointed at. The tool-window
         // and application activation listeners cover the ways the panel can come into view.
-        project.messageBus.connect(parentDisposable).subscribe(
-            ToolWindowManagerListener.TOPIC,
-            object : ToolWindowManagerListener {
-                override fun stateChanged(toolWindowManager: ToolWindowManager) {
-                    dismissNotificationsForViewedSession()
-                }
-            },
-        )
-        ApplicationManager.getApplication().messageBus.connect(parentDisposable).subscribe(
-            ApplicationActivationListener.TOPIC,
-            object : ApplicationActivationListener {
-                override fun applicationActivated(ideFrame: IdeFrame) {
-                    dismissNotificationsForViewedSession()
-                }
-            },
-        )
+        project.messageBus
+            .connect(parentDisposable)
+            .subscribe(
+                ToolWindowManagerListener.TOPIC,
+                object : ToolWindowManagerListener {
+                    override fun stateChanged(toolWindowManager: ToolWindowManager) {
+                        dismissNotificationsForViewedSession()
+                    }
+                },
+            )
+        ApplicationManager.getApplication()
+            .messageBus
+            .connect(parentDisposable)
+            .subscribe(
+                ApplicationActivationListener.TOPIC,
+                object : ApplicationActivationListener {
+                    override fun applicationActivated(ideFrame: IdeFrame) {
+                        dismissNotificationsForViewedSession()
+                    }
+                },
+            )
     }
 
     private fun permissionReplyAction(
@@ -107,15 +111,16 @@ internal class OpenCodeSystemNotifications(
         val password = serverManager.getServerPassword() ?: return
         ApplicationManager.getApplication().executeOnPooledThread {
             if (!isCurrentServer(identity)) return@executeOnPooledThread
-            val accepted = OpenCodeServerProtocol.replyToPermission(
-                serverUrl,
-                OpenCodeServerProtocol.buildBasicAuthHeader(password),
-                openCodeNotification.directory,
-                openCodeNotification.sessionID,
-                openCodeNotification.requestID,
-                response,
-                wireProtocol = serverManager.getWireProtocol(),
-            )
+            val accepted =
+                OpenCodeServerProtocol.replyToPermission(
+                    serverUrl,
+                    OpenCodeServerProtocol.buildBasicAuthHeader(password),
+                    openCodeNotification.directory,
+                    openCodeNotification.sessionID,
+                    openCodeNotification.requestID,
+                    response,
+                    wireProtocol = serverManager.getWireProtocol(),
+                )
             if (accepted) return@executeOnPooledThread
             ApplicationManager.getApplication().invokeLater {
                 if (project.isDisposed) return@invokeLater
@@ -133,28 +138,28 @@ internal class OpenCodeSystemNotifications(
 
     private fun isCurrentServer(identity: OpenCodeNotificationServerIdentity): Boolean {
         return serverManager.getLifecycleState() == OpenCodeServerLifecycleState.RUNNING &&
-                serverManager.getServerGeneration() == identity.generation &&
-                serverManager.getServerUrl() == identity.serverUrl &&
-                notificationEpoch.get() == identity.notificationEpoch
+            serverManager.getServerGeneration() == identity.generation &&
+            serverManager.getServerUrl() == identity.serverUrl &&
+            notificationEpoch.get() == identity.notificationEpoch
     }
 
     fun dispose() {
         disposed = true
-        synchronized(targets) {
-            targets.remove(this)
-        }
+        synchronized(targets) { targets.remove(this) }
     }
 
     // Deliberately independent of the browser's page state: with events read on the JVM,
     // notifications matter most exactly while the page is blank, loading, or crashed.
     private fun isProjectOpen(): Boolean {
-        return !disposed && !project.isDisposed && ProjectManager.getInstance().openProjects.contains(project)
+        return !disposed &&
+            !project.isDisposed &&
+            ProjectManager.getInstance().openProjects.contains(project)
     }
 
     /**
-     * IDE-side successor of the notification bridge's in-page focus check: the panel counts
-     * as in view while its host is visible and its containing frame is the active window.
-     * Must run on the EDT.
+     * IDE-side successor of the notification bridge's in-page focus check: the panel counts as in
+     * view while its host is visible and its containing frame is the active window. Must run on the
+     * EDT.
      */
     private fun isPanelInView(): Boolean {
         return !disposed && panelIsInView()
@@ -171,7 +176,9 @@ internal class OpenCodeSystemNotifications(
         ApplicationManager.getApplication().invokeLater {
             if (project.isDisposed) return@invokeLater
             if (!isPanelInView()) return@invokeLater
-            val sessionID = OpenCodeServerProtocol.sessionIdFromUrl(browser.cefBrowser.url) ?: return@invokeLater
+            val sessionID =
+                OpenCodeServerProtocol.sessionIdFromUrl(browser.cefBrowser.url)
+                    ?: return@invokeLater
             dismissByKey("session:$sessionID")
         }
     }
@@ -185,19 +192,28 @@ internal class OpenCodeSystemNotifications(
         if (!isProjectOpen()) return
         // Always use the 1.18 server session URL. Legacy directory routes force a reload/redirect
         // even when the panel is already on the same session under /server/.../session/<id>.
-        val targetUrl = OpenCodeServerProtocol.buildServerSessionUrl(
-            serverUrl,
-            sessionID.takeIf(OpenCodeServerProtocol::isSessionId),
-        )
+        val targetUrl =
+            OpenCodeServerProtocol.buildServerSessionUrl(
+                serverUrl,
+                sessionID.takeIf(OpenCodeServerProtocol::isSessionId),
+            )
         activatePanel {
             if (disposed || project.isDisposed) return@activatePanel
-            if (!OpenCodeServerProtocol.isOpenCodeRouteAlreadyOpen(serverUrl, browser.cefBrowser.url, targetUrl)) {
+            if (
+                !OpenCodeServerProtocol.isOpenCodeRouteAlreadyOpen(
+                    serverUrl,
+                    browser.cefBrowser.url,
+                    targetUrl,
+                )
+            ) {
                 navigate(targetUrl)
             }
             browser.component.requestFocusInWindow()
             // The user is now looking at the notified session; its other notifications
             // (e.g. an earlier "response ready") are obsolete too.
-            sessionID.takeIf(OpenCodeServerProtocol::isSessionId)?.let { dismissByKey("session:$it") }
+            sessionID.takeIf(OpenCodeServerProtocol::isSessionId)?.let {
+                dismissByKey("session:$it")
+            }
         }
     }
 
@@ -211,64 +227,74 @@ internal class OpenCodeSystemNotifications(
 
         private val globalEventSubscriptionInstalled = AtomicBoolean()
         private val notificationEpoch = AtomicLong()
-        private val eventProcessor = OpenCodeNotificationEventProcessor(::fetchSessionForNotification)
-        private val notificationInvalidator = OpenCodeNotificationInvalidator(
-            registry = activeNotifications,
-            resetReducedState = {
-                notificationEpoch.incrementAndGet()
-                eventProcessor.reset()
-                synchronized(recentNotificationIds) { recentNotificationIds.clear() }
-            },
-            expire = { notifications ->
-                ApplicationManager.getApplication().invokeLater {
-                    notifications.forEach(Notification::expire)
-                }
-            },
-        )
+        private val eventProcessor =
+            OpenCodeNotificationEventProcessor(::fetchSessionForNotification)
+        private val notificationInvalidator =
+            OpenCodeNotificationInvalidator(
+                registry = activeNotifications,
+                resetReducedState = {
+                    notificationEpoch.incrementAndGet()
+                    eventProcessor.reset()
+                    synchronized(recentNotificationIds) { recentNotificationIds.clear() }
+                },
+                expire = { notifications ->
+                    ApplicationManager.getApplication().invokeLater {
+                        notifications.forEach(Notification::expire)
+                    }
+                },
+            )
 
         // Single-threaded so events are processed in stream order: a slow session lookup for
         // "permission.asked" must not finish after the matching "permission.replied" dismissal,
         // which would re-create an already-answered actionable notification.
-        private val eventExecutor = AppExecutorUtil.createBoundedApplicationPoolExecutor(
-            "OpenCode Notification Events",
-            1,
-        )
-        private val outcomeDispatcher = OpenCodeNotificationOutcomeDispatcher(
-            enabled = { OpenCodeSettingsState.getInstance().enableSystemNotifications },
-            serverIdentity = ::identityForDirectory,
-            notify = ::showNow,
-            dismiss = ::dismissByKeyNow,
-            activeRequestKeys = { activeNotifications.keys("request:") },
-            executeOnUi = { task -> ApplicationManager.getApplication().invokeLater { task() } },
-        )
-        private val eventDispatcher = OpenCodeNotificationEventDispatcher(
-            enabled = { OpenCodeSettingsState.getInstance().enableSystemNotifications },
-            serverIdentity = ::identityForDirectory,
-            process = eventProcessor::process,
-            dispatch = outcomeDispatcher::dispatch,
-            executeAsync = { task -> eventExecutor.execute { task() } },
-        )
-        private val pendingReconciler = OpenCodePendingNotificationReconciler(
-            enabled = { OpenCodeSettingsState.getInstance().enableSystemNotifications },
-            serverIdentity = ::identityForDirectory,
-            directories = ::targetDirectories,
-            load = ::loadPendingNotificationRequests,
-            reconcileActiveRequestKeys = outcomeDispatcher::reconcileRequestKeys,
-            process = eventProcessor::process,
-            dispatch = outcomeDispatcher::dispatch,
-            executeAsync = { task -> eventExecutor.execute { task() } },
-        )
+        private val eventExecutor =
+            AppExecutorUtil.createBoundedApplicationPoolExecutor(
+                "OpenCode Notification Events",
+                1,
+            )
+        private val outcomeDispatcher =
+            OpenCodeNotificationOutcomeDispatcher(
+                enabled = { OpenCodeSettingsState.getInstance().enableSystemNotifications },
+                serverIdentity = ::identityForDirectory,
+                notify = ::showNow,
+                dismiss = ::dismissByKeyNow,
+                activeRequestKeys = { activeNotifications.keys("request:") },
+                executeOnUi = { task ->
+                    ApplicationManager.getApplication().invokeLater { task() }
+                },
+            )
+        private val eventDispatcher =
+            OpenCodeNotificationEventDispatcher(
+                enabled = { OpenCodeSettingsState.getInstance().enableSystemNotifications },
+                serverIdentity = ::identityForDirectory,
+                process = eventProcessor::process,
+                dispatch = outcomeDispatcher::dispatch,
+                executeAsync = { task -> eventExecutor.execute { task() } },
+            )
+        private val pendingReconciler =
+            OpenCodePendingNotificationReconciler(
+                enabled = { OpenCodeSettingsState.getInstance().enableSystemNotifications },
+                serverIdentity = ::identityForDirectory,
+                directories = ::targetDirectories,
+                load = ::loadPendingNotificationRequests,
+                reconcileActiveRequestKeys = outcomeDispatcher::reconcileRequestKeys,
+                process = eventProcessor::process,
+                dispatch = outcomeDispatcher::dispatch,
+                executeAsync = { task -> eventExecutor.execute { task() } },
+            )
 
         /**
-         * Installs the single application-wide consumer of the Kotlin event stream. Bound to
-         * the [OpenCodeServerBackendRegistry] service so the connection is released on plugin
-         * unload; routing and the notifications setting are re-checked per event, so an
-         * orphaned subscription cannot show stale notifications.
+         * Installs the single application-wide consumer of the Kotlin event stream. Bound to the
+         * [OpenCodeServerBackendRegistry] service so the connection is released on plugin unload;
+         * routing and the notifications setting are re-checked per event, so an orphaned
+         * subscription cannot show stale notifications.
          */
         private fun ensureGlobalEventSubscription() {
             if (!globalEventSubscriptionInstalled.compareAndSet(false, true)) return
-            val connection = ApplicationManager.getApplication().messageBus
-                .connect(OpenCodeServerBackendRegistry.getInstance())
+            val connection =
+                ApplicationManager.getApplication()
+                    .messageBus
+                    .connect(OpenCodeServerBackendRegistry.getInstance())
             connection.subscribe(
                 OpenCodeGlobalEventListener.TOPIC,
                 object : OpenCodeGlobalEventListener {
@@ -284,8 +310,12 @@ internal class OpenCodeSystemNotifications(
             connection.subscribe(
                 OpenCodeServerLifecycleListener.TOPIC,
                 object : OpenCodeServerLifecycleListener {
-                    override fun stateChanged(state: OpenCodeServerLifecycleState, backendId: String) {
-                        if (state != OpenCodeServerLifecycleState.RUNNING) notificationInvalidator.invalidate()
+                    override fun stateChanged(
+                        state: OpenCodeServerLifecycleState,
+                        backendId: String,
+                    ) {
+                        if (state != OpenCodeServerLifecycleState.RUNNING)
+                            notificationInvalidator.invalidate()
                     }
                 },
             )
@@ -313,7 +343,8 @@ internal class OpenCodeSystemNotifications(
 
         private fun identityForDirectory(directory: String): OpenCodeNotificationServerIdentity? {
             val serverManager = targetFor(directory)?.serverManager ?: return null
-            if (serverManager.getLifecycleState() != OpenCodeServerLifecycleState.RUNNING) return null
+            if (serverManager.getLifecycleState() != OpenCodeServerLifecycleState.RUNNING)
+                return null
             val serverUrl = serverManager.getServerUrl() ?: return null
             val generation = serverManager.getServerGeneration().takeIf { it > 0L } ?: return null
             return OpenCodeNotificationServerIdentity(
@@ -326,7 +357,7 @@ internal class OpenCodeSystemNotifications(
 
         private fun fetchSessionForNotification(
             directory: String,
-            sessionID: String
+            sessionID: String,
         ): OpenCodeServerProtocol.SessionInfo? {
             val serverManager = targetFor(directory)?.serverManager ?: return null
             val serverUrl = serverManager.getServerUrl() ?: return null
@@ -344,42 +375,64 @@ internal class OpenCodeSystemNotifications(
             identity: OpenCodeNotificationServerIdentity,
             directory: String,
         ): OpenCodePendingNotificationLoad {
-            if (identityForDirectory(directory) != identity) return OpenCodePendingNotificationLoad(emptyList(), false)
-            val serverManager = targetFor(directory)?.serverManager
-                ?: return OpenCodePendingNotificationLoad(emptyList(), false)
-            val password = serverManager.getServerPassword()
-                ?: return OpenCodePendingNotificationLoad(emptyList(), false)
+            if (identityForDirectory(directory) != identity)
+                return OpenCodePendingNotificationLoad(emptyList(), false)
+            val serverManager =
+                targetFor(directory)?.serverManager
+                    ?: return OpenCodePendingNotificationLoad(emptyList(), false)
+            val password =
+                serverManager.getServerPassword()
+                    ?: return OpenCodePendingNotificationLoad(emptyList(), false)
             val authHeader = OpenCodeServerProtocol.buildBasicAuthHeader(password)
             val wireProtocol = serverManager.getWireProtocol()
-            val permissions = OpenCodeServerProtocol.fetchPendingRequestsResult(
-                identity.serverUrl,
-                authHeader,
-                OpenCodeServerProtocol.PERMISSION_LIST_PATH,
-                directory,
-                wireProtocol = wireProtocol,
-            )
-            if (identityForDirectory(directory) != identity) return OpenCodePendingNotificationLoad(emptyList(), false)
-            val questions = OpenCodeServerProtocol.fetchPendingRequestsResult(
-                identity.serverUrl,
-                authHeader,
-                OpenCodeServerProtocol.QUESTION_LIST_PATH,
-                directory,
-                wireProtocol = wireProtocol,
-            )
+            val permissions =
+                OpenCodeServerProtocol.fetchPendingRequestsResult(
+                    identity.serverUrl,
+                    authHeader,
+                    OpenCodeServerProtocol.PERMISSION_LIST_PATH,
+                    directory,
+                    wireProtocol = wireProtocol,
+                )
+            if (identityForDirectory(directory) != identity)
+                return OpenCodePendingNotificationLoad(emptyList(), false)
+            val questions =
+                OpenCodeServerProtocol.fetchPendingRequestsResult(
+                    identity.serverUrl,
+                    authHeader,
+                    OpenCodeServerProtocol.QUESTION_LIST_PATH,
+                    directory,
+                    wireProtocol = wireProtocol,
+                )
             val permissionValues = (permissions as? OpenCodeProtocolResult.Success)?.value
             val questionValues = (questions as? OpenCodeProtocolResult.Success)?.value
             listOfNotNull(
-                permissions as? OpenCodeProtocolResult.Failure,
-                questions as? OpenCodeProtocolResult.Failure,
-            ).forEach { failure ->
-                val status = failure.statusCode?.let { ", HTTP $it" }.orEmpty()
-                thisLogger().warn("Failed to reconcile pending OpenCode requests (${failure.kind}$status)")
-            }
-            val requests = permissionValues.orEmpty().map { request ->
-                OpenCodePendingNotificationRequest(directory, "permission.asked", request.id, request.sessionID)
-            } + questionValues.orEmpty().map { request ->
-                OpenCodePendingNotificationRequest(directory, "question.asked", request.id, request.sessionID)
-            }
+                    permissions as? OpenCodeProtocolResult.Failure,
+                    questions as? OpenCodeProtocolResult.Failure,
+                )
+                .forEach { failure ->
+                    val status = failure.statusCode?.let { ", HTTP $it" }.orEmpty()
+                    thisLogger()
+                        .warn(
+                            "Failed to reconcile pending OpenCode requests (${failure.kind}$status)"
+                        )
+                }
+            val requests =
+                permissionValues.orEmpty().map { request ->
+                    OpenCodePendingNotificationRequest(
+                        directory,
+                        "permission.asked",
+                        request.id,
+                        request.sessionID,
+                    )
+                } +
+                    questionValues.orEmpty().map { request ->
+                        OpenCodePendingNotificationRequest(
+                            directory,
+                            "question.asked",
+                            request.id,
+                            request.sessionID,
+                        )
+                    }
             return OpenCodePendingNotificationLoad(
                 requests = requests,
                 authoritative = permissionValues != null && questionValues != null,
@@ -412,28 +465,31 @@ internal class OpenCodeSystemNotifications(
             // Suppress only when the user is already looking at *this* session in the panel.
             // A permission on session B must still surface while the panel shows session A.
             if (target.isViewingSession(openCodeNotification.sessionID)) return
-            val requestKey = openCodeNotification.requestID
-                .takeIf { OpenCodeServerProtocol.isOpenCodeRecordId(it) }
-                ?.let { "request:$it" }
+            val requestKey =
+                openCodeNotification.requestID
+                    .takeIf { OpenCodeServerProtocol.isOpenCodeRecordId(it) }
+                    ?.let { "request:$it" }
             if (requestKey != null && activeNotifications.containsKey(requestKey)) return
             if (!markRecent(openCodeNotification.id)) return
-            val group = NotificationGroupManager.getInstance()
-                .getNotificationGroup(OpenCodeServerProtocol.NOTIFICATION_GROUP_ID)
-                ?: return
+            val group =
+                NotificationGroupManager.getInstance()
+                    .getNotificationGroup(OpenCodeServerProtocol.NOTIFICATION_GROUP_ID) ?: return
             val title = notificationText(openCodeNotification.title, 200)
             val body = notificationText(openCodeNotification.body, 1000)
-            val ideNotification = group.createNotification(title, body, NotificationType.INFORMATION)
+            val ideNotification =
+                group.createNotification(title, body, NotificationType.INFORMATION)
             activeNotifications.track(ideNotification)
             ideNotification.whenExpired { activeNotifications.removeItem(ideNotification) }
-            if (OpenCodeServerProtocol.isPermissionNotification(openCodeNotification) &&
-                OpenCodeSettingsState.getInstance().enablePermissionNotificationActions
+            if (
+                OpenCodeServerProtocol.isPermissionNotification(openCodeNotification) &&
+                    OpenCodeSettingsState.getInstance().enablePermissionNotificationActions
             ) {
                 ideNotification.addAction(
                     target.permissionReplyAction(
                         "Allow",
                         openCodeNotification,
                         OpenCodeServerProtocol.PermissionResponse.ONCE,
-                        identity
+                        identity,
                     )
                 )
                 ideNotification.addAction(
@@ -441,7 +497,7 @@ internal class OpenCodeSystemNotifications(
                         "Always Allow",
                         openCodeNotification,
                         OpenCodeServerProtocol.PermissionResponse.ALWAYS,
-                        identity
+                        identity,
                     )
                 )
                 ideNotification.addAction(
@@ -449,16 +505,19 @@ internal class OpenCodeSystemNotifications(
                         "Deny",
                         openCodeNotification,
                         OpenCodeServerProtocol.PermissionResponse.REJECT,
-                        identity
+                        identity,
                     )
                 )
             }
-            ideNotification.addAction(object : NotificationAction("Show in OpenCode") {
-                override fun actionPerformed(e: AnActionEvent, notification: Notification) {
-                    notification.expire()
-                    targetFor(openCodeNotification.directory)?.openSession(openCodeNotification.sessionID)
+            ideNotification.addAction(
+                object : NotificationAction("Show in OpenCode") {
+                    override fun actionPerformed(e: AnActionEvent, notification: Notification) {
+                        notification.expire()
+                        targetFor(openCodeNotification.directory)
+                            ?.openSession(openCodeNotification.sessionID)
+                    }
                 }
-            })
+            )
             OpenCodeServerProtocol.notificationDismissKeys(openCodeNotification).forEach { key ->
                 registerForAutoDismiss(key, ideNotification)
             }
@@ -479,15 +538,19 @@ internal class OpenCodeSystemNotifications(
             return synchronized(targets) {
                 targets.firstOrNull { target ->
                     !target.project.isDisposed &&
-                            openProjects.contains(target.project) &&
-                            OpenCodeServerProtocol.isSameFilesystemPath(target.projectDirectory(), directory)
+                        openProjects.contains(target.project) &&
+                        OpenCodeServerProtocol.isSameFilesystemPath(
+                            target.projectDirectory(),
+                            directory,
+                        )
                 }
             }
         }
 
         private fun targetDirectories(): List<String> {
             return synchronized(targets) {
-                targets.asSequence()
+                targets
+                    .asSequence()
                     .filter { !it.project.isDisposed }
                     .mapNotNull { it.projectDirectory()?.takeIf(String::isNotBlank) }
                     .distinctBy { OpenCodeServerProtocol.filesystemPathKey(it) ?: it }
@@ -498,7 +561,9 @@ internal class OpenCodeSystemNotifications(
         private fun markRecent(id: String): Boolean {
             val now = System.currentTimeMillis()
             return synchronized(recentNotificationIds) {
-                recentNotificationIds.entries.removeIf { now - it.value > RECENT_NOTIFICATION_MILLIS }
+                recentNotificationIds.entries.removeIf {
+                    now - it.value > RECENT_NOTIFICATION_MILLIS
+                }
                 if (recentNotificationIds.containsKey(id)) {
                     false
                 } else {

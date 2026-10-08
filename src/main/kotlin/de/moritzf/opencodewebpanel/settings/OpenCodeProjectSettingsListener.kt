@@ -8,9 +8,10 @@ interface OpenCodeProjectSettingsListener {
     fun serverReloadRequested() {}
 
     companion object {
-        val TOPIC: Topic<OpenCodeProjectSettingsListener> = Topic.create(
-            "OpenCode Web Panel project settings",
-            OpenCodeProjectSettingsListener::class.java,
-        )
+        val TOPIC: Topic<OpenCodeProjectSettingsListener> =
+            Topic.create(
+                "OpenCode Web Panel project settings",
+                OpenCodeProjectSettingsListener::class.java,
+            )
     }
 }

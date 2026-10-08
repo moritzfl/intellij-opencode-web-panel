@@ -6,6 +6,12 @@ import com.intellij.ui.jcef.JBCefApp
 import com.intellij.ui.jcef.JBCefBrowser
 import com.intellij.ui.jcef.JBCefBrowserBase
 import com.intellij.util.ui.UIUtil
+import java.awt.BorderLayout
+import java.awt.GraphicsEnvironment
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
+import javax.swing.JFrame
 import org.cef.CefSettings
 import org.cef.browser.CefBrowser
 import org.cef.browser.CefFrame
@@ -14,19 +20,13 @@ import org.cef.handler.CefLifeSpanHandlerAdapter
 import org.cef.handler.CefLoadHandlerAdapter
 import org.junit.Assert
 import org.junit.Assume
-import java.awt.BorderLayout
-import java.awt.GraphicsEnvironment
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicReference
-import javax.swing.JFrame
 
 /**
  * Headful JCEF helpers, aligned with JetBrains' `JBCefTestHelper`
  * (`platform/platform-tests/.../JBCefTestHelper.java`).
  *
- * Official tests wait up to 60s for first CEF init (TeamCity overlap with downloads).
- * Opt in with `./gradlew test -Pjcef` so `check` stays headless.
+ * Official tests wait up to 60s for first CEF init (TeamCity overlap with downloads). Opt in with
+ * `./gradlew test -Pjcef` so `check` stays headless.
  */
 internal object OpenCodeJcefTestHelper {
     const val WAIT_BROWSER_SECONDS = 60L
@@ -40,11 +40,12 @@ internal object OpenCodeJcefTestHelper {
 
     fun showAndWaitForBrowser(browser: JBCefBrowserBase, frameTitle: String, parent: Disposable) {
         val latch = CountDownLatch(1)
-        val handler = object : CefLifeSpanHandlerAdapter() {
-            override fun onAfterCreated(cefBrowser: CefBrowser?) {
-                latch.countDown()
+        val handler =
+            object : CefLifeSpanHandlerAdapter() {
+                override fun onAfterCreated(cefBrowser: CefBrowser?) {
+                    latch.countDown()
+                }
             }
-        }
         browser.jbCefClient.addLifeSpanHandler(handler, browser.cefBrowser)
         try {
             invokeAndWaitForLatch(latch, "waiting for native browser creation") {
@@ -60,7 +61,11 @@ internal object OpenCodeJcefTestHelper {
         val latch = CountDownLatch(1)
         browser.jbCefClient.addLoadHandler(
             object : CefLoadHandlerAdapter() {
-                override fun onLoadEnd(cefBrowser: CefBrowser?, frame: CefFrame?, httpStatusCode: Int) {
+                override fun onLoadEnd(
+                    cefBrowser: CefBrowser?,
+                    frame: CefFrame?,
+                    httpStatusCode: Int,
+                ) {
                     if (frame?.isMain != true || cefBrowser == null) return
                     if (frame.url != expectedUrl) return
                     browser.jbCefClient.removeLoadHandler(this, cefBrowser)
@@ -83,10 +88,15 @@ internal object OpenCodeJcefTestHelper {
         }
     }
 
-    fun awaitCondition(description: String, timeoutSeconds: Long = WAIT_BROWSER_SECONDS, condition: () -> Boolean) {
+    fun awaitCondition(
+        description: String,
+        timeoutSeconds: Long = WAIT_BROWSER_SECONDS,
+        condition: () -> Boolean,
+    ) {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSeconds)
         while (!condition()) {
-            if (System.nanoTime() >= deadline) Assert.fail("$description timed out after ${timeoutSeconds}s")
+            if (System.nanoTime() >= deadline)
+                Assert.fail("$description timed out after ${timeoutSeconds}s")
             Thread.sleep(100)
         }
     }
@@ -107,29 +117,30 @@ internal object OpenCodeJcefTestHelper {
     }
 
     /**
-     * Evaluate a JS expression via `console.log`. JBCefJSQuery's `cefQuery_*` is not always
-     * bound in time for a just-loaded document (official tests inject the query *into* the
-     * HTML they load). Console messages are always available.
+     * Evaluate a JS expression via `console.log`. JBCefJSQuery's `cefQuery_*` is not always bound
+     * in time for a just-loaded document (official tests inject the query *into* the HTML they
+     * load). Console messages are always available.
      */
     fun evaluateString(browser: JBCefBrowserBase, expression: String): String {
         val prefix = "OPENCODE_JCEF_EVAL:"
         val latch = CountDownLatch(1)
         val value = AtomicReference("")
-        val handler = object : CefDisplayHandlerAdapter() {
-            override fun onConsoleMessage(
-                cefBrowser: CefBrowser?,
-                level: CefSettings.LogSeverity?,
-                message: String?,
-                source: String?,
-                line: Int,
-            ): Boolean {
-                val text = message ?: return false
-                if (!text.startsWith(prefix)) return false
-                value.set(text.removePrefix(prefix))
-                latch.countDown()
-                return true
+        val handler =
+            object : CefDisplayHandlerAdapter() {
+                override fun onConsoleMessage(
+                    cefBrowser: CefBrowser?,
+                    level: CefSettings.LogSeverity?,
+                    message: String?,
+                    source: String?,
+                    line: Int,
+                ): Boolean {
+                    val text = message ?: return false
+                    if (!text.startsWith(prefix)) return false
+                    value.set(text.removePrefix(prefix))
+                    latch.countDown()
+                    return true
+                }
             }
-        }
         browser.jbCefClient.addDisplayHandler(handler, browser.cefBrowser)
         try {
             browser.cefBrowser.executeJavaScript(

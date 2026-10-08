@@ -39,7 +39,9 @@ class OpenCodeLifecycleStatusPanelTest {
             assertTrue(panel.component.isVisible)
             assertTrue(panel.update(OpenCodeServerLifecycleState.STOPPED))
             assertFalse(panel.component.isVisible)
-            assertTrue(panel.update(OpenCodeServerLifecycleState.RESTARTING, stage = "Upgrading OpenCode…"))
+            assertTrue(
+                panel.update(OpenCodeServerLifecycleState.RESTARTING, stage = "Upgrading OpenCode…")
+            )
             assertTrue(panel.component.isVisible)
         }
     }
@@ -68,7 +70,8 @@ class OpenCodeLifecycleStatusPanelTest {
             strip.setSize(360, strip.preferredSize.height.coerceAtLeast(32))
             strip.doLayout()
             val label = strip.components.filterIsInstance<JBLabel>().single()
-            val buttonBar = strip.components.filterIsInstance<JPanel>().single { it.componentCount > 0 }
+            val buttonBar =
+                strip.components.filterIsInstance<JPanel>().single { it.componentCount > 0 }
             assertTrue(
                 "status text must yield to Cancel / View log",
                 label.bounds.x + label.bounds.width <= buttonBar.bounds.x,

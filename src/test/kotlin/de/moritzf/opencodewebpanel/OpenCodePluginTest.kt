@@ -1,40 +1,42 @@
 package de.moritzf.opencodewebpanel
 
-import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
-import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
-import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState
-import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleListener
-import de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager
-import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsConfigurable
-import de.moritzf.opencodewebpanel.settings.OpenCodeRuntimeMode
-import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
-import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable
-import de.moritzf.opencodewebpanel.toolWindow.OPEN_CODE_RESET_ZOOM_ACTION_ID
-import de.moritzf.opencodewebpanel.toolWindow.OPEN_CODE_ZOOM_IN_ACTION_ID
-import de.moritzf.opencodewebpanel.toolWindow.OPEN_CODE_ZOOM_OUT_ACTION_ID
-import de.moritzf.opencodewebpanel.toolWindow.OpenCodeBrowserCommand
-import de.moritzf.opencodewebpanel.toolWindow.OpenCodeWebToolWindowFactoryImpl
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.KeyboardShortcut
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
+import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
+import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleListener
+import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState
+import de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager
+import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsConfigurable
+import de.moritzf.opencodewebpanel.settings.OpenCodeRuntimeMode
+import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable
+import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
+import de.moritzf.opencodewebpanel.toolWindow.OPEN_CODE_RESET_ZOOM_ACTION_ID
+import de.moritzf.opencodewebpanel.toolWindow.OPEN_CODE_ZOOM_IN_ACTION_ID
+import de.moritzf.opencodewebpanel.toolWindow.OPEN_CODE_ZOOM_OUT_ACTION_ID
+import de.moritzf.opencodewebpanel.toolWindow.OpenCodeBrowserCommand
+import de.moritzf.opencodewebpanel.toolWindow.OpenCodeWebToolWindowFactoryImpl
 import java.awt.event.InputEvent
 import java.awt.event.KeyEvent
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.io.OutputStream
-import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 
 class OpenCodePluginTest : BasePlatformTestCase() {
 
     fun testToolWindowFactoryIsAvailableDuringIndexing() {
-        assertTrue(DumbAware::class.java.isAssignableFrom(OpenCodeWebToolWindowFactoryImpl::class.java))
+        assertTrue(
+            DumbAware::class.java.isAssignableFrom(OpenCodeWebToolWindowFactoryImpl::class.java)
+        )
     }
 
     fun testNativeBackendIdIsPrefixedAndDistinct() {
@@ -48,7 +50,10 @@ class OpenCodePluginTest : BasePlatformTestCase() {
     }
 
     fun testOpenCodeServerBackendRegistryIsApplicationScoped() {
-        assertSame(OpenCodeServerBackendRegistry.getInstance(), OpenCodeServerBackendRegistry.getInstance())
+        assertSame(
+            OpenCodeServerBackendRegistry.getInstance(),
+            OpenCodeServerBackendRegistry.getInstance(),
+        )
     }
 
     fun testHostRuntimeReturnsSeparateNativeBackendsPerDirectory() {
@@ -95,14 +100,34 @@ class OpenCodePluginTest : BasePlatformTestCase() {
         assertTrue(pluginXml.contains("id=\"OpenCode Web Panel\""))
         assertTrue(pluginXml.contains("anchor=\"right\""))
         assertTrue(pluginXml.contains("icon=\"/icons/opencode.svg\""))
-        assertTrue(pluginXml.contains("factoryClass=\"de.moritzf.opencodewebpanel.toolWindow.OpenCodeWebToolWindowFactoryImpl\""))
+        assertTrue(
+            pluginXml.contains(
+                "factoryClass=\"de.moritzf.opencodewebpanel.toolWindow.OpenCodeWebToolWindowFactoryImpl\""
+            )
+        )
         assertTrue(pluginXml.contains("applicationService"))
-        assertFalse(pluginXml.contains("serviceImplementation=\"de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager\""))
-        assertTrue(pluginXml.contains("serviceImplementation=\"de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry\""))
+        assertFalse(
+            pluginXml.contains(
+                "serviceImplementation=\"de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager\""
+            )
+        )
+        assertTrue(
+            pluginXml.contains(
+                "serviceImplementation=\"de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry\""
+            )
+        )
         assertTrue(pluginXml.contains("applicationConfigurable"))
-        assertTrue(pluginXml.contains("instance=\"de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable\""))
+        assertTrue(
+            pluginXml.contains(
+                "instance=\"de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable\""
+            )
+        )
         assertTrue(pluginXml.contains("projectConfigurable"))
-        assertTrue(pluginXml.contains("instance=\"de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsConfigurable\""))
+        assertTrue(
+            pluginXml.contains(
+                "instance=\"de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsConfigurable\""
+            )
+        )
         assertTrue(pluginXml.contains("notificationGroup"))
         assertTrue(pluginXml.contains("displayType=\"BALLOON\""))
         assertFalse(pluginXml.contains("postStartupActivity"))
@@ -130,11 +155,13 @@ class OpenCodePluginTest : BasePlatformTestCase() {
             11,
             Regex("""keymap="Mac OS X"[^>]*replace-all="true"""").findAll(pluginXml).count(),
         )
-        val actionIDs = OpenCodeBrowserCommand.entries.map { it.intellijActionID } + listOf(
-            OPEN_CODE_ZOOM_IN_ACTION_ID,
-            OPEN_CODE_ZOOM_OUT_ACTION_ID,
-            OPEN_CODE_RESET_ZOOM_ACTION_ID,
-        )
+        val actionIDs =
+            OpenCodeBrowserCommand.entries.map { it.intellijActionID } +
+                listOf(
+                    OPEN_CODE_ZOOM_IN_ACTION_ID,
+                    OPEN_CODE_ZOOM_OUT_ACTION_ID,
+                    OPEN_CODE_RESET_ZOOM_ACTION_ID,
+                )
 
         actionIDs.forEach { actionID ->
             val action = ActionManager.getInstance().getAction(actionID)
@@ -142,60 +169,69 @@ class OpenCodePluginTest : BasePlatformTestCase() {
             assertTrue(actionID, action.shortcutSet.shortcuts.isNotEmpty())
         }
 
-        val expectedModifier = if (SystemInfo.isMac) InputEvent.META_DOWN_MASK else InputEvent.CTRL_DOWN_MASK
-        val newSessionShortcuts = ActionManager.getInstance()
-            .getAction(OpenCodeBrowserCommand.NEW_SESSION.intellijActionID)
-            .shortcutSet
-            .shortcuts
-            .filterIsInstance<KeyboardShortcut>()
+        val expectedModifier =
+            if (SystemInfo.isMac) InputEvent.META_DOWN_MASK else InputEvent.CTRL_DOWN_MASK
+        val newSessionShortcuts =
+            ActionManager.getInstance()
+                .getAction(OpenCodeBrowserCommand.NEW_SESSION.intellijActionID)
+                .shortcutSet
+                .shortcuts
+                .filterIsInstance<KeyboardShortcut>()
         assertTrue(
             newSessionShortcuts.any {
-                it.firstKeyStroke.keyCode == KeyEvent.VK_T && it.firstKeyStroke.modifiers and expectedModifier != 0
-            },
+                it.firstKeyStroke.keyCode == KeyEvent.VK_T &&
+                    it.firstKeyStroke.modifiers and expectedModifier != 0
+            }
         )
         assertTrue(
             newSessionShortcuts.any {
-                it.firstKeyStroke.keyCode == KeyEvent.VK_N && it.firstKeyStroke.modifiers and expectedModifier != 0
-            },
+                it.firstKeyStroke.keyCode == KeyEvent.VK_N &&
+                    it.firstKeyStroke.modifiers and expectedModifier != 0
+            }
         )
-        val chooseModelShortcuts = ActionManager.getInstance()
-            .getAction(OpenCodeBrowserCommand.CHOOSE_MODEL.intellijActionID)
-            .shortcutSet
-            .shortcuts
-            .filterIsInstance<KeyboardShortcut>()
+        val chooseModelShortcuts =
+            ActionManager.getInstance()
+                .getAction(OpenCodeBrowserCommand.CHOOSE_MODEL.intellijActionID)
+                .shortcutSet
+                .shortcuts
+                .filterIsInstance<KeyboardShortcut>()
         assertTrue(
             chooseModelShortcuts.any {
-                it.firstKeyStroke.keyCode == KeyEvent.VK_QUOTE && it.firstKeyStroke.modifiers and expectedModifier != 0
-            },
+                it.firstKeyStroke.keyCode == KeyEvent.VK_QUOTE &&
+                    it.firstKeyStroke.modifiers and expectedModifier != 0
+            }
         )
         assertTrue(
             chooseModelShortcuts.any {
                 it.firstKeyStroke.keyCode == KeyEvent.VK_NUMBER_SIGN &&
                     it.firstKeyStroke.modifiers and expectedModifier != 0 &&
                     it.firstKeyStroke.modifiers and InputEvent.SHIFT_DOWN_MASK != 0
-            },
+            }
         )
-        val cycleAgentReverseShortcuts = ActionManager.getInstance()
-            .getAction(OpenCodeBrowserCommand.CYCLE_AGENT_REVERSE.intellijActionID)
-            .shortcutSet
-            .shortcuts
-            .filterIsInstance<KeyboardShortcut>()
+        val cycleAgentReverseShortcuts =
+            ActionManager.getInstance()
+                .getAction(OpenCodeBrowserCommand.CYCLE_AGENT_REVERSE.intellijActionID)
+                .shortcutSet
+                .shortcuts
+                .filterIsInstance<KeyboardShortcut>()
         assertTrue(
             cycleAgentReverseShortcuts.any {
                 it.firstKeyStroke.keyCode == KeyEvent.VK_PERIOD &&
                     it.firstKeyStroke.modifiers and expectedModifier != 0 &&
                     it.firstKeyStroke.modifiers and InputEvent.SHIFT_DOWN_MASK != 0
-            },
+            }
         )
-        val zoomInShortcuts = ActionManager.getInstance()
-            .getAction(OPEN_CODE_ZOOM_IN_ACTION_ID)
-            .shortcutSet
-            .shortcuts
-            .filterIsInstance<KeyboardShortcut>()
+        val zoomInShortcuts =
+            ActionManager.getInstance()
+                .getAction(OPEN_CODE_ZOOM_IN_ACTION_ID)
+                .shortcutSet
+                .shortcuts
+                .filterIsInstance<KeyboardShortcut>()
         assertTrue(
             zoomInShortcuts.any {
-                it.firstKeyStroke.keyCode == KeyEvent.VK_PLUS && it.firstKeyStroke.modifiers and expectedModifier != 0
-            },
+                it.firstKeyStroke.keyCode == KeyEvent.VK_PLUS &&
+                    it.firstKeyStroke.modifiers and expectedModifier != 0
+            }
         )
     }
 
@@ -248,7 +284,10 @@ class OpenCodePluginTest : BasePlatformTestCase() {
             val reserve = executor.submit<Boolean> { service.reserveHealthRestartForTests(url) }
             assertTrue(restartingPublished.await(5, TimeUnit.SECONDS))
             val stop = executor.submit { service.stopServer() }
-            assertFalse("stop must wait until restart publication leaves the manager lock", stop.isDone)
+            assertFalse(
+                "stop must wait until restart publication leaves the manager lock",
+                stop.isDone,
+            )
             releasePublication.countDown()
             assertTrue(reserve.get(5, TimeUnit.SECONDS))
             stop.get(5, TimeUnit.SECONDS)
@@ -308,8 +347,10 @@ class OpenCodePluginTest : BasePlatformTestCase() {
     }
 
     fun testServerNotReadyForAuthWithoutCredentials() {
-        val service = OpenCodeServerBackendRegistry.getInstance()
-            .backendForCanonicalDirectory("/tmp/opencode-plugin-test-no-auth") as SharedOpenCodeServerManager
+        val service =
+            OpenCodeServerBackendRegistry.getInstance()
+                .backendForCanonicalDirectory("/tmp/opencode-plugin-test-no-auth")
+                as SharedOpenCodeServerManager
         assertFalse(service.isServerReadyForAuth())
     }
 
@@ -323,12 +364,14 @@ class OpenCodePluginTest : BasePlatformTestCase() {
 
     private fun nativeManager(): SharedOpenCodeServerManager {
         return OpenCodeServerBackendRegistry.getInstance()
-            .backendForCanonicalDirectory("/tmp/opencode-plugin-test") as SharedOpenCodeServerManager
+            .backendForCanonicalDirectory("/tmp/opencode-plugin-test")
+            as SharedOpenCodeServerManager
     }
 
     private class RecordingProcess : Process() {
         var destroyed = false
             private set
+
         private var alive = true
 
         override fun getOutputStream(): OutputStream = ByteArrayOutputStream()
@@ -358,8 +401,10 @@ class OpenCodePluginTest : BasePlatformTestCase() {
     private class StubbornProcess : Process() {
         var destroyed = false
             private set
+
         var forceDestroyed = false
             private set
+
         private var alive = true
 
         override fun getOutputStream(): OutputStream = ByteArrayOutputStream()

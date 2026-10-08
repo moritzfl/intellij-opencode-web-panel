@@ -1,9 +1,9 @@
 package de.moritzf.opencodewebpanel.features
 
 /**
- * Trailing debounce with a max-wait cap, used to collapse bursts of OpenCode workspace events
- * (many `file.edited` during a single agent turn, chatty `file.watcher.updated`, etc.) into as
- * few IDE refreshes as possible while still bounding how long a continuous stream can defer one.
+ * Trailing debounce with a max-wait cap, used to collapse bursts of OpenCode workspace events (many
+ * `file.edited` during a single agent turn, chatty `file.watcher.updated`, etc.) into as few IDE
+ * refreshes as possible while still bounding how long a continuous stream can defer one.
  *
  * Semantics:
  * - The first request opens a *burst* and schedules a refresh [debounceMillis] later.
@@ -13,8 +13,8 @@ package de.moritzf.opencodewebpanel.features
  * - [onFire] closes the burst; the next request opens a new one.
  *
  * Pure and clock-injected so the scheduling decisions are deterministically unit-testable; the
- * caller ([OpenCodeWorkspaceRefreshCoordinator]) turns the returned delays into Alarm requests.
- * Not thread-safe; callers serialize access.
+ * caller ([OpenCodeWorkspaceRefreshCoordinator]) turns the returned delays into Alarm requests. Not
+ * thread-safe; callers serialize access.
  */
 internal class RefreshDebouncer(
     private val debounceMillis: Long,

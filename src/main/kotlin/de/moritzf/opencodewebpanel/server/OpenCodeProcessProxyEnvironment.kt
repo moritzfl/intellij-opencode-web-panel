@@ -20,7 +20,10 @@ internal data class IdeHttpProxy(
     val username: String? = null,
     val password: String? = null,
 ) {
-    enum class Protocol { HTTP, SOCKS }
+    enum class Protocol {
+        HTTP,
+        SOCKS,
+    }
 }
 
 internal object OpenCodeProcessProxyEnvironment {
@@ -47,14 +50,17 @@ internal object OpenCodeProcessProxyEnvironment {
 
     fun strip(environment: MutableMap<String, String>) {
         for (name in PROXY_URL_NAMES) {
-            environment.keys.filter { it.equals(name, ignoreCase = true) }.forEach { environment.remove(it) }
+            environment.keys
+                .filter { it.equals(name, ignoreCase = true) }
+                .forEach { environment.remove(it) }
         }
     }
 
     fun resolveFromSettings(settings: OpenCodeSettingsState): IdeHttpProxy? {
         return when (settings.proxyModeValue()) {
             OpenCodeProxyMode.IDE -> readIdeProxy()
-            OpenCodeProxyMode.ENVIRONMENT, OpenCodeProxyMode.NONE -> null
+            OpenCodeProxyMode.ENVIRONMENT,
+            OpenCodeProxyMode.NONE -> null
         }
     }
 
@@ -62,12 +68,13 @@ internal object OpenCodeProcessProxyEnvironment {
         return try {
             val application = ApplicationManager.getApplication() ?: return null
             if (application.isDisposed) return null
-            val resolved = when (val configuration = ProxySettings.getInstance().getProxyConfiguration()) {
-                is ProxyConfiguration.StaticProxyConfiguration -> fromStaticProxy(configuration)
-                is ProxyConfiguration.AutoDetectProxy,
-                is ProxyConfiguration.ProxyAutoConfiguration -> resolveSelectedProxy()
-                else -> null
-            }
+            val resolved =
+                when (val configuration = ProxySettings.getInstance().getProxyConfiguration()) {
+                    is ProxyConfiguration.StaticProxyConfiguration -> fromStaticProxy(configuration)
+                    is ProxyConfiguration.AutoDetectProxy,
+                    is ProxyConfiguration.ProxyAutoConfiguration -> resolveSelectedProxy()
+                    else -> null
+                }
             resolved?.let { withKnownCredentials(it) }
         } catch (_: Throwable) {
             null
@@ -79,21 +86,25 @@ internal object OpenCodeProcessProxyEnvironment {
         val address = proxy.address() as? InetSocketAddress ?: return null
         val host = address.hostString?.trim().orEmpty()
         if (host.isBlank() || address.port !in 1..65535) return null
-        val protocol = when (proxy.type()) {
-            Proxy.Type.HTTP -> IdeHttpProxy.Protocol.HTTP
-            Proxy.Type.SOCKS -> IdeHttpProxy.Protocol.SOCKS
-            else -> return null
-        }
+        val protocol =
+            when (proxy.type()) {
+                Proxy.Type.HTTP -> IdeHttpProxy.Protocol.HTTP
+                Proxy.Type.SOCKS -> IdeHttpProxy.Protocol.SOCKS
+                else -> return null
+            }
         return IdeHttpProxy(protocol, host, address.port)
     }
 
-    private fun fromStaticProxy(static: ProxyConfiguration.StaticProxyConfiguration): IdeHttpProxy? {
+    private fun fromStaticProxy(
+        static: ProxyConfiguration.StaticProxyConfiguration
+    ): IdeHttpProxy? {
         if (static.host.isBlank() || static.port !in 1..65535) return null
         return IdeHttpProxy(
-            protocol = when (static.protocol) {
-                ProxyConfiguration.ProxyProtocol.HTTP -> IdeHttpProxy.Protocol.HTTP
-                ProxyConfiguration.ProxyProtocol.SOCKS -> IdeHttpProxy.Protocol.SOCKS
-            },
+            protocol =
+                when (static.protocol) {
+                    ProxyConfiguration.ProxyProtocol.HTTP -> IdeHttpProxy.Protocol.HTTP
+                    ProxyConfiguration.ProxyProtocol.SOCKS -> IdeHttpProxy.Protocol.SOCKS
+                },
             host = static.host.trim(),
             port = static.port,
             exceptions = static.exceptions,
@@ -101,28 +112,32 @@ internal object OpenCodeProcessProxyEnvironment {
     }
 
     private fun resolveSelectedProxy(): IdeHttpProxy? {
-        val selected = JdkProxyProvider.getInstance().proxySelector.select(PROXY_PROBE_URI) ?: return null
+        val selected =
+            JdkProxyProvider.getInstance().proxySelector.select(PROXY_PROBE_URI) ?: return null
         return selected.asSequence().mapNotNull { fromJavaProxy(it) }.firstOrNull()
     }
 
     private fun withKnownCredentials(proxy: IdeHttpProxy): IdeHttpProxy {
         if (!proxy.username.isNullOrBlank()) return proxy
-        val credentials = try {
-            ProxyAuthentication.getInstance().getKnownAuthentication(proxy.host, proxy.port)
-        } catch (_: Throwable) {
-            null
-        } ?: return proxy
+        val credentials =
+            try {
+                ProxyAuthentication.getInstance().getKnownAuthentication(proxy.host, proxy.port)
+            } catch (_: Throwable) {
+                null
+            } ?: return proxy
         return proxy.copy(
             username = credentials.userName?.takeIf { it.isNotBlank() } ?: proxy.username,
-            password = credentials.getPasswordAsString()?.takeIf { it.isNotEmpty() } ?: proxy.password,
+            password =
+                credentials.getPasswordAsString()?.takeIf { it.isNotEmpty() } ?: proxy.password,
         )
     }
 
     internal fun formatProxyUrl(proxy: IdeHttpProxy): String {
-        val scheme = when (proxy.protocol) {
-            IdeHttpProxy.Protocol.HTTP -> "http"
-            IdeHttpProxy.Protocol.SOCKS -> "socks5"
-        }
+        val scheme =
+            when (proxy.protocol) {
+                IdeHttpProxy.Protocol.HTTP -> "http"
+                IdeHttpProxy.Protocol.SOCKS -> "socks5"
+            }
         val host = formatHost(proxy.host)
         val userInfo = formatUserInfo(proxy.username, proxy.password)
         return "$scheme://$userInfo$host:${proxy.port}"
@@ -145,7 +160,9 @@ internal object OpenCodeProcessProxyEnvironment {
         for (byte in bytes) {
             val code = byte.toInt() and 0xFF
             val char = code.toChar()
-            if (char.isLetterOrDigit() || char == '-' || char == '.' || char == '_' || char == '~') {
+            if (
+                char.isLetterOrDigit() || char == '-' || char == '.' || char == '_' || char == '~'
+            ) {
                 out.append(char)
             } else {
                 out.append('%').append("%02X".format(code))
@@ -178,9 +195,15 @@ internal object OpenCodeProcessProxyEnvironment {
         return environment.entries.firstOrNull { it.key.equals(name, ignoreCase = true) }?.value
     }
 
-    private fun putVar(environment: MutableMap<String, String>, canonicalUpper: String, value: String) {
+    private fun putVar(
+        environment: MutableMap<String, String>,
+        canonicalUpper: String,
+        value: String,
+    ) {
         val lower = canonicalUpper.lowercase(Locale.ROOT)
-        environment.keys.filter { it.equals(canonicalUpper, ignoreCase = true) }.forEach { environment.remove(it) }
+        environment.keys
+            .filter { it.equals(canonicalUpper, ignoreCase = true) }
+            .forEach { environment.remove(it) }
         environment[canonicalUpper] = value
         environment[lower] = value
     }

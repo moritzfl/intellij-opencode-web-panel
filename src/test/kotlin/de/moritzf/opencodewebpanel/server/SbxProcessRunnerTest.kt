@@ -1,21 +1,20 @@
 package de.moritzf.opencodewebpanel.server
 
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
-import org.junit.Rule
-import org.junit.Test
-import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Rule
+import org.junit.Test
+import org.junit.rules.TemporaryFolder
 
 class SbxProcessRunnerTest {
-    @get:Rule
-    val temp = TemporaryFolder()
+    @get:Rule val temp = TemporaryFolder()
 
     @Test
     fun timeoutBoundsAChildThatKeepsStdoutOpen() {
@@ -28,10 +27,16 @@ class SbxProcessRunnerTest {
         val pid = result.output.lineSequence().firstNotNullOfOrNull { it.toLongOrNull() }
         if (pid != null) {
             val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3)
-            while (ProcessHandle.of(pid).map { it.isAlive }.orElse(false) && System.nanoTime() < deadline) {
+            while (
+                ProcessHandle.of(pid).map { it.isAlive }.orElse(false) &&
+                    System.nanoTime() < deadline
+            ) {
                 Thread.sleep(10)
             }
-            assertFalse("Timed-out child must be destroyed", ProcessHandle.of(pid).map { it.isAlive }.orElse(false))
+            assertFalse(
+                "Timed-out child must be destroyed",
+                ProcessHandle.of(pid).map { it.isAlive }.orElse(false),
+            )
         }
     }
 
@@ -57,11 +62,15 @@ class SbxProcessRunnerTest {
     fun streamsStdoutLinesBeforeTheProcessExits() {
         val first = CountDownLatch(1)
         val lines = CopyOnWriteArrayList<String>()
-        val result = SbxProcessRunner.run(probe("stream"), emptyMap(), 10_000L, null) { line ->
-            lines += line
-            if (line == "first") first.countDown()
-        }
-        assertTrue("Live callback must see the first line before exit", first.await(5, TimeUnit.SECONDS))
+        val result =
+            SbxProcessRunner.run(probe("stream"), emptyMap(), 10_000L, null) { line ->
+                lines += line
+                if (line == "first") first.countDown()
+            }
+        assertTrue(
+            "Live callback must see the first line before exit",
+            first.await(5, TimeUnit.SECONDS),
+        )
         assertEquals(0, result.exitCode)
         assertTrue(lines.contains("first"))
         assertTrue(lines.contains("second"))
@@ -92,11 +101,15 @@ class SbxProcessRunnerTest {
     fun parseCliProgressMapsCurlHashBarToFractionAndDropsHashesFromLabel() {
         assertEquals(
             CliProgress("", 0.5),
-            parseCliProgress("####################################                                 50.0%"),
+            parseCliProgress(
+                "####################################                                 50.0%"
+            ),
         )
         assertEquals(
             CliProgress("", 1.0),
-            parseCliProgress("######################################################################## 100.0%"),
+            parseCliProgress(
+                "######################################################################## 100.0%"
+            ),
         )
         parseCliProgress("## 2.8%").let {
             assertEquals("", it.label)
@@ -156,10 +169,16 @@ class SbxProcessRunnerTest {
         val indicator = com.intellij.openapi.progress.util.ProgressIndicatorBase()
         val started = System.nanoTime()
         var result: SbxCommandResult? = null
-        Thread { Thread.sleep(300); indicator.cancel() }.start()
-        com.intellij.openapi.progress.ProgressManager.getInstance().runProcess({
-            result = SbxProcessRunner.run(probe("sleep"), emptyMap(), 60_000L)
-        }, indicator)
+        Thread {
+            Thread.sleep(300)
+            indicator.cancel()
+        }
+            .start()
+        com.intellij.openapi.progress.ProgressManager.getInstance()
+            .runProcess(
+                { result = SbxProcessRunner.run(probe("sleep"), emptyMap(), 60_000L) },
+                indicator,
+            )
         assertEquals(-1, result!!.exitCode)
         assertTrue(result!!.output.contains("cancelled"))
         assertTrue(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started) < 10_000L)
@@ -167,16 +186,29 @@ class SbxProcessRunnerTest {
 
     @Test
     fun missingExecutableReturnsAnActionableFailure() {
-        val result = SbxProcessRunner.run(listOf(temp.root.resolve("missing-executable").path), emptyMap(), 1_000L)
+        val result =
+            SbxProcessRunner.run(
+                listOf(temp.root.resolve("missing-executable").path),
+                emptyMap(),
+                1_000L,
+            )
         assertEquals(-1, result.exitCode)
         assertTrue(result.output.contains("missing-executable"))
     }
 
     private fun probe(mode: String): List<String> {
-        val java = Path.of(System.getProperty("java.home"), "bin", if (File.separatorChar == '\\') "java.exe" else "java")
-        // Source-file launch keeps the child independent of IntelliJ/Kover's instrumented classloader.
+        val java =
+            Path.of(
+                System.getProperty("java.home"),
+                "bin",
+                if (File.separatorChar == '\\') "java.exe" else "java",
+            )
+        // Source-file launch keeps the child independent of IntelliJ/Kover's instrumented
+        // classloader.
         val source = temp.root.toPath().resolve("SbxRunnerProbe.java")
-        Files.writeString(source, """
+        Files.writeString(
+            source,
+            """
             import java.nio.file.*;
             class SbxRunnerProbe {
                 public static void main(String[] args) throws Exception {
@@ -209,7 +241,9 @@ class SbxProcessRunnerTest {
                     }
                 }
             }
-        """.trimIndent())
+            """
+                .trimIndent(),
+        )
         return listOf(java.toString(), source.toString(), mode)
     }
 }

@@ -7,7 +7,6 @@ import com.intellij.notification.Notification
 import com.intellij.notification.NotificationAction
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
-import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationActivationListener
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.thisLogger
@@ -45,39 +44,33 @@ import de.moritzf.opencodewebpanel.features.OpenCodeWorkspaceRefreshCoordinator
 import de.moritzf.opencodewebpanel.server.OpenCodeGlobalEvent
 import de.moritzf.opencodewebpanel.server.OpenCodeGlobalEventListener
 import de.moritzf.opencodewebpanel.server.OpenCodeHostPaths
-import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleListener
 import de.moritzf.opencodewebpanel.server.OpenCodeLifecycleStripModel
-import de.moritzf.opencodewebpanel.server.shouldTickLifecycleStrip
-import de.moritzf.opencodewebpanel.server.visibleRecoveryNotice
 import de.moritzf.opencodewebpanel.server.OpenCodeRecoveryNotice
-import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState
-import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
-import de.moritzf.opencodewebpanel.server.OpenCodeWireProtocol
-import de.moritzf.opencodewebpanel.server.OpenCodeSuspendResumeListener
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
+import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleListener
+import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState
+import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
+import de.moritzf.opencodewebpanel.server.OpenCodeSuspendResumeListener
+import de.moritzf.opencodewebpanel.server.OpenCodeWireProtocol
 import de.moritzf.opencodewebpanel.server.SbxCli
 import de.moritzf.opencodewebpanel.server.SbxFailureKind
 import de.moritzf.opencodewebpanel.server.SbxOpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.isSuccessfulOpenCodeDocumentLoad
-import de.moritzf.opencodewebpanel.server.shouldApplyPublishedLifecycleState
 import de.moritzf.opencodewebpanel.server.parkedEmbeddedCenterCard
+import de.moritzf.opencodewebpanel.server.shouldApplyPublishedLifecycleState
 import de.moritzf.opencodewebpanel.server.shouldHideEmbeddedPage
 import de.moritzf.opencodewebpanel.server.shouldShowPageOpeningStatus
 import de.moritzf.opencodewebpanel.server.shouldShowStartupError
+import de.moritzf.opencodewebpanel.server.shouldTickLifecycleStrip
+import de.moritzf.opencodewebpanel.server.visibleRecoveryNotice
 import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsListener
 import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsState
-import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable
 import de.moritzf.opencodewebpanel.settings.OpenCodeRestartScope
+import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsListener
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
 import de.moritzf.opencodewebpanel.settings.OpenCodeUiSetting
-import org.cef.browser.CefBrowser
-import org.cef.browser.CefFrame
-import org.cef.handler.CefDisplayHandlerAdapter
-import org.cef.handler.CefLoadHandler
-import org.cef.handler.CefLoadHandlerAdapter
-import org.cef.network.CefRequest
 import java.awt.CardLayout
 import java.awt.Color
 import java.awt.Component
@@ -92,17 +85,23 @@ import java.util.concurrent.atomic.AtomicLong
 import javax.swing.BorderFactory
 import javax.swing.JComponent
 import javax.swing.JPanel
+import org.cef.browser.CefBrowser
+import org.cef.browser.CefFrame
+import org.cef.handler.CefDisplayHandlerAdapter
+import org.cef.handler.CefLoadHandler
+import org.cef.handler.CefLoadHandlerAdapter
+import org.cef.network.CefRequest
 
-internal class OpenCodeWebToolWindowContent(
-    private val host: OpenCodePanelController,
-) : OpenCodePanel {
+internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelController) :
+    OpenCodePanel {
 
     private companion object {
         private const val BROWSER_CARD = "browser"
         private const val ERROR_CARD = "error"
         private const val IDLE_CARD = "idle"
         private const val BROWSER_RECOVERY_THROTTLE_MILLIS = 10_000L
-        private const val PAGE_LOAD_WATCHDOG_MILLIS = OpenCodePageLoadWatchdog.DEFAULT_TIMEOUT_MILLIS
+        private const val PAGE_LOAD_WATCHDOG_MILLIS =
+            OpenCodePageLoadWatchdog.DEFAULT_TIMEOUT_MILLIS
         private const val DOCUMENT_START_INSTALL_TIMEOUT_MILLIS =
             OpenCodePageLoadWatchdog.DOCUMENT_START_INSTALL_TIMEOUT_MILLIS
 
@@ -112,53 +111,52 @@ internal class OpenCodeWebToolWindowContent(
         private const val CHAT_INPUT_ACK_TIMEOUT_MILLIS = 3_000
         private const val VIEWPORT_RASTER_NUDGE_RETRY_MILLIS = 500
 
-        @Volatile
-        private var applicationClosing = false
+        @Volatile private var applicationClosing = false
 
         /**
          * Application-wide: JCEF is shared, so a callback-channel failure in one panel is a
          * property of the CEF server, not of a single project's tool window.
          */
-        @Volatile
-        private var lastCallbackRecoveryAtMillis = 0L
+        @Volatile private var lastCallbackRecoveryAtMillis = 0L
 
         /**
          * One notification per IDE session, application-wide: Chromium caches the entered
-         * credentials for the lifetime of the shared JCEF process, so after the first sign-in
-         * later DevTools windows (from any project) no longer prompt.
+         * credentials for the lifetime of the shared JCEF process, so after the first sign-in later
+         * DevTools windows (from any project) no longer prompt.
          */
-        @Volatile
-        private var devToolsCredentialsNotified = false
+        @Volatile private var devToolsCredentialsNotified = false
     }
 
     private val project = host.project
     private val browser = JBCefBrowser()
-    private val lifecycleStatusPanel = OpenCodeLifecycleStatusPanel(
-        onRetry = ::restartOpenCodeServer,
-        onViewLog = { openOpenCodeServerLogInEditor(project) },
-        onCancel = {
-            serverManager.stopServer()
-        },
-    )
+    private val lifecycleStatusPanel =
+        OpenCodeLifecycleStatusPanel(
+            onRetry = ::restartOpenCodeServer,
+            onViewLog = { openOpenCodeServerLogInEditor(project) },
+            onCancel = { serverManager.stopServer() },
+        )
     @Suppress("UnstableApiUsage")
     private val stripTickAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
     private var lastPanelRecovery: OpenCodeRecoveryNotice? = null
     private val startupErrorPanel = OpenCodeStartupErrorPanel(project, ::restartOpenCodeServer)
     private val centerCardLayout = CardLayout()
-    private val idleCard = OpenCodeIdleCard(
-        onStart = ::restartOpenCodeServer,
-        onCancel = { serverManager.stopServer() },
-        onViewLog = { openOpenCodeServerLogInEditor(project) },
-    )
-    private val centerCardPanel = JPanel(centerCardLayout).apply {
-        add(browser.component, BROWSER_CARD)
-        add(startupErrorPanel.component, ERROR_CARD)
-        add(idleCard.component, IDLE_CARD)
-    }
-    private val contentPanel = BorderLayoutPanel().apply {
-        addToTop(lifecycleStatusPanel.component)
-        addToCenter(centerCardPanel)
-    }
+    private val idleCard =
+        OpenCodeIdleCard(
+            onStart = ::restartOpenCodeServer,
+            onCancel = { serverManager.stopServer() },
+            onViewLog = { openOpenCodeServerLogInEditor(project) },
+        )
+    private val centerCardPanel =
+        JPanel(centerCardLayout).apply {
+            add(browser.component, BROWSER_CARD)
+            add(startupErrorPanel.component, ERROR_CARD)
+            add(idleCard.component, IDLE_CARD)
+        }
+    private val contentPanel =
+        BorderLayoutPanel().apply {
+            addToTop(lifecycleStatusPanel.component)
+            addToCenter(centerCardPanel)
+        }
     private lateinit var openFileLinkQuery: OpenCodeJsQuery
     private lateinit var openCodeReferenceQuery: OpenCodeJsQuery
     private lateinit var openCodeLocalStorageQuery: OpenCodeJsQuery
@@ -168,79 +166,116 @@ internal class OpenCodeWebToolWindowContent(
     private lateinit var chunkLoadErrorQuery: OpenCodeJsQuery
     private lateinit var chatInputResultQuery: OpenCodeJsQuery
     private lateinit var rendererHeartbeatQuery: OpenCodeJsQuery
-    @Volatile
-    private var pageChannelsAttached = false
+    @Volatile private var pageChannelsAttached = false
     private val browserCursorEpoch = AtomicLong()
     private val serverManager = OpenCodeServerBackendRegistry.getInstance().backendFor(project)
-    private val ideNavigation = OpenCodeIdeNavigation(
-        project, browser, serverManager, ::openCodeProjectDirectory, this, ::openCodeServerDirectory,
-    )
-    private val diffNavigation = OpenCodeDiffNavigation(
-        project, browser, serverManager, ::openCodeProjectDirectory, ::openCodeServerDirectory,
-    )
-    private val localStorageBridge = OpenCodeLocalStorageBridge(
-        browser,
-        serverManager,
-        syncCallback = { openCodeLocalStorageQuery.inject("payload") },
-    )
-    private val systemNotifications = OpenCodeSystemNotifications(
-        project,
-        browser,
-        serverManager,
-        ::openCodeServerDirectory,
-        ::navigateFromNotification,
-        panelIsInView = { browser.component.isShowing && host.isPanelInView() },
-        activatePanel = host::activate,
-        this,
-    )
-    private val requestHandler = OpenCodeBrowserRequestHandler(serverManager, ideNavigation, ::recoverFromRendererCrash)
-    private val interruptedSessionRecovery = OpenCodeInterruptedSessionRecovery(project, serverManager, ::openCodeServerDirectory)
-    private val permissionAutoResponder = OpenCodePermissionAutoResponder(
-        ::openCodeServerDirectory,
-        serverManager::getServerUrl,
-        serverManager::getServerPassword,
-        loadSession = { url, auth, directory, sessionID ->
-            OpenCodeServerProtocol.fetchSessionInfo(
-                url, auth, directory, sessionID, wireProtocol = serverManager.getWireProtocol(),
-            )
-        },
-        loadChildren = { url, auth, directory, sessionID ->
-            OpenCodeServerProtocol.fetchSessionChildren(
-                url, auth, directory, sessionID, wireProtocol = serverManager.getWireProtocol(),
-            )
-        },
-        loadPending = { url, auth, directory ->
-            OpenCodeServerProtocol.fetchPendingRequestsResult(
-                url, auth, OpenCodeServerProtocol.PERMISSION_LIST_PATH, directory,
-                wireProtocol = serverManager.getWireProtocol(),
-            )
-        },
-        reply = { url, auth, directory, sessionID, requestID, response ->
-            OpenCodeServerProtocol.replyToPermission(
-                url, auth, directory, sessionID, requestID, response,
-                wireProtocol = serverManager.getWireProtocol(),
-            )
-        },
-        backendId = { serverManager.backendId },
-    )
+    private val ideNavigation =
+        OpenCodeIdeNavigation(
+            project,
+            browser,
+            serverManager,
+            ::openCodeProjectDirectory,
+            this,
+            ::openCodeServerDirectory,
+        )
+    private val diffNavigation =
+        OpenCodeDiffNavigation(
+            project,
+            browser,
+            serverManager,
+            ::openCodeProjectDirectory,
+            ::openCodeServerDirectory,
+        )
+    private val localStorageBridge =
+        OpenCodeLocalStorageBridge(
+            browser,
+            serverManager,
+            syncCallback = { openCodeLocalStorageQuery.inject("payload") },
+        )
+    private val systemNotifications =
+        OpenCodeSystemNotifications(
+            project,
+            browser,
+            serverManager,
+            ::openCodeServerDirectory,
+            ::navigateFromNotification,
+            panelIsInView = { browser.component.isShowing && host.isPanelInView() },
+            activatePanel = host::activate,
+            this,
+        )
+    private val requestHandler =
+        OpenCodeBrowserRequestHandler(serverManager, ideNavigation, ::recoverFromRendererCrash)
+    private val interruptedSessionRecovery =
+        OpenCodeInterruptedSessionRecovery(project, serverManager, ::openCodeServerDirectory)
+    private val permissionAutoResponder =
+        OpenCodePermissionAutoResponder(
+            ::openCodeServerDirectory,
+            serverManager::getServerUrl,
+            serverManager::getServerPassword,
+            loadSession = { url, auth, directory, sessionID ->
+                OpenCodeServerProtocol.fetchSessionInfo(
+                    url,
+                    auth,
+                    directory,
+                    sessionID,
+                    wireProtocol = serverManager.getWireProtocol(),
+                )
+            },
+            loadChildren = { url, auth, directory, sessionID ->
+                OpenCodeServerProtocol.fetchSessionChildren(
+                    url,
+                    auth,
+                    directory,
+                    sessionID,
+                    wireProtocol = serverManager.getWireProtocol(),
+                )
+            },
+            loadPending = { url, auth, directory ->
+                OpenCodeServerProtocol.fetchPendingRequestsResult(
+                    url,
+                    auth,
+                    OpenCodeServerProtocol.PERMISSION_LIST_PATH,
+                    directory,
+                    wireProtocol = serverManager.getWireProtocol(),
+                )
+            },
+            reply = { url, auth, directory, sessionID, requestID, response ->
+                OpenCodeServerProtocol.replyToPermission(
+                    url,
+                    auth,
+                    directory,
+                    sessionID,
+                    requestID,
+                    response,
+                    wireProtocol = serverManager.getWireProtocol(),
+                )
+            },
+            backendId = { serverManager.backendId },
+        )
     private var foreignSessionNotification: Notification? = null
-    private val foreignSessionWarning = OpenCodeForeignSessionWarning(
-        enabled = { OpenCodeSettingsState.getInstance().warnForeignSession },
-        workspaceDirectory = ::openCodeProjectDirectory,
-        loadSession = { sessionID -> loadDisplayedSession(sessionID) },
-        guestToHostPrefixes = {
-            OpenCodeHostPaths.guestToHostPrefixes(
-                serverManager.backendId, openCodeProjectDirectory(), sandboxWorkspaceDirectory(),
-            )
-        },
-        sandboxGuestPath = { workspace ->
-            if (OpenCodeServerBackend.isNative(serverManager.backendId)) null else SbxCli.guestBindPath(workspace)
-        },
-        executeAsync = { task -> ApplicationManager.getApplication().executeOnPooledThread(task) },
-        notify = ::showForeignSessionWarning,
-        clearWarning = ::clearForeignSessionWarning,
-        onOutline = ::applyForeignSessionOutline,
-    )
+    private val foreignSessionWarning =
+        OpenCodeForeignSessionWarning(
+            enabled = { OpenCodeSettingsState.getInstance().warnForeignSession },
+            workspaceDirectory = ::openCodeProjectDirectory,
+            loadSession = { sessionID -> loadDisplayedSession(sessionID) },
+            guestToHostPrefixes = {
+                OpenCodeHostPaths.guestToHostPrefixes(
+                    serverManager.backendId,
+                    openCodeProjectDirectory(),
+                    sandboxWorkspaceDirectory(),
+                )
+            },
+            sandboxGuestPath = { workspace ->
+                if (OpenCodeServerBackend.isNative(serverManager.backendId)) null
+                else SbxCli.guestBindPath(workspace)
+            },
+            executeAsync = { task ->
+                ApplicationManager.getApplication().executeOnPooledThread(task)
+            },
+            notify = ::showForeignSessionWarning,
+            clearWarning = ::clearForeignSessionWarning,
+            onOutline = ::applyForeignSessionOutline,
+        )
     @Suppress("UnstableApiUsage")
     private val openProjectAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
     @Suppress("UnstableApiUsage")
@@ -253,16 +288,16 @@ internal class OpenCodeWebToolWindowContent(
     private val repaintAlarm = Alarm(Alarm.ThreadToUse.SWING_THREAD, this)
     private val scriptScheduler = OpenCodeBrowserScriptScheduler(project, browser, openProjectAlarm)
     private val repaintScheduler = OpenCodeBrowserScriptScheduler(project, browser, repaintAlarm)
-    private val browserFocusSync = OpenCodeBrowserFocusSync(
-        component = { browser.component },
-        isActive = { !isContentDisposed() },
-        setBrowserFocus = { browser.cefBrowser.setFocus(it) },
-    )
+    private val browserFocusSync =
+        OpenCodeBrowserFocusSync(
+            component = { browser.component },
+            isActive = { !isContentDisposed() },
+            setBrowserFocus = { browser.cefBrowser.setFocus(it) },
+        )
     private var openProjectScriptScheduled = false
     private var panelReplacementScheduled = false
     private val documentStartInjector = OpenCodeDocumentStartInjector(browser)
-    @Volatile
-    private var mainDocumentLoadSucceeded = false
+    @Volatile private var mainDocumentLoadSucceeded = false
     private var pageLoadInProgress = false
     private var openCodePagePainted = false
     private var pageLoadStartedAtMillis = 0L
@@ -273,17 +308,15 @@ internal class OpenCodeWebToolWindowContent(
     private var cefBrowserCreated = false
     private var pendingBrowserLoadGeneration = 0L
 
-    @Volatile
-    private var mainDocumentLoadRevision = 0L
-    @Volatile
-    private var browserDocumentRevision = 0L
+    @Volatile private var mainDocumentLoadRevision = 0L
+    @Volatile private var browserDocumentRevision = 0L
     // Bumps on every chunk-failure report from the injected listener; a full-load (onLoadStart)
     // snapshots it so a pre-load error cannot satisfy the fresh document's debounce.
     private val pageLoadChunkFailureGeneration = AtomicLong()
 
     /**
-     * A UI-behavior enhancement injected into the OpenCode page as JavaScript. Instances bundle
-     * the setting gate, the script builder, and the per-page-load "already scheduled" flag so
+     * A UI-behavior enhancement injected into the OpenCode page as JavaScript. Instances bundle the
+     * setting gate, the script builder, and the per-page-load "already scheduled" flag so
      * scheduling and setting toggles can be handled generically for every feature.
      */
     private class InjectedFeature(
@@ -300,8 +333,8 @@ internal class OpenCodeWebToolWindowContent(
      * Chromium document-start before navigation, then injected again from `onLoadStart` (and
      * retried on the early delay series) in case document-start was unavailable. Builders are
      * re-invoked on every attempt so scripts can embed current state (e.g. the IDE theme); they
-     * must be idempotent in-page. Instances share one scheduling routine ([injectEarlyFeature])
-     * and one reset point so per-feature flag drift is impossible.
+     * must be idempotent in-page. Instances share one scheduling routine ([injectEarlyFeature]) and
+     * one reset point so per-feature flag drift is impossible.
      */
     private class EarlyInjectedFeature(
         val enabledInSettings: () -> Boolean = { true },
@@ -310,69 +343,84 @@ internal class OpenCodeWebToolWindowContent(
         var scheduled = false
     }
 
-    private val openProjectSeedFeature = EarlyInjectedFeature(
-        buildScript = { serverUrl ->
-            openCodeServerDirectory()?.takeIf { it.isNotBlank() }?.let { projectDirectory ->
-                // Pass the resolved boot target so OpenCode's own `lastProjectSession` pointer is
-                // already correct when the SPA bundle reads localStorage. Seeding it only after
-                // load lets the bundle bootstrap onto a stale pointer first, which shows the
-                // wrong conversation until the post-load navigate corrects it. The navigation
-                // itself stays a post-load step (window.location.assign needs a live document).
-                OpenCodeBrowserSnippets.buildOpenProjectScript(
-                    projectDirectory,
-                    serverUrl,
-                )
+    private val openProjectSeedFeature =
+        EarlyInjectedFeature(
+            buildScript = { serverUrl ->
+                openCodeServerDirectory()
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { projectDirectory ->
+                        // Pass the resolved boot target so OpenCode's own `lastProjectSession`
+                        // pointer is
+                        // already correct when the SPA bundle reads localStorage. Seeding it only
+                        // after
+                        // load lets the bundle bootstrap onto a stale pointer first, which shows
+                        // the
+                        // wrong conversation until the post-load navigate corrects it. The
+                        // navigation
+                        // itself stays a post-load step (window.location.assign needs a live
+                        // document).
+                        OpenCodeBrowserSnippets.buildOpenProjectScript(
+                            projectDirectory,
+                            serverUrl,
+                        )
+                    }
             }
-        },
-    )
-    private val matchMediaPatchFeature = EarlyInjectedFeature(
-        enabledInSettings = {
-            val settings = OpenCodeSettingsState.getInstance()
-            settings.syncThemeWithIde || settings.forceCompactLayout
-        },
-        buildScript = {
-            val settings = OpenCodeSettingsState.getInstance()
-            OpenCodeBrowserSnippets.buildMatchMediaPatchScript(
-                compact = settings.forceCompactLayout,
-                theme = settings.syncThemeWithIde,
-                dark = isIdeDarkTheme(),
-            )
-        },
-    )
-    private val compactHomeLayoutFeature = EarlyInjectedFeature(
-        enabledInSettings = { OpenCodeSettingsState.getInstance().forceCompactLayout },
-        buildScript = { OpenCodeBrowserSnippets.buildCompactHomeLayoutScript(enabled = true) },
-    )
-    private val hideWebsiteButtonFeature = EarlyInjectedFeature(
-        enabledInSettings = { OpenCodeSettingsState.getInstance().hideWebsiteButton },
-        buildScript = { OpenCodeBrowserSnippets.buildHideWebsiteButtonScript(enabled = true) },
-    )
-    private val pathHoverPreviewFeature = EarlyInjectedFeature(
-        enabledInSettings = { OpenCodeSettingsState.getInstance().fasterPathHoverPreview },
-        buildScript = { OpenCodeBrowserSnippets.buildPathHoverPreviewScript(enabled = true) },
-    )
-    private val eventStreamWatchdogFeature = EarlyInjectedFeature(
-        enabledInSettings = {
-            OpenCodeSettingsState.getInstance().recoverStalledEventStream &&
-                serverManager.getWireProtocol() != OpenCodeWireProtocol.V2_CLI
-        },
-        buildScript = {
-            OpenCodeBrowserSnippets.buildEventStreamWatchdogScript(
-                enabled = true, wireProtocol = serverManager.getWireProtocol(),
-            )
-        },
-    )
-    private val chunkLoadRecoveryFeature = EarlyInjectedFeature(
-        enabledInSettings = { OpenCodeSettingsState.getInstance().recoverFailedChunkLoads },
-        buildScript = {
-            // Signal-only callback: the message it carries is diagnostic, the JVM side just
-            // marks that this document raised a chunk failure and decides on reload.
-            OpenCodeBrowserSnippets.buildChunkLoadRecoveryScript(
-                enabled = true,
-                fatalCallback = chunkLoadErrorQuery.inject("message"),
-            )
-        },
-    )
+        )
+    private val matchMediaPatchFeature =
+        EarlyInjectedFeature(
+            enabledInSettings = {
+                val settings = OpenCodeSettingsState.getInstance()
+                settings.syncThemeWithIde || settings.forceCompactLayout
+            },
+            buildScript = {
+                val settings = OpenCodeSettingsState.getInstance()
+                OpenCodeBrowserSnippets.buildMatchMediaPatchScript(
+                    compact = settings.forceCompactLayout,
+                    theme = settings.syncThemeWithIde,
+                    dark = isIdeDarkTheme(),
+                )
+            },
+        )
+    private val compactHomeLayoutFeature =
+        EarlyInjectedFeature(
+            enabledInSettings = { OpenCodeSettingsState.getInstance().forceCompactLayout },
+            buildScript = { OpenCodeBrowserSnippets.buildCompactHomeLayoutScript(enabled = true) },
+        )
+    private val hideWebsiteButtonFeature =
+        EarlyInjectedFeature(
+            enabledInSettings = { OpenCodeSettingsState.getInstance().hideWebsiteButton },
+            buildScript = { OpenCodeBrowserSnippets.buildHideWebsiteButtonScript(enabled = true) },
+        )
+    private val pathHoverPreviewFeature =
+        EarlyInjectedFeature(
+            enabledInSettings = { OpenCodeSettingsState.getInstance().fasterPathHoverPreview },
+            buildScript = { OpenCodeBrowserSnippets.buildPathHoverPreviewScript(enabled = true) },
+        )
+    private val eventStreamWatchdogFeature =
+        EarlyInjectedFeature(
+            enabledInSettings = {
+                OpenCodeSettingsState.getInstance().recoverStalledEventStream &&
+                    serverManager.getWireProtocol() != OpenCodeWireProtocol.V2_CLI
+            },
+            buildScript = {
+                OpenCodeBrowserSnippets.buildEventStreamWatchdogScript(
+                    enabled = true,
+                    wireProtocol = serverManager.getWireProtocol(),
+                )
+            },
+        )
+    private val chunkLoadRecoveryFeature =
+        EarlyInjectedFeature(
+            enabledInSettings = { OpenCodeSettingsState.getInstance().recoverFailedChunkLoads },
+            buildScript = {
+                // Signal-only callback: the message it carries is diagnostic, the JVM side just
+                // marks that this document raised a chunk failure and decides on reload.
+                OpenCodeBrowserSnippets.buildChunkLoadRecoveryScript(
+                    enabled = true,
+                    fatalCallback = chunkLoadErrorQuery.inject("message"),
+                )
+            },
+        )
 
     private fun allJsQueries(): List<OpenCodeJsQuery> {
         if (!pageChannelsAttached) return emptyList()
@@ -390,267 +438,337 @@ internal class OpenCodeWebToolWindowContent(
     }
 
     /** Injection order matters: the project seed must precede everything else. */
-    private val earlyInjectedFeatures = listOf(
-        openProjectSeedFeature,
-        matchMediaPatchFeature,
-        compactHomeLayoutFeature,
-        hideWebsiteButtonFeature,
-        pathHoverPreviewFeature,
-        eventStreamWatchdogFeature,
-        chunkLoadRecoveryFeature,
-    )
+    private val earlyInjectedFeatures =
+        listOf(
+            openProjectSeedFeature,
+            matchMediaPatchFeature,
+            compactHomeLayoutFeature,
+            hideWebsiteButtonFeature,
+            pathHoverPreviewFeature,
+            eventStreamWatchdogFeature,
+            chunkLoadRecoveryFeature,
+        )
 
-    private val fileLinkFeature = InjectedFeature(
-        enabledInSettings = { OpenCodeSettingsState.getInstance().openFileLinksInIde },
-        buildScript = {
-            OpenCodeBrowserSnippets.buildFileLinkHandlerScript(
-                openCodeServerDirectory(),
-                enabled = true,
-                openFileCallback = openFileLinkQuery.inject("rawHref + '\\n' + directory + '\\n' + partID"),
-            )
-        },
-    )
-    private val externalLinkFeature = InjectedFeature(
-        enabledInSettings = { OpenCodeSettingsState.getInstance().openExternalLinksInBrowser },
-        buildScript = {
-            OpenCodeBrowserSnippets.buildExternalLinkHandlerScript(
-                enabled = true,
-                openExternalCallback = openExternalLinkQuery.inject("href"),
-            )
-        },
-    )
-    private val codeNavigationFeature = InjectedFeature(
-        enabledInSettings = { OpenCodeSettingsState.getInstance().effectiveCodeNavigationEnabled() },
-        buildScript = {
-            OpenCodeBrowserSnippets.buildCodeNavigationScript(
-                enabled = true,
-                openCodeCallback = openCodeReferenceQuery.inject("ref"),
-            )
-        },
-    )
-    private val diffNavigationFeature = InjectedFeature(
-        enabledInSettings = { OpenCodeSettingsState.getInstance().openDiffsInIde },
-        buildScript = {
-            OpenCodeBrowserSnippets.buildDiffNavigationScript(
-                enabled = true,
-                openDiffCallback = openDiffQuery.inject("messageID + '\\n' + filePath + '\\n' + partID + '\\n' + (typeof vcsMode === 'string' ? vcsMode : '')"),
-            )
-        },
-    )
-    private val projectSwitchPromptSuppressionFeature = InjectedFeature(
-        enabledInSettings = { OpenCodeSettingsState.getInstance().suppressProjectSwitchPrompts },
-        buildScript = { OpenCodeBrowserSnippets.buildProjectSwitchPromptSuppressionScript(enabled = true) },
-    )
-    private val cursorMirrorFeature = InjectedFeature(
-        enabledInSettings = { OpenCodeSettingsState.getInstance().mirrorBrowserCursor },
-        buildScript = {
-            OpenCodeBrowserSnippets.buildCursorMirrorScript(
-                enabled = true,
-                cursorCallback = browserCursorQuery.inject("payload"),
-            )
-        },
-        onDisable = { resetMirroredBrowserCursor() },
-    )
-    private val rendererHeartbeatFeature = InjectedFeature(
-        enabledInSettings = {
-            OpenCodeSettingsState.getInstance().recoverStalledRenderer && rendererHeartbeatQuery.isAvailable
-        },
-        buildScript = {
-            OpenCodeBrowserSnippets.buildRendererHeartbeatScript(
-                enabled = true,
-                heartbeatCallback = rendererHeartbeatQuery.inject("visibility"),
-            )
-        },
-    )
-    private val injectedFeatures = listOf(
-        diffNavigationFeature,
-        fileLinkFeature,
-        externalLinkFeature,
-        codeNavigationFeature,
-        projectSwitchPromptSuppressionFeature,
-        cursorMirrorFeature,
-        rendererHeartbeatFeature,
-    )
-    private val workspaceRefreshCoordinator = OpenCodeWorkspaceRefreshCoordinator(
-        project,
-        ::sandboxWorkspaceDirectory,
-        parentDisposable = this,
-        backendId = { serverManager.backendId },
-        serverDirectory = ::openCodeServerDirectory,
-    )
+    private val fileLinkFeature =
+        InjectedFeature(
+            enabledInSettings = { OpenCodeSettingsState.getInstance().openFileLinksInIde },
+            buildScript = {
+                OpenCodeBrowserSnippets.buildFileLinkHandlerScript(
+                    openCodeServerDirectory(),
+                    enabled = true,
+                    openFileCallback =
+                        openFileLinkQuery.inject("rawHref + '\\n' + directory + '\\n' + partID"),
+                )
+            },
+        )
+    private val externalLinkFeature =
+        InjectedFeature(
+            enabledInSettings = { OpenCodeSettingsState.getInstance().openExternalLinksInBrowser },
+            buildScript = {
+                OpenCodeBrowserSnippets.buildExternalLinkHandlerScript(
+                    enabled = true,
+                    openExternalCallback = openExternalLinkQuery.inject("href"),
+                )
+            },
+        )
+    private val codeNavigationFeature =
+        InjectedFeature(
+            enabledInSettings = {
+                OpenCodeSettingsState.getInstance().effectiveCodeNavigationEnabled()
+            },
+            buildScript = {
+                OpenCodeBrowserSnippets.buildCodeNavigationScript(
+                    enabled = true,
+                    openCodeCallback = openCodeReferenceQuery.inject("ref"),
+                )
+            },
+        )
+    private val diffNavigationFeature =
+        InjectedFeature(
+            enabledInSettings = { OpenCodeSettingsState.getInstance().openDiffsInIde },
+            buildScript = {
+                OpenCodeBrowserSnippets.buildDiffNavigationScript(
+                    enabled = true,
+                    openDiffCallback =
+                        openDiffQuery.inject(
+                            "messageID + '\\n' + filePath + '\\n' + partID + '\\n' + (typeof vcsMode === 'string' ? vcsMode : '')"
+                        ),
+                )
+            },
+        )
+    private val projectSwitchPromptSuppressionFeature =
+        InjectedFeature(
+            enabledInSettings = {
+                OpenCodeSettingsState.getInstance().suppressProjectSwitchPrompts
+            },
+            buildScript = {
+                OpenCodeBrowserSnippets.buildProjectSwitchPromptSuppressionScript(enabled = true)
+            },
+        )
+    private val cursorMirrorFeature =
+        InjectedFeature(
+            enabledInSettings = { OpenCodeSettingsState.getInstance().mirrorBrowserCursor },
+            buildScript = {
+                OpenCodeBrowserSnippets.buildCursorMirrorScript(
+                    enabled = true,
+                    cursorCallback = browserCursorQuery.inject("payload"),
+                )
+            },
+            onDisable = { resetMirroredBrowserCursor() },
+        )
+    private val rendererHeartbeatFeature =
+        InjectedFeature(
+            enabledInSettings = {
+                OpenCodeSettingsState.getInstance().recoverStalledRenderer &&
+                    rendererHeartbeatQuery.isAvailable
+            },
+            buildScript = {
+                OpenCodeBrowserSnippets.buildRendererHeartbeatScript(
+                    enabled = true,
+                    heartbeatCallback = rendererHeartbeatQuery.inject("visibility"),
+                )
+            },
+        )
+    private val injectedFeatures =
+        listOf(
+            diffNavigationFeature,
+            fileLinkFeature,
+            externalLinkFeature,
+            codeNavigationFeature,
+            projectSwitchPromptSuppressionFeature,
+            cursorMirrorFeature,
+            rendererHeartbeatFeature,
+        )
+    private val workspaceRefreshCoordinator =
+        OpenCodeWorkspaceRefreshCoordinator(
+            project,
+            ::sandboxWorkspaceDirectory,
+            parentDisposable = this,
+            backendId = { serverManager.backendId },
+            serverDirectory = ::openCodeServerDirectory,
+        )
     // The tracked state also feeds the renderer watchdog's busy stall timeout, so tracking runs
     // even when the badge itself is off; [onAgentStatusChanged] applies the badge only when its
     // own setting is enabled.
-    private val agentStatusTracker = OpenCodeAgentStatusTracker(
-        projectDirectory = ::openCodeServerDirectory,
-        enabled = { !isContentDisposed() },
-        onStateChanged = ::onAgentStatusChanged,
-        serverUrl = serverManager::getServerUrl,
-        serverPassword = serverManager::getServerPassword,
-        serverGeneration = serverManager::getServerGeneration,
-        backendId = { serverManager.backendId },
-        wireProtocol = { serverManager.getWireProtocol() },
-    )
+    private val agentStatusTracker =
+        OpenCodeAgentStatusTracker(
+            projectDirectory = ::openCodeServerDirectory,
+            enabled = { !isContentDisposed() },
+            onStateChanged = ::onAgentStatusChanged,
+            serverUrl = serverManager::getServerUrl,
+            serverPassword = serverManager::getServerPassword,
+            serverGeneration = serverManager::getServerGeneration,
+            backendId = { serverManager.backendId },
+            wireProtocol = { serverManager.getWireProtocol() },
+        )
     private var loadedServerRootUrl: String? = null
     private var pendingServerStartRequest = false
     private var lastBrowserRecoveryAttemptAtMillis = 0L
-    private val rendererWatchdog = OpenCodeRendererWatchdog(
-        parentDisposable = this,
-        isActiveContent = { !isContentDisposed() && browser.component.isShowing },
-        isAgentBusy = { agentStatusTracker.isBusy() },
-        isEnabledInSettings = { OpenCodeSettingsState.getInstance().recoverStalledRenderer },
-        isPageReady = {
-            OpenCodeRendererWatchdogPolicy.isPageReadyForRendererWatchdog(
-                pageLoadInProgress = pageLoadInProgress,
-                pagePainted = openCodePagePainted,
-                loadSucceeded = mainDocumentLoadSucceeded,
-                loadGaveUp = pageLoadGaveUp,
-            )
-        },
-        onReloadPage = { reloadStalledOpenCodePage() },
-        onRecreatePanel = {
-            ApplicationManager.getApplication().invokeLater {
-                if (isContentDisposed()) return@invokeLater
-                // Share the browser-recovery throttle with renderer-crash recovery so the two
-                // paths cannot interleave into a recreate storm.
-                if (!markBrowserRecoveryAttempt()) return@invokeLater
-                host.replacePanel()
-            }
-        },
-        onGiveUp = {
-            ApplicationManager.getApplication().invokeLater {
-                if (isContentDisposed()) return@invokeLater
-                showRendererGiveUpCard()
-            }
-        },
-    )
+    private val rendererWatchdog =
+        OpenCodeRendererWatchdog(
+            parentDisposable = this,
+            isActiveContent = { !isContentDisposed() && browser.component.isShowing },
+            isAgentBusy = { agentStatusTracker.isBusy() },
+            isEnabledInSettings = { OpenCodeSettingsState.getInstance().recoverStalledRenderer },
+            isPageReady = {
+                OpenCodeRendererWatchdogPolicy.isPageReadyForRendererWatchdog(
+                    pageLoadInProgress = pageLoadInProgress,
+                    pagePainted = openCodePagePainted,
+                    loadSucceeded = mainDocumentLoadSucceeded,
+                    loadGaveUp = pageLoadGaveUp,
+                )
+            },
+            onReloadPage = { reloadStalledOpenCodePage() },
+            onRecreatePanel = {
+                ApplicationManager.getApplication().invokeLater {
+                    if (isContentDisposed()) return@invokeLater
+                    // Share the browser-recovery throttle with renderer-crash recovery so the two
+                    // paths cannot interleave into a recreate storm.
+                    if (!markBrowserRecoveryAttempt()) return@invokeLater
+                    host.replacePanel()
+                }
+            },
+            onGiveUp = {
+                ApplicationManager.getApplication().invokeLater {
+                    if (isContentDisposed()) return@invokeLater
+                    showRendererGiveUpCard()
+                }
+            },
+        )
     private val toolWindowIconSupplier by lazy {
-        BadgeIconSupplier(IconLoader.getIcon("/icons/opencode.svg", OpenCodeWebToolWindowContent::class.java))
+        BadgeIconSupplier(
+            IconLoader.getIcon("/icons/opencode.svg", OpenCodeWebToolWindowContent::class.java)
+        )
     }
 
-    @Volatile
-    private var disposed = false
-    private val loadHandler = object : CefLoadHandlerAdapter() {
-        override fun onLoadStart(browser: CefBrowser?, frame: CefFrame?, transitionType: CefRequest.TransitionType?) {
-            if (isContentDisposed()) return
-            if (frame?.isMain == true) {
-                thisLogger().info("jcef onLoadStart url=${frame.url} transition=$transitionType")
-                val loadRevision = ++mainDocumentLoadRevision
-                browserDocumentRevision++
-                mainDocumentLoadSucceeded = false
-                // New document, new chunk-failure budget: the in-page listener re-arms and may
-                // report once more even if the previous page already did.
-                pageLoadChunkFailureGeneration.set(0L)
-                repaintAlarm.cancelAllRequests()
-                // Move the stall clock so an in-flight navigation is not recovered; keep the
-                // recreate budget (process-wide) and this panel's stall count.
-                rendererWatchdog.noteDocumentLoadStarted()
-                if (host.isCurrent(this@OpenCodeWebToolWindowContent)) {
-                    OpenCodeChatInputService.getInstance(project).requeueInFlight()
-                }
-                injectedFeatures.forEach { it.scheduled = false }
-                earlyInjectedFeatures.forEach { it.scheduled = false }
-                val serverUrl = serverManager.getServerUrl()
-                val frameUrl = frame.url
-                if (OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, frameUrl)) {
-                    ApplicationManager.getApplication().invokeLater {
-                        if (isContentDisposed() || loadRevision != mainDocumentLoadRevision || mainDocumentLoadSucceeded) {
-                            return@invokeLater
-                        }
-                        val liveUrl = serverManager.getServerUrl() ?: return@invokeLater
-                        if (!OpenCodeServerProtocol.isOpenCodeServerPage(liveUrl, frameUrl)) return@invokeLater
-                        val sameLoad = pageLoadInProgress &&
-                            OpenCodeServerProtocol.isOpenCodeRouteAlreadyOpen(liveUrl, pageLoadTargetUrl, frameUrl)
-                        beginPageLoad(frameUrl, resetRetryBudget = !sameLoad)
-                        armPageLoadWatchdog(liveUrl)
+    @Volatile private var disposed = false
+    private val loadHandler =
+        object : CefLoadHandlerAdapter() {
+            override fun onLoadStart(
+                browser: CefBrowser?,
+                frame: CefFrame?,
+                transitionType: CefRequest.TransitionType?,
+            ) {
+                if (isContentDisposed()) return
+                if (frame?.isMain == true) {
+                    thisLogger()
+                        .info("jcef onLoadStart url=${frame.url} transition=$transitionType")
+                    val loadRevision = ++mainDocumentLoadRevision
+                    browserDocumentRevision++
+                    mainDocumentLoadSucceeded = false
+                    // New document, new chunk-failure budget: the in-page listener re-arms and may
+                    // report once more even if the previous page already did.
+                    pageLoadChunkFailureGeneration.set(0L)
+                    repaintAlarm.cancelAllRequests()
+                    // Move the stall clock so an in-flight navigation is not recovered; keep the
+                    // recreate budget (process-wide) and this panel's stall count.
+                    rendererWatchdog.noteDocumentLoadStarted()
+                    if (host.isCurrent(this@OpenCodeWebToolWindowContent)) {
+                        OpenCodeChatInputService.getInstance(project).requeueInFlight()
                     }
-                    // Drop any previous open-project delay series so navigations do not stack injects.
-                    // Reset the flag so onLoadEnd can schedule a fresh series for this document.
-                    openProjectAlarm.cancelAllRequests()
-                    openProjectScriptScheduled = false
-                    localStorageBridge.restore(frame.url)
-                    // Seed lastProject (first early feature) before the SPA bundle reads
-                    // localStorage — the shared browser profile otherwise keeps the previous IDE
-                    // project's workspace.
-                    earlyInjectedFeatures.forEach(::injectEarlyFeature)
-                    localStorageBridge.installSync(frame.url)
+                    injectedFeatures.forEach { it.scheduled = false }
+                    earlyInjectedFeatures.forEach { it.scheduled = false }
+                    val serverUrl = serverManager.getServerUrl()
+                    val frameUrl = frame.url
+                    if (OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, frameUrl)) {
+                        ApplicationManager.getApplication().invokeLater {
+                            if (
+                                isContentDisposed() ||
+                                    loadRevision != mainDocumentLoadRevision ||
+                                    mainDocumentLoadSucceeded
+                            ) {
+                                return@invokeLater
+                            }
+                            val liveUrl = serverManager.getServerUrl() ?: return@invokeLater
+                            if (!OpenCodeServerProtocol.isOpenCodeServerPage(liveUrl, frameUrl))
+                                return@invokeLater
+                            val sameLoad =
+                                pageLoadInProgress &&
+                                    OpenCodeServerProtocol.isOpenCodeRouteAlreadyOpen(
+                                        liveUrl,
+                                        pageLoadTargetUrl,
+                                        frameUrl,
+                                    )
+                            beginPageLoad(frameUrl, resetRetryBudget = !sameLoad)
+                            armPageLoadWatchdog(liveUrl)
+                        }
+                        // Drop any previous open-project delay series so navigations do not stack
+                        // injects.
+                        // Reset the flag so onLoadEnd can schedule a fresh series for this
+                        // document.
+                        openProjectAlarm.cancelAllRequests()
+                        openProjectScriptScheduled = false
+                        localStorageBridge.restore(frame.url)
+                        // Seed lastProject (first early feature) before the SPA bundle reads
+                        // localStorage — the shared browser profile otherwise keeps the previous
+                        // IDE
+                        // project's workspace.
+                        earlyInjectedFeatures.forEach(::injectEarlyFeature)
+                        localStorageBridge.installSync(frame.url)
+                    }
+                }
+            }
+
+            override fun onLoadEnd(browser: CefBrowser?, frame: CefFrame?, httpStatusCode: Int) {
+                if (isContentDisposed()) return
+                if (frame?.isMain != true) return
+                thisLogger().info("jcef onLoadEnd url=${frame.url} status=$httpStatusCode")
+                if (!isSuccessfulOpenCodeDocumentLoad(httpStatusCode)) return
+                val completedUrl = frame.url
+                if (
+                    !OpenCodeServerProtocol.isOpenCodeServerPage(
+                        serverManager.getServerUrl(),
+                        completedUrl,
+                    )
+                )
+                    return
+                val completedRevision = mainDocumentLoadRevision
+                ApplicationManager.getApplication().invokeLater {
+                    if (isContentDisposed()) return@invokeLater
+                    noteOpenCodePageVisible(completedUrl)
+                    if (completedRevision != mainDocumentLoadRevision) return@invokeLater
+                    val liveUrl = serverManager.getServerUrl() ?: return@invokeLater
+                    if (!OpenCodeServerProtocol.isOpenCodeServerPage(liveUrl, completedUrl))
+                        return@invokeLater
+
+                    // JBCef's own focus forwarding is transition-based and can be dropped around
+                    // loads (e.g. before native browser init); re-sync so the text caret is
+                    // rendered.
+                    browserFocusSync.reassertIfFocused()
+
+                    // Restore the mirrored localStorage snapshot again on load end. The restore in
+                    // onLoadStart can run before the new origin's V8 context is ready (e.g. when
+                    // navigating from about:blank), so this second attempt ensures layout.page is
+                    // available for the open-project script.
+                    localStorageBridge.restore(completedUrl)
+                    scheduleOpenProjectScript()
+                    localStorageBridge.installSync(completedUrl)
+                    injectedFeatures.forEach(::scheduleFeatureScript)
+                    scheduleIdeThemeSyncScript()
+                    scheduleFlushPendingChatInput()
+                    interruptedSessionRecovery.checkAndContinue()
+                    prepareDisplayedSessionLineage(completedUrl)
+                }
+            }
+
+            override fun onLoadError(
+                browser: CefBrowser?,
+                frame: CefFrame?,
+                errorCode: CefLoadHandler.ErrorCode?,
+                errorText: String?,
+                failedUrl: String?,
+            ) {
+                if (isContentDisposed()) return
+                if (frame?.isMain != true) return
+                thisLogger().info("jcef onLoadError url=$failedUrl code=$errorCode text=$errorText")
+                // ERR_ABORTED fires for ordinary cancelled navigations and must never trigger
+                // recovery.
+                if (errorCode == CefLoadHandler.ErrorCode.ERR_ABORTED) return
+                if (
+                    !OpenCodeServerProtocol.isOpenCodeServerPage(
+                        serverManager.getServerUrl(),
+                        failedUrl,
+                    )
+                )
+                    return
+                ApplicationManager.getApplication().invokeLater {
+                    if (!isContentDisposed()) {
+                        recoverFromLoadError("${errorCode?.name}: $errorText")
+                    }
                 }
             }
         }
-
-        override fun onLoadEnd(browser: CefBrowser?, frame: CefFrame?, httpStatusCode: Int) {
-            if (isContentDisposed()) return
-            if (frame?.isMain != true) return
-            thisLogger().info("jcef onLoadEnd url=${frame.url} status=$httpStatusCode")
-            if (!isSuccessfulOpenCodeDocumentLoad(httpStatusCode)) return
-            val completedUrl = frame.url
-            if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverManager.getServerUrl(), completedUrl)) return
-            val completedRevision = mainDocumentLoadRevision
-            ApplicationManager.getApplication().invokeLater {
-                if (isContentDisposed()) return@invokeLater
-                noteOpenCodePageVisible(completedUrl)
-                if (completedRevision != mainDocumentLoadRevision) return@invokeLater
-                val liveUrl = serverManager.getServerUrl() ?: return@invokeLater
-                if (!OpenCodeServerProtocol.isOpenCodeServerPage(liveUrl, completedUrl)) return@invokeLater
-
-                // JBCef's own focus forwarding is transition-based and can be dropped around
-                // loads (e.g. before native browser init); re-sync so the text caret is rendered.
-                browserFocusSync.reassertIfFocused()
-
-                // Restore the mirrored localStorage snapshot again on load end. The restore in
-                // onLoadStart can run before the new origin's V8 context is ready (e.g. when
-                // navigating from about:blank), so this second attempt ensures layout.page is
-                // available for the open-project script.
-                localStorageBridge.restore(completedUrl)
-                scheduleOpenProjectScript()
-                localStorageBridge.installSync(completedUrl)
-                injectedFeatures.forEach(::scheduleFeatureScript)
-                scheduleIdeThemeSyncScript()
-                scheduleFlushPendingChatInput()
-                interruptedSessionRecovery.checkAndContinue()
-                prepareDisplayedSessionLineage(completedUrl)
-            }
-        }
-
-        override fun onLoadError(
-            browser: CefBrowser?,
-            frame: CefFrame?,
-            errorCode: CefLoadHandler.ErrorCode?,
-            errorText: String?,
-            failedUrl: String?,
-        ) {
-            if (isContentDisposed()) return
-            if (frame?.isMain != true) return
-            thisLogger().info("jcef onLoadError url=$failedUrl code=$errorCode text=$errorText")
-            // ERR_ABORTED fires for ordinary cancelled navigations and must never trigger recovery.
-            if (errorCode == CefLoadHandler.ErrorCode.ERR_ABORTED) return
-            if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverManager.getServerUrl(), failedUrl)) return
-            ApplicationManager.getApplication().invokeLater {
-                if (!isContentDisposed()) {
-                    recoverFromLoadError("${errorCode?.name}: $errorText")
-                }
-            }
-        }
-    }
 
     init {
         thisLogger().info("jcef panel construct")
         applyHostLook()
-        browser.component.addMouseListener(object : MouseAdapter() {
-            override fun mouseExited(e: MouseEvent) {
-                val component = e.component ?: return
-                val point = e.point
-                if (point.x >= 0 && point.y >= 0 && point.x < component.width && point.y < component.height) return
-                resetMirroredBrowserCursor()
+        browser.component.addMouseListener(
+            object : MouseAdapter() {
+                override fun mouseExited(e: MouseEvent) {
+                    val component = e.component ?: return
+                    val point = e.point
+                    if (
+                        point.x >= 0 &&
+                            point.y >= 0 &&
+                            point.x < component.width &&
+                            point.y < component.height
+                    )
+                        return
+                    resetMirroredBrowserCursor()
+                }
             }
-        })
+        )
         browser.jbCefClient.addRequestHandler(requestHandler, browser.cefBrowser)
         browser.jbCefClient.addLoadHandler(loadHandler, browser.cefBrowser)
         // onAddressChange also fires for the SPA's history-API route changes, which full-load
         // handlers never see.
         browser.jbCefClient.addDisplayHandler(
             object : CefDisplayHandlerAdapter() {
-                override fun onAddressChange(cefBrowser: CefBrowser?, frame: CefFrame?, url: String?) {
+                override fun onAddressChange(
+                    cefBrowser: CefBrowser?,
+                    frame: CefFrame?,
+                    url: String?,
+                ) {
                     if (isContentDisposed()) return
                     if (frame?.isMain == true) {
                         thisLogger().info("jcef onAddressChange url=$url")
@@ -670,75 +788,108 @@ internal class OpenCodeWebToolWindowContent(
             browser.cefBrowser,
         )
         OpenCodeCefFileDialogHandler(project, browser, this)
-        ApplicationManager.getApplication().messageBus.connect(this).subscribe(
-            AppLifecycleListener.TOPIC,
-            object : AppLifecycleListener {
-                override fun appClosing() {
-                    applicationClosing = true
-                }
-            },
-        )
+        ApplicationManager.getApplication()
+            .messageBus
+            .connect(this)
+            .subscribe(
+                AppLifecycleListener.TOPIC,
+                object : AppLifecycleListener {
+                    override fun appClosing() {
+                        applicationClosing = true
+                    }
+                },
+            )
         // Re-activating the IDE window does not emit a component-level focus transition when
         // focus never left the browser, so JBCef never re-tells Chromium it is focused and the
         // text caret stays hidden until the user clicks elsewhere and back.
-        ApplicationManager.getApplication().messageBus.connect(this).subscribe(
-            ApplicationActivationListener.TOPIC,
-            object : ApplicationActivationListener {
-                override fun applicationActivated(ideFrame: IdeFrame) {
-                    browserFocusSync.reassertIfFocused()
-                }
-            },
-        )
-        ApplicationManager.getApplication().messageBus.connect(this).subscribe(
-            OpenCodeGlobalEventListener.TOPIC,
-            agentStatusTracker,
-        )
+        ApplicationManager.getApplication()
+            .messageBus
+            .connect(this)
+            .subscribe(
+                ApplicationActivationListener.TOPIC,
+                object : ApplicationActivationListener {
+                    override fun applicationActivated(ideFrame: IdeFrame) {
+                        browserFocusSync.reassertIfFocused()
+                    }
+                },
+            )
+        ApplicationManager.getApplication()
+            .messageBus
+            .connect(this)
+            .subscribe(
+                OpenCodeGlobalEventListener.TOPIC,
+                agentStatusTracker,
+            )
         // Keeps the IDE's files/VCS in sync with the agent's edits, patches, branch changes, and
         // commits. Independent of the agent-status badge, and debounced against event bursts.
-        ApplicationManager.getApplication().messageBus.connect(this).subscribe(
-            OpenCodeGlobalEventListener.TOPIC,
-            workspaceRefreshCoordinator,
-        )
-        ApplicationManager.getApplication().messageBus.connect(this).subscribe(
-            OpenCodeGlobalEventListener.TOPIC,
-            permissionAutoResponder,
-        )
+        ApplicationManager.getApplication()
+            .messageBus
+            .connect(this)
+            .subscribe(
+                OpenCodeGlobalEventListener.TOPIC,
+                workspaceRefreshCoordinator,
+            )
+        ApplicationManager.getApplication()
+            .messageBus
+            .connect(this)
+            .subscribe(
+                OpenCodeGlobalEventListener.TOPIC,
+                permissionAutoResponder,
+            )
         // Permission/question sections appear in-place, without an address change, so the
         // onAddressChange repaint hook never sees them. Nudge the compositor from the JVM-side
         // event stream instead when such a request targets this panel's directory.
-        ApplicationManager.getApplication().messageBus.connect(this).subscribe(
-            OpenCodeGlobalEventListener.TOPIC,
-            object : OpenCodeGlobalEventListener {
-                override fun eventReceived(event: OpenCodeGlobalEvent) {
-                    if (!OpenCodeBrowserSnippets.isInPlaceDialogRepaintEvent(event.type)) return
-                    if (isContentDisposed()) return
-                    val directory = openCodeServerDirectory() ?: return
-                    if (!OpenCodeServerProtocol.isSameFilesystemPath(event.directory, directory)) return
-                    val serverUrl = serverManager.getServerUrl() ?: return
-                    if (!isBrowserOnOpenCodeServerPage(serverUrl)) return
-                    scheduleBrowserRepaintNudges()
-                }
-            },
-        )
-        ApplicationManager.getApplication().messageBus.connect(this).subscribe(
-            OpenCodeServerLifecycleListener.TOPIC,
-            object : OpenCodeServerLifecycleListener {
-                override fun stateChanged(state: OpenCodeServerLifecycleState, backendId: String) {
-                    if (backendId != serverManager.backendId) return
-                    ApplicationManager.getApplication().invokeLater {
-                        if (isContentDisposed()) return@invokeLater
-                        if (!shouldApplyPublishedLifecycleState(state, serverManager.getLifecycleState())) return@invokeLater
-                        clearStaleBrowserPage(state)
-                        updateLifecycleIndicator(state)
-                        if (shouldShowStartupError(state)) {
-                            showErrorInBrowser()
-                            return@invokeLater
-                        }
-                        reloadContentAfterRecovery(state)
+        ApplicationManager.getApplication()
+            .messageBus
+            .connect(this)
+            .subscribe(
+                OpenCodeGlobalEventListener.TOPIC,
+                object : OpenCodeGlobalEventListener {
+                    override fun eventReceived(event: OpenCodeGlobalEvent) {
+                        if (!OpenCodeBrowserSnippets.isInPlaceDialogRepaintEvent(event.type)) return
+                        if (isContentDisposed()) return
+                        val directory = openCodeServerDirectory() ?: return
+                        if (
+                            !OpenCodeServerProtocol.isSameFilesystemPath(event.directory, directory)
+                        )
+                            return
+                        val serverUrl = serverManager.getServerUrl() ?: return
+                        if (!isBrowserOnOpenCodeServerPage(serverUrl)) return
+                        scheduleBrowserRepaintNudges()
                     }
-                }
-            },
-        )
+                },
+            )
+        ApplicationManager.getApplication()
+            .messageBus
+            .connect(this)
+            .subscribe(
+                OpenCodeServerLifecycleListener.TOPIC,
+                object : OpenCodeServerLifecycleListener {
+                    override fun stateChanged(
+                        state: OpenCodeServerLifecycleState,
+                        backendId: String,
+                    ) {
+                        if (backendId != serverManager.backendId) return
+                        ApplicationManager.getApplication().invokeLater {
+                            if (isContentDisposed()) return@invokeLater
+                            if (
+                                !shouldApplyPublishedLifecycleState(
+                                    state,
+                                    serverManager.getLifecycleState(),
+                                )
+                            )
+                                return@invokeLater
+                            clearStaleBrowserPage(state)
+                            updateLifecycleIndicator(state)
+                            if (shouldShowStartupError(state)) {
+                                showErrorInBrowser()
+                                return@invokeLater
+                            }
+                            reloadContentAfterRecovery(state)
+                        }
+                    }
+                },
+            )
         val initialState = serverManager.getLifecycleState()
         updateLifecycleIndicator(initialState)
         when (parkedEmbeddedCenterCard(initialState)) {
@@ -747,99 +898,125 @@ internal class OpenCodeWebToolWindowContent(
                 showCenterCard(IDLE_CARD)
             }
         }
-        ApplicationManager.getApplication().messageBus.connect(this).subscribe(
-            OpenCodeSuspendResumeListener.TOPIC,
-            object : OpenCodeSuspendResumeListener {
-                override fun resumedFromSuspend(lastAliveMillis: Long, resumedAtMillis: Long) {
-                    interruptedSessionRecovery.onResumedFromSuspend(lastAliveMillis, resumedAtMillis)
-                    // The page's stream cannot have survived the suspend; cut it now so the SPA
-                    // reconnects at once rather than after the watchdog's silence budget.
-                    forceEventStreamReconnect()
-                }
-            },
-        )
-        ApplicationManager.getApplication().messageBus.connect(this).subscribe(
-            OpenCodeSettingsListener.TOPIC,
-            object : OpenCodeSettingsListener {
-                override fun uiZoomChanged(zoomPercent: Int) {
-                    // CEF applies zoom-level changes to the live page; reloading would drop the
-                    // user's chat draft and scroll position.
-                    applyBrowserZoom(zoomPercent)
-                }
+        ApplicationManager.getApplication()
+            .messageBus
+            .connect(this)
+            .subscribe(
+                OpenCodeSuspendResumeListener.TOPIC,
+                object : OpenCodeSuspendResumeListener {
+                    override fun resumedFromSuspend(lastAliveMillis: Long, resumedAtMillis: Long) {
+                        interruptedSessionRecovery.onResumedFromSuspend(
+                            lastAliveMillis,
+                            resumedAtMillis,
+                        )
+                        // The page's stream cannot have survived the suspend; cut it now so the SPA
+                        // reconnects at once rather than after the watchdog's silence budget.
+                        forceEventStreamReconnect()
+                    }
+                },
+            )
+        ApplicationManager.getApplication()
+            .messageBus
+            .connect(this)
+            .subscribe(
+                OpenCodeSettingsListener.TOPIC,
+                object : OpenCodeSettingsListener {
+                    override fun uiZoomChanged(zoomPercent: Int) {
+                        // CEF applies zoom-level changes to the live page; reloading would drop the
+                        // user's chat draft and scroll position.
+                        applyBrowserZoom(zoomPercent)
+                    }
 
-                override fun uiSettingChanged(setting: OpenCodeUiSetting, enabled: Boolean) {
-                    when (setting) {
-                        OpenCodeUiSetting.FILE_LINK_NAVIGATION -> applyFileLinkNavigation(enabled)
-                        OpenCodeUiSetting.EXTERNAL_LINK_NAVIGATION -> applyFeature(externalLinkFeature, enabled)
-                        OpenCodeUiSetting.CODE_NAVIGATION -> applyFeature(codeNavigationFeature, enabled)
-                        OpenCodeUiSetting.DIFF_NAVIGATION -> applyFeature(diffNavigationFeature, enabled)
-                        OpenCodeUiSetting.CHAT_FILE_DROP -> {
-                            if (!enabled) {
-                                OpenCodeChatInputService.getInstance(project).discardPending()
+                    override fun uiSettingChanged(setting: OpenCodeUiSetting, enabled: Boolean) {
+                        when (setting) {
+                            OpenCodeUiSetting.FILE_LINK_NAVIGATION ->
+                                applyFileLinkNavigation(enabled)
+                            OpenCodeUiSetting.EXTERNAL_LINK_NAVIGATION ->
+                                applyFeature(externalLinkFeature, enabled)
+                            OpenCodeUiSetting.CODE_NAVIGATION ->
+                                applyFeature(codeNavigationFeature, enabled)
+                            OpenCodeUiSetting.DIFF_NAVIGATION ->
+                                applyFeature(diffNavigationFeature, enabled)
+                            OpenCodeUiSetting.CHAT_FILE_DROP -> {
+                                if (!enabled) {
+                                    OpenCodeChatInputService.getInstance(project).discardPending()
+                                }
+                                val serverUrl = serverManager.getServerUrl()
+                                val decision =
+                                    OpenCodeInjectedFeaturePolicy.decide(
+                                        enabled,
+                                        OpenCodeSettingsState.getInstance().enableChatFileDrop,
+                                        serverUrl != null &&
+                                            isBrowserOnOpenCodeServerPage(serverUrl),
+                                        script = null,
+                                    )
+                                if (decision.action == OpenCodeInjectedFeaturePolicy.Action.RELOAD)
+                                    reloadOpenCodePageOrLoad()
+                                if (enabled) scheduleFlushPendingChatInput(delayMillis = 0)
                             }
-                            val serverUrl = serverManager.getServerUrl()
-                            val decision = OpenCodeInjectedFeaturePolicy.decide(
-                                enabled, OpenCodeSettingsState.getInstance().enableChatFileDrop,
-                                serverUrl != null && isBrowserOnOpenCodeServerPage(serverUrl), script = null,
-                            )
-                            if (decision.action == OpenCodeInjectedFeaturePolicy.Action.RELOAD) reloadOpenCodePageOrLoad()
-                            if (enabled) scheduleFlushPendingChatInput(delayMillis = 0)
-                        }
-                        OpenCodeUiSetting.COMPACT_LAYOUT -> applyCompactLayout()
-                        OpenCodeUiSetting.HIDE_WEBSITE_BUTTON -> applyHideWebsiteButton()
-                        OpenCodeUiSetting.PATH_HOVER_PREVIEW -> applyPathHoverPreview()
-                        OpenCodeUiSetting.IDE_THEME_SYNC -> applyIdeThemeSync(enabled)
-                        OpenCodeUiSetting.PROJECT_SWITCH_PROMPT_SUPPRESSION -> applyFeature(projectSwitchPromptSuppressionFeature, enabled)
-                        OpenCodeUiSetting.BROWSER_CURSOR_MIRROR -> applyFeature(cursorMirrorFeature, enabled)
-                        OpenCodeUiSetting.EVENT_STREAM_WATCHDOG -> applyEventStreamWatchdog()
-                        OpenCodeUiSetting.CHUNK_LOAD_RECOVERY -> applyChunkLoadRecovery()
-                        OpenCodeUiSetting.RENDERER_WATCHDOG -> applyRendererWatchdog()
-                        OpenCodeUiSetting.AGENT_STATUS_BADGE -> applyAgentStatusBadge(enabled)
-                        OpenCodeUiSetting.FOREIGN_SESSION_WARNING -> {
-                            if (!isContentDisposed()) {
-                                if (enabled) foreignSessionWarning.recheck() else foreignSessionWarning.suppress()
+                            OpenCodeUiSetting.COMPACT_LAYOUT -> applyCompactLayout()
+                            OpenCodeUiSetting.HIDE_WEBSITE_BUTTON -> applyHideWebsiteButton()
+                            OpenCodeUiSetting.PATH_HOVER_PREVIEW -> applyPathHoverPreview()
+                            OpenCodeUiSetting.IDE_THEME_SYNC -> applyIdeThemeSync(enabled)
+                            OpenCodeUiSetting.PROJECT_SWITCH_PROMPT_SUPPRESSION ->
+                                applyFeature(projectSwitchPromptSuppressionFeature, enabled)
+                            OpenCodeUiSetting.BROWSER_CURSOR_MIRROR ->
+                                applyFeature(cursorMirrorFeature, enabled)
+                            OpenCodeUiSetting.EVENT_STREAM_WATCHDOG -> applyEventStreamWatchdog()
+                            OpenCodeUiSetting.CHUNK_LOAD_RECOVERY -> applyChunkLoadRecovery()
+                            OpenCodeUiSetting.RENDERER_WATCHDOG -> applyRendererWatchdog()
+                            OpenCodeUiSetting.AGENT_STATUS_BADGE -> applyAgentStatusBadge(enabled)
+                            OpenCodeUiSetting.FOREIGN_SESSION_WARNING -> {
+                                if (!isContentDisposed()) {
+                                    if (enabled) foreignSessionWarning.recheck()
+                                    else foreignSessionWarning.suppress()
+                                }
                             }
                         }
                     }
-                }
 
-                override fun serverRestartRequested(scope: OpenCodeRestartScope) {
-                    val native = OpenCodeServerBackend.isNative(serverManager.backendId)
-                    if (scope == OpenCodeRestartScope.NATIVE && !native) return
-                    if (scope == OpenCodeRestartScope.SBX && native) return
-                    restartOpenCodeServer()
-                    schedulePanelReplacement()
-                }
-            },
-        )
-        ApplicationManager.getApplication().messageBus.connect(this).subscribe(
-            LafManagerListener.TOPIC,
-            LafManagerListener {
-                applyHostLook()
-                if (OpenCodeSettingsState.getInstance().syncThemeWithIde) {
-                    applyIdeThemeSync(enabled = true)
-                }
-            },
-        )
-        project.messageBus.connect(this).subscribe(
-            OpenCodeProjectSettingsListener.TOPIC,
-            object : OpenCodeProjectSettingsListener {
-                override fun serverRestartRequested() {
-                    ApplicationManager.getApplication().invokeLater {
-                        if (isContentDisposed()) return@invokeLater
+                    override fun serverRestartRequested(scope: OpenCodeRestartScope) {
+                        val native = OpenCodeServerBackend.isNative(serverManager.backendId)
+                        if (scope == OpenCodeRestartScope.NATIVE && !native) return
+                        if (scope == OpenCodeRestartScope.SBX && native) return
                         restartOpenCodeServer()
                         schedulePanelReplacement()
                     }
-                }
-
-                override fun serverReloadRequested() {
-                    ApplicationManager.getApplication().invokeLater {
-                        if (isContentDisposed()) return@invokeLater
-                        reloadOpenCodePage()
+                },
+            )
+        ApplicationManager.getApplication()
+            .messageBus
+            .connect(this)
+            .subscribe(
+                LafManagerListener.TOPIC,
+                LafManagerListener {
+                    applyHostLook()
+                    if (OpenCodeSettingsState.getInstance().syncThemeWithIde) {
+                        applyIdeThemeSync(enabled = true)
                     }
-                }
-            },
-        )
+                },
+            )
+        project.messageBus
+            .connect(this)
+            .subscribe(
+                OpenCodeProjectSettingsListener.TOPIC,
+                object : OpenCodeProjectSettingsListener {
+                    override fun serverRestartRequested() {
+                        ApplicationManager.getApplication().invokeLater {
+                            if (isContentDisposed()) return@invokeLater
+                            restartOpenCodeServer()
+                            schedulePanelReplacement()
+                        }
+                    }
+
+                    override fun serverReloadRequested() {
+                        ApplicationManager.getApplication().invokeLater {
+                            if (isContentDisposed()) return@invokeLater
+                            reloadOpenCodePage()
+                        }
+                    }
+                },
+            )
         // OOP JCEF snapshots message routers when creating the native browser. Register before
         // createImmediately or showing the component; late channels stay silent until a reload.
         attachPageChannelsBeforeBrowserCreation()
@@ -847,9 +1024,9 @@ internal class OpenCodeWebToolWindowContent(
 
     /**
      * A panel whose page-to-JVM callbacks could not be created still shows OpenCode, but its IDE
-     * integrations (file links, diffs, chat input, chunk-load recovery, …) are dead. The failure
-     * is transient while the out-of-process CEF server settles, so recreate the panel once —
-     * throttled application-wide so a permanently broken JCEF stack cannot loop.
+     * integrations (file links, diffs, chat input, chunk-load recovery, …) are dead. The failure is
+     * transient while the out-of-process CEF server settles, so recreate the panel once — throttled
+     * application-wide so a permanently broken JCEF stack cannot loop.
      */
     private fun attachPageChannelsBeforeBrowserCreation() {
         if (pageChannelsAttached || isContentDisposed()) return
@@ -864,11 +1041,13 @@ internal class OpenCodeWebToolWindowContent(
         rendererHeartbeatQuery = OpenCodeJsQuery.create(browser as JBCefBrowserBase)
         pageChannelsAttached = true
         openFileLinkQuery.addHandler { href ->
-            if (OpenCodeSettingsState.getInstance().openFileLinksInIde) ideNavigation.openFileLinkInIde(href)
+            if (OpenCodeSettingsState.getInstance().openFileLinksInIde)
+                ideNavigation.openFileLinkInIde(href)
             null
         }
         openExternalLinkQuery.addHandler { href ->
-            if (OpenCodeSettingsState.getInstance().openExternalLinksInBrowser) ideNavigation.openExternalLinkInBrowser(href)
+            if (OpenCodeSettingsState.getInstance().openExternalLinksInBrowser)
+                ideNavigation.openExternalLinkInBrowser(href)
             null
         }
         browserCursorQuery.addHandler { cssCursor ->
@@ -884,7 +1063,8 @@ internal class OpenCodeWebToolWindowContent(
             null
         }
         openCodeReferenceQuery.addHandler { ref ->
-            if (OpenCodeSettingsState.getInstance().effectiveCodeNavigationEnabled()) ideNavigation.openCodeReferenceInIde(ref)
+            if (OpenCodeSettingsState.getInstance().effectiveCodeNavigationEnabled())
+                ideNavigation.openCodeReferenceInIde(ref)
             null
         }
         openDiffQuery.addHandler { payload ->
@@ -899,12 +1079,16 @@ internal class OpenCodeWebToolWindowContent(
                 val pageUrl = browser.cefBrowser.url
                 val onLiveOrigin = OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, pageUrl)
                 val loadedOrigin = loadedServerRootUrl
-                val onLoadedOrigin = loadedOrigin != null &&
-                    OpenCodeServerProtocol.isOpenCodeServerPage(loadedOrigin, pageUrl)
+                val onLoadedOrigin =
+                    loadedOrigin != null &&
+                        OpenCodeServerProtocol.isOpenCodeServerPage(loadedOrigin, pageUrl)
                 if (!onLiveOrigin && !onLoadedOrigin) return@invokeLater
                 if (pageLoadChunkFailureGeneration.incrementAndGet() != 1L) return@invokeLater
                 notePanelRecovery("failed chunk import")
-                thisLogger().warn("OpenCode page raised a failed chunk import ($payload); verifying server health")
+                thisLogger()
+                    .warn(
+                        "OpenCode page raised a failed chunk import ($payload); verifying server health"
+                    )
                 serverManager.verifyServerNow(
                     callbackActive = { !isContentDisposed() },
                     onHealthy = { reloadOpenCodePageOrLoad() },
@@ -928,19 +1112,25 @@ internal class OpenCodeWebToolWindowContent(
             localStorageBridge.sync(snapshot)
             null
         }
-        val fileDropHandler = OpenCodeFileDropHandler(
-            project,
-            browser,
-            serverManager,
-            ::openCodeProjectDirectory,
-            { browserDocumentRevision },
-            ::isContentDisposed,
-            this,
-        )
+        val fileDropHandler =
+            OpenCodeFileDropHandler(
+                project,
+                browser,
+                serverManager,
+                ::openCodeProjectDirectory,
+                { browserDocumentRevision },
+                ::isContentDisposed,
+                this,
+            )
         fileDropHandler.install()
-        OpenCodeBrowserShortcutHandler(browser, serverManager, this, fileDropHandler::paste).install()
+        OpenCodeBrowserShortcutHandler(browser, serverManager, this, fileDropHandler::paste)
+            .install()
         browser.jbCefClient.addContextMenuHandler(
-            OpenCodeBrowserContextMenuHandler(fileDropHandler::paste, fileDropHandler::canBridgePaste), browser.cefBrowser,
+            OpenCodeBrowserContextMenuHandler(
+                fileDropHandler::paste,
+                fileDropHandler::canBridgePaste,
+            ),
+            browser.cefBrowser,
         )
         rendererHeartbeatQuery.addHandler { visibility ->
             rendererWatchdog.handleHeartbeat(visibility)
@@ -953,11 +1143,17 @@ internal class OpenCodeWebToolWindowContent(
             }
             null
         }
-        thisLogger().info("jcef page channels attached available=${allJsQueries().count { it.isAvailable }}/${allJsQueries().size}")
+        thisLogger()
+            .info(
+                "jcef page channels attached available=${allJsQueries().count { it.isAvailable }}/${allJsQueries().size}"
+            )
         if (allJsQueries().any { !it.isAvailable } || !fileDropHandler.isResultChannelAvailable()) {
             scheduleRecoveryFromMissingCallbacks()
         }
-        if (rendererHeartbeatQuery.isAvailable && OpenCodeSettingsState.getInstance().recoverStalledRenderer) {
+        if (
+            rendererHeartbeatQuery.isAvailable &&
+                OpenCodeSettingsState.getInstance().recoverStalledRenderer
+        ) {
             rendererWatchdog.start()
         }
         runCatching { browser.jbCefClient.removeRequestHandler(requestHandler, browser.cefBrowser) }
@@ -967,7 +1163,8 @@ internal class OpenCodeWebToolWindowContent(
     private fun scheduleRecoveryFromMissingCallbacks() {
         val now = System.currentTimeMillis()
         if (!OpenCodePanelRecoveryPolicy.shouldRecreatePanel(lastCallbackRecoveryAtMillis, now)) {
-            thisLogger().warn("OpenCode panel callbacks are unavailable; keeping the degraded panel")
+            thisLogger()
+                .warn("OpenCode panel callbacks are unavailable; keeping the degraded panel")
             return
         }
         lastCallbackRecoveryAtMillis = now
@@ -980,11 +1177,10 @@ internal class OpenCodeWebToolWindowContent(
 
     /**
      * JCEF OSR can leave stale pixels after large in-page layout changes. Triggered from
-     * `onAddressChange` for SPA route changes and from the JVM event stream for
-     * permission/question sections (show and dismiss). Uses a compositor hint plus an
-     * in-page 1px translate — never a host bounds change, which reallocates the OSR
-     * surface and flashes on Windows. Retried after the SPA finishes painting.
-     * May be called from any thread.
+     * `onAddressChange` for SPA route changes and from the JVM event stream for permission/question
+     * sections (show and dismiss). Uses a compositor hint plus an in-page 1px translate — never a
+     * host bounds change, which reallocates the OSR surface and flashes on Windows. Retried after
+     * the SPA finishes painting. May be called from any thread.
      */
     private fun scheduleBrowserRepaintNudges() {
         if (isContentDisposed() || repaintAlarm.isDisposed) return
@@ -996,7 +1192,10 @@ internal class OpenCodeWebToolWindowContent(
         repaintScheduler.scheduleAction(early = true, shouldRun = { !isContentDisposed() }) {
             nudgeBrowserRaster(nudgedAtUrl, rootUrl)
         }
-        repaintScheduler.scheduleAt(VIEWPORT_RASTER_NUDGE_RETRY_MILLIS, shouldRun = { !isContentDisposed() }) {
+        repaintScheduler.scheduleAt(
+            VIEWPORT_RASTER_NUDGE_RETRY_MILLIS,
+            shouldRun = { !isContentDisposed() },
+        ) {
             nudgeBrowserRaster(nudgedAtUrl, rootUrl)
         }
     }
@@ -1029,14 +1228,19 @@ internal class OpenCodeWebToolWindowContent(
         // Null when the page-to-JVM channel could not be created (see OpenCodeJsQuery): the text
         // batch is still dispatched, the page just cannot acknowledge it.
         val resultCallback = chatInputResultQuery.inject("batchId + '\\n' + (accepted ? '1' : '0')")
-        val script = OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(
-            emptyList(),
-            textPlain = listOf(delivery.batch.text),
-            enabled = true,
-            batchId = delivery.attemptID,
-            resultCallback = resultCallback,
-        ) ?: return false
-        browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
+        val script =
+            OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(
+                emptyList(),
+                textPlain = listOf(delivery.batch.text),
+                enabled = true,
+                batchId = delivery.attemptID,
+                resultCallback = resultCallback,
+            ) ?: return false
+        browser.cefBrowser.executeJavaScript(
+            script,
+            OpenCodeServerProtocol.buildServerRootUrl(serverUrl),
+            0,
+        )
         val service = OpenCodeChatInputService.getInstance(project)
         if (resultCallback != null) {
             addAlarmRequest(openProjectAlarm, CHAT_INPUT_ACK_TIMEOUT_MILLIS) {
@@ -1048,15 +1252,18 @@ internal class OpenCodeWebToolWindowContent(
         return true
     }
 
-    private fun scheduleFlushPendingChatInput(delayMillis: Int = PENDING_CHAT_INPUT_FLUSH_DELAY_MILLIS) {
+    private fun scheduleFlushPendingChatInput(
+        delayMillis: Int = PENDING_CHAT_INPUT_FLUSH_DELAY_MILLIS
+    ) {
         val service = OpenCodeChatInputService.getInstance(project)
-        addAlarmRequest(openProjectAlarm, delayMillis) {
-            service.dispatchPending()
-        }
+        addAlarmRequest(openProjectAlarm, delayMillis) { service.dispatchPending() }
     }
 
-    override val component: JComponent get() = contentPanel
-    override val preferredFocus: JComponent get() = browser.component
+    override val component: JComponent
+        get() = contentPanel
+
+    override val preferredFocus: JComponent
+        get() = browser.component
 
     override fun onHostChanged() {
         if (isContentDisposed()) return
@@ -1065,41 +1272,51 @@ internal class OpenCodeWebToolWindowContent(
         systemNotifications.browserAddressChanged()
     }
 
-    private fun updateLifecycleIndicator(state: OpenCodeServerLifecycleState = serverManager.getLifecycleState()) {
+    private fun updateLifecycleIndicator(
+        state: OpenCodeServerLifecycleState = serverManager.getLifecycleState()
+    ) {
         if (state != OpenCodeServerLifecycleState.RUNNING) {
             resetAgentStatusTracking()
         }
         val sbx = serverManager as? SbxOpenCodeServerBackend
-        val starting = state == OpenCodeServerLifecycleState.STARTING ||
-            state == OpenCodeServerLifecycleState.RESTARTING
+        val starting =
+            state == OpenCodeServerLifecycleState.STARTING ||
+                state == OpenCodeServerLifecycleState.RESTARTING
         val progress = serverManager.getStartupProgress()
         val logAvailable = OpenCodeSettingsState.getInstance().enableServerLogs
         if (starting || state == OpenCodeServerLifecycleState.STOPPED) {
-            idleCard.show(state, stage = sbx?.startupStage(), progress = progress, logAvailable = logAvailable)
+            idleCard.show(
+                state,
+                stage = sbx?.startupStage(),
+                progress = progress,
+                logAvailable = logAvailable,
+            )
             showCenterCard(IDLE_CARD)
         } else {
             idleCard.stopProgressAnimation()
         }
         val now = System.currentTimeMillis()
         val storedRecovery = lastPanelRecovery ?: sbx?.lastRecoveryNotice()
-        val recovery = visibleRecoveryNotice(
-            storedRecovery,
-            state,
-            openCodePagePainted,
-            pageLoadInProgress,
-            now,
-        )
+        val recovery =
+            visibleRecoveryNotice(
+                storedRecovery,
+                state,
+                openCodePagePainted,
+                pageLoadInProgress,
+                now,
+            )
         if (storedRecovery != null && recovery == null) lastPanelRecovery = null
-        val model = OpenCodeLifecycleStripModel(
-            state = state,
-            pageOpening = shouldShowPageOpeningStatus(pageLoadInProgress, openCodePagePainted),
-            cancelled = sbx?.lastFailure() == SbxFailureKind.CANCELLED,
-            stage = progress?.stage ?: sbx?.startupStage(),
-            elapsedMillis = if (starting) progress?.elapsedMillis else null,
-            recovery = recovery,
-            progress = if (starting) progress else null,
-            logAvailable = logAvailable,
-        )
+        val model =
+            OpenCodeLifecycleStripModel(
+                state = state,
+                pageOpening = shouldShowPageOpeningStatus(pageLoadInProgress, openCodePagePainted),
+                cancelled = sbx?.lastFailure() == SbxFailureKind.CANCELLED,
+                stage = progress?.stage ?: sbx?.startupStage(),
+                elapsedMillis = if (starting) progress?.elapsedMillis else null,
+                recovery = recovery,
+                progress = if (starting) progress else null,
+                logAvailable = logAvailable,
+            )
         val relayout = lifecycleStatusPanel.update(model, now)
         stripTickAlarm.cancelAllRequests()
         if (shouldTickLifecycleStrip(model)) {
@@ -1135,52 +1352,59 @@ internal class OpenCodeWebToolWindowContent(
             if (!isContentDisposed()) host.updateHeading()
         }
         warnIfSandboxCreateIsStale()
-        val group = NotificationGroupManager.getInstance()
-            .getNotificationGroup(OpenCodeServerProtocol.NOTIFICATION_GROUP_ID)
-            ?: return
+        val group =
+            NotificationGroupManager.getInstance()
+                .getNotificationGroup(OpenCodeServerProtocol.NOTIFICATION_GROUP_ID) ?: return
         val installedVersion = serverManager.consumeUnsupportedServerVersionWarning()
         if (installedVersion != null) {
-            group.createNotification(
-                "OpenCode update required",
-                "OpenCode Web Panel requires OpenCode ${OpenCodeServerProtocol.MINIMUM_SUPPORTED_OPENCODE_VERSION} or later. " +
-                    "Installed version: ${StringUtil.escapeXmlEntities(installedVersion)}.",
-                NotificationType.WARNING,
-            ).notify(project)
+            group
+                .createNotification(
+                    "OpenCode update required",
+                    "OpenCode Web Panel requires OpenCode ${OpenCodeServerProtocol.MINIMUM_SUPPORTED_OPENCODE_VERSION} or later. " +
+                        "Installed version: ${StringUtil.escapeXmlEntities(installedVersion)}.",
+                    NotificationType.WARNING,
+                )
+                .notify(project)
         }
         if (!serverManager.consumeV2ProtocolWarning()) return
-        group.createNotification(
-            "Permission requests may not appear",
-            "This OpenCode version may not show permission requests in the IDE. " +
-                "Update the OpenCode Web Panel plugin when a matching release is available.",
-            NotificationType.WARNING,
-        ).notify(project)
+        group
+            .createNotification(
+                "Permission requests may not appear",
+                "This OpenCode version may not show permission requests in the IDE. " +
+                    "Update the OpenCode Web Panel plugin when a matching release is available.",
+                NotificationType.WARNING,
+            )
+            .notify(project)
     }
 
     private fun warnIfSandboxCreateIsStale() {
         if (project.isDisposed) return
         val reasons = serverManager.consumeCreateStaleWarning()
         if (reasons.isEmpty()) return
-        val group = NotificationGroupManager.getInstance()
-            .getNotificationGroup(OpenCodeServerProtocol.NOTIFICATION_GROUP_ID)
-            ?: return
+        val group =
+            NotificationGroupManager.getInstance()
+                .getNotificationGroup(OpenCodeServerProtocol.NOTIFICATION_GROUP_ID) ?: return
         val detail = reasons.joinToString("; ")
-        val notification = group.createNotification(
-            "Sandbox settings need Reset",
-            "The running sandbox does not have: $detail. Restart keeps the old VM. " +
-                "Reset Sandbox applies current project settings and drops sessions in that VM.",
-            NotificationType.WARNING,
-        )
-        notification.addAction(object : NotificationAction("Reset Sandbox") {
-            override fun actionPerformed(
-                e: com.intellij.openapi.actionSystem.AnActionEvent,
-                notification: com.intellij.notification.Notification,
-            ) {
-                notification.expire()
-                if (project.isDisposed) return
-                if (!confirmOpenCodeSandboxReset(project)) return
-                requestOpenCodeSandboxReset(project)
+        val notification =
+            group.createNotification(
+                "Sandbox settings need Reset",
+                "The running sandbox does not have: $detail. Restart keeps the old VM. " +
+                    "Reset Sandbox applies current project settings and drops sessions in that VM.",
+                NotificationType.WARNING,
+            )
+        notification.addAction(
+            object : NotificationAction("Reset Sandbox") {
+                override fun actionPerformed(
+                    e: com.intellij.openapi.actionSystem.AnActionEvent,
+                    notification: com.intellij.notification.Notification,
+                ) {
+                    notification.expire()
+                    if (project.isDisposed) return
+                    if (!confirmOpenCodeSandboxReset(project)) return
+                    requestOpenCodeSandboxReset(project)
+                }
             }
-        })
+        )
         notification.notify(project)
     }
 
@@ -1229,17 +1453,18 @@ internal class OpenCodeWebToolWindowContent(
     }
 
     /**
-     * Reloads the embedded OpenCode web UI (the SPA) in place without touching the server,
-     * so a glitchy or stale page can be refreshed without interrupting sessions in this or any
-     * other project's panel. Falls back to a full load when nothing valid is currently shown (the
-     * server was down or the page was cleared to about:blank).
+     * Reloads the embedded OpenCode web UI (the SPA) in place without touching the server, so a
+     * glitchy or stale page can be refreshed without interrupting sessions in this or any other
+     * project's panel. Falls back to a full load when nothing valid is currently shown (the server
+     * was down or the page was cleared to about:blank).
      */
     fun reloadOpenCodePage() {
         if (isContentDisposed()) return
         val serverUrl = serverManager.getServerUrl()
-        if (serverUrl == null ||
-            loadedServerRootUrl == null ||
-            !OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)
+        if (
+            serverUrl == null ||
+                loadedServerRootUrl == null ||
+                !OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)
         ) {
             checkAndLoadContent()
             return
@@ -1256,10 +1481,10 @@ internal class OpenCodeWebToolWindowContent(
 
     /**
      * Escape hatch for corrupted OpenCode web state: clears the IDE-side mirrored localStorage
-     * snapshot and the page's local/session storage, then reloads. This is the recovery path for
-     * a bad persisted value — e.g. a mirrored snapshot that would otherwise be restored on every
-     * load, or a seeded project state the SPA can no longer read. The browser profile is shared
-     * by every project's panel, so the effect is application-wide by design.
+     * snapshot and the page's local/session storage, then reloads. This is the recovery path for a
+     * bad persisted value — e.g. a mirrored snapshot that would otherwise be restored on every
+     * load, or a seeded project state the SPA can no longer read. The browser profile is shared by
+     * every project's panel, so the effect is application-wide by design.
      */
     fun resetOpenCodeWebState() {
         if (isContentDisposed()) return
@@ -1276,9 +1501,9 @@ internal class OpenCodeWebToolWindowContent(
     }
 
     /**
-     * Reloads the OpenCode page after the server recovered without this panel's involvement,
-     * e.g. an automatic health-check restart or a restart initiated from another project window.
-     * Without this, the panel would stay on the idle card installed by [clearStaleBrowserPage].
+     * Reloads the OpenCode page after the server recovered without this panel's involvement, e.g.
+     * an automatic health-check restart or a restart initiated from another project window. Without
+     * this, the panel would stay on the idle card installed by [clearStaleBrowserPage].
      */
     private fun reloadContentAfterRecovery(state: OpenCodeServerLifecycleState) {
         if (state != OpenCodeServerLifecycleState.RUNNING) return
@@ -1289,8 +1514,8 @@ internal class OpenCodeWebToolWindowContent(
 
     /**
      * Handles a failed main-frame load of the OpenCode page (e.g. the server died between health
-     * checks and the browser shows a connection error). Verifies the server immediately: reloads
-     * on a transient failure, or triggers the regular restart recovery right away.
+     * checks and the browser shows a connection error). Verifies the server immediately: reloads on
+     * a transient failure, or triggers the regular restart recovery right away.
      */
     private fun recoverFromLoadError(reason: String) {
         if (!markBrowserRecoveryAttempt()) return
@@ -1304,8 +1529,8 @@ internal class OpenCodeWebToolWindowContent(
 
     /**
      * Recreates the panel after the JCEF renderer process crashed, which otherwise leaves a
-     * permanently blank panel. Throttled to avoid recreate loops on repeated crashes.
-     * Does not restart the server — Restart OpenCode Server is the heavier hammer.
+     * permanently blank panel. Throttled to avoid recreate loops on repeated crashes. Does not
+     * restart the server — Restart OpenCode Server is the heavier hammer.
      */
     private fun recoverFromRendererCrash() {
         ApplicationManager.getApplication().invokeLater {
@@ -1317,8 +1542,8 @@ internal class OpenCodeWebToolWindowContent(
     }
 
     /**
-     * Dispose this panel and install a fresh JCEF browser. Deferred so a message-bus
-     * handler is not disposing itself mid-delivery. Stop→Start must not call this.
+     * Dispose this panel and install a fresh JCEF browser. Deferred so a message-bus handler is not
+     * disposing itself mid-delivery. Stop→Start must not call this.
      */
     private fun schedulePanelReplacement() {
         if (isContentDisposed() || panelReplacementScheduled) return
@@ -1352,9 +1577,9 @@ internal class OpenCodeWebToolWindowContent(
     }
 
     /**
-     * Watchdog reload for a silently stalled page: plain CEF reload (never `loadHTML`), so no
-     * new resource-map entries accumulate and the shared profile stays the same. The in-place
-     * reload is the cheap first step before the watchdog escalates to a panel recreation.
+     * Watchdog reload for a silently stalled page: plain CEF reload (never `loadHTML`), so no new
+     * resource-map entries accumulate and the shared profile stays the same. The in-place reload is
+     * the cheap first step before the watchdog escalates to a panel recreation.
      */
     private fun reloadStalledOpenCodePage() {
         if (isContentDisposed()) return
@@ -1380,7 +1605,8 @@ internal class OpenCodeWebToolWindowContent(
 
     private fun markBrowserRecoveryAttempt(): Boolean {
         val now = System.currentTimeMillis()
-        if (now - lastBrowserRecoveryAttemptAtMillis < BROWSER_RECOVERY_THROTTLE_MILLIS) return false
+        if (now - lastBrowserRecoveryAttemptAtMillis < BROWSER_RECOVERY_THROTTLE_MILLIS)
+            return false
         lastBrowserRecoveryAttemptAtMillis = now
         return true
     }
@@ -1391,9 +1617,10 @@ internal class OpenCodeWebToolWindowContent(
         // Home, never a restored ses_ — OpenCode 2 404s missing ids as "cannot be found".
         // The id-less /server/<key>/session shell mounts chrome but leaves <main> empty.
         thisLogger().info("Loading OpenCode project page")
-        thisLogger().info(
-            "jcef loadProjectPage backend=${serverManager.backendId} server=$serverUrl current=${safeBrowserUrl()} created=$cefBrowserCreated queries=${allJsQueries().count { it.isAvailable }}/${allJsQueries().size}",
-        )
+        thisLogger()
+            .info(
+                "jcef loadProjectPage backend=${serverManager.backendId} server=$serverUrl current=${safeBrowserUrl()} created=$cefBrowserCreated queries=${allJsQueries().count { it.isAvailable }}/${allJsQueries().size}"
+            )
         openProjectScriptScheduled = false
         pageLoadTargetUrl = null
         // No pre-load script scheduling here: onLoadStart cancels the alarm and resets the
@@ -1421,7 +1648,13 @@ internal class OpenCodeWebToolWindowContent(
             // reloadIgnoreCache retries the dead document; a new port takes the loadURL path.
             val current = safeBrowserUrl()
             thisLogger().info("jcef navigate target=$url current=$current")
-            if (OpenCodeServerProtocol.isOpenCodeRouteAlreadyOpen(serverUrl, browser.cefBrowser.url, url)) {
+            if (
+                OpenCodeServerProtocol.isOpenCodeRouteAlreadyOpen(
+                    serverUrl,
+                    browser.cefBrowser.url,
+                    url,
+                )
+            ) {
                 browser.cefBrowser.reloadIgnoreCache()
             } else {
                 browser.loadURL(url)
@@ -1442,10 +1675,11 @@ internal class OpenCodeWebToolWindowContent(
                 }
             }
         }
-        val guarded = OpenCodeDocumentStartInjector.guardForOrigin(
-            script,
-            OpenCodeServerProtocol.buildServerRootUrl(serverUrl),
-        )
+        val guarded =
+            OpenCodeDocumentStartInjector.guardForOrigin(
+                script,
+                OpenCodeServerProtocol.buildServerRootUrl(serverUrl),
+            )
         return documentStartInjector.installAsync(guarded)
     }
 
@@ -1455,53 +1689,72 @@ internal class OpenCodeWebToolWindowContent(
         load: () -> Unit,
     ) {
         val generation = ++pendingBrowserLoadGeneration
-        val waitMillis = if (documentStartInjector.hasInstalledScript()) {
-            DOCUMENT_START_INSTALL_TIMEOUT_MILLIS
-        } else {
-            OpenCodePageLoadWatchdog.DOCUMENT_START_WAIT_BEFORE_LOAD_MILLIS
-        }
-        val timeout = CompletableFuture.supplyAsync(
-            { false },
-            CompletableFuture.delayedExecutor(waitMillis, TimeUnit.MILLISECONDS),
-        )
-        val install = runCatching { installDocumentStartScripts(serverUrl) }.getOrElse { error ->
-            thisLogger().info("Could not start OpenCode document-start install: ${error.message}")
-            CompletableFuture.completedFuture(false)
-        }
-        install.applyToEither(timeout) { it }.whenComplete { installed, error ->
-            if (error != null) {
-                thisLogger().info("OpenCode document-start install failed: ${error.message}")
-            } else if (!installed) {
-                thisLogger().info("OpenCode document-start script was unavailable; using onLoadStart fallback")
+        val waitMillis =
+            if (documentStartInjector.hasInstalledScript()) {
+                DOCUMENT_START_INSTALL_TIMEOUT_MILLIS
+            } else {
+                OpenCodePageLoadWatchdog.DOCUMENT_START_WAIT_BEFORE_LOAD_MILLIS
             }
-            ApplicationManager.getApplication().invokeLater {
-                if (isContentDisposed() || generation != pendingBrowserLoadGeneration) return@invokeLater
-                if (serverManager.getServerUrl() != serverUrl) return@invokeLater
-                if (cancelIfDocumentRevisionChanges != null &&
-                    (mainDocumentLoadRevision != cancelIfDocumentRevisionChanges || mainDocumentLoadSucceeded)
-                ) {
-                    return@invokeLater
-                }
-                val keepCurrent = OpenCodeDocumentStartInjector.shouldKeepCurrentPage(
-                    installed = installed == true,
-                    hasInstalledScript = documentStartInjector.hasInstalledScript(),
-                    currentPageIsOpenCode = OpenCodeServerProtocol.isOpenCodeServerPage(
-                        serverUrl,
-                        browser.cefBrowser.url,
-                    ),
-                )
-                if (keepCurrent) {
-                    thisLogger().warn("Keeping the current OpenCode page because its document-start script could not be replaced")
-                    pageLoadInProgress = false
-                    pageLoadStartedAtMillis = 0L
-                    pageLoadTargetUrl = null
-                    updateLifecycleIndicator()
-                    return@invokeLater
-                }
-                mainDocumentLoadSucceeded = false
-                load()
-            }
+        val timeout =
+            CompletableFuture.supplyAsync(
+                { false },
+                CompletableFuture.delayedExecutor(waitMillis, TimeUnit.MILLISECONDS),
+            )
+        val install = runCatching {
+            installDocumentStartScripts(serverUrl)
         }
+            .getOrElse { error ->
+                thisLogger()
+                    .info("Could not start OpenCode document-start install: ${error.message}")
+                CompletableFuture.completedFuture(false)
+            }
+        install
+            .applyToEither(timeout) { it }
+            .whenComplete { installed, error ->
+                if (error != null) {
+                    thisLogger().info("OpenCode document-start install failed: ${error.message}")
+                } else if (!installed) {
+                    thisLogger()
+                        .info(
+                            "OpenCode document-start script was unavailable; using onLoadStart fallback"
+                        )
+                }
+                ApplicationManager.getApplication().invokeLater {
+                    if (isContentDisposed() || generation != pendingBrowserLoadGeneration)
+                        return@invokeLater
+                    if (serverManager.getServerUrl() != serverUrl) return@invokeLater
+                    if (
+                        cancelIfDocumentRevisionChanges != null &&
+                            (mainDocumentLoadRevision != cancelIfDocumentRevisionChanges ||
+                                mainDocumentLoadSucceeded)
+                    ) {
+                        return@invokeLater
+                    }
+                    val keepCurrent =
+                        OpenCodeDocumentStartInjector.shouldKeepCurrentPage(
+                            installed = installed == true,
+                            hasInstalledScript = documentStartInjector.hasInstalledScript(),
+                            currentPageIsOpenCode =
+                                OpenCodeServerProtocol.isOpenCodeServerPage(
+                                    serverUrl,
+                                    browser.cefBrowser.url,
+                                ),
+                        )
+                    if (keepCurrent) {
+                        thisLogger()
+                            .warn(
+                                "Keeping the current OpenCode page because its document-start script could not be replaced"
+                            )
+                        pageLoadInProgress = false
+                        pageLoadStartedAtMillis = 0L
+                        pageLoadTargetUrl = null
+                        updateLifecycleIndicator()
+                        return@invokeLater
+                    }
+                    mainDocumentLoadSucceeded = false
+                    load()
+                }
+            }
     }
 
     private fun ensureCefBrowser() {
@@ -1514,9 +1767,10 @@ internal class OpenCodeWebToolWindowContent(
 
     override fun prepareBrowserForReplacement(): CompletableFuture<Unit> {
         cefBrowserCreated = true
-        thisLogger().info(
-            "jcef prepare replacement queries=${allJsQueries().count { it.isAvailable }}/${allJsQueries().size}",
-        )
+        thisLogger()
+            .info(
+                "jcef prepare replacement queries=${allJsQueries().count { it.isAvailable }}/${allJsQueries().size}"
+            )
         return createOpenCodeBrowserBeforeReplacement(browser).thenApply {
             documentStartInjector.markRendererReady()
             thisLogger().info("jcef replacement renderer ready url=${safeBrowserUrl()}")
@@ -1538,7 +1792,9 @@ internal class OpenCodeWebToolWindowContent(
         updateLifecycleIndicator()
     }
 
-    /** Hides the Opening strip without treating the document as loaded for the renderer watchdog. */
+    /**
+     * Hides the Opening strip without treating the document as loaded for the renderer watchdog.
+     */
     private fun dismissPageOpeningStatus(pageUrl: String?) {
         val serverUrl = serverManager.getServerUrl()
         if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, pageUrl)) return
@@ -1577,10 +1833,24 @@ internal class OpenCodeWebToolWindowContent(
         pageLoadWatchdogAlarm.cancelAllRequests()
         addAlarmRequest(pageLoadWatchdogAlarm, PAGE_LOAD_WATCHDOG_MILLIS) {
             if (token != pageLoadWatchdogGeneration) return@addAlarmRequest
-            val elapsed = if (pageLoadStartedAtMillis == 0L) 0L else System.currentTimeMillis() - pageLoadStartedAtMillis
-            if (!OpenCodePageLoadWatchdog.shouldRetry(mainDocumentLoadSucceeded, pageLoadRetryCount, elapsed)) {
-                if (!mainDocumentLoadSucceeded && pageLoadRetryCount >= OpenCodePageLoadWatchdog.MAX_RETRIES) {
-                    thisLogger().warn("OpenCode page failed to load after ${OpenCodePageLoadWatchdog.MAX_RETRIES} retries")
+            val elapsed =
+                if (pageLoadStartedAtMillis == 0L) 0L
+                else System.currentTimeMillis() - pageLoadStartedAtMillis
+            if (
+                !OpenCodePageLoadWatchdog.shouldRetry(
+                    mainDocumentLoadSucceeded,
+                    pageLoadRetryCount,
+                    elapsed,
+                )
+            ) {
+                if (
+                    !mainDocumentLoadSucceeded &&
+                        pageLoadRetryCount >= OpenCodePageLoadWatchdog.MAX_RETRIES
+                ) {
+                    thisLogger()
+                        .warn(
+                            "OpenCode page failed to load after ${OpenCodePageLoadWatchdog.MAX_RETRIES} retries"
+                        )
                     pageLoadInProgress = false
                     pageLoadGaveUp = true
                     pageLoadStartedAtMillis = 0L
@@ -1589,14 +1859,18 @@ internal class OpenCodeWebToolWindowContent(
                 return@addAlarmRequest
             }
             pageLoadRetryCount++
-            thisLogger().warn("OpenCode page load timed out; retrying ($pageLoadRetryCount/${OpenCodePageLoadWatchdog.MAX_RETRIES})")
+            thisLogger()
+                .warn(
+                    "OpenCode page load timed out; retrying ($pageLoadRetryCount/${OpenCodePageLoadWatchdog.MAX_RETRIES})"
+                )
             val liveUrl = serverManager.getServerUrl()
             if (liveUrl != serverUrl) return@addAlarmRequest
-            val target = OpenCodePageLoadWatchdog.retryTarget(
-                liveUrl,
-                pageLoadTargetUrl,
-                browser.cefBrowser.url,
-            )
+            val target =
+                OpenCodePageLoadWatchdog.retryTarget(
+                    liveUrl,
+                    pageLoadTargetUrl,
+                    browser.cefBrowser.url,
+                )
             val stalledDocumentRevision = mainDocumentLoadRevision
             beginPageLoad(target, resetRetryBudget = false)
             ensureCefBrowser()
@@ -1614,9 +1888,10 @@ internal class OpenCodeWebToolWindowContent(
     }
 
     private fun clearStaleBrowserPage(state: OpenCodeServerLifecycleState) {
-        if (state != OpenCodeServerLifecycleState.STOPPED &&
-            state != OpenCodeServerLifecycleState.FAILED &&
-            state != OpenCodeServerLifecycleState.RESTARTING
+        if (
+            state != OpenCodeServerLifecycleState.STOPPED &&
+                state != OpenCodeServerLifecycleState.FAILED &&
+                state != OpenCodeServerLifecycleState.RESTARTING
         ) {
             return
         }
@@ -1638,7 +1913,9 @@ internal class OpenCodeWebToolWindowContent(
         }
     }
 
-    private fun applyBrowserZoom(zoomPercent: Int = OpenCodeSettingsState.getInstance().uiZoomPercent) {
+    private fun applyBrowserZoom(
+        zoomPercent: Int = OpenCodeSettingsState.getInstance().uiZoomPercent
+    ) {
         val zoomPercent = OpenCodeSettingsState.sanitizeUiZoomPercent(zoomPercent)
         browser.cefBrowser.zoomLevel = OpenCodeServerProtocol.toCefZoomLevel(zoomPercent)
     }
@@ -1655,7 +1932,7 @@ internal class OpenCodeWebToolWindowContent(
         // profile last.
         return OpenCodeServerProtocol.isSameFilesystemPath(
             OpenCodeServerProtocol.routeDirectoryFromUrl(frameUrl),
-            projectDirectory
+            projectDirectory,
         )
     }
 
@@ -1681,7 +1958,8 @@ internal class OpenCodeWebToolWindowContent(
         val serverUrl = serverManager.getServerUrl() ?: return
         val projectDirectory = openCodeServerDirectory()?.takeIf { it.isNotBlank() } ?: return
         openProjectScriptScheduled = true
-        val script = OpenCodeBrowserSnippets.buildOpenProjectScript(projectDirectory, serverUrl) ?: return
+        val script =
+            OpenCodeBrowserSnippets.buildOpenProjectScript(projectDirectory, serverUrl) ?: return
         val rootUrl = OpenCodeServerProtocol.buildServerRootUrl(serverUrl)
         scriptScheduler.schedule(script, rootUrl) {
             if (!isBrowserOnOpenCodeServerPage(serverUrl)) return@schedule false
@@ -1693,12 +1971,12 @@ internal class OpenCodeWebToolWindowContent(
     }
 
     /**
-     * Injects [feature] from `onLoadStart`: executes the script immediately (before the SPA
-     * bundle runs) and retries on the early delay series in case the first attempt ran before
-     * the new document's V8 context was ready. The builder is re-invoked per attempt so it
-     * always reflects current IDE state. The open-project seed must be first: post-load injects
-     * alone race the SPA's first read of the shared browser profile and can leave the panel
-     * bound to another IDE project's workspace.
+     * Injects [feature] from `onLoadStart`: executes the script immediately (before the SPA bundle
+     * runs) and retries on the early delay series in case the first attempt ran before the new
+     * document's V8 context was ready. The builder is re-invoked per attempt so it always reflects
+     * current IDE state. The open-project seed must be first: post-load injects alone race the
+     * SPA's first read of the shared browser profile and can leave the panel bound to another IDE
+     * project's workspace.
      */
     private fun injectEarlyFeature(feature: EarlyInjectedFeature) {
         if (feature.scheduled) return
@@ -1712,7 +1990,9 @@ internal class OpenCodeWebToolWindowContent(
             early = true,
             shouldRun = { feature.enabledInSettings() && isBrowserOnOpenCodeServerPage(serverUrl) },
         ) {
-            feature.buildScript(serverUrl)?.let { browser.cefBrowser.executeJavaScript(it, rootUrl, 0) }
+            feature.buildScript(serverUrl)?.let {
+                browser.cefBrowser.executeJavaScript(it, rootUrl, 0)
+            }
         }
     }
 
@@ -1736,18 +2016,20 @@ internal class OpenCodeWebToolWindowContent(
     }
 
     /**
-     * Applies a runtime toggle of [feature]: injects the script when enabled, or reloads the
-     * page when disabled so previously installed listeners and patches are fully removed
-     * (per the safeguard contract, never a "disable" script).
+     * Applies a runtime toggle of [feature]: injects the script when enabled, or reloads the page
+     * when disabled so previously installed listeners and patches are fully removed (per the
+     * safeguard contract, never a "disable" script).
      */
     private fun applyFeature(feature: InjectedFeature, enabled: Boolean) {
         val serverUrl = serverManager.getServerUrl() ?: return
-        val decision = OpenCodeInjectedFeaturePolicy.decide(
-            enabled = enabled,
-            enabledInSettings = feature.enabledInSettings(),
-            onOpenCodePage = isBrowserOnOpenCodeServerPage(serverUrl),
-            script = if (enabled && feature.enabledInSettings()) feature.buildScript() else null,
-        )
+        val decision =
+            OpenCodeInjectedFeaturePolicy.decide(
+                enabled = enabled,
+                enabledInSettings = feature.enabledInSettings(),
+                onOpenCodePage = isBrowserOnOpenCodeServerPage(serverUrl),
+                script =
+                    if (enabled && feature.enabledInSettings()) feature.buildScript() else null,
+            )
         if (decision.clearScheduled) feature.scheduled = false
         when (decision.action) {
             OpenCodeInjectedFeaturePolicy.Action.NONE -> return
@@ -1759,7 +2041,11 @@ internal class OpenCodeWebToolWindowContent(
             }
             OpenCodeInjectedFeaturePolicy.Action.INJECT -> {
                 val script = decision.script ?: return
-                browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
+                browser.cefBrowser.executeJavaScript(
+                    script,
+                    OpenCodeServerProtocol.buildServerRootUrl(serverUrl),
+                    0,
+                )
                 if (decision.markScheduled) feature.scheduled = true
             }
         }
@@ -1769,7 +2055,10 @@ internal class OpenCodeWebToolWindowContent(
         if (!matchMediaPatchFeature.enabledInSettings()) return
         val serverUrl = serverManager.getServerUrl() ?: return
         scriptScheduler.scheduleAction(
-            shouldRun = { matchMediaPatchFeature.enabledInSettings() && isBrowserOnOpenCodeServerPage(serverUrl) },
+            shouldRun = {
+                matchMediaPatchFeature.enabledInSettings() &&
+                    isBrowserOnOpenCodeServerPage(serverUrl)
+            },
             action = { executeIdeThemeSyncScript(serverUrl) },
         )
     }
@@ -1784,7 +2073,8 @@ internal class OpenCodeWebToolWindowContent(
         ApplicationManager.getApplication().invokeLater {
             if (isContentDisposed()) return@invokeLater
             if (!OpenCodeSettingsState.getInstance().showAgentStatusBadge) return@invokeLater
-            if (!agentStatusTracker.isCurrentPresentation(state, presentationRevision)) return@invokeLater
+            if (!agentStatusTracker.isCurrentPresentation(state, presentationRevision))
+                return@invokeLater
             applyAgentStatusBadgeIcon(state)
         }
     }
@@ -1824,9 +2114,9 @@ internal class OpenCodeWebToolWindowContent(
     }
 
     /**
-     * Applies the mirrored page cursor to the whole browser component tree: in off-screen
-     * rendering the deepest Swing component under the pointer decides the visible cursor,
-     * and the platform may have left a stale cursor on it.
+     * Applies the mirrored page cursor to the whole browser component tree: in off-screen rendering
+     * the deepest Swing component under the pointer decides the visible cursor, and the platform
+     * may have left a stale cursor on it.
      */
     private fun resetMirroredBrowserCursor() {
         browserCursorEpoch.incrementAndGet()
@@ -1875,17 +2165,22 @@ internal class OpenCodeWebToolWindowContent(
     }
 
     private fun openCodeProjectDirectory(): String? {
-        val raw = OpenCodeProjectSettingsState.getInstance(project).effectiveOpenCodeDirectory(project.basePath)
-            ?: return null
+        val raw =
+            OpenCodeProjectSettingsState.getInstance(project)
+                .effectiveOpenCodeDirectory(project.basePath) ?: return null
         return OpenCodeServerProtocol.canonicalOpenCodeDirectory(raw) ?: raw
     }
 
     private fun sandboxWorkspaceDirectory(): String? {
-        return OpenCodeProjectSettingsState.getInstance(project).effectiveProjectDirectory(project.basePath)
+        return OpenCodeProjectSettingsState.getInstance(project)
+            .effectiveProjectDirectory(project.basePath)
     }
 
     private fun openCodeServerDirectory(): String? {
-        return OpenCodeHostPaths.serverDirectory(serverManager.backendId, openCodeProjectDirectory())
+        return OpenCodeHostPaths.serverDirectory(
+            serverManager.backendId,
+            openCodeProjectDirectory(),
+        )
     }
 
     /** Opens Chromium's built-in DevTools window for this panel's browser (JBCef built-in). */
@@ -1897,47 +2192,54 @@ internal class OpenCodeWebToolWindowContent(
 
     /**
      * The DevTools window is a separate browser without the panel's auth handlers, so its own
-     * server fetches (e.g. source maps) can trigger Chromium's basic-auth prompt. Authenticating
-     * it programmatically is a documented dead end — JPMS blocks the reflective browser lookup,
-     * out-of-process JCEF hides the DevTools browser from the JVM entirely, and auth-cache
-     * priming interfered with the app's own session — so instead tell the user which
-     * credentials to enter, with the password one click away.
+     * server fetches (e.g. source maps) can trigger Chromium's basic-auth prompt. Authenticating it
+     * programmatically is a documented dead end — JPMS blocks the reflective browser lookup,
+     * out-of-process JCEF hides the DevTools browser from the JVM entirely, and auth-cache priming
+     * interfered with the app's own session — so instead tell the user which credentials to enter,
+     * with the password one click away.
      */
     private fun notifyAboutDevToolsCredentials() {
         if (devToolsCredentialsNotified) return
-        val group = NotificationGroupManager.getInstance()
-            .getNotificationGroup(OpenCodeServerProtocol.NOTIFICATION_GROUP_ID)
-            ?: return
+        val group =
+            NotificationGroupManager.getInstance()
+                .getNotificationGroup(OpenCodeServerProtocol.NOTIFICATION_GROUP_ID) ?: return
         devToolsCredentialsNotified = true
-        val notification = group.createNotification(
-            "Browser DevTools sign-in",
-            "If DevTools asks you to sign in, use the username \"${OpenCodeServerProtocol.BASIC_AUTH_USERNAME}\" " +
-                "and the OpenCode server password.",
-            NotificationType.INFORMATION,
-        )
+        val notification =
+            group.createNotification(
+                "Browser DevTools sign-in",
+                "If DevTools asks you to sign in, use the username \"${OpenCodeServerProtocol.BASIC_AUTH_USERNAME}\" " +
+                    "and the OpenCode server password.",
+                NotificationType.INFORMATION,
+            )
         serverManager.getServerPassword()?.let { password ->
             notification.addAction(
                 NotificationAction.createSimple("Copy password") {
                     CopyPasteManager.getInstance().setContents(StringSelection(password))
-                },
+                }
             )
         }
         notification.addAction(
             NotificationAction.createSimple("Open settings") {
-                ShowSettingsUtil.getInstance().showSettingsDialog(project, OpenCodeSettingsConfigurable::class.java)
-            },
+                ShowSettingsUtil.getInstance()
+                    .showSettingsDialog(project, OpenCodeSettingsConfigurable::class.java)
+            }
         )
         notification.notify(project)
     }
 
     private fun executeIdeThemeSyncScript(serverUrl: String): Boolean {
         val settings = OpenCodeSettingsState.getInstance()
-        val script = OpenCodeBrowserSnippets.buildMatchMediaPatchScript(
-            compact = settings.forceCompactLayout,
-            theme = settings.syncThemeWithIde,
-            dark = isIdeDarkTheme(),
-        ) ?: return false
-        browser.cefBrowser.executeJavaScript(script, OpenCodeServerProtocol.buildServerRootUrl(serverUrl), 0)
+        val script =
+            OpenCodeBrowserSnippets.buildMatchMediaPatchScript(
+                compact = settings.forceCompactLayout,
+                theme = settings.syncThemeWithIde,
+                dark = isIdeDarkTheme(),
+            ) ?: return false
+        browser.cefBrowser.executeJavaScript(
+            script,
+            OpenCodeServerProtocol.buildServerRootUrl(serverUrl),
+            0,
+        )
         return true
     }
 
@@ -1965,7 +2267,8 @@ internal class OpenCodeWebToolWindowContent(
         val serverUrl = serverManager.getServerUrl() ?: return
         ApplicationManager.getApplication().invokeLater {
             if (isContentDisposed()) return@invokeLater
-            if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url)) return@invokeLater
+            if (!OpenCodeServerProtocol.isOpenCodeServerPage(serverUrl, browser.cefBrowser.url))
+                return@invokeLater
             browser.cefBrowser.executeJavaScript(
                 OpenCodeBrowserSnippets.buildForceEventReconnectScript(),
                 OpenCodeServerProtocol.buildServerRootUrl(serverUrl),
@@ -1989,9 +2292,9 @@ internal class OpenCodeWebToolWindowContent(
     }
 
     /**
-     * Applies a runtime toggle of an early-injected feature. Both directions reload the page:
-     * off so previously installed patches are fully removed (safeguard contract, never a
-     * "disable" script), on so the script runs before the SPA bundle on the next load start.
+     * Applies a runtime toggle of an early-injected feature. Both directions reload the page: off
+     * so previously installed patches are fully removed (safeguard contract, never a "disable"
+     * script), on so the script runs before the SPA bundle on the next load start.
      */
     private fun reloadForEarlyFeatureToggle(feature: EarlyInjectedFeature) {
         feature.scheduled = false
@@ -2007,17 +2310,23 @@ internal class OpenCodeWebToolWindowContent(
     }
 
     /**
-     * Applies a runtime toggle of the renderer watchdog: disabling stops the scheduler and
-     * reloads the page so the injected heartbeat is removed (safeguard contract); enabling
-     * restarts it on the current heartbeat stream.
+     * Applies a runtime toggle of the renderer watchdog: disabling stops the scheduler and reloads
+     * the page so the injected heartbeat is removed (safeguard contract); enabling restarts it on
+     * the current heartbeat stream.
      */
     private fun applyRendererWatchdog() {
-        if (OpenCodeSettingsState.getInstance().recoverStalledRenderer && rendererHeartbeatQuery.isAvailable) {
+        if (
+            OpenCodeSettingsState.getInstance().recoverStalledRenderer &&
+                rendererHeartbeatQuery.isAvailable
+        ) {
             rendererWatchdog.start()
         } else {
             rendererWatchdog.stop()
         }
-        applyFeature(rendererHeartbeatFeature, OpenCodeSettingsState.getInstance().recoverStalledRenderer)
+        applyFeature(
+            rendererHeartbeatFeature,
+            OpenCodeSettingsState.getInstance().recoverStalledRenderer,
+        )
     }
 
     private fun showErrorInBrowser() {
@@ -2034,50 +2343,53 @@ internal class OpenCodeWebToolWindowContent(
         val sbx = serverManager as? SbxOpenCodeServerBackend
         val failure = sbx?.lastFailure()
         val foreign = failure == SbxFailureKind.FOREIGN_SANDBOX
-        val recoveryAction = when (failure) {
-            SbxFailureKind.EXPOSURE_UNCONFIRMED -> OpenCodeStartupRecoveryAction(
-                "Allow and Start",
-                "Allow the host access listed above for this project's sandbox, then start it",
-            ) {
-                val exposure = sbx.pendingExposure()
-                if (confirmOpenCodeSandboxExposure(project, exposure)) {
-                    sbx.acknowledgeExposure(exposure)
-                    restartOpenCodeServer()
-                }
+        val recoveryAction =
+            when (failure) {
+                SbxFailureKind.EXPOSURE_UNCONFIRMED ->
+                    OpenCodeStartupRecoveryAction(
+                        "Allow and Start",
+                        "Allow the host access listed above for this project's sandbox, then start it",
+                    ) {
+                        val exposure = sbx.pendingExposure()
+                        if (confirmOpenCodeSandboxExposure(project, exposure)) {
+                            sbx.acknowledgeExposure(exposure)
+                            restartOpenCodeServer()
+                        }
+                    }
+                SbxFailureKind.RECREATE_REQUIRED ->
+                    OpenCodeStartupRecoveryAction(
+                        "Recreate Sandbox",
+                        "Remove this sandbox and create a new one from opencode-sbx.yaml",
+                    ) {
+                        if (confirmOpenCodeSandboxRecreate(project, sbx.pendingRecreateReasons())) {
+                            requestOpenCodeSandboxReset(project, dropGuestOpenCode = false)
+                        }
+                    }
+                else -> null
             }
-            SbxFailureKind.RECREATE_REQUIRED -> OpenCodeStartupRecoveryAction(
-                "Recreate Sandbox",
-                "Remove this sandbox and create a new one from opencode-sbx.yaml",
-            ) {
-                if (confirmOpenCodeSandboxRecreate(project, sbx.pendingRecreateReasons())) {
-                    requestOpenCodeSandboxReset(project, dropGuestOpenCode = false)
-                }
-            }
-            else -> null
-        }
         startupErrorPanel.showFailure(
             OpenCodeSettingsState.getInstance().executablePath(),
             serverManager.getServerLogFile(),
             offerAutomaticPort = serverManager.offersHostPortControls,
             failureMessage = serverManager.startFailureMessage(),
             recoveryAction = recoveryAction,
-            onAdoptForeign = if (foreign) {
-                {
-                    if (sbx.adoptForeignSandbox()) restartOpenCodeServer()
-                }
-            } else {
-                null
-            },
-            onCreateNewSandbox = if (foreign) {
-                {
-                    if (confirmDiscardForeignSandbox(project)) {
-                        sbx.discardForeignSandbox()
-                        restartOpenCodeServer()
+            onAdoptForeign =
+                if (foreign) {
+                    { if (sbx.adoptForeignSandbox()) restartOpenCodeServer() }
+                } else {
+                    null
+                },
+            onCreateNewSandbox =
+                if (foreign) {
+                    {
+                        if (confirmDiscardForeignSandbox(project)) {
+                            sbx.discardForeignSandbox()
+                            restartOpenCodeServer()
+                        }
                     }
-                }
-            } else {
-                null
-            },
+                } else {
+                    null
+                },
         )
         showCenterCard(ERROR_CARD)
     }
@@ -2103,15 +2415,17 @@ internal class OpenCodeWebToolWindowContent(
     internal fun backendId(): String = serverManager.backendId
 
     private fun panelBackendIsStale(): Boolean {
-        return OpenCodeServerBackendRegistry.getInstance().backendFor(project).backendId != serverManager.backendId
+        return OpenCodeServerBackendRegistry.getInstance().backendFor(project).backendId !=
+            serverManager.backendId
     }
 
     /**
      * Resolves the displayed session's lineage as soon as its route appears (full load or SPA
-     * navigation), so the Auto-Accept Permissions gear action reflects an inherited parent
-     * enable on the first menu open instead of only after the menu's own update kicked the
-     * async fetch. Safe to call from CEF handler threads: [prepareSession][OpenCodePermissionAutoResponder.prepareSession]
-     * only touches concurrent maps and hops to a pooled thread for the REST walk.
+     * navigation), so the Auto-Accept Permissions gear action reflects an inherited parent enable
+     * on the first menu open instead of only after the menu's own update kicked the async fetch.
+     * Safe to call from CEF handler threads:
+     * [prepareSession][OpenCodePermissionAutoResponder.prepareSession] only touches concurrent maps
+     * and hops to a pooled thread for the REST walk.
      */
     private fun loadDisplayedSession(sessionID: String): OpenCodeServerProtocol.SessionInfo? {
         val serverUrl = serverManager.getServerUrl() ?: return null
@@ -2138,14 +2452,15 @@ internal class OpenCodeWebToolWindowContent(
     private fun publishForeignSessionWarning(title: String, content: String) {
         if (isContentDisposed()) return
         foreignSessionNotification?.expire()
-        val group = NotificationGroupManager.getInstance()
-            .getNotificationGroup(OpenCodeServerProtocol.NOTIFICATION_GROUP_ID)
-            ?: return
-        val notification = group.createNotification(
-            title,
-            StringUtil.escapeXmlEntities(content),
-            NotificationType.WARNING,
-        )
+        val group =
+            NotificationGroupManager.getInstance()
+                .getNotificationGroup(OpenCodeServerProtocol.NOTIFICATION_GROUP_ID) ?: return
+        val notification =
+            group.createNotification(
+                title,
+                StringUtil.escapeXmlEntities(content),
+                NotificationType.WARNING,
+            )
         foreignSessionNotification = notification
         notification.notify(project)
     }
@@ -2175,11 +2490,12 @@ internal class OpenCodeWebToolWindowContent(
 
     private fun paintForeignSessionOutline(sessionID: String?) {
         if (isContentDisposed()) return
-        host.component.border = if (sessionID == null) {
-            null
-        } else {
-            BorderFactory.createLineBorder(Color(0xFF1744), 2)
-        }
+        host.component.border =
+            if (sessionID == null) {
+                null
+            } else {
+                BorderFactory.createLineBorder(Color(0xFF1744), 2)
+            }
         host.component.revalidate()
         host.component.repaint()
     }
@@ -2220,9 +2536,7 @@ internal class OpenCodeWebToolWindowContent(
     private fun addAlarmRequest(alarm: Alarm, delayMillis: Int, request: () -> Unit) {
         if (isContentDisposed() || alarm.isDisposed) return
         alarm.addRequest(
-            {
-                if (!isContentDisposed()) request()
-            },
+            { if (!isContentDisposed()) request() },
             delayMillis,
         )
     }

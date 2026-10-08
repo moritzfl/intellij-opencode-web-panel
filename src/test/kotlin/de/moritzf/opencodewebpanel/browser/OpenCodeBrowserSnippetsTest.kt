@@ -1,20 +1,26 @@
 package de.moritzf.opencodewebpanel.browser
 
+import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
+import de.moritzf.opencodewebpanel.server.OpenCodeWireProtocol
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
-import de.moritzf.opencodewebpanel.server.OpenCodeWireProtocol
 
 class OpenCodeBrowserSnippetsTest {
 
     @Test
     fun buildOpenProjectScriptSeedsProjectState() {
-        val script = OpenCodeBrowserSnippets.buildOpenProjectScript("/tmp/my 'project'", "http://127.0.0.1:60482/")!!
+        val script =
+            OpenCodeBrowserSnippets.buildOpenProjectScript(
+                "/tmp/my 'project'",
+                "http://127.0.0.1:60482/",
+            )!!
 
-        assertTrue(script.contains("if (window.location.origin !== 'http://127.0.0.1:60482') return;"))
+        assertTrue(
+            script.contains("if (window.location.origin !== 'http://127.0.0.1:60482') return;")
+        )
         assertTrue(script.contains("opencode.global.dat:server"))
         assertTrue(script.contains("state.projects[scope]"))
         assertTrue(script.contains("state.lastProject[scope] = directory"))
@@ -23,13 +29,17 @@ class OpenCodeBrowserSnippetsTest {
         assertTrue(script.contains("worktree: directory, expanded: true"))
         // Existing entries preserve position, collapse state, and unknown fields across re-seeds.
         assertTrue(script.contains("Object.assign"))
-        assertTrue(script.contains("typeof project.expanded === 'boolean' ? project.expanded : true"))
+        assertTrue(
+            script.contains("typeof project.expanded === 'boolean' ? project.expanded : true")
+        )
         assertTrue(script.contains("if (!found) nextProjects.unshift"))
         assertTrue(script.contains("if (nextRaw !== raw)"))
         // Foreign-schema guard: a root that parses but is not a plain object is treated as a
         // newer OpenCode schema and skipped (fail soft) instead of being replaced wholesale.
         assertTrue(script.contains("if (!parseFailed && parsed !== null && !isPlainObject)"))
-        assertTrue(script.contains("Skipping OpenCode project seed: unrecognized project-state schema"))
+        assertTrue(
+            script.contains("Skipping OpenCode project seed: unrecognized project-state schema")
+        )
         assertFalse(script.contains("state.list ="))
         assertTrue(script.contains("const sameWorktree = (left, right) =>"))
         assertTrue(script.contains("!sameWorktree(project.worktree, directory)"))
@@ -61,7 +71,8 @@ class OpenCodeBrowserSnippetsTest {
 
     @Test
     fun buildFileLinkHandlerScriptInterceptsLocalFileLinks() {
-        val script = OpenCodeBrowserSnippets.buildFileLinkHandlerScript("/tmp/project", enabled = true)!!
+        val script =
+            OpenCodeBrowserSnippets.buildFileLinkHandlerScript("/tmp/project", enabled = true)!!
 
         assertTrue(script.contains("window.__opencodeIntellijFileLinksInstalled"))
         assertTrue(script.contains("target.closest('a')"))
@@ -112,19 +123,28 @@ class OpenCodeBrowserSnippetsTest {
         assertTrue(script.contains("link.target !== '_blank'"))
         assertTrue(script.contains("decodeRouteDirectory"))
         assertTrue(script.contains("isOpenCodeAppRoute(href)"))
-        // Subagent/task cards link to /server/<key>/session/<id>; that must not be treated as a file path.
+        // Subagent/task cards link to /server/<key>/session/<id>; that must not be treated as a
+        // file path.
         assertTrue(script.contains("/server/"))
         assertTrue(script.contains("new-session"))
         assertTrue(script.contains("lastSegmentLooksLikeFile(href)"))
         assertTrue(script.contains("href.startsWith('/') && !href.startsWith('//')"))
-        assertTrue(script.indexOf("lastSegmentLooksLikeFile") < script.indexOf("explicitProtocol.test(href)"))
+        assertTrue(
+            script.indexOf("lastSegmentLooksLikeFile") <
+                script.indexOf("explicitProtocol.test(href)")
+        )
         assertTrue(script.contains("!href.includes('://')"))
-        assertTrue(script.contains("${OpenCodeServerProtocol.OPEN_FILE_LINK_SCHEME}://${OpenCodeServerProtocol.OPEN_FILE_LINK_HOST}"))
+        assertTrue(
+            script.contains(
+                "${OpenCodeServerProtocol.OPEN_FILE_LINK_SCHEME}://${OpenCodeServerProtocol.OPEN_FILE_LINK_HOST}"
+            )
+        )
     }
 
     @Test
     fun buildFileLinkHandlerScriptSupportsRedesignedReviewPanelPreviewHeader() {
-        val script = OpenCodeBrowserSnippets.buildFileLinkHandlerScript("/tmp/project", enabled = true)!!
+        val script =
+            OpenCodeBrowserSnippets.buildFileLinkHandlerScript("/tmp/project", enabled = true)!!
 
         // The redesigned (v2) review panel — shown on desktop when forceCompactLayout is off —
         // exposes the changed file only through its preview header spans, so the "open in IDE"
@@ -141,29 +161,37 @@ class OpenCodeBrowserSnippetsTest {
 
     @Test
     fun buildFileLinkHandlerScriptIsMissingWhenDisabled() {
-        assertNull(OpenCodeBrowserSnippets.buildFileLinkHandlerScript("/tmp/project", enabled = false))
+        assertNull(
+            OpenCodeBrowserSnippets.buildFileLinkHandlerScript("/tmp/project", enabled = false)
+        )
     }
 
     @Test
     fun buildFileLinkHandlerScriptCanUseDirectCallback() {
-        val script = OpenCodeBrowserSnippets.buildFileLinkHandlerScript(
-            "/tmp/project",
-            enabled = true,
-            openFileCallback = "window.intellijOpenFile(rawHref + '\\n' + directory)",
-        )!!
+        val script =
+            OpenCodeBrowserSnippets.buildFileLinkHandlerScript(
+                "/tmp/project",
+                enabled = true,
+                openFileCallback = "window.intellijOpenFile(rawHref + '\\n' + directory)",
+            )!!
 
         assertTrue(script.contains("window.intellijOpenFile(rawHref + '\\n' + directory)"))
         assertTrue(script.contains("Failed to forward file link to IntelliJ"))
-        assertTrue(script.contains("${OpenCodeServerProtocol.OPEN_FILE_LINK_SCHEME}://${OpenCodeServerProtocol.OPEN_FILE_LINK_HOST}"))
+        assertTrue(
+            script.contains(
+                "${OpenCodeServerProtocol.OPEN_FILE_LINK_SCHEME}://${OpenCodeServerProtocol.OPEN_FILE_LINK_HOST}"
+            )
+        )
         assertFalse(script.contains("window.location.assign(target)"))
     }
 
     @Test
     fun buildExternalLinkHandlerScriptInterceptsOnlyExternalHttpLinks() {
-        val script = OpenCodeBrowserSnippets.buildExternalLinkHandlerScript(
-            enabled = true,
-            openExternalCallback = "window.intellijOpenExternal(href)",
-        )!!
+        val script =
+            OpenCodeBrowserSnippets.buildExternalLinkHandlerScript(
+                enabled = true,
+                openExternalCallback = "window.intellijOpenExternal(href)",
+            )!!
 
         assertTrue(script.contains("window.__opencodeIntellijExternalLinksInstalled"))
         assertTrue(script.contains("event.target.closest('a')"))
@@ -178,12 +206,22 @@ class OpenCodeBrowserSnippetsTest {
 
     @Test
     fun buildExternalLinkHandlerScriptIsMissingWhenDisabled() {
-        assertNull(OpenCodeBrowserSnippets.buildExternalLinkHandlerScript(enabled = false, openExternalCallback = "callback(href)"))
+        assertNull(
+            OpenCodeBrowserSnippets.buildExternalLinkHandlerScript(
+                enabled = false,
+                openExternalCallback = "callback(href)",
+            )
+        )
     }
 
     @Test
     fun buildExternalLinkHandlerScriptIsMissingWithoutCallback() {
-        assertNull(OpenCodeBrowserSnippets.buildExternalLinkHandlerScript(enabled = true, openExternalCallback = null))
+        assertNull(
+            OpenCodeBrowserSnippets.buildExternalLinkHandlerScript(
+                enabled = true,
+                openExternalCallback = null,
+            )
+        )
     }
 
     @Test
@@ -194,9 +232,10 @@ class OpenCodeBrowserSnippetsTest {
 
     @Test
     fun buildRestoreOpenCodeLocalStorageScriptRestoresOpenCodeKeysOnlyWhenMissing() {
-        val script = OpenCodeBrowserSnippets.buildRestoreOpenCodeLocalStorageScript(
-            "{\"opencode.global.dat:language\":\"{\\\"locale\\\":\\\"de\\\"}\"}",
-        )!!
+        val script =
+            OpenCodeBrowserSnippets.buildRestoreOpenCodeLocalStorageScript(
+                "{\"opencode.global.dat:language\":\"{\\\"locale\\\":\\\"de\\\"}\"}"
+            )!!
 
         assertTrue(script.contains("opencode.global.dat:language"))
         assertTrue(script.contains(OpenCodeServerProtocol.OPEN_CODE_THEME_ID_STORAGE_KEY))
@@ -215,12 +254,17 @@ class OpenCodeBrowserSnippetsTest {
         assertTrue(script.contains("rewriteLoopbackServerRefs(current)"))
         assertTrue(script.contains("LOOPBACK_ORIGIN_RE"))
         // Still only-if-absent for snapshot inject; rewrite pass covers already-present keys.
-        assertTrue(script.contains("window.localStorage.setItem(key, rewriteLoopbackServerRefs(value))"))
+        assertTrue(
+            script.contains("window.localStorage.setItem(key, rewriteLoopbackServerRefs(value))")
+        )
     }
 
     @Test
     fun buildSyncOpenCodeLocalStorageScriptMirrorsOpenCodeKeys() {
-        val script = OpenCodeBrowserSnippets.buildSyncOpenCodeLocalStorageScript("window.intellijStore(payload)")!!
+        val script =
+            OpenCodeBrowserSnippets.buildSyncOpenCodeLocalStorageScript(
+                "window.intellijStore(payload)"
+            )!!
 
         assertTrue(script.contains("window.__opencodeIntellijLocalStorageSyncInstalled"))
         assertTrue(script.contains("Storage.prototype.setItem"))
@@ -246,7 +290,12 @@ class OpenCodeBrowserSnippetsTest {
         // first, and the mirror tail is try-caught so a bug in it can never break the SPA's
         // own storage operations.
         assertTrue(script.contains("const result = originalSetItem.apply(this, arguments);"))
-        assertEquals(3, Regex("""const result = original\w+\.apply\(this, arguments\);\s*\n\s*try \{""").findAll(script).count())
+        assertEquals(
+            3,
+            Regex("""const result = original\w+\.apply\(this, arguments\);\s*\n\s*try \{""")
+                .findAll(script)
+                .count(),
+        )
     }
 
     @Test
@@ -256,26 +305,34 @@ class OpenCodeBrowserSnippetsTest {
         assertTrue(script.contains("window.localStorage.clear()"))
         assertTrue(script.contains("window.sessionStorage.clear()"))
         // Each clear is individually guarded so a storage-access failure cannot abort the other.
-        assertEquals(2, Regex("""try \{ window\.\w+Storage\.clear\(\); \} catch \(_\) \{\}""").findAll(script).count())
+        assertEquals(
+            2,
+            Regex("""try \{ window\.\w+Storage\.clear\(\); \} catch \(_\) \{\}""")
+                .findAll(script)
+                .count(),
+        )
     }
 
     @Test
     fun buildDispatchDroppedFilesScriptCreatesBrowserDropEvent() {
-        val script = OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(
-            listOf(
-                OpenCodeServerProtocol.DroppedFilePayload(
-                    name = "hello 'world'.txt",
-                    mime = "text/plain",
-                    lastModified = 123,
-                    base64 = "aGVsbG8=",
-                ),
-            ),
-        )!!
+        val script =
+            OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(
+                listOf(
+                    OpenCodeServerProtocol.DroppedFilePayload(
+                        name = "hello 'world'.txt",
+                        mime = "text/plain",
+                        lastModified = 123,
+                        base64 = "aGVsbG8=",
+                    )
+                )
+            )!!
 
         assertTrue(script.contains("new DataTransfer()"))
         assertTrue(script.contains("new File([decode(entry.base64)], entry.name"))
         assertTrue(script.contains("[data-component=\"prompt-input\"][contenteditable=\"true\"]"))
-        assertTrue(script.contains("[data-component=\"composer-editor\"][contenteditable=\"true\"]"))
+        assertTrue(
+            script.contains("[data-component=\"composer-editor\"][contenteditable=\"true\"]")
+        )
         assertTrue(script.contains("const event = new DragEvent('drop'"))
         assertTrue(script.contains("return event.defaultPrevented"))
         assertTrue(script.contains("hello \\'world\\'.txt"))
@@ -286,12 +343,13 @@ class OpenCodeBrowserSnippetsTest {
 
     @Test
     fun buildDispatchDroppedFilesScriptFocusesPromptOnlyWhenRequested() {
-        val script = OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(
-            emptyList(),
-            textPlain = listOf("file:src/main/App.kt"),
-            enabled = true,
-            focusPrompt = true,
-        )!!
+        val script =
+            OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(
+                emptyList(),
+                textPlain = listOf("file:src/main/App.kt"),
+                enabled = true,
+                focusPrompt = true,
+            )!!
 
         assertTrue(script.contains("const focusPrompt = true"))
         assertTrue(script.contains("if (focusPrompt)"))
@@ -300,16 +358,17 @@ class OpenCodeBrowserSnippetsTest {
 
     @Test
     fun buildDispatchDroppedFilesScriptEscapesUnsafeCharactersInFileNames() {
-        val script = OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(
-            listOf(
-                OpenCodeServerProtocol.DroppedFilePayload(
-                    name = "a<b\u2028c\u2029d\u0000e",
-                    mime = "text/plain",
-                    lastModified = 1,
-                    base64 = "aGVsbG8=",
-                ),
-            ),
-        )!!
+        val script =
+            OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(
+                listOf(
+                    OpenCodeServerProtocol.DroppedFilePayload(
+                        name = "a<b\u2028c\u2029d\u0000e",
+                        mime = "text/plain",
+                        lastModified = 1,
+                        base64 = "aGVsbG8=",
+                    )
+                )
+            )!!
 
         assertTrue(script.contains("a\\u003Cb\\u2028c\\u2029d\\u0000e"))
         assertFalse(script.contains("a<b"))
@@ -319,11 +378,12 @@ class OpenCodeBrowserSnippetsTest {
 
     @Test
     fun buildDispatchDroppedFilesScriptCanForwardTextPlainDropData() {
-        val script = OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(
-            emptyList(),
-            textPlain = listOf("file:src/main/App.kt"),
-            enabled = true,
-        )!!
+        val script =
+            OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(
+                emptyList(),
+                textPlain = listOf("file:src/main/App.kt"),
+                enabled = true,
+            )!!
 
         assertTrue(script.contains("transfer.setData('text/plain', 'file:src/main/App.kt')"))
         assertTrue(script.contains("const event = new DragEvent('drop'"))
@@ -331,24 +391,34 @@ class OpenCodeBrowserSnippetsTest {
 
     @Test
     fun buildDispatchDroppedFilesScriptDispatchesTextPlainDropsSeparately() {
-        val script = OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(
-            emptyList(),
-            textPlain = listOf("file:CHANGELOG.md", "file:gradle.properties"),
-            enabled = true,
-        )!!
+        val script =
+            OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(
+                emptyList(),
+                textPlain = listOf("file:CHANGELOG.md", "file:gradle.properties"),
+                enabled = true,
+            )!!
 
-        assertTrue(script.contains("results.push(dispatchDrop((transfer) => transfer.setData('text/plain', 'file:CHANGELOG.md')))"))
-        assertTrue(script.contains("results.push(dispatchDrop((transfer) => transfer.setData('text/plain', 'file:gradle.properties')))"))
+        assertTrue(
+            script.contains(
+                "results.push(dispatchDrop((transfer) => transfer.setData('text/plain', 'file:CHANGELOG.md')))"
+            )
+        )
+        assertTrue(
+            script.contains(
+                "results.push(dispatchDrop((transfer) => transfer.setData('text/plain', 'file:gradle.properties')))"
+            )
+        )
     }
 
     @Test
     fun buildDispatchDroppedFilesScriptPastesGenericTextAndReportsAcceptance() {
-        val script = OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(
-            emptyList(),
-            textPlain = listOf("selected code"),
-            batchId = "chat-1",
-            resultCallback = "window.intellijResult(batchId, accepted)",
-        )!!
+        val script =
+            OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(
+                emptyList(),
+                textPlain = listOf("selected code"),
+                batchId = "chat-1",
+                resultCallback = "window.intellijResult(batchId, accepted)",
+            )!!
 
         assertTrue(script.contains("new ClipboardEvent('paste'"))
         assertTrue(script.contains("results.push(dispatchPaste('selected code'))"))
@@ -359,16 +429,21 @@ class OpenCodeBrowserSnippetsTest {
 
     @Test
     fun buildDispatchDroppedFilesScriptPastesMultilineSelectionBeginningWithFileReference() {
-        val selection = """file:src/main/App.kt
+        val selection =
+            """
+            |file:src/main/App.kt
             |src/main/App.kt lines 1-2:
             |```kotlin
             |fun main() = Unit
-            |```""".trimMargin()
+            |```
+            """
+                .trimMargin()
 
-        val script = OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(
-            emptyList(),
-            textPlain = listOf(selection),
-        )!!
+        val script =
+            OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(
+                emptyList(),
+                textPlain = listOf(selection),
+            )!!
 
         assertTrue(script.contains("results.push(dispatchPaste('file:src/main/App.kt\\n"))
         assertFalse(script.contains("transfer.setData('text/plain', 'file:src/main/App.kt\\n"))
@@ -377,7 +452,13 @@ class OpenCodeBrowserSnippetsTest {
     @Test
     fun buildDispatchDroppedFilesScriptIsMissingWithoutFiles() {
         assertNull(OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(emptyList()))
-        assertNull(OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(emptyList(), textPlain = emptyList(), enabled = true))
+        assertNull(
+            OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(
+                emptyList(),
+                textPlain = emptyList(),
+                enabled = true,
+            )
+        )
     }
 
     @Test
@@ -390,21 +471,32 @@ class OpenCodeBrowserSnippetsTest {
                         mime = "text/plain",
                         lastModified = 123,
                         base64 = "aGVsbG8=",
-                    ),
+                    )
                 ),
                 enabled = false,
-            ),
+            )
         )
     }
 
     @Test
     fun buildMatchMediaPatchScriptIsMissingWhenBothDisabled() {
-        assertNull(OpenCodeBrowserSnippets.buildMatchMediaPatchScript(compact = false, theme = false, dark = true))
+        assertNull(
+            OpenCodeBrowserSnippets.buildMatchMediaPatchScript(
+                compact = false,
+                theme = false,
+                dark = true,
+            )
+        )
     }
 
     @Test
     fun buildMatchMediaPatchScriptCombinesCompactAndThemeInOneWrapper() {
-        val script = OpenCodeBrowserSnippets.buildMatchMediaPatchScript(compact = true, theme = true, dark = true)!!
+        val script =
+            OpenCodeBrowserSnippets.buildMatchMediaPatchScript(
+                compact = true,
+                theme = true,
+                dark = true,
+            )!!
 
         assertEquals(1, Regex("window\\.matchMedia = ").findAll(script).count())
         assertTrue(script.contains("(min-width:768px)"))
@@ -470,38 +562,64 @@ class OpenCodeBrowserSnippetsTest {
         assertTrue(script.contains("home-session-row"))
         assertTrue(script.contains("home-session-project-name"))
         assertTrue(script.contains("opencode.global.dat:server"))
-        assertTrue(script.contains("const TAB_DELAY = ${OpenCodeBrowserSnippets.OPENCODE_TAB_POPOVER_OPEN_DELAY_MILLIS}"))
-        assertTrue(script.contains("const PREVIEW_DELAY = ${OpenCodeBrowserSnippets.PATH_HOVER_PREVIEW_DELAY_MILLIS}"))
+        assertTrue(
+            script.contains(
+                "const TAB_DELAY = ${OpenCodeBrowserSnippets.OPENCODE_TAB_POPOVER_OPEN_DELAY_MILLIS}"
+            )
+        )
+        assertTrue(
+            script.contains(
+                "const PREVIEW_DELAY = ${OpenCodeBrowserSnippets.PATH_HOVER_PREVIEW_DELAY_MILLIS}"
+            )
+        )
         assertTrue(script.contains("data-opencode-intellij-path-preview"))
         // Project-row order mapping must not apply to session rows. A session directory can be
         // a linked worktree; resolve it from data-session-id plus the SPA's own session list.
         assertTrue(script.contains("const PROJECT_ROW = '[data-component=\"home-project-row\"]'"))
         assertTrue(script.contains("const SESSION_ROW = '[data-component=\"home-session-row\"]'"))
-        assertTrue(script.contains("const SEARCH_ROW = '[data-component=\"home-session-search-row\"]'"))
-        assertTrue(script.contains(
-            "const HOVER_ROW = PROJECT_ROW + ', ' + SESSION_ROW + ', ' + SEARCH_ROW + ', ' + MOBILE_TABS_TRIGGER",
-        ))
+        assertTrue(
+            script.contains("const SEARCH_ROW = '[data-component=\"home-session-search-row\"]'")
+        )
+        assertTrue(
+            script.contains(
+                "const HOVER_ROW = PROJECT_ROW + ', ' + SESSION_ROW + ', ' + SEARCH_ROW + ', ' + MOBILE_TABS_TRIGGER"
+            )
+        )
         // CLI 2.x compact titlebar "Tabs" trigger: unlike the drawer rows (full tab items with
         // Kobalte popovers) it has no preview; resolve the current route session, never guess.
-        assertTrue(script.contains("const MOBILE_TABS_TRIGGER = '[data-slot=\"mobile-tabs-trigger\"]'"))
+        assertTrue(
+            script.contains("const MOBILE_TABS_TRIGGER = '[data-slot=\"mobile-tabs-trigger\"]'")
+        )
         assertTrue(script.contains("mobile-tab-title"))
         assertTrue(script.contains("mobileTriggerPreview"))
         assertTrue(script.contains("location.pathname.match(/\\/session\\/(ses_[^/]+)\\/?$/)"))
         // Drawer rows keep the session id in the tab link href; desktop strip rows stay native.
-        assertTrue(script.contains("const MOBILE_DRAWER_TAB = '[data-slot=\"mobile-drawer-content\"] [data-slot=\"titlebar-tab-item\"]'"))
+        assertTrue(
+            script.contains(
+                "const MOBILE_DRAWER_TAB = '[data-slot=\"mobile-drawer-content\"] [data-slot=\"titlebar-tab-item\"]'"
+            )
+        )
         assertTrue(script.contains("mobileDrawerTabPreview"))
         assertTrue(script.contains("row.querySelector('[data-slot=\"tab-link\"][href]')"))
         assertTrue(script.contains("href.match(/\\/session\\/(ses_[^/?#]+)/)"))
         assertTrue(script.contains("row.querySelector('[data-slot=\"tab-title\"]')"))
         // If a future OpenCode re-enables the native popover inside the drawer (trigger reports
         // data-open/data-expanded), the synthetic card must yield instead of stacking.
-        assertTrue(script.contains("nativeTrigger.hasAttribute('data-open') || nativeTrigger.hasAttribute('data-expanded')"))
+        assertTrue(
+            script.contains(
+                "nativeTrigger.hasAttribute('data-open') || nativeTrigger.hasAttribute('data-expanded')"
+            )
+        )
         // The drawer's stacking context covers a body-level card: stay fully above its top edge.
         assertTrue(script.contains("anchor.closest('[data-slot=\"mobile-drawer-content\"]')"))
         assertTrue(script.contains("drawerTop - size.height - 6"))
         // Search rows keep their trimmed title inside a wrapper (no row-level span) — fall back
         // to the cached session title, with timestamped defaults stripped like the SPA does.
-        assertTrue(script.contains("sessionTitleFromRow(row) || (cached ? displaySessionTitle(cached) : '')"))
+        assertTrue(
+            script.contains(
+                "sessionTitleFromRow(row) || (cached ? displaySessionTitle(cached) : '')"
+            )
+        )
         assertTrue(script.contains("if (!row.matches(PROJECT_ROW)) return ''"))
         assertTrue(script.contains("data-session-id"))
         assertTrue(script.contains("location.directory"))
@@ -525,14 +643,23 @@ class OpenCodeBrowserSnippetsTest {
     @Test
     fun buildEventStreamWatchdogScriptIsMissingWhenDisabled() {
         for (protocol in OpenCodeWireProtocol.entries) {
-            assertNull(OpenCodeBrowserSnippets.buildEventStreamWatchdogScript(enabled = false, wireProtocol = protocol))
+            assertNull(
+                OpenCodeBrowserSnippets.buildEventStreamWatchdogScript(
+                    enabled = false,
+                    wireProtocol = protocol,
+                )
+            )
         }
     }
 
     @Test
     fun buildEventStreamWatchdogScriptDefersOnlyToTheNativeCliV2Watchdog() {
         for (protocol in OpenCodeWireProtocol.entries) {
-            val script = OpenCodeBrowserSnippets.buildEventStreamWatchdogScript(enabled = true, wireProtocol = protocol)
+            val script =
+                OpenCodeBrowserSnippets.buildEventStreamWatchdogScript(
+                    enabled = true,
+                    wireProtocol = protocol,
+                )
             assertEquals(protocol == OpenCodeWireProtocol.V2_CLI, script == null)
         }
     }
@@ -600,10 +727,22 @@ class OpenCodeBrowserSnippetsTest {
         // Heartbeats arrive every 10s; a timeout at or below that would reconnect endlessly on
         // a perfectly healthy stream.
         val script = OpenCodeBrowserSnippets.buildEventStreamWatchdogScript(enabled = true)!!
-        assertTrue(script.contains("const STALL_MS = ${OpenCodeBrowserSnippets.EVENT_STREAM_STALL_TIMEOUT_MILLIS};"))
+        assertTrue(
+            script.contains(
+                "const STALL_MS = ${OpenCodeBrowserSnippets.EVENT_STREAM_STALL_TIMEOUT_MILLIS};"
+            )
+        )
 
-        val clamped = OpenCodeBrowserSnippets.buildEventStreamWatchdogScript(enabled = true, stallTimeoutMillis = 1_000)!!
-        assertTrue(clamped.contains("const STALL_MS = ${OpenCodeBrowserSnippets.MIN_EVENT_STREAM_STALL_TIMEOUT_MILLIS};"))
+        val clamped =
+            OpenCodeBrowserSnippets.buildEventStreamWatchdogScript(
+                enabled = true,
+                stallTimeoutMillis = 1_000,
+            )!!
+        assertTrue(
+            clamped.contains(
+                "const STALL_MS = ${OpenCodeBrowserSnippets.MIN_EVENT_STREAM_STALL_TIMEOUT_MILLIS};"
+            )
+        )
     }
 
     @Test
@@ -618,19 +757,34 @@ class OpenCodeBrowserSnippetsTest {
 
     @Test
     fun buildChunkLoadRecoveryScriptIsMissingWhenDisabled() {
-        assertNull(OpenCodeBrowserSnippets.buildChunkLoadRecoveryScript(enabled = false, fatalCallback = "report();"))
+        assertNull(
+            OpenCodeBrowserSnippets.buildChunkLoadRecoveryScript(
+                enabled = false,
+                fatalCallback = "report();",
+            )
+        )
     }
 
     @Test
     fun buildChunkLoadRecoveryScriptIsMissingWithoutACallbackChannel() {
         // The JCEF callback channel can fail to be created (out-of-process CEF on Windows);
         // the feature then injects nothing instead of shipping a broken reporter into the page.
-        assertNull(OpenCodeBrowserSnippets.buildChunkLoadRecoveryScript(enabled = true, fatalCallback = null))
+        assertNull(
+            OpenCodeBrowserSnippets.buildChunkLoadRecoveryScript(
+                enabled = true,
+                fatalCallback = null,
+            )
+        )
     }
 
     @Test
     fun buildRendererHeartbeatScriptIsMissingWhenDisabled() {
-        assertNull(OpenCodeBrowserSnippets.buildRendererHeartbeatScript(enabled = false, heartbeatCallback = "beat();"))
+        assertNull(
+            OpenCodeBrowserSnippets.buildRendererHeartbeatScript(
+                enabled = false,
+                heartbeatCallback = "beat();",
+            )
+        )
     }
 
     @Test
@@ -638,12 +792,21 @@ class OpenCodeBrowserSnippetsTest {
         // Without a JCEF callback channel (macOS/Windows out-of-process JCEF can refuse its
         // creation) the heartbeat is pointless — a silence-only watchdog would recover
         // spuriously. Inject nothing then.
-        assertNull(OpenCodeBrowserSnippets.buildRendererHeartbeatScript(enabled = true, heartbeatCallback = null))
+        assertNull(
+            OpenCodeBrowserSnippets.buildRendererHeartbeatScript(
+                enabled = true,
+                heartbeatCallback = null,
+            )
+        )
     }
 
     @Test
     fun buildRendererHeartbeatScriptIsIdempotentAndReportsVisibility() {
-        val script = OpenCodeBrowserSnippets.buildRendererHeartbeatScript(enabled = true, heartbeatCallback = "beat(visibility);")!!
+        val script =
+            OpenCodeBrowserSnippets.buildRendererHeartbeatScript(
+                enabled = true,
+                heartbeatCallback = "beat(visibility);",
+            )!!
 
         assertTrue(script.contains("window.__opencodeIntellijRendererHeartbeatInstalled"))
         assertTrue(script.contains("document.visibilityState"))
@@ -655,17 +818,26 @@ class OpenCodeBrowserSnippetsTest {
 
     @Test
     fun buildChunkLoadRecoveryScriptIsIdempotent() {
-        val script = OpenCodeBrowserSnippets.buildChunkLoadRecoveryScript(enabled = true, fatalCallback = "report();")!!
+        val script =
+            OpenCodeBrowserSnippets.buildChunkLoadRecoveryScript(
+                enabled = true,
+                fatalCallback = "report();",
+            )!!
 
         assertTrue(script.contains("window.__opencodeIntellijChunkRecoveryInstalled"))
     }
 
     @Test
     fun buildChunkLoadRecoveryScriptCoversScriptSrcAndImportFailures() {
-        val script = OpenCodeBrowserSnippets.buildChunkLoadRecoveryScript(enabled = true, fatalCallback = "report();")!!
+        val script =
+            OpenCodeBrowserSnippets.buildChunkLoadRecoveryScript(
+                enabled = true,
+                fatalCallback = "report();",
+            )!!
 
         // Module-script src failures surface as resource error events (event.target.src);
-        // import() failures surface as the "dynamically imported module" message the boundary shows.
+        // import() failures surface as the "dynamically imported module" message the boundary
+        // shows.
         // Solid's error boundary often catches the rejected lazy() promise, so the same engine
         // text is scanned from the error-page details field (textarea/input value).
         // Hidden JCEF does not run requestAnimationFrame; scans use setTimeout instead.
@@ -686,7 +858,11 @@ class OpenCodeBrowserSnippetsTest {
 
     @Test
     fun buildChunkLoadRecoveryScriptSignalsAtMostOncePerPage() {
-        val script = OpenCodeBrowserSnippets.buildChunkLoadRecoveryScript(enabled = true, fatalCallback = "report();")!!
+        val script =
+            OpenCodeBrowserSnippets.buildChunkLoadRecoveryScript(
+                enabled = true,
+                fatalCallback = "report();",
+            )!!
 
         // The boundary is terminal: after the first report the reload fixes the renderer, so a
         // second signal would only race another reload into the load the first one started.
@@ -744,8 +920,10 @@ class OpenCodeBrowserSnippetsTest {
 
     @Test
     fun buildIdeThemeSyncScriptPatchesMatchMediaForPrefersColorScheme() {
-        val darkScript = OpenCodeBrowserSnippets.buildIdeThemeSyncScript(enabled = true, dark = true)!!
-        val lightScript = OpenCodeBrowserSnippets.buildIdeThemeSyncScript(enabled = true, dark = false)!!
+        val darkScript =
+            OpenCodeBrowserSnippets.buildIdeThemeSyncScript(enabled = true, dark = true)!!
+        val lightScript =
+            OpenCodeBrowserSnippets.buildIdeThemeSyncScript(enabled = true, dark = false)!!
 
         assertTrue(darkScript.contains("(prefers-color-scheme: dark)"))
         assertTrue(darkScript.contains("const dark = true"))
@@ -770,14 +948,19 @@ class OpenCodeBrowserSnippetsTest {
 
     @Test
     fun buildProjectSwitchPromptSuppressionScriptIsMissingWhenDisabled() {
-        assertNull(OpenCodeBrowserSnippets.buildProjectSwitchPromptSuppressionScript(enabled = false))
+        assertNull(
+            OpenCodeBrowserSnippets.buildProjectSwitchPromptSuppressionScript(enabled = false)
+        )
     }
 
     @Test
     fun buildProjectSwitchPromptSuppressionScriptDismissesGoToSessionNotifications() {
-        val script = OpenCodeBrowserSnippets.buildProjectSwitchPromptSuppressionScript(enabled = true)!!
+        val script =
+            OpenCodeBrowserSnippets.buildProjectSwitchPromptSuppressionScript(enabled = true)!!
 
-        assertTrue(script.contains("window.__opencodeIntellijProjectSwitchPromptSuppressionInstalled"))
+        assertTrue(
+            script.contains("window.__opencodeIntellijProjectSwitchPromptSuppressionInstalled")
+        )
         assertTrue(script.contains("[data-component=\"toast\"], [data-component=\"toast-v2\"]"))
         // Locale-independent structural match: sprite icon names, not translated labels.
         // Both v1 and v2 sprite prefixes are covered so an icon-system migration stays matched.
@@ -788,7 +971,11 @@ class OpenCodeBrowserSnippetsTest {
         assertTrue(script.contains("[data-slot=\"toast-icon\"], [data-slot=\"toast-v2-icon\"]"))
         assertFalse(script.contains("Permission required"))
         assertFalse(script.contains("Go to session"))
-        assertTrue(script.contains("[data-slot=\"toast-close-button\"], [data-slot=\"toast-v2-close-button\"]"))
+        assertTrue(
+            script.contains(
+                "[data-slot=\"toast-close-button\"], [data-slot=\"toast-v2-close-button\"]"
+            )
+        )
         assertTrue(script.contains("new MutationObserver"))
         // Bounded blast radius: auto-dismissals are capped per page load, and hitting the cap
         // disconnects the observer (suppression off for this load) with a single warning.
@@ -800,16 +987,24 @@ class OpenCodeBrowserSnippetsTest {
 
     @Test
     fun buildCursorMirrorScriptIsMissingWhenDisabledOrIncomplete() {
-        assertNull(OpenCodeBrowserSnippets.buildCursorMirrorScript(enabled = false, cursorCallback = "cb(payload)"))
-        assertNull(OpenCodeBrowserSnippets.buildCursorMirrorScript(enabled = true, cursorCallback = null))
+        assertNull(
+            OpenCodeBrowserSnippets.buildCursorMirrorScript(
+                enabled = false,
+                cursorCallback = "cb(payload)",
+            )
+        )
+        assertNull(
+            OpenCodeBrowserSnippets.buildCursorMirrorScript(enabled = true, cursorCallback = null)
+        )
     }
 
     @Test
     fun buildCursorMirrorScriptTracksHoveredElementCursor() {
-        val script = OpenCodeBrowserSnippets.buildCursorMirrorScript(
-            enabled = true,
-            cursorCallback = "window.intellijCursor(payload)",
-        )!!
+        val script =
+            OpenCodeBrowserSnippets.buildCursorMirrorScript(
+                enabled = true,
+                cursorCallback = "window.intellijCursor(payload)",
+            )!!
 
         assertTrue(script.contains("window.__opencodeIntellijCursorMirrorInstalled"))
         assertTrue(script.contains("getComputedStyle(el).cursor"))
@@ -827,46 +1022,119 @@ class OpenCodeBrowserSnippetsTest {
 
     @Test
     fun awtCursorTypeCoversCommonCssCursors() {
-        assertEquals(java.awt.Cursor.DEFAULT_CURSOR, OpenCodeBrowserSnippets.awtCursorTypeForCss(null))
-        assertEquals(java.awt.Cursor.DEFAULT_CURSOR, OpenCodeBrowserSnippets.awtCursorTypeForCss("default"))
-        assertEquals(java.awt.Cursor.DEFAULT_CURSOR, OpenCodeBrowserSnippets.awtCursorTypeForCss("auto"))
-        assertEquals(java.awt.Cursor.HAND_CURSOR, OpenCodeBrowserSnippets.awtCursorTypeForCss("pointer"))
-        assertEquals(java.awt.Cursor.TEXT_CURSOR, OpenCodeBrowserSnippets.awtCursorTypeForCss("text"))
-        assertEquals(java.awt.Cursor.WAIT_CURSOR, OpenCodeBrowserSnippets.awtCursorTypeForCss("progress"))
-        assertEquals(java.awt.Cursor.S_RESIZE_CURSOR, OpenCodeBrowserSnippets.awtCursorTypeForCss("row-resize"))
-        assertEquals(java.awt.Cursor.S_RESIZE_CURSOR, OpenCodeBrowserSnippets.awtCursorTypeForCss("ns-resize"))
-        assertEquals(java.awt.Cursor.W_RESIZE_CURSOR, OpenCodeBrowserSnippets.awtCursorTypeForCss("col-resize"))
-        assertEquals(java.awt.Cursor.MOVE_CURSOR, OpenCodeBrowserSnippets.awtCursorTypeForCss("grabbing"))
+        assertEquals(
+            java.awt.Cursor.DEFAULT_CURSOR,
+            OpenCodeBrowserSnippets.awtCursorTypeForCss(null),
+        )
+        assertEquals(
+            java.awt.Cursor.DEFAULT_CURSOR,
+            OpenCodeBrowserSnippets.awtCursorTypeForCss("default"),
+        )
+        assertEquals(
+            java.awt.Cursor.DEFAULT_CURSOR,
+            OpenCodeBrowserSnippets.awtCursorTypeForCss("auto"),
+        )
+        assertEquals(
+            java.awt.Cursor.HAND_CURSOR,
+            OpenCodeBrowserSnippets.awtCursorTypeForCss("pointer"),
+        )
+        assertEquals(
+            java.awt.Cursor.TEXT_CURSOR,
+            OpenCodeBrowserSnippets.awtCursorTypeForCss("text"),
+        )
+        assertEquals(
+            java.awt.Cursor.WAIT_CURSOR,
+            OpenCodeBrowserSnippets.awtCursorTypeForCss("progress"),
+        )
+        assertEquals(
+            java.awt.Cursor.S_RESIZE_CURSOR,
+            OpenCodeBrowserSnippets.awtCursorTypeForCss("row-resize"),
+        )
+        assertEquals(
+            java.awt.Cursor.S_RESIZE_CURSOR,
+            OpenCodeBrowserSnippets.awtCursorTypeForCss("ns-resize"),
+        )
+        assertEquals(
+            java.awt.Cursor.W_RESIZE_CURSOR,
+            OpenCodeBrowserSnippets.awtCursorTypeForCss("col-resize"),
+        )
+        assertEquals(
+            java.awt.Cursor.MOVE_CURSOR,
+            OpenCodeBrowserSnippets.awtCursorTypeForCss("grabbing"),
+        )
         // Unknown keywords resolve to the default arrow; custom cursors use their keyword fallback.
-        assertEquals(java.awt.Cursor.DEFAULT_CURSOR, OpenCodeBrowserSnippets.awtCursorTypeForCss("zoom-in"))
-        assertEquals(java.awt.Cursor.HAND_CURSOR, OpenCodeBrowserSnippets.awtCursorTypeForCss("url(\"custom.png\") 4 4, pointer"))
-        assertEquals(java.awt.Cursor.DEFAULT_CURSOR, OpenCodeBrowserSnippets.awtCursorTypeForCss("URL(x.cur)"))
+        assertEquals(
+            java.awt.Cursor.DEFAULT_CURSOR,
+            OpenCodeBrowserSnippets.awtCursorTypeForCss("zoom-in"),
+        )
+        assertEquals(
+            java.awt.Cursor.HAND_CURSOR,
+            OpenCodeBrowserSnippets.awtCursorTypeForCss("url(\"custom.png\") 4 4, pointer"),
+        )
+        assertEquals(
+            java.awt.Cursor.DEFAULT_CURSOR,
+            OpenCodeBrowserSnippets.awtCursorTypeForCss("URL(x.cur)"),
+        )
     }
 
     @Test
     fun clipboardScriptsAreMissingWhenDisabled() {
-        assertNull(OpenCodeBrowserSnippets.buildCaptureClipboardPasteScript("paste-1", enabled = false))
-        assertNull(OpenCodeBrowserSnippets.buildClipboardPasteScript(emptyList(), "text", emptyList(), "paste-1", "callback(result)", enabled = false))
+        assertNull(
+            OpenCodeBrowserSnippets.buildCaptureClipboardPasteScript("paste-1", enabled = false)
+        )
+        assertNull(
+            OpenCodeBrowserSnippets.buildClipboardPasteScript(
+                emptyList(),
+                "text",
+                emptyList(),
+                "paste-1",
+                "callback(result)",
+                enabled = false,
+            )
+        )
     }
 
     @Test
     fun clipboardBridgeRequiresResultChannelForNativeFallback() {
-        assertNull(OpenCodeBrowserSnippets.buildClipboardPasteScript(emptyList(), "text", emptyList(), "paste-1", null, enabled = true))
+        assertNull(
+            OpenCodeBrowserSnippets.buildClipboardPasteScript(
+                emptyList(),
+                "text",
+                emptyList(),
+                "paste-1",
+                null,
+                enabled = true,
+            )
+        )
     }
 
     @Test
     fun buildCodeNavigationScriptIsMissingWhenDisabled() {
-        assertNull(OpenCodeBrowserSnippets.buildCodeNavigationScript(enabled = false, openCodeCallback = "callback(ref)"))
+        assertNull(
+            OpenCodeBrowserSnippets.buildCodeNavigationScript(
+                enabled = false,
+                openCodeCallback = "callback(ref)",
+            )
+        )
     }
 
     @Test
     fun buildCodeNavigationScriptIsMissingWithoutCallback() {
-        assertNull(OpenCodeBrowserSnippets.buildCodeNavigationScript(enabled = true, openCodeCallback = null))
+        assertNull(
+            OpenCodeBrowserSnippets.buildCodeNavigationScript(
+                enabled = true,
+                openCodeCallback = null,
+            )
+        )
     }
 
     @Test
     fun buildCodeNavigationScriptInstallsClickListenerOnCodeElements() {
-        val script = OpenCodeBrowserSnippets.buildCodeNavigationScript(enabled = true, openCodeCallback = "window.intellijOpenCodeRef(ref)")!!
+        val script =
+            OpenCodeBrowserSnippets.buildCodeNavigationScript(
+                enabled = true,
+                openCodeCallback = "window.intellijOpenCodeRef(ref)",
+            )!!
 
         assertTrue(script.contains("window.__opencodeIntellijCodeNavInstalled"))
         assertTrue(script.contains("event.target.closest('code')"))
@@ -910,11 +1178,12 @@ class OpenCodeBrowserSnippetsTest {
 
     @Test
     fun buildFileLinkHandlerScriptStopsAlreadyHandledClicks() {
-        val script = OpenCodeBrowserSnippets.buildFileLinkHandlerScript(
-            "/tmp/project",
-            enabled = true,
-            openFileCallback = "window.intellijOpenFile(rawHref)",
-        )!!
+        val script =
+            OpenCodeBrowserSnippets.buildFileLinkHandlerScript(
+                "/tmp/project",
+                enabled = true,
+                openFileCallback = "window.intellijOpenFile(rawHref)",
+            )!!
 
         assertTrue(script.contains("if (event.defaultPrevented) return"))
         assertTrue(script.contains("event.stopImmediatePropagation()"))
@@ -922,20 +1191,31 @@ class OpenCodeBrowserSnippetsTest {
 
     @Test
     fun buildDiffNavigationScriptIsMissingWhenDisabled() {
-        assertNull(OpenCodeBrowserSnippets.buildDiffNavigationScript(enabled = false, openDiffCallback = "cb(payload)"))
+        assertNull(
+            OpenCodeBrowserSnippets.buildDiffNavigationScript(
+                enabled = false,
+                openDiffCallback = "cb(payload)",
+            )
+        )
     }
 
     @Test
     fun buildDiffNavigationScriptIsMissingWithoutCallback() {
-        assertNull(OpenCodeBrowserSnippets.buildDiffNavigationScript(enabled = true, openDiffCallback = null))
+        assertNull(
+            OpenCodeBrowserSnippets.buildDiffNavigationScript(
+                enabled = true,
+                openDiffCallback = null,
+            )
+        )
     }
 
     @Test
     fun buildDiffNavigationScriptInstallsAltClickHandlerForDiffTargets() {
-        val script = OpenCodeBrowserSnippets.buildDiffNavigationScript(
-            enabled = true,
-            openDiffCallback = "window.__openDiff(messageID, filePath, partID)",
-        )!!
+        val script =
+            OpenCodeBrowserSnippets.buildDiffNavigationScript(
+                enabled = true,
+                openDiffCallback = "window.__openDiff(messageID, filePath, partID)",
+            )!!
         assertTrue(script.contains("event.altKey"))
         assertTrue(script.contains("isDiffGesture"))
         assertTrue(script.contains("event.metaKey"))
@@ -972,7 +1252,8 @@ class OpenCodeBrowserSnippetsTest {
 
     @Test
     fun fileLinkHandlerReservesDiffGesture() {
-        val script = OpenCodeBrowserSnippets.buildFileLinkHandlerScript("/tmp/project", enabled = true)!!
+        val script =
+            OpenCodeBrowserSnippets.buildFileLinkHandlerScript("/tmp/project", enabled = true)!!
         assertTrue(script.contains("event.altKey"))
         assertTrue(script.contains("event.metaKey"))
         assertTrue(script.contains("event.ctrlKey"))

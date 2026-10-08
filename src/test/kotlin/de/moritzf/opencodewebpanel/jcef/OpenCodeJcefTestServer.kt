@@ -6,8 +6,8 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.nio.charset.StandardCharsets
 import java.util.Base64
-import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -15,9 +15,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * Loopback HTTP stand-in for `opencode serve`: Basic auth on every route, a tiny HTML app,
- * and a `/global/event` SSE that can stall. Not OpenCode — enough to exercise JCEF + our
- * request/watchdog scripts the same way the panel talks to a real server.
+ * Loopback HTTP stand-in for `opencode serve`: Basic auth on every route, a tiny HTML app, and a
+ * `/global/event` SSE that can stall. Not OpenCode — enough to exercise JCEF + our request/watchdog
+ * scripts the same way the panel talks to a real server.
  */
 internal class OpenCodeJcefTestServer(
     private val username: String = "opencode",
@@ -39,7 +39,9 @@ internal class OpenCodeJcefTestServer(
     val port: Int = serverSocket.localPort
     val origin: String = "http://127.0.0.1:$port"
     val expectedAuthorization: String =
-        "Basic " + Base64.getEncoder().encodeToString("$username:$password".toByteArray(StandardCharsets.UTF_8))
+        "Basic " +
+            Base64.getEncoder()
+                .encodeToString("$username:$password".toByteArray(StandardCharsets.UTF_8))
 
     init {
         executor.execute {
@@ -70,10 +72,12 @@ internal class OpenCodeJcefTestServer(
             val requestLine = headers.lineSequence().firstOrNull().orEmpty()
             val path = requestLine.substringAfter(' ', "").substringBefore(' ').substringBefore('?')
             requestPaths.add(path)
-            val authorization = headers.lineSequence()
-                .firstOrNull { it.startsWith("Authorization:", ignoreCase = true) }
-                ?.substringAfter(':')
-                ?.trim()
+            val authorization =
+                headers
+                    .lineSequence()
+                    .firstOrNull { it.startsWith("Authorization:", ignoreCase = true) }
+                    ?.substringAfter(':')
+                    ?.trim()
             val output = client.getOutputStream()
             if (requireAuth && authorization != expectedAuthorization) {
                 unauthorizedCount.incrementAndGet()
@@ -92,7 +96,12 @@ internal class OpenCodeJcefTestServer(
                     writeResponse(output, 200, "application/javascript; charset=utf-8", APP_JS)
                 }
                 path == "/api/health" || path == "/global/health" -> {
-                    writeResponse(output, 200, "application/json", """{"healthy":true,"version":"1.18.10"}""")
+                    writeResponse(
+                        output,
+                        200,
+                        "application/json",
+                        """{"healthy":true,"version":"1.18.10"}""",
+                    )
                 }
                 else -> writeResponse(output, 404, "text/plain", "missing")
             }
@@ -104,7 +113,8 @@ internal class OpenCodeJcefTestServer(
             sleepWhileRunning(120_000)
             return
         }
-        val preamble = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nConnection: keep-alive\r\n\r\n"
+        val preamble =
+            "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nConnection: keep-alive\r\n\r\n"
         output.write(preamble.toByteArray(StandardCharsets.US_ASCII))
         output.flush()
         if (stallEventStream) {
@@ -120,7 +130,8 @@ internal class OpenCodeJcefTestServer(
     }
 
     private fun writeHeartbeat(output: OutputStream, index: Int) {
-        val payload = """{"directory":"/tmp","payload":{"id":"evt_$index","type":"server.heartbeat","properties":{}}}"""
+        val payload =
+            """{"directory":"/tmp","payload":{"id":"evt_$index","type":"server.heartbeat","properties":{}}}"""
         output.write("data: $payload\r\n\r\n".toByteArray(StandardCharsets.UTF_8))
         output.flush()
     }
@@ -135,12 +146,19 @@ internal class OpenCodeJcefTestServer(
         }
     }
 
-    private fun writeResponse(output: OutputStream, status: Int, contentType: String, body: String) {
+    private fun writeResponse(
+        output: OutputStream,
+        status: Int,
+        contentType: String,
+        body: String,
+    ) {
         val bytes = body.toByteArray(StandardCharsets.UTF_8)
         val reason = if (status == 200) "OK" else if (status == 401) "Unauthorized" else "Not Found"
-        val challenge = if (status == 401) "WWW-Authenticate: Basic realm=\"Secure Area\"\r\n" else ""
-        val header = "HTTP/1.1 $status $reason\r\n$challenge" +
-            "Content-Type: $contentType\r\nContent-Length: ${bytes.size}\r\nConnection: close\r\n\r\n"
+        val challenge =
+            if (status == 401) "WWW-Authenticate: Basic realm=\"Secure Area\"\r\n" else ""
+        val header =
+            "HTTP/1.1 $status $reason\r\n$challenge" +
+                "Content-Type: $contentType\r\nContent-Length: ${bytes.size}\r\nConnection: close\r\n\r\n"
         output.write(header.toByteArray(StandardCharsets.US_ASCII))
         output.write(bytes)
         output.flush()
@@ -169,20 +187,25 @@ internal class OpenCodeJcefTestServer(
         runCatching { serverSocket.close() }
         clients.forEach { runCatching { it.close() } }
         executor.shutdownNow()
-        check(executor.awaitTermination(5, TimeUnit.SECONDS)) { "JCEF test server workers did not stop" }
+        check(executor.awaitTermination(5, TimeUnit.SECONDS)) {
+            "JCEF test server workers did not stop"
+        }
     }
 
     companion object {
         const val MARKER_ID = "opencode-jcef-harness"
-        val APP_HTML = """
+        val APP_HTML =
+            """
             <!doctype html>
             <html><head><title>OpenCode</title></head>
             <body>
               <div id="$MARKER_ID">loading</div>
               <script src="/assets/app.js"></script>
             </body></html>
-        """.trimIndent()
-        val APP_JS = """
+        """
+                .trimIndent()
+        val APP_JS =
+            """
             window.__opencodeJcefLoaded = true;
             window.__opencodeJcefFetchIsFunction = typeof fetch === 'function';
             window.__opencodeJcefWatchdog = !!window.__opencodeIntellijEventWatchdogInstalled;
@@ -199,6 +222,7 @@ internal class OpenCodeJcefTestServer(
               };
               connect();
             }
-        """.trimIndent()
+        """
+                .trimIndent()
     }
 }

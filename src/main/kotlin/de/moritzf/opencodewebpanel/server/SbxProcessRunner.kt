@@ -19,10 +19,18 @@ internal data class SbxCommandResult(
 )
 
 internal fun interface SbxCommandRunner {
-    fun run(command: List<String>, env: Map<String, String>, timeoutMillis: Long, workingDirectory: Path?): SbxCommandResult
+    fun run(
+        command: List<String>,
+        env: Map<String, String>,
+        timeoutMillis: Long,
+        workingDirectory: Path?,
+    ): SbxCommandResult
 
-    fun run(command: List<String>, env: Map<String, String>, timeoutMillis: Long): SbxCommandResult =
-        run(command, env, timeoutMillis, null)
+    fun run(
+        command: List<String>,
+        env: Map<String, String>,
+        timeoutMillis: Long,
+    ): SbxCommandResult = run(command, env, timeoutMillis, null)
 
     fun run(
         command: List<String>,
@@ -61,40 +69,50 @@ internal object SbxProcessRunner : SbxCommandRunner {
         workingDirectory?.let { processBuilder.directory(it.toFile()) }
         processBuilder.environment()["PATH"] = OpenCodeServerProtocol.resolvePath()
         env.forEach { (key, value) -> processBuilder.environment()[key] = value }
-        val process = try {
-            processBuilder.start()
-        } catch (error: IOException) {
-            return SbxCommandResult(-1, error.message ?: error::class.java.simpleName)
-        }
+        val process =
+            try {
+                processBuilder.start()
+            } catch (error: IOException) {
+                return SbxCommandResult(-1, error.message ?: error::class.java.simpleName)
+            }
         // Drain the pipe concurrently: reading to EOF before waitFor makes the timeout ineffective.
         // Do not pass argv/env as the handler's diagnostic command line (they may contain secrets).
         val handler = CapturingProcessHandler(process, Charset.defaultCharset(), command.first())
         val combined = StringBuffer()
         val pendingStdout = StringBuilder()
         val pendingStderr = StringBuilder()
-        handler.addProcessListener(object : ProcessListener {
-            override fun onTextAvailable(event: ProcessEvent, outputType: Key<*>) {
-                if (outputType === ProcessOutputTypes.SYSTEM) return
-                val text = event.text.orEmpty()
-                combined.append(text)
-                val pending = if (outputType === ProcessOutputTypes.STDERR) pendingStderr else pendingStdout
-                synchronized(pending) { splitProcessOutputLines(pending, text, onOutputLine) }
+        handler.addProcessListener(
+            object : ProcessListener {
+                override fun onTextAvailable(event: ProcessEvent, outputType: Key<*>) {
+                    if (outputType === ProcessOutputTypes.SYSTEM) return
+                    val text = event.text.orEmpty()
+                    combined.append(text)
+                    val pending =
+                        if (outputType === ProcessOutputTypes.STDERR) pendingStderr
+                        else pendingStdout
+                    synchronized(pending) { splitProcessOutputLines(pending, text, onOutputLine) }
+                }
             }
-        })
+        )
         val timeout = timeoutMillis.coerceIn(1L, Int.MAX_VALUE.toLong()).toInt()
         val indicator = ProgressManager.getGlobalProgressIndicator()
-        val output = if (indicator != null) {
-            handler.runProcessWithProgressIndicator(indicator, timeout, true)
-        } else {
-            handler.runProcess(timeout, true)
-        }
+        val output =
+            if (indicator != null) {
+                handler.runProcessWithProgressIndicator(indicator, timeout, true)
+            } else {
+                handler.runProcess(timeout, true)
+            }
         synchronized(pendingStdout) { flushProcessOutputLines(pendingStdout, onOutputLine) }
         synchronized(pendingStderr) { flushProcessOutputLines(pendingStderr, onOutputLine) }
         if (output.isCancelled) {
             return SbxCommandResult(-1, "$combined\nCommand was cancelled", output.stdout)
         }
         if (output.isTimeout) {
-            return SbxCommandResult(-1, "$combined\nCommand timed out after ${timeoutMillis}ms", output.stdout)
+            return SbxCommandResult(
+                -1,
+                "$combined\nCommand timed out after ${timeoutMillis}ms",
+                output.stdout,
+            )
         }
         return SbxCommandResult(output.exitCode, combined.toString(), output.stdout)
     }
@@ -106,7 +124,11 @@ internal fun emitCapturedOutputLines(output: String, onOutputLine: (String) -> U
     flushProcessOutputLines(pending, onOutputLine)
 }
 
-internal fun splitProcessOutputLines(pending: StringBuilder, chunk: String, onOutputLine: (String) -> Unit) {
+internal fun splitProcessOutputLines(
+    pending: StringBuilder,
+    chunk: String,
+    onOutputLine: (String) -> Unit,
+) {
     pending.append(chunk)
     while (true) {
         val range = indexOfCliLineBreak(pending) ?: return
@@ -131,10 +153,9 @@ internal fun sanitizeCliOutputLine(raw: String): String {
 }
 
 /**
- * curl `-#` (OpenCode's non-TTY install fallback) redraws
- * `##                                                                      2.8%`
- * (hash count follows percent, so early ticks are only one or two `#`).
- * Empty [CliProgress.label] means bar/percent-only — not strip/indicator text.
+ * curl `-#` (OpenCode's non-TTY install fallback) redraws `## 2.8%` (hash count follows percent, so
+ * early ticks are only one or two `#`). Empty [CliProgress.label] means bar/percent-only — not
+ * strip/indicator text.
  */
 internal data class CliProgress(
     val label: String,
@@ -146,13 +167,15 @@ internal const val OPENCODE_DOWNLOAD_STAGE = "Downloading OpenCode…"
 internal fun parseCliProgress(line: String): CliProgress {
     val trimmed = line.trim()
     if (trimmed.isEmpty()) return CliProgress("")
-    val percent = TRAILING_PERCENT.find(trimmed)
-        ?.groupValues?.get(1)?.toDoubleOrNull()
-        ?.div(100.0)
-        ?.takeIf { it in 0.0..1.0 }
+    val percent =
+        TRAILING_PERCENT.find(trimmed)?.groupValues?.get(1)?.toDoubleOrNull()?.div(100.0)?.takeIf {
+            it in 0.0..1.0
+        }
     if (!HAS_LETTER.containsMatchIn(trimmed)) return CliProgress("", percent)
     val withoutHashes = WHITESPACE.replace(HASH_BAR.replace(trimmed, " "), " ").trim()
-    val label = if (withoutHashes.isEmpty() || !HAS_LETTER.containsMatchIn(withoutHashes)) "" else withoutHashes
+    val label =
+        if (withoutHashes.isEmpty() || !HAS_LETTER.containsMatchIn(withoutHashes)) ""
+        else withoutHashes
     return CliProgress(label, percent)
 }
 
@@ -206,12 +229,13 @@ private fun indexOfCsiFinalByte(text: CharSequence, from: Int): Int? {
 }
 
 private const val PROGRESS_CSI_FINALS = "DJKGH"
-private val ANSI_SEQUENCE = Regex(
-    "\u001B\\[[\\d;?=]*[ -/]*[@-~]|" +
-        "\u001B][^\\u0007\\u001B]*(?:\\u0007|\u001B\\\\)|" +
-        "\u001B[()].|" +
-        "\u001B[@-Z\\\\-_]",
-)
+private val ANSI_SEQUENCE =
+    Regex(
+        "\u001B\\[[\\d;?=]*[ -/]*[@-~]|" +
+            "\u001B][^\\u0007\\u001B]*(?:\\u0007|\u001B\\\\)|" +
+            "\u001B[()].|" +
+            "\u001B[@-Z\\\\-_]"
+    )
 private val ORPHAN_CSI = Regex("\\[(?:\\?\\d+[lh]|\\d+D|\\d*[JK](?![A-Za-z]))")
 private val SPINNER_ONLY = Regex("""^[|/\\-]+${'$'}""")
 private val WHITESPACE = Regex("\\s+")

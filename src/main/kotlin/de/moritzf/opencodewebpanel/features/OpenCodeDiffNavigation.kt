@@ -14,17 +14,17 @@ import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.jcef.JBCefBrowser
 import de.moritzf.opencodewebpanel.server.OpenCodeHostPaths
-import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.server.OpenCodeProtocolResult
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
+import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsState
 
 /**
- * Opens the IDE's native diff viewer for a diff target the user Ctrl/Cmd+Clicked or Alt+Clicked in the OpenCode page
- * (see `OpenCodeBrowserSnippets.buildDiffNavigationScript`). The page sends
- * `messageID\nfilePath\npartID` (each optional). Chat edit/write/patch uses `partID` (`prt_…`)
- * and the tool part's own patch; review/turn-summary uses `messageID` + `session.diff`.
- * Session id and directory are derived here.
+ * Opens the IDE's native diff viewer for a diff target the user Ctrl/Cmd+Clicked or Alt+Clicked in
+ * the OpenCode page (see `OpenCodeBrowserSnippets.buildDiffNavigationScript`). The page sends
+ * `messageID\nfilePath\npartID` (each optional). Chat edit/write/patch uses `partID` (`prt_…`) and
+ * the tool part's own patch; review/turn-summary uses `messageID` + `session.diff`. Session id and
+ * directory are derived here.
  */
 internal class OpenCodeDiffNavigation(
     private val project: Project,
@@ -42,35 +42,46 @@ internal class OpenCodeDiffNavigation(
         val serverUrl = serverManager.getServerUrl() ?: return
         val password = serverManager.getServerPassword() ?: return
         val directory = serverDirectory()?.takeIf { it.isNotBlank() } ?: return
-        val sessionID = if (vcsMode != null) {
-            null
-        } else {
-            OpenCodeServerProtocol.sessionIdFromUrl(browser.cefBrowser.url) ?: return
-        }
+        val sessionID =
+            if (vcsMode != null) {
+                null
+            } else {
+                OpenCodeServerProtocol.sessionIdFromUrl(browser.cefBrowser.url) ?: return
+            }
         val auth = OpenCodeServerProtocol.buildBasicAuthHeader(password)
 
         ApplicationManager.getApplication().executeOnPooledThread {
-            val diffs = loadDiffs(
-                serverUrl, auth, directory, sessionID, messageID, filePath, partID, vcsMode,
-            )
-                ?: run {
-                    ApplicationManager.getApplication().invokeLater {
-                        if (!project.isDisposed) notifyDiffLoadFailed()
+            val diffs =
+                loadDiffs(
+                    serverUrl,
+                    auth,
+                    directory,
+                    sessionID,
+                    messageID,
+                    filePath,
+                    partID,
+                    vcsMode,
+                )
+                    ?: run {
+                        ApplicationManager.getApplication().invokeLater {
+                            if (!project.isDisposed) notifyDiffLoadFailed()
+                        }
+                        return@executeOnPooledThread
                     }
-                    return@executeOnPooledThread
-                }
             val requests = diffs.mapNotNull(::buildDiffRequest)
             // Git status lists untracked files, but `git diff` omits them. Open the workspace
             // file instead of reporting that a visible Git change has no diff. A returned patch
             // that cannot be reconstructed is still a diff failure, not an untracked file.
-            val untrackedFile = workspaceFileFallback(vcsMode, filePath, diffs)
-                ?.let(::resolveHighlightFile)
-                ?.takeIf { it.isValid && !it.isDirectory }
+            val untrackedFile =
+                workspaceFileFallback(vcsMode, filePath, diffs)
+                    ?.let(::resolveHighlightFile)
+                    ?.takeIf { it.isValid && !it.isDirectory }
             ApplicationManager.getApplication().invokeLater {
                 if (project.isDisposed) return@invokeLater
                 when {
                     requests.isNotEmpty() -> showDiffRequests(requests)
-                    untrackedFile != null -> OpenFileDescriptor(project, untrackedFile).navigate(true)
+                    untrackedFile != null ->
+                        OpenFileDescriptor(project, untrackedFile).navigate(true)
                     else -> notifyNoDiff()
                 }
             }
@@ -89,33 +100,48 @@ internal class OpenCodeDiffNavigation(
     ): List<OpenCodeServerProtocol.SnapshotFileDiff>? {
         if (vcsMode != null) {
             if (filePath == null) return emptyList()
-            val result = OpenCodeServerProtocol.fetchVcsDiffResult(
-                serverUrl,
-                auth,
-                directory,
-                vcsMode,
-                wireProtocol = serverManager.getWireProtocol(),
-            )
+            val result =
+                OpenCodeServerProtocol.fetchVcsDiffResult(
+                    serverUrl,
+                    auth,
+                    directory,
+                    vcsMode,
+                    wireProtocol = serverManager.getWireProtocol(),
+                )
             if (result is OpenCodeProtocolResult.Failure) return null
             return selectDiffs((result as OpenCodeProtocolResult.Success).value, filePath)
         }
         if (sessionID == null) return emptyList()
         if (partID != null) {
-            val partResult = OpenCodeServerProtocol.fetchToolPartChange(
-                serverUrl,
-                auth,
-                directory,
-                sessionID,
-                partID,
-                wireProtocol = serverManager.getWireProtocol(),
-            )
+            val partResult =
+                OpenCodeServerProtocol.fetchToolPartChange(
+                    serverUrl,
+                    auth,
+                    directory,
+                    sessionID,
+                    partID,
+                    wireProtocol = serverManager.getWireProtocol(),
+                )
             if (partResult is OpenCodeProtocolResult.Failure) return null
             val change = (partResult as OpenCodeProtocolResult.Success).value
             if (change.diffs.isNotEmpty()) {
                 return resolvePartDiffs(change.diffs, filePath)
             }
             val hint = change.fileHint ?: return emptyList()
-            val snapshot = OpenCodeServerProtocol.fetchSessionDiffResult(
+            val snapshot =
+                OpenCodeServerProtocol.fetchSessionDiffResult(
+                    serverUrl,
+                    auth,
+                    directory,
+                    sessionID,
+                    messageID,
+                    wireProtocol = serverManager.getWireProtocol(),
+                )
+            if (snapshot is OpenCodeProtocolResult.Failure) return null
+            return selectDiffs((snapshot as OpenCodeProtocolResult.Success).value, hint)
+        }
+        val snapshot =
+            OpenCodeServerProtocol.fetchSessionDiffResult(
                 serverUrl,
                 auth,
                 directory,
@@ -123,17 +149,6 @@ internal class OpenCodeDiffNavigation(
                 messageID,
                 wireProtocol = serverManager.getWireProtocol(),
             )
-            if (snapshot is OpenCodeProtocolResult.Failure) return null
-            return selectDiffs((snapshot as OpenCodeProtocolResult.Success).value, hint)
-        }
-        val snapshot = OpenCodeServerProtocol.fetchSessionDiffResult(
-            serverUrl,
-            auth,
-            directory,
-            sessionID,
-            messageID,
-            wireProtocol = serverManager.getWireProtocol(),
-        )
         if (snapshot is OpenCodeProtocolResult.Failure) return null
         return selectDiffs((snapshot as OpenCodeProtocolResult.Success).value, filePath)
     }
@@ -167,7 +182,9 @@ internal class OpenCodeDiffNavigation(
             if (filePath == null) return diffs
             val exact = diffs.filter { pathsEqual(it.file, filePath, caseSensitive) }
             if (exact.isNotEmpty()) return exact
-            return listOfNotNull(diffs.singleOrNull { matchesFile(it.file, filePath, caseSensitive) })
+            return listOfNotNull(
+                diffs.singleOrNull { matchesFile(it.file, filePath, caseSensitive) }
+            )
         }
 
         /** Match a unique relative-path suffix after exact matches have been exhausted. */
@@ -197,16 +214,20 @@ internal class OpenCodeDiffNavigation(
 
     private fun resolveHighlightFile(filePath: String?): VirtualFile? {
         val directory = projectDirectory()?.takeIf { it.isNotBlank() } ?: return null
-        val target = OpenCodeServerProtocol.resolveFileLinkWithBases(
-            filePath,
-            listOf(directory),
-            guestToHostPrefixes = OpenCodeHostPaths.guestToHostPrefixes(
-                serverManager.backendId, directory,
-                OpenCodeProjectSettingsState.getInstance(project).effectiveProjectDirectory(project.basePath),
-            ),
-            home = OpenCodeHostPaths.pathHome(serverManager.backendId),
-            guessIncomplete = false,
-        ) ?: return null
+        val target =
+            OpenCodeServerProtocol.resolveFileLinkWithBases(
+                filePath,
+                listOf(directory),
+                guestToHostPrefixes =
+                    OpenCodeHostPaths.guestToHostPrefixes(
+                        serverManager.backendId,
+                        directory,
+                        OpenCodeProjectSettingsState.getInstance(project)
+                            .effectiveProjectDirectory(project.basePath),
+                    ),
+                home = OpenCodeHostPaths.pathHome(serverManager.backendId),
+                guessIncomplete = false,
+            ) ?: return null
         return LocalFileSystem.getInstance().refreshAndFindFileByNioFile(target.path)
     }
 

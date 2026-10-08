@@ -11,9 +11,9 @@ import de.moritzf.opencodewebpanel.server.objectMember
 import de.moritzf.opencodewebpanel.server.stringMember
 
 /**
- * Reduces OpenCode global events into the agent status shown on the tool-window badge:
- * [ATTENTION] while a permission or question awaits an answer, [BUSY] while any session
- * works, [IDLE] otherwise. Pure state holder; callers synchronize access.
+ * Reduces OpenCode global events into the agent status shown on the tool-window badge: [ATTENTION]
+ * while a permission or question awaits an answer, [BUSY] while any session works, [IDLE]
+ * otherwise. Pure state holder; callers synchronize access.
  */
 internal class OpenCodeAgentStatusState {
     companion object {
@@ -25,11 +25,12 @@ internal class OpenCodeAgentStatusState {
     private val busySessions = mutableSetOf<String>()
     private val attentionRequests = mutableSetOf<String>()
 
-    fun current(): String = when {
-        attentionRequests.isNotEmpty() -> ATTENTION
-        busySessions.isNotEmpty() -> BUSY
-        else -> IDLE
-    }
+    fun current(): String =
+        when {
+            attentionRequests.isNotEmpty() -> ATTENTION
+            busySessions.isNotEmpty() -> BUSY
+            else -> IDLE
+        }
 
     fun hasBusySessions(): Boolean = busySessions.isNotEmpty()
 
@@ -53,22 +54,29 @@ internal class OpenCodeAgentStatusState {
                 val statusType = properties.objectMember("status")?.stringMember("type")
                 if (sessionID.isBlank() || statusType == null) return false
                 when (statusType) {
-                    "busy", "retry" -> busySessions.add(sessionID)
+                    "busy",
+                    "retry" -> busySessions.add(sessionID)
                     "idle" -> busySessions.remove(sessionID)
                     else -> return false
                 }
             }
             // Deprecated predecessor of session.status; current servers emit both.
             "session.idle" -> {
-                val sessionID = properties.stringMember("sessionID")?.takeIf { it.isNotBlank() } ?: return false
+                val sessionID =
+                    properties.stringMember("sessionID")?.takeIf { it.isNotBlank() } ?: return false
                 busySessions.remove(sessionID)
             }
-            "permission.asked", "question.asked" -> {
-                val requestID = properties.stringMember("id")?.takeIf { it.isNotBlank() } ?: return false
+            "permission.asked",
+            "question.asked" -> {
+                val requestID =
+                    properties.stringMember("id")?.takeIf { it.isNotBlank() } ?: return false
                 attentionRequests.add(requestID)
             }
-            "permission.replied", "question.replied", "question.rejected" -> {
-                val requestID = properties.stringMember("requestID")?.takeIf { it.isNotBlank() } ?: return false
+            "permission.replied",
+            "question.replied",
+            "question.rejected" -> {
+                val requestID =
+                    properties.stringMember("requestID")?.takeIf { it.isNotBlank() } ?: return false
                 attentionRequests.remove(requestID)
             }
             else -> return false
@@ -84,12 +92,12 @@ internal class OpenCodeAgentStatusState {
 
 /**
  * Kotlin-side successor of the injected agent-status bridge script: subscribes to the JVM
- * `/global/event` stream, reduces the events of one project directory into an agent status,
- * and re-seeds from the REST API after each stream (re)connect. Runs independently of the
- * embedded page, so the badge stays correct while the page is loading or crashed.
+ * `/global/event` stream, reduces the events of one project directory into an agent status, and
+ * re-seeds from the REST API after each stream (re)connect. Runs independently of the embedded
+ * page, so the badge stays correct while the page is loading or crashed.
  *
- * [onStateChanged] fires only on actual transitions and may run on the stream reader thread
- * or a pooled thread; callers dispatch to the EDT themselves.
+ * [onStateChanged] fires only on actual transitions and may run on the stream reader thread or a
+ * pooled thread; callers dispatch to the EDT themselves.
  */
 internal class OpenCodeAgentStatusTracker(
     private val projectDirectory: () -> String?,
@@ -98,7 +106,8 @@ internal class OpenCodeAgentStatusTracker(
     private val serverUrl: () -> String?,
     private val serverPassword: () -> String?,
     private val serverGeneration: () -> Long,
-    private val loadSnapshot: (String, String, String, OpenCodeWireProtocol) -> OpenCodeAgentStatusSnapshot =
+    private val loadSnapshot:
+        (String, String, String, OpenCodeWireProtocol) -> OpenCodeAgentStatusSnapshot =
         ::loadAgentStatusSnapshot,
     private val executeAsync: ((() -> Unit) -> Unit) = { task ->
         ApplicationManager.getApplication().executeOnPooledThread(task)
@@ -134,18 +143,19 @@ internal class OpenCodeAgentStatusTracker(
         if (!enabled()) return
         val directory = projectDirectory() ?: return
         if (!OpenCodeServerProtocol.isSameFilesystemPath(event.directory, directory)) return
-        val transition = synchronized(lock) {
-            if (!state.applyEvent(event.type, event.properties)) return
-            stateRevision++
-            reportableTransition()
-        } ?: return
+        val transition =
+            synchronized(lock) {
+                if (!state.applyEvent(event.type, event.properties)) return
+                stateRevision++
+                reportableTransition()
+            } ?: return
         onStateChanged(transition.state, transition.revision)
     }
 
     /**
-     * Re-seeds the tracked state from the REST API on a pooled thread. Called on stream
-     * (re)connect and when a panel starts caring about the status (page load, badge toggle),
-     * because events that occurred before then never reached this tracker.
+     * Re-seeds the tracked state from the REST API on a pooled thread. Called on stream (re)connect
+     * and when a panel starts caring about the status (page load, badge toggle), because events
+     * that occurred before then never reached this tracker.
      */
     fun seed() {
         val epoch = synchronized(lock) { ++seedEpoch }
@@ -164,20 +174,22 @@ internal class OpenCodeAgentStatusTracker(
             val snapshot = loadSnapshot(serverUrl, authHeader, directory, wireProtocol())
             if (!seedIdentityIsCurrent(epoch, directory, serverUrl, generation)) return@executeAsync
             var retry = false
-            val transition = synchronized(lock) {
-                if (seedEpoch != epoch) {
-                    null
-                } else if (stateRevision != revisionAtRequest) {
-                    // Never overwrite event-derived state with an older snapshot. Retry a bounded
-                    // number of times; if events keep racing, retain the live state.
-                    retry = attempt < MAX_SEED_ATTEMPTS
-                    null
-                } else {
-                    state.seed(snapshot.busySessionIds, snapshot.pendingRequestIds)
-                    stateRevision++
-                    reportableTransition()
+            val transition =
+                synchronized(lock) {
+                    if (seedEpoch != epoch) {
+                        null
+                    } else if (stateRevision != revisionAtRequest) {
+                        // Never overwrite event-derived state with an older snapshot. Retry a
+                        // bounded
+                        // number of times; if events keep racing, retain the live state.
+                        retry = attempt < MAX_SEED_ATTEMPTS
+                        null
+                    } else {
+                        state.seed(snapshot.busySessionIds, snapshot.pendingRequestIds)
+                        stateRevision++
+                        reportableTransition()
+                    }
                 }
-            }
             if (retry) {
                 seed(attempt + 1, epoch)
                 return@executeAsync
@@ -188,9 +200,15 @@ internal class OpenCodeAgentStatusTracker(
         }
     }
 
-    private fun seedIdentityIsCurrent(epoch: Long, directory: String, url: String, generation: Long): Boolean {
+    private fun seedIdentityIsCurrent(
+        epoch: Long,
+        directory: String,
+        url: String,
+        generation: Long,
+    ): Boolean {
         if (!enabled() || serverGeneration() != generation || serverUrl() != url) return false
-        if (!OpenCodeServerProtocol.isSameFilesystemPath(projectDirectory(), directory)) return false
+        if (!OpenCodeServerProtocol.isSameFilesystemPath(projectDirectory(), directory))
+            return false
         return synchronized(lock) { seedEpoch == epoch }
     }
 
@@ -205,14 +223,19 @@ internal class OpenCodeAgentStatusTracker(
         }
     }
 
-    /** True while any session of this project is running a turn, even if a permission is pending. */
+    /**
+     * True while any session of this project is running a turn, even if a permission is pending.
+     */
     fun isBusy(): Boolean = synchronized(lock) { state.hasBusySessions() }
 
     fun currentState(): String = synchronized(lock) { state.current() }
 
-    internal fun isCurrentPresentation(state: String, revision: Long): Boolean = synchronized(lock) {
-        presentationRevision == revision && lastReportedState == state && this.state.current() == state
-    }
+    internal fun isCurrentPresentation(state: String, revision: Long): Boolean =
+        synchronized(lock) {
+            presentationRevision == revision &&
+                lastReportedState == state &&
+                this.state.current() == state
+        }
 
     private fun reportableTransition(): Transition? {
         val current = state.current()
@@ -233,19 +256,32 @@ private fun loadAgentStatusSnapshot(
     directory: String,
     wireProtocol: OpenCodeWireProtocol = OpenCodeWireProtocol.V1_18,
 ): OpenCodeAgentStatusSnapshot {
-    val permissions = OpenCodeServerProtocol.fetchPendingRequestIds(
-        serverUrl, authHeader, OpenCodeServerProtocol.PERMISSION_LIST_PATH, directory,
-        wireProtocol = wireProtocol,
-    )
-    val questions = OpenCodeServerProtocol.fetchPendingRequestIds(
-        serverUrl, authHeader, OpenCodeServerProtocol.QUESTION_LIST_PATH, directory,
-        wireProtocol = wireProtocol,
-    )
+    val permissions =
+        OpenCodeServerProtocol.fetchPendingRequestIds(
+            serverUrl,
+            authHeader,
+            OpenCodeServerProtocol.PERMISSION_LIST_PATH,
+            directory,
+            wireProtocol = wireProtocol,
+        )
+    val questions =
+        OpenCodeServerProtocol.fetchPendingRequestIds(
+            serverUrl,
+            authHeader,
+            OpenCodeServerProtocol.QUESTION_LIST_PATH,
+            directory,
+            wireProtocol = wireProtocol,
+        )
     return OpenCodeAgentStatusSnapshot(
-        busySessionIds = OpenCodeServerProtocol.fetchBusySessionIds(
-            serverUrl, authHeader, directory, wireProtocol = wireProtocol,
-        ),
+        busySessionIds =
+            OpenCodeServerProtocol.fetchBusySessionIds(
+                serverUrl,
+                authHeader,
+                directory,
+                wireProtocol = wireProtocol,
+            ),
         // The combined pending snapshot is authoritative only when both endpoint reads succeeded.
-        pendingRequestIds = if (permissions != null && questions != null) permissions + questions else null,
+        pendingRequestIds =
+            if (permissions != null && questions != null) permissions + questions else null,
     )
 }

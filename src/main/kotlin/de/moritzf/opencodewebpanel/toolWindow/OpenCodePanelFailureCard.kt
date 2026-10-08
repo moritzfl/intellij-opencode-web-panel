@@ -20,40 +20,45 @@ import javax.swing.SwingConstants
  * `createToolWindowContent` runs only once.
  */
 internal class OpenCodePanelFailureCard(onRetry: () -> Unit) {
-    private val iconLabel = JBLabel(AllIcons.General.Warning).apply {
-        alignmentX = Component.CENTER_ALIGNMENT
-        horizontalAlignment = SwingConstants.CENTER
-    }
-    private val titleLabel = JBLabel("The OpenCode panel could not be opened").apply {
-        font = JBFont.label().asBold().biggerOn(3f)
-        alignmentX = Component.CENTER_ALIGNMENT
-        horizontalAlignment = SwingConstants.CENTER
-    }
-    private val messageLabel = JBLabel("The embedded browser failed to start. Try again.").apply {
-        foreground = JBUI.CurrentTheme.ContextHelp.FOREGROUND
-        alignmentX = Component.CENTER_ALIGNMENT
-        horizontalAlignment = SwingConstants.CENTER
-    }
-    private val retryButton = JButton("Retry", AllIcons.Actions.Refresh).apply {
-        alignmentX = Component.CENTER_ALIGNMENT
-        addActionListener { onRetry() }
-    }
+    private val iconLabel =
+        JBLabel(AllIcons.General.Warning).apply {
+            alignmentX = Component.CENTER_ALIGNMENT
+            horizontalAlignment = SwingConstants.CENTER
+        }
+    private val titleLabel =
+        JBLabel("The OpenCode panel could not be opened").apply {
+            font = JBFont.label().asBold().biggerOn(3f)
+            alignmentX = Component.CENTER_ALIGNMENT
+            horizontalAlignment = SwingConstants.CENTER
+        }
+    private val messageLabel =
+        JBLabel("The embedded browser failed to start. Try again.").apply {
+            foreground = JBUI.CurrentTheme.ContextHelp.FOREGROUND
+            alignmentX = Component.CENTER_ALIGNMENT
+            horizontalAlignment = SwingConstants.CENTER
+        }
+    private val retryButton =
+        JButton("Retry", AllIcons.Actions.Refresh).apply {
+            alignmentX = Component.CENTER_ALIGNMENT
+            addActionListener { onRetry() }
+        }
 
-    val component = JPanel(GridBagLayout()).apply {
-        isOpaque = true
-        add(
-            JPanel().apply {
-                layout = BoxLayout(this, BoxLayout.Y_AXIS)
-                isOpaque = false
-                add(iconLabel)
-                add(Box.createVerticalStrut(JBUI.scale(16)))
-                add(titleLabel)
-                add(Box.createVerticalStrut(JBUI.scale(8)))
-                add(messageLabel)
-                add(Box.createVerticalStrut(JBUI.scale(16)))
-                add(retryButton)
-            },
-            GridBagConstraints(),
-        )
-    }
+    val component =
+        JPanel(GridBagLayout()).apply {
+            isOpaque = true
+            add(
+                JPanel().apply {
+                    layout = BoxLayout(this, BoxLayout.Y_AXIS)
+                    isOpaque = false
+                    add(iconLabel)
+                    add(Box.createVerticalStrut(JBUI.scale(16)))
+                    add(titleLabel)
+                    add(Box.createVerticalStrut(JBUI.scale(8)))
+                    add(messageLabel)
+                    add(Box.createVerticalStrut(JBUI.scale(16)))
+                    add(retryButton)
+                },
+                GridBagConstraints(),
+            )
+        }
 }

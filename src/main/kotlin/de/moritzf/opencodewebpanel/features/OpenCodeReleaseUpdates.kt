@@ -10,8 +10,8 @@ import java.net.HttpURLConnection
 import java.net.URI
 
 /**
- * Optional same-major OpenCode upgrade action on the tool-window title bar.
- * 1.x → npm `opencode-ai`; 2.x → npm `@opencode/cli`. Never suggests crossing a major version.
+ * Optional same-major OpenCode upgrade action on the tool-window title bar. 1.x → npm
+ * `opencode-ai`; 2.x → npm `@opencode/cli`. Never suggests crossing a major version.
  */
 internal object OpenCodeReleaseUpdates {
     const val NPM_V1_LATEST_URL = "https://registry.npmjs.org/opencode-ai/latest"
@@ -22,18 +22,21 @@ internal object OpenCodeReleaseUpdates {
         val latest: String,
     )
 
-    fun catalogUrl(major: Int): String? = when {
-        major == 1 -> NPM_V1_LATEST_URL
-        major >= 2 -> NPM_V2_LATEST_URL
-        else -> null
-    }
+    fun catalogUrl(major: Int): String? =
+        when {
+            major == 1 -> NPM_V1_LATEST_URL
+            major >= 2 -> NPM_V2_LATEST_URL
+            else -> null
+        }
 
     fun parseNpmLatestVersion(json: String): String? {
-        val root = runCatching { JsonParser.parseString(json) }.getOrNull()
-            ?.takeIf { it.isJsonObject }
-            ?.asJsonObject
-            ?: return null
-        return root.get("version")
+        val root =
+            runCatching { JsonParser.parseString(json) }
+                .getOrNull()
+                ?.takeIf { it.isJsonObject }
+                ?.asJsonObject ?: return null
+        return root
+            .get("version")
             ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }
             ?.asString
             ?.trim()
@@ -43,16 +46,19 @@ internal object OpenCodeReleaseUpdates {
     private class Check {
         @Volatile var notice: Notice? = null
     }
+
     private val checkKey = Key.create<Check>("opencode.releaseUpdateCheck")
 
     fun pendingNotice(project: Project, installedVersion: String?): Notice? {
         if (!OpenCodeSettingsState.getInstance().notifyOpenCodeUpdates) return null
-        return project.getUserData(checkKey)?.notice
-            ?.takeIf { it.installed == installedVersion?.let(::stripPrefix) }
+        return project.getUserData(checkKey)?.notice?.takeIf {
+            it.installed == installedVersion?.let(::stripPrefix)
+        }
     }
 
     fun tooltip(notice: Notice, sandbox: Boolean = false): String {
-        val base = "OpenCode ${notice.latest} is available. Consider upgrading. Installed: ${notice.installed}."
+        val base =
+            "OpenCode ${notice.latest} is available. Consider upgrading. Installed: ${notice.installed}."
         return if (sandbox) {
             "$base Click to upgrade this sandbox."
         } else {
@@ -84,12 +90,12 @@ internal object OpenCodeReleaseUpdates {
             if (!project.isDisposed && project.getUserData(checkKey) === check) onReady()
         }
         if (!OpenCodeSettingsState.getInstance().notifyOpenCodeUpdates) return
-        val installed = installedVersion?.trim()?.takeIf { it.isNotEmpty() }
-            ?: return
+        val installed = installedVersion?.trim()?.takeIf { it.isNotEmpty() } ?: return
         application.executeOnPooledThread {
             val notice = evaluate(installed)
             application.invokeLater {
-                if (project.isDisposed || project.getUserData(checkKey) !== check) return@invokeLater
+                if (project.isDisposed || project.getUserData(checkKey) !== check)
+                    return@invokeLater
                 if (OpenCodeSettingsState.getInstance().notifyOpenCodeUpdates) {
                     check.notice = notice
                 }
@@ -126,8 +132,10 @@ internal object OpenCodeReleaseUpdates {
                 connection.setRequestProperty("Accept", "application/json")
                 connection.setRequestProperty("User-Agent", "OpenCode-Web-Panel")
                 if (connection.responseCode !in 200..299) return null
-                connection.inputStream.use { it.readNBytes(256 * 1024 + 1) }
-                    .takeIf { it.size <= 256 * 1024 }?.toString(Charsets.UTF_8)
+                connection.inputStream
+                    .use { it.readNBytes(256 * 1024 + 1) }
+                    .takeIf { it.size <= 256 * 1024 }
+                    ?.toString(Charsets.UTF_8)
             } finally {
                 connection.disconnect()
             }

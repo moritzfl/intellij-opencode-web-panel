@@ -4,15 +4,16 @@ import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
+import com.intellij.ui.content.ContentFactory
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
-import com.intellij.ui.content.ContentFactory
 import kotlin.jvm.JvmDefaultWithoutCompatibility
 
 internal fun openCodeToolWindowHeading(project: Project?): String {
-    val native = OpenCodeServerBackend.isNative(
-        OpenCodeServerBackendRegistry.getInstance().backendFor(project).backendId,
-    )
+    val native =
+        OpenCodeServerBackend.isNative(
+            OpenCodeServerBackendRegistry.getInstance().backendFor(project).backendId
+        )
     return if (native) "OpenCode (native CLI)" else "OpenCode (sbx)"
 }
 
@@ -25,7 +26,8 @@ internal fun updateOpenCodeToolWindowHeading(toolWindow: ToolWindow) {
 class OpenCodeWebToolWindowFactoryImpl : ToolWindowFactory, DumbAware {
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
         val controller = OpenCodePanelController.getInstance(project)
-        val content = ContentFactory.getInstance().createContent(controller.toolWindowComponent, null, false)
+        val content =
+            ContentFactory.getInstance().createContent(controller.toolWindowComponent, null, false)
         toolWindow.contentManager.addContent(content)
         controller.attachToolWindow(toolWindow)
         updateOpenCodeToolWindowHeading(toolWindow)

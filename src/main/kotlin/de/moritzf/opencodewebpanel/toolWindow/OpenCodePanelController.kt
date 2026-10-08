@@ -26,15 +26,21 @@ import javax.swing.SwingUtilities
 internal interface OpenCodePanel : Disposable {
     val component: JComponent
     val preferredFocus: JComponent
+
     fun prepareBrowserForReplacement(): CompletableFuture<Unit>
+
     fun checkAndLoadContent()
+
     fun dispatchChatBatch(delivery: OpenCodeChatInputService.Delivery): Boolean
+
     fun onHostChanged()
 }
 
 /** Owns the browser independently of its Swing host. UI mutations run on the EDT. */
 @Service(Service.Level.PROJECT)
-internal class OpenCodePanelController @NonInjectable internal constructor(
+internal class OpenCodePanelController
+@NonInjectable
+internal constructor(
     val project: Project,
     private val panelFactory: (OpenCodePanelController) -> OpenCodePanel,
 ) : Disposable {
@@ -44,18 +50,24 @@ internal class OpenCodePanelController @NonInjectable internal constructor(
     val toolWindowComponent = BorderLayoutPanel().apply { addToCenter(component) }
     internal var editorFile: OpenCodeEditorFile? = null
         private set
+
     private var editorShell: BorderLayoutPanel? = null
     var isInEditor: Boolean = false
         private set
+
     @Volatile private var panel: OpenCodePanel? = null
     private var pendingReplacement: OpenCodePanel? = null
     private var toolWindow: ToolWindow? = null
     @Volatile private var disposed = false
-    val isDisposed: Boolean get() = disposed || project.isDisposed
+    val isDisposed: Boolean
+        get() = disposed || project.isDisposed
 
     init {
         component.addHierarchyListener { event ->
-            if (event.changeFlags and HierarchyEvent.SHOWING_CHANGED.toLong() != 0L && component.isShowing) {
+            if (
+                event.changeFlags and HierarchyEvent.SHOWING_CHANGED.toLong() != 0L &&
+                    component.isShowing
+            ) {
                 panel?.onHostChanged()
             }
         }
@@ -115,11 +127,17 @@ internal class OpenCodePanelController @NonInjectable internal constructor(
         editorShell = shell
         moveComponent(shell)
         toolWindowComponent.removeAll()
-        toolWindowComponent.addToCenter(JBPanelWithEmptyText().apply {
-            emptyText.appendLine("OpenCode is open in the editor.")
-            emptyText.appendLine("Show in Editor", SimpleTextAttributes.LINK_ATTRIBUTES) { activate {} }
-            emptyText.appendLine("Move to Tool Window", SimpleTextAttributes.LINK_ATTRIBUTES) { moveToToolWindow() }
-        })
+        toolWindowComponent.addToCenter(
+            JBPanelWithEmptyText().apply {
+                emptyText.appendLine("OpenCode is open in the editor.")
+                emptyText.appendLine("Show in Editor", SimpleTextAttributes.LINK_ATTRIBUTES) {
+                    activate {}
+                }
+                emptyText.appendLine("Move to Tool Window", SimpleTextAttributes.LINK_ATTRIBUTES) {
+                    moveToToolWindow()
+                }
+            }
+        )
         toolWindowComponent.revalidate()
         toolWindowComponent.repaint()
     }
@@ -133,7 +151,11 @@ internal class OpenCodePanelController @NonInjectable internal constructor(
         // Moving a singleton tab closes its old wrapper before opening the new one. Only a
         // final close changes placement; neither kind of close disposes the shared browser.
         ApplicationManager.getApplication().invokeLater {
-            if (!isDisposed && editorFile === file && !FileEditorManager.getInstance(project).isFileOpen(file)) {
+            if (
+                !isDisposed &&
+                    editorFile === file &&
+                    !FileEditorManager.getInstance(project).isFileOpen(file)
+            ) {
                 isInEditor = false
             }
         }
@@ -177,8 +199,10 @@ internal class OpenCodePanelController @NonInjectable internal constructor(
 
     fun isCurrent(candidate: OpenCodePanel): Boolean = panel === candidate
 
-    fun isPanelInView(): Boolean = !isDisposed && component.isShowing &&
-        SwingUtilities.getWindowAncestor(component)?.isActive == true
+    fun isPanelInView(): Boolean =
+        !isDisposed &&
+            component.isShowing &&
+            SwingUtilities.getWindowAncestor(component)?.isActive == true
 
     fun activate(action: () -> Unit) {
         if (isDisposed) return
@@ -206,11 +230,15 @@ internal class OpenCodePanelController @NonInjectable internal constructor(
     }
 
     fun updateAgentStatus(state: String, icons: BadgeIconSupplier) {
-        toolWindow?.takeUnless { it.isDisposed }?.setIcon(when (state) {
-            OpenCodeAgentStatusState.ATTENTION -> icons.warningIcon
-            OpenCodeAgentStatusState.BUSY -> icons.liveIndicatorIcon
-            else -> icons.originalIcon
-        })
+        toolWindow
+            ?.takeUnless { it.isDisposed }
+            ?.setIcon(
+                when (state) {
+                    OpenCodeAgentStatusState.ATTENTION -> icons.warningIcon
+                    OpenCodeAgentStatusState.BUSY -> icons.liveIndicatorIcon
+                    else -> icons.originalIcon
+                }
+            )
     }
 
     /** Keep the predecessor until Chromium acknowledges the successor (especially OOP JCEF). */
@@ -219,19 +247,29 @@ internal class OpenCodePanelController @NonInjectable internal constructor(
         val backendId = OpenCodeServerBackendRegistry.getInstance().backendFor(project).backendId
         val replacement = createPanel() ?: return
         pendingReplacement = replacement
-        val readiness = runCatching { replacement.prepareBrowserForReplacement() }
+        val readiness = runCatching {
+            replacement.prepareBrowserForReplacement()
+        }
             .getOrElse { CompletableFuture.failedFuture(it) }
         readiness.whenComplete { _, error ->
             ApplicationManager.getApplication().invokeLater {
-                // Disposal can already have released this browser while its acknowledgement was in flight.
+                // Disposal can already have released this browser while its acknowledgement was in
+                // flight.
                 if (pendingReplacement !== replacement) return@invokeLater
                 pendingReplacement = null
                 if (isDisposed || error != null) {
-                    if (error != null) LOG.warn("JCEF replacement did not become ready; keeping current panel", error)
+                    if (error != null)
+                        LOG.warn(
+                            "JCEF replacement did not become ready; keeping current panel",
+                            error,
+                        )
                     Disposer.dispose(replacement)
                     return@invokeLater
                 }
-                if (OpenCodeServerBackendRegistry.getInstance().backendFor(project).backendId != backendId) {
+                if (
+                    OpenCodeServerBackendRegistry.getInstance().backendFor(project).backendId !=
+                        backendId
+                ) {
                     Disposer.dispose(replacement)
                     replacePanel()
                     return@invokeLater
@@ -252,22 +290,26 @@ internal class OpenCodePanelController @NonInjectable internal constructor(
         OpenCodeChatInputService.getInstance(project).requeueInFlight()
         previous?.let(Disposer::dispose)
         component.removeAll()
-        component.addToCenter(OpenCodePanelFailureCard {
-            OpenCodeRendererWatchdog.resetProcessRecreatesAfterStall()
-            replacePanel()
-        }.component)
+        component.addToCenter(
+            OpenCodePanelFailureCard {
+                OpenCodeRendererWatchdog.resetProcessRecreatesAfterStall()
+                replacePanel()
+            }
+                .component
+        )
         component.revalidate()
         component.repaint()
     }
 
-    private fun createPanel(): OpenCodePanel? = try {
-        panelFactory(this)
-    } catch (e: ProcessCanceledException) {
-        throw e
-    } catch (e: Throwable) {
-        LOG.warn("Could not create the OpenCode panel", e)
-        null
-    }
+    private fun createPanel(): OpenCodePanel? =
+        try {
+            panelFactory(this)
+        } catch (e: ProcessCanceledException) {
+            throw e
+        } catch (e: Throwable) {
+            LOG.warn("Could not create the OpenCode panel", e)
+            null
+        }
 
     private fun install(created: OpenCodePanel) {
         panel = created
@@ -280,14 +322,18 @@ internal class OpenCodePanelController @NonInjectable internal constructor(
 
     override fun dispose() {
         disposed = true
-        if (!project.isDisposed) editorFile?.let { project.getServiceIfCreated(FileEditorManager::class.java)?.closeFile(it) }
+        if (!project.isDisposed)
+            editorFile?.let {
+                project.getServiceIfCreated(FileEditorManager::class.java)?.closeFile(it)
+            }
         editorFile = null
         isInEditor = false
         editorShell = null
-        if (!project.isDisposed) OpenCodeChatInputService.getInstance(project).apply {
-            setDispatcher(null)
-            setActivator(null)
-        }
+        if (!project.isDisposed)
+            OpenCodeChatInputService.getInstance(project).apply {
+                setDispatcher(null)
+                setActivator(null)
+            }
         pendingReplacement?.let(Disposer::dispose)
         pendingReplacement = null
         panel?.let(Disposer::dispose)
@@ -296,6 +342,8 @@ internal class OpenCodePanelController @NonInjectable internal constructor(
 
     companion object {
         private val LOG = Logger.getInstance(OpenCodePanelController::class.java)
-        fun getInstance(project: Project): OpenCodePanelController = project.getService(OpenCodePanelController::class.java)
+
+        fun getInstance(project: Project): OpenCodePanelController =
+            project.getService(OpenCodePanelController::class.java)
     }
 }

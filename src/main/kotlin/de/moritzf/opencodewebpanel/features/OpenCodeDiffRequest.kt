@@ -25,12 +25,17 @@ internal fun createOpenCodeDiffRequest(
     val name = diff.file?.takeIf { it.isNotBlank() } ?: "diff"
     val factory = DiffContentFactory.getInstance()
     val file = highlightFile?.takeIf { it.isValid && !it.isDirectory }
-    val after = if (file != null) {
-        factory.create(project, sides.after, file)
-    } else {
-        val fileName = name.substringAfterLast('/').substringAfterLast('\\')
-        factory.create(project, sides.after, FileTypeManager.getInstance().getFileTypeByFileName(fileName))
-    }
+    val after =
+        if (file != null) {
+            factory.create(project, sides.after, file)
+        } else {
+            val fileName = name.substringAfterLast('/').substringAfterLast('\\')
+            factory.create(
+                project,
+                sides.after,
+                FileTypeManager.getInstance().getFileTypeByFileName(fileName),
+            )
+        }
     val before = factory.create(project, sides.before, after)
     return SimpleDiffRequest(
         name,
@@ -55,12 +60,18 @@ private class OpenCodeDiffContent(
         if (!canNavigate()) return null
         return object : Navigatable {
             override fun canNavigate(): Boolean = this@OpenCodeDiffContent.canNavigate()
+
             override fun canNavigateToSource(): Boolean = canNavigate()
+
             override fun navigate(requestFocus: Boolean) {
-                // Translate only when F4 is invoked, against the current (possibly unsaved) document.
+                // Translate only when F4 is invoked, against the current (possibly unsaved)
+                // document.
                 val descriptor = sourceDescriptor(position) ?: return
-                // Generic navigation may select Project View or an already selected preview provider.
-                val editor = FileEditorManager.getInstance(project).openTextEditor(descriptor, requestFocus) ?: return
+                // Generic navigation may select Project View or an already selected preview
+                // provider.
+                val editor =
+                    FileEditorManager.getInstance(project).openTextEditor(descriptor, requestFocus)
+                        ?: return
                 // A navigatable preview may have consumed the descriptor before text was selected.
                 descriptor.navigateIn(editor)
             }
@@ -71,11 +82,17 @@ private class OpenCodeDiffContent(
         if (!canNavigate()) return null
         val target = FileDocumentManager.getInstance().getDocument(file) ?: return null
         // Match the platform's DocumentContentBase translation: preview lines omit inter-hunk gaps.
-        val line = try {
-            Diff.translateLine(document.charsSequence, target.charsSequence, position.line, true)
-        } catch (_: FilesTooBigForDiffException) {
-            position.line
-        }
+        val line =
+            try {
+                Diff.translateLine(
+                    document.charsSequence,
+                    target.charsSequence,
+                    position.line,
+                    true,
+                )
+            } catch (_: FilesTooBigForDiffException) {
+                position.line
+            }
         return OpenFileDescriptor(project, file, line, position.column)
     }
 }

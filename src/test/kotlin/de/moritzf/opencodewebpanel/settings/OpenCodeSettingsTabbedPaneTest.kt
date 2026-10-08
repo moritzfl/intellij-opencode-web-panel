@@ -1,10 +1,10 @@
 package de.moritzf.opencodewebpanel.settings
 
+import java.awt.Dimension
+import javax.swing.JPanel
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.awt.Dimension
-import javax.swing.JPanel
 
 class OpenCodeSettingsTabbedPaneTest {
 
@@ -13,10 +13,11 @@ class OpenCodeSettingsTabbedPaneTest {
         System.setProperty("java.awt.headless", "true")
         val short = JPanel().apply { preferredSize = Dimension(400, 300) }
         val tall = JPanel().apply { preferredSize = Dimension(400, 900) }
-        val pane = OpenCodeSettingsTabbedPane().apply {
-            addTab("short", short)
-            addTab("tall", tall)
-        }
+        val pane =
+            OpenCodeSettingsTabbedPane().apply {
+                addTab("short", short)
+                addTab("tall", tall)
+            }
 
         pane.selectedIndex = 0
         val whenShortSelected = pane.preferredSize.height

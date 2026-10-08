@@ -15,18 +15,21 @@ internal data class OpenCodeNotificationServerIdentity(
 internal class OpenCodeNotificationEventDispatcher(
     private val enabled: () -> Boolean,
     private val serverIdentity: (directory: String) -> OpenCodeNotificationServerIdentity?,
-    private val process: (
-        event: OpenCodeGlobalEvent,
-        identity: OpenCodeNotificationServerIdentity,
-    ) -> OpenCodeNotificationEventProcessor.Outcome?,
-    private val dispatch: (
-        outcome: OpenCodeNotificationEventProcessor.Outcome,
-        identity: OpenCodeNotificationServerIdentity,
-    ) -> Unit,
+    private val process:
+        (
+            event: OpenCodeGlobalEvent,
+            identity: OpenCodeNotificationServerIdentity,
+        ) -> OpenCodeNotificationEventProcessor.Outcome?,
+    private val dispatch:
+        (
+            outcome: OpenCodeNotificationEventProcessor.Outcome,
+            identity: OpenCodeNotificationServerIdentity,
+        ) -> Unit,
     private val executeAsync: ((() -> Unit) -> Unit),
 ) {
     fun eventReceived(event: OpenCodeGlobalEvent) {
-        if (event.type !in OpenCodeNotificationEventProcessor.RELEVANT_EVENT_TYPES || !enabled()) return
+        if (event.type !in OpenCodeNotificationEventProcessor.RELEVANT_EVENT_TYPES || !enabled())
+            return
         val identity = serverIdentity(event.directory) ?: return
         executeAsync {
             if (!stillCurrent(identity, event.directory)) return@executeAsync
@@ -36,7 +39,10 @@ internal class OpenCodeNotificationEventDispatcher(
         }
     }
 
-    private fun stillCurrent(identity: OpenCodeNotificationServerIdentity, directory: String): Boolean {
+    private fun stillCurrent(
+        identity: OpenCodeNotificationServerIdentity,
+        directory: String,
+    ): Boolean {
         return enabled() && serverIdentity(directory) == identity
     }
 }
@@ -45,10 +51,11 @@ internal class OpenCodeNotificationEventDispatcher(
 internal class OpenCodeNotificationOutcomeDispatcher(
     private val enabled: () -> Boolean,
     private val serverIdentity: (directory: String) -> OpenCodeNotificationServerIdentity?,
-    private val notify: (
-        payload: OpenCodeServerProtocol.SystemNotificationPayload,
-        identity: OpenCodeNotificationServerIdentity,
-    ) -> Unit,
+    private val notify:
+        (
+            payload: OpenCodeServerProtocol.SystemNotificationPayload,
+            identity: OpenCodeNotificationServerIdentity,
+        ) -> Unit,
     private val dismiss: (key: String) -> Unit,
     private val activeRequestKeys: () -> Set<String> = { emptySet() },
     private val executeOnUi: ((() -> Unit) -> Unit),
@@ -58,15 +65,20 @@ internal class OpenCodeNotificationOutcomeDispatcher(
         identity: OpenCodeNotificationServerIdentity,
     ) {
         executeOnUi {
-            if (!enabled() || serverIdentity(directoryFor(outcome, identity)) != identity) return@executeOnUi
+            if (!enabled() || serverIdentity(directoryFor(outcome, identity)) != identity)
+                return@executeOnUi
             when (outcome) {
-                is OpenCodeNotificationEventProcessor.Outcome.Notify -> notify(outcome.payload, identity)
+                is OpenCodeNotificationEventProcessor.Outcome.Notify ->
+                    notify(outcome.payload, identity)
                 is OpenCodeNotificationEventProcessor.Outcome.Dismiss -> dismiss(outcome.key)
             }
         }
     }
 
-    fun reconcileRequestKeys(pendingKeys: Set<String>, identity: OpenCodeNotificationServerIdentity) {
+    fun reconcileRequestKeys(
+        pendingKeys: Set<String>,
+        identity: OpenCodeNotificationServerIdentity,
+    ) {
         executeOnUi {
             if (!enabled() || serverIdentity(identity.directory) != identity) return@executeOnUi
             (activeRequestKeys() - pendingKeys).forEach(dismiss)
@@ -102,22 +114,26 @@ internal class OpenCodePendingNotificationReconciler(
     private val enabled: () -> Boolean,
     private val serverIdentity: (directory: String) -> OpenCodeNotificationServerIdentity?,
     private val directories: () -> List<String>,
-    private val load: (
-        identity: OpenCodeNotificationServerIdentity,
-        directory: String,
-    ) -> OpenCodePendingNotificationLoad,
-    private val reconcileActiveRequestKeys: (
-        pendingKeys: Set<String>,
-        identity: OpenCodeNotificationServerIdentity,
-    ) -> Unit,
-    private val process: (
-        event: OpenCodeGlobalEvent,
-        identity: OpenCodeNotificationServerIdentity,
-    ) -> OpenCodeNotificationEventProcessor.Outcome?,
-    private val dispatch: (
-        outcome: OpenCodeNotificationEventProcessor.Outcome,
-        identity: OpenCodeNotificationServerIdentity,
-    ) -> Unit,
+    private val load:
+        (
+            identity: OpenCodeNotificationServerIdentity,
+            directory: String,
+        ) -> OpenCodePendingNotificationLoad,
+    private val reconcileActiveRequestKeys:
+        (
+            pendingKeys: Set<String>,
+            identity: OpenCodeNotificationServerIdentity,
+        ) -> Unit,
+    private val process:
+        (
+            event: OpenCodeGlobalEvent,
+            identity: OpenCodeNotificationServerIdentity,
+        ) -> OpenCodeNotificationEventProcessor.Outcome?,
+    private val dispatch:
+        (
+            outcome: OpenCodeNotificationEventProcessor.Outcome,
+            identity: OpenCodeNotificationServerIdentity,
+        ) -> Unit,
     private val executeAsync: ((() -> Unit) -> Unit),
 ) {
     fun reconcile() {
@@ -149,26 +165,31 @@ internal class OpenCodePendingNotificationReconciler(
             for (request in pending.distinctBy { it.id }) {
                 val identity = serverIdentity(request.directory) ?: continue
                 if (!stillCurrent(identity, request.directory)) return@executeAsync
-                val properties = JsonObject().apply {
-                    addProperty("id", request.id)
-                    addProperty("sessionID", request.sessionID)
-                }
-                val outcome = process(
-                    OpenCodeGlobalEvent(
-                        directory = request.directory,
-                        type = request.type,
-                        recordId = request.id,
-                        properties = properties,
-                    ),
-                    identity,
-                ) ?: continue
+                val properties =
+                    JsonObject().apply {
+                        addProperty("id", request.id)
+                        addProperty("sessionID", request.sessionID)
+                    }
+                val outcome =
+                    process(
+                        OpenCodeGlobalEvent(
+                            directory = request.directory,
+                            type = request.type,
+                            recordId = request.id,
+                            properties = properties,
+                        ),
+                        identity,
+                    ) ?: continue
                 if (!stillCurrent(identity, request.directory)) return@executeAsync
                 dispatch(outcome, identity)
             }
         }
     }
 
-    private fun stillCurrent(identity: OpenCodeNotificationServerIdentity, directory: String): Boolean {
+    private fun stillCurrent(
+        identity: OpenCodeNotificationServerIdentity,
+        directory: String,
+    ): Boolean {
         return enabled() && serverIdentity(directory) == identity
     }
 }
@@ -189,14 +210,13 @@ internal class OpenCodeActiveNotificationRegistry<T> {
         itemsByKey.getOrPut(key) { mutableListOf() }.add(item)
     }
 
-    @Synchronized
-    fun removeByKey(key: String): List<T> = itemsByKey.remove(key)?.toList().orEmpty()
+    @Synchronized fun removeByKey(key: String): List<T> = itemsByKey.remove(key)?.toList().orEmpty()
+
+    @Synchronized fun containsKey(key: String): Boolean = itemsByKey.containsKey(key)
 
     @Synchronized
-    fun containsKey(key: String): Boolean = itemsByKey.containsKey(key)
-
-    @Synchronized
-    fun keys(prefix: String): Set<String> = itemsByKey.keys.filterTo(mutableSetOf()) { it.startsWith(prefix) }
+    fun keys(prefix: String): Set<String> =
+        itemsByKey.keys.filterTo(mutableSetOf()) { it.startsWith(prefix) }
 
     @Synchronized
     fun removeItem(item: T) {

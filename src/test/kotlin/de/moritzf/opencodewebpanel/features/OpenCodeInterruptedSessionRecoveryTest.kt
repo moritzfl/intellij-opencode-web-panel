@@ -30,7 +30,8 @@ class OpenCodeInterruptedSessionRecoveryTest {
         var listCalls = 0
         var messageCalls = 0
         val sent = mutableListOf<String>()
-        val sessionResults = ArrayDeque<OpenCodeProtocolResult<List<OpenCodeServerProtocol.SessionSummary>>>()
+        val sessionResults =
+            ArrayDeque<OpenCodeProtocolResult<List<OpenCodeServerProtocol.SessionSummary>>>()
         var fetchMessage: (String) -> OpenCodeProtocolResult<String?> = {
             OpenCodeProtocolResult.Success("""{"type":"user"}""")
         }
@@ -65,15 +66,21 @@ class OpenCodeInterruptedSessionRecoveryTest {
             )
         }
 
-        fun sessions(vararg ids: String): OpenCodeProtocolResult<List<OpenCodeServerProtocol.SessionSummary>> {
-            return OpenCodeProtocolResult.Success(ids.map { OpenCodeServerProtocol.SessionSummary(it, 1L) })
+        fun sessions(
+            vararg ids: String
+        ): OpenCodeProtocolResult<List<OpenCodeServerProtocol.SessionSummary>> {
+            return OpenCodeProtocolResult.Success(
+                ids.map { OpenCodeServerProtocol.SessionSummary(it, 1L) }
+            )
         }
     }
 
     @Test
     fun failedSessionListLeavesGenerationRetryableThenValidRunIsDone() {
         val harness = Harness()
-        harness.sessionResults.add(OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.HTTP, 503))
+        harness.sessionResults.add(
+            OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.HTTP, 503)
+        )
         harness.sessionResults.add(harness.sessions("ses_1"))
         val recovery = harness.recovery()
 
@@ -89,7 +96,9 @@ class OpenCodeInterruptedSessionRecoveryTest {
     fun exhaustedListRetriesReleaseClaimForLaterCheck() {
         val harness = Harness()
         repeat(3) {
-            harness.sessionResults.add(OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.HTTP, 503))
+            harness.sessionResults.add(
+                OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.HTTP, 503)
+            )
         }
         harness.sessionResults.add(harness.sessions("ses_1"))
         val recovery = harness.recovery()
@@ -184,7 +193,8 @@ class OpenCodeInterruptedSessionRecoveryTest {
             }
         }
         // A 500 is ambiguous: the server may have accepted the write before failing the response.
-        harness.sendResult = OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.HTTP, 500)
+        harness.sendResult =
+            OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.HTTP, 500)
         val recovery = harness.recovery()
 
         recovery.checkAndContinue()
@@ -200,7 +210,8 @@ class OpenCodeInterruptedSessionRecoveryTest {
         for (status in listOf(409, 500)) {
             val harness = Harness()
             harness.sessionResults.add(harness.sessions("ses_$status"))
-            harness.sendResult = OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.HTTP, status)
+            harness.sendResult =
+                OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.HTTP, status)
             val recovery = harness.recovery()
 
             recovery.checkAndContinue()
@@ -220,7 +231,7 @@ class OpenCodeInterruptedSessionRecoveryTest {
                 OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.HTTP, 503)
             } else {
                 OpenCodeProtocolResult.Success(
-                    """{"type":"assistant","time":{"created":900000,"completed":2000000},"error":{"name":"FetchError"}}""",
+                    """{"type":"assistant","time":{"created":900000,"completed":2000000},"error":{"name":"FetchError"}}"""
                 )
             }
         }
@@ -235,11 +246,13 @@ class OpenCodeInterruptedSessionRecoveryTest {
     @Test
     fun suspendRecoveryRetriesTransientSessionListFailure() {
         val harness = Harness()
-        harness.sessionResults.add(OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.HTTP, 503))
+        harness.sessionResults.add(
+            OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.HTTP, 503)
+        )
         harness.sessionResults.add(harness.sessions("ses_1"))
         harness.fetchMessage = {
             OpenCodeProtocolResult.Success(
-                """{"type":"assistant","time":{"created":900000,"completed":2000000},"error":{"name":"FetchError"}}""",
+                """{"type":"assistant","time":{"created":900000,"completed":2000000},"error":{"name":"FetchError"}}"""
             )
         }
         val recovery = harness.recovery()
@@ -273,7 +286,7 @@ class OpenCodeInterruptedSessionRecoveryTest {
         harness.fetchMessage = {
             harness.generation++
             OpenCodeProtocolResult.Success(
-                """{"type":"assistant","time":{"created":900000,"completed":2000000},"error":{"name":"FetchError"}}""",
+                """{"type":"assistant","time":{"created":900000,"completed":2000000},"error":{"name":"FetchError"}}"""
             )
         }
         val recovery = harness.recovery()

@@ -19,7 +19,11 @@ class OpenCodeBrowserShortcutHandlerTest {
 
     @Test
     fun newSessionUsesLayoutSpecificOpenCodeCommands() {
-        val keybinds = OpenCodeBrowserShortcutHandler.resolveOpenCodeKeybinds(OpenCodeBrowserCommand.NEW_SESSION, null)
+        val keybinds =
+            OpenCodeBrowserShortcutHandler.resolveOpenCodeKeybinds(
+                OpenCodeBrowserCommand.NEW_SESSION,
+                null,
+            )
 
         assertEquals(listOf("mod+t"), keybinds.newLayout)
         assertEquals(listOf("mod+shift+s"), keybinds.classic)
@@ -27,7 +31,11 @@ class OpenCodeBrowserShortcutHandlerTest {
 
     @Test
     fun closeTabUsesOpenCodeTabCloseCommand() {
-        val keybinds = OpenCodeBrowserShortcutHandler.resolveOpenCodeKeybinds(OpenCodeBrowserCommand.CLOSE_TAB, null)
+        val keybinds =
+            OpenCodeBrowserShortcutHandler.resolveOpenCodeKeybinds(
+                OpenCodeBrowserCommand.CLOSE_TAB,
+                null,
+            )
 
         assertEquals(listOf("mod+w"), keybinds.newLayout)
         assertEquals(listOf("mod+w"), keybinds.classic)
@@ -35,11 +43,14 @@ class OpenCodeBrowserShortcutHandlerTest {
 
     @Test
     fun customOpenCodeKeybindsOverrideEachLayoutDefault() {
-        val snapshot = """{"settings.v3":"{\"keybinds\":{\"tab.new\":\"alt+t\",\"session.new\":\"alt+s\"}}"}"""
+        val snapshot =
+            """{"settings.v3":"{\"keybinds\":{\"tab.new\":\"alt+t\",\"session.new\":\"alt+s\"}}"}"""
 
         assertTrue(
-            OpenCodeBrowserShortcutHandler.resolveOpenCodeKeybinds(OpenCodeBrowserCommand.NEW_SESSION, snapshot) ==
-                OpenCodeResolvedKeybinds(newLayout = listOf("alt+t"), classic = listOf("alt+s")),
+            OpenCodeBrowserShortcutHandler.resolveOpenCodeKeybinds(
+                OpenCodeBrowserCommand.NEW_SESSION,
+                snapshot,
+            ) == OpenCodeResolvedKeybinds(newLayout = listOf("alt+t"), classic = listOf("alt+s"))
         )
     }
 
@@ -48,17 +59,20 @@ class OpenCodeBrowserShortcutHandlerTest {
         val snapshot = """{"settings.v3":"{\"keybinds\":{\"agent.cycle\":\"alt+j\"}}"}"""
 
         assertTrue(
-            OpenCodeBrowserShortcutHandler.resolveOpenCodeKeybinds(OpenCodeBrowserCommand.CYCLE_AGENT, snapshot) ==
-                OpenCodeResolvedKeybinds(newLayout = listOf("alt+j"), classic = listOf("alt+j")),
+            OpenCodeBrowserShortcutHandler.resolveOpenCodeKeybinds(
+                OpenCodeBrowserCommand.CYCLE_AGENT,
+                snapshot,
+            ) == OpenCodeResolvedKeybinds(newLayout = listOf("alt+j"), classic = listOf("alt+j"))
         )
     }
 
     @Test
     fun cycleAgentReverseUsesOpenCodeDefaultChord() {
-        val keybinds = OpenCodeBrowserShortcutHandler.resolveOpenCodeKeybinds(
-            OpenCodeBrowserCommand.CYCLE_AGENT_REVERSE,
-            null,
-        )
+        val keybinds =
+            OpenCodeBrowserShortcutHandler.resolveOpenCodeKeybinds(
+                OpenCodeBrowserCommand.CYCLE_AGENT_REVERSE,
+                null,
+            )
 
         assertEquals(listOf("shift+mod+."), keybinds.newLayout)
         assertEquals(listOf("shift+mod+."), keybinds.classic)
@@ -72,7 +86,7 @@ class OpenCodeBrowserShortcutHandlerTest {
             OpenCodeBrowserShortcutHandler.resolveOpenCodeKeybinds(
                 OpenCodeBrowserCommand.CYCLE_AGENT_REVERSE,
                 snapshot,
-            ) == OpenCodeResolvedKeybinds(newLayout = listOf("alt+k"), classic = listOf("alt+k")),
+            ) == OpenCodeResolvedKeybinds(newLayout = listOf("alt+k"), classic = listOf("alt+k"))
         )
     }
 
@@ -81,16 +95,20 @@ class OpenCodeBrowserShortcutHandlerTest {
         val snapshot = """{"settings.v3":"{\"keybinds\":{\"agent.cycle\":\"none\"}}"}"""
 
         assertTrue(
-            OpenCodeBrowserShortcutHandler.resolveOpenCodeKeybinds(OpenCodeBrowserCommand.CYCLE_AGENT, snapshot) ==
-                OpenCodeResolvedKeybinds(newLayout = emptyList(), classic = emptyList()),
+            OpenCodeBrowserShortcutHandler.resolveOpenCodeKeybinds(
+                OpenCodeBrowserCommand.CYCLE_AGENT,
+                snapshot,
+            ) == OpenCodeResolvedKeybinds(newLayout = emptyList(), classic = emptyList())
         )
     }
 
     @Test
     fun malformedSnapshotFallsBackToOpenCodeDefault() {
         assertTrue(
-            OpenCodeBrowserShortcutHandler.resolveOpenCodeKeybinds(OpenCodeBrowserCommand.CYCLE_AGENT, "not-json") ==
-                OpenCodeResolvedKeybinds(newLayout = listOf("mod+."), classic = listOf("mod+.")),
+            OpenCodeBrowserShortcutHandler.resolveOpenCodeKeybinds(
+                OpenCodeBrowserCommand.CYCLE_AGENT,
+                "not-json",
+            ) == OpenCodeResolvedKeybinds(newLayout = listOf("mod+."), classic = listOf("mod+."))
         )
     }
 
@@ -103,44 +121,45 @@ class OpenCodeBrowserShortcutHandlerTest {
                 OpenCodeBrowserCommand.CHOOSE_MODEL,
                 serverUrl,
                 "$serverUrl/server/key/session/ses_123",
-            ),
+            )
         )
         assertTrue(
             OpenCodeBrowserShortcutHandler.isCommandAvailable(
                 OpenCodeBrowserCommand.CHOOSE_MODEL,
                 serverUrl,
                 "$serverUrl/new-session?draftId=draft",
-            ),
+            )
         )
         assertFalse(
             OpenCodeBrowserShortcutHandler.isCommandAvailable(
                 OpenCodeBrowserCommand.CHOOSE_MODEL,
                 serverUrl,
                 "$serverUrl/",
-            ),
+            )
         )
         assertFalse(
             OpenCodeBrowserShortcutHandler.isCommandAvailable(
                 OpenCodeBrowserCommand.CHOOSE_MODEL,
                 serverUrl,
                 "https://example.com/session/ses_123",
-            ),
+            )
         )
         assertTrue(
             OpenCodeBrowserShortcutHandler.isCommandAvailable(
                 OpenCodeBrowserCommand.NEW_SESSION,
                 serverUrl,
                 "$serverUrl/",
-            ),
+            )
         )
     }
 
     @Test
     fun shortcutDispatchScriptSelectsLayoutAndDispatchesCancelableKeyboardEvent() {
-        val script = OpenCodeBrowserSnippets.buildShortcutDispatchScript(
-            newLayoutKeybinds = listOf("mod+t"),
-            classicKeybinds = listOf("mod+shift+s"),
-        )!!
+        val script =
+            OpenCodeBrowserSnippets.buildShortcutDispatchScript(
+                newLayoutKeybinds = listOf("mod+t"),
+                classicKeybinds = listOf("mod+shift+s"),
+            )!!
 
         assertTrue(script.contains("titlebar-v2"))
         assertTrue(script.contains("new KeyboardEvent('keydown'"))
@@ -153,10 +172,11 @@ class OpenCodeBrowserShortcutHandlerTest {
 
     @Test
     fun shortcutDispatchScriptEscapesQuoteKeybindsAndMapsNamedKeys() {
-        val script = OpenCodeBrowserSnippets.buildShortcutDispatchScript(
-            newLayoutKeybinds = listOf("mod+'"),
-            classicKeybinds = listOf("escape"),
-        )!!
+        val script =
+            OpenCodeBrowserSnippets.buildShortcutDispatchScript(
+                newLayoutKeybinds = listOf("mod+'"),
+                classicKeybinds = listOf("escape"),
+            )!!
 
         assertTrue(script.contains("""'mod+\''"""))
         assertTrue(script.contains("'escape'"))

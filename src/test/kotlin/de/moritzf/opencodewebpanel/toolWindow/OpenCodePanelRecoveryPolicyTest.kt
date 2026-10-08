@@ -7,7 +7,12 @@ import org.junit.Test
 class OpenCodePanelRecoveryPolicyTest {
     @Test
     fun recreatesThePanelOnTheFirstCallbackFailure() {
-        assertTrue(OpenCodePanelRecoveryPolicy.shouldRecreatePanel(lastAttemptAtMillis = 0L, nowMillis = 5_000L))
+        assertTrue(
+            OpenCodePanelRecoveryPolicy.shouldRecreatePanel(
+                lastAttemptAtMillis = 0L,
+                nowMillis = 5_000L,
+            )
+        )
     }
 
     @Test
@@ -16,7 +21,7 @@ class OpenCodePanelRecoveryPolicyTest {
             OpenCodePanelRecoveryPolicy.shouldRecreatePanel(
                 lastAttemptAtMillis = 10_000L,
                 nowMillis = 10_000L + OpenCodePanelRecoveryPolicy.RETRY_THROTTLE_MILLIS - 1,
-            ),
+            )
         )
     }
 
@@ -26,7 +31,7 @@ class OpenCodePanelRecoveryPolicyTest {
             OpenCodePanelRecoveryPolicy.shouldRecreatePanel(
                 lastAttemptAtMillis = 10_000L,
                 nowMillis = 10_000L + OpenCodePanelRecoveryPolicy.RETRY_THROTTLE_MILLIS,
-            ),
+            )
         )
     }
 }
