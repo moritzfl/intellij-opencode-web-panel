@@ -827,6 +827,8 @@ class OpenCodeJcefLiveRuntimeSwitchTest {
             controller =
                 OpenCodePanelController(project) {
                     object : OpenCodePanel {
+                        override fun restartServer() = Unit
+
                         override val component = browser.component
                         override val preferredFocus = browser.component
 

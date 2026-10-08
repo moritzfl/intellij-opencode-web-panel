@@ -30,6 +30,7 @@ import de.moritzf.opencodewebpanel.configuration.OpenCodePortMode
 import de.moritzf.opencodewebpanel.configuration.OpenCodeProjectDirectoryMode
 import de.moritzf.opencodewebpanel.configuration.OpenCodeProjectSettingsState
 import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsState
+import de.moritzf.opencodewebpanel.server.OpenCodeProjectRuntime
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleListener
@@ -44,9 +45,9 @@ import de.moritzf.opencodewebpanel.server.SbxOpenCodeVersion
 import de.moritzf.opencodewebpanel.server.SbxSandboxRecordStore
 import de.moritzf.opencodewebpanel.server.formatOpenCodeServerLifecycleStatusText
 import de.moritzf.opencodewebpanel.server.formatOpenCodeServerStatusDetail
-import de.moritzf.opencodewebpanel.toolWindow.confirmOpenCodeSandboxBinaryUpgrade
-import de.moritzf.opencodewebpanel.toolWindow.confirmOpenCodeServerRestart
-import de.moritzf.opencodewebpanel.toolWindow.requestOpenCodeServerRestart
+import de.moritzf.opencodewebpanel.ui.confirmOpenCodeSandboxBinaryUpgrade
+import de.moritzf.opencodewebpanel.ui.confirmOpenCodeServerRestart
+import de.moritzf.opencodewebpanel.ui.sandboxSessionRetentionSummary
 import java.awt.Component
 import java.io.File
 import javax.swing.AbstractCellEditor
@@ -740,7 +741,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
 
     private fun restartThisProjectServer() {
         if (!confirmOpenCodeServerRestart(project)) return
-        requestOpenCodeServerRestart(project)
+        OpenCodeProjectRuntime.getInstance(project).restart()
     }
 
     private fun upgradeOpenCodeInSandbox() {
@@ -1175,18 +1176,6 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
     companion object {
         const val PROJECT_SETTINGS_DISPLAY_NAME = "OpenCode Web Panel (Project)"
         private const val SBX_KIT_DOCS_URL = "https://docs.docker.com/ai/sandboxes/customize/kits/"
-
-        fun sandboxSessionRetentionSummary(canonicalDirectory: String): String {
-            val record =
-                de.moritzf.opencodewebpanel.server.SbxSandboxRecordStore.getInstance()
-                    .recordFor(canonicalDirectory) ?: return "There is no plugin-owned sandbox yet."
-            val persistHost = SbxCli.sandboxPersistDataHome(record.name)
-            return if (SbxCli.recordHasPersistMount(record, persistHost)) {
-                "Conversation history is on the host persist mount and should survive recreation."
-            } else {
-                "Conversation history in this VM will be dropped."
-            }
-        }
     }
 
     private class ExtraMountRow(

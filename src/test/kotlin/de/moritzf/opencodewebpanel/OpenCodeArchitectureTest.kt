@@ -3,23 +3,17 @@ package de.moritzf.opencodewebpanel
 import com.intellij.openapi.application.PathManager
 import com.tngtech.archunit.core.importer.ClassFileImporter
 import com.tngtech.archunit.library.Architectures.layeredArchitecture
+import com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.slices
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class OpenCodeArchitectureTest {
     @Test
-    fun lowerLayersDoNotDependOnFeaturesOrPanelGlue() {
+    fun everyProductionClassRespectsLayerDirection() {
         val root = javaClass.packageName
-        // Import the production artifact directly: IntelliJ's instrumentTestCode output is not
-        // covered by ArchUnit's standard Maven/Gradle test-directory exclusion.
-        val productionLocation =
-            requireNotNull(PathManager.getJarForClass(OpenCodeServerProtocol::class.java))
-        val classes = ClassFileImporter().importUrl(productionLocation.toUri().toURL())
         assertFalse("Architecture checks must exclude test classes", classes.contain(javaClass))
 
-        // Settings is shared infrastructure; its Apply/restart adapter also calls panel glue.
-        // Check the dependency direction between the four layers documented in AGENTS.md.
         layeredArchitecture()
             .consideringOnlyDependenciesInLayers()
             .layer("Configuration")
@@ -30,6 +24,10 @@ class OpenCodeArchitectureTest {
             .definedBy("$root.browser..")
             .layer("Features")
             .definedBy("$root.features..")
+            .layer("Ui")
+            .definedBy("$root.ui..")
+            .layer("Settings")
+            .definedBy("$root.settings..")
             .layer("Panel")
             .definedBy("$root.toolWindow..")
             .whereLayer("Configuration")
@@ -40,6 +38,28 @@ class OpenCodeArchitectureTest {
             .mayOnlyAccessLayers("Configuration", "Server")
             .whereLayer("Features")
             .mayOnlyAccessLayers("Configuration", "Server", "Browser")
+            .whereLayer("Ui")
+            .mayOnlyAccessLayers("Configuration", "Server")
+            .whereLayer("Settings")
+            .mayOnlyAccessLayers("Configuration", "Server", "Ui")
+            .whereLayer("Panel")
+            .mayOnlyAccessLayers("Configuration", "Server", "Browser", "Features", "Ui", "Settings")
+            .ensureAllClassesAreContainedInArchitecture()
             .check(classes)
+    }
+
+    @Test
+    fun productionPackagesAreAcyclic() {
+        slices().matching("${javaClass.packageName}.(*)..").should().beFreeOfCycles().check(classes)
+    }
+
+    companion object {
+        // IntelliJ's instrumentTestCode output bypasses standard test-directory exclusions.
+        // Import the production artifact itself; no optional layers or unclassified classes.
+        private val classes by lazy {
+            val location =
+                requireNotNull(PathManager.getJarForClass(OpenCodeServerProtocol::class.java))
+            ClassFileImporter().importUrl(location.toUri().toURL())
+        }
     }
 }

@@ -28,15 +28,14 @@ import com.intellij.ui.components.JBTextField
 import com.intellij.util.ui.JBFont
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
-import de.moritzf.opencodewebpanel.configuration.OpenCodeProjectSettingsListener
 import de.moritzf.opencodewebpanel.configuration.OpenCodeProjectSettingsState
 import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsListener
 import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsState
 import de.moritzf.opencodewebpanel.features.OpenCodeReleaseUpdates
+import de.moritzf.opencodewebpanel.server.OpenCodeProjectRuntime
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState
-import de.moritzf.opencodewebpanel.server.SbxExposure
 import de.moritzf.opencodewebpanel.server.SbxOpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.SbxSandboxRecord
 import de.moritzf.opencodewebpanel.server.SbxSandboxRecordStore
@@ -44,6 +43,11 @@ import de.moritzf.opencodewebpanel.server.isOpenCodePageReloadEnabled
 import de.moritzf.opencodewebpanel.server.isOpenCodeServerStopEnabled
 import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsConfigurable
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable
+import de.moritzf.opencodewebpanel.ui.confirmOpenCodeSandboxBinaryUpgrade
+import de.moritzf.opencodewebpanel.ui.confirmOpenCodeSandboxImageUpdate
+import de.moritzf.opencodewebpanel.ui.confirmOpenCodeSandboxReset
+import de.moritzf.opencodewebpanel.ui.confirmOpenCodeServerRestart
+import de.moritzf.opencodewebpanel.ui.confirmOpenCodeServerStop
 import java.awt.BorderLayout
 import java.awt.Font
 import java.awt.Graphics
@@ -443,7 +447,7 @@ internal class OpenCodeRestartServerAction :
     ) {
     override fun actionPerformed(e: AnActionEvent) {
         if (!confirmOpenCodeServerRestart(e.project)) return
-        requestOpenCodeServerRestart(e.project)
+        e.project?.let { OpenCodeProjectRuntime.getInstance(it).restart() }
     }
 
     override fun update(e: AnActionEvent) {
@@ -544,70 +548,6 @@ private fun openCodePanelContent(e: AnActionEvent): OpenCodeWebToolWindowContent
     return project.getServiceIfCreated(OpenCodePanelController::class.java)?.content()
 }
 
-internal fun requestOpenCodeServerRestart(project: Project?) {
-    if (project == null || project.isDisposed) return
-    // Only a live panel listens for this topic. Without one (tool window never opened, or the
-    // panel failure card) Restart must still reach the server. Unit tests only see the topic.
-    val hasPanel =
-        project.getServiceIfCreated(OpenCodePanelController::class.java)?.content() != null
-    if (!hasPanel && !ApplicationManager.getApplication().isUnitTestMode) {
-        openCodeBackend(project)
-            .restartServer(project, project.basePath, { !project.isDisposed }, {}, {})
-        return
-    }
-    project.messageBus.syncPublisher(OpenCodeProjectSettingsListener.TOPIC).serverRestartRequested()
-}
-
-internal fun requestOpenCodeSandboxReset(project: Project, dropGuestOpenCode: Boolean = true) {
-    val backend = openCodeBackend(project) as? SbxOpenCodeServerBackend ?: return
-    backend.resetSandbox(
-        project,
-        callbackActive = { !project.isDisposed },
-        onStarted = {},
-        onFailed = {},
-        dropGuestOpenCode = dropGuestOpenCode,
-    )
-    requestOpenCodeServerRestart(project)
-}
-
-/**
- * Restarting interrupts work on this project's server, so a running server requires explicit
- * confirmation. Restarting a stopped or failed server loses nothing and proceeds without a prompt.
- */
-internal fun confirmOpenCodeServerRestart(project: Project?): Boolean {
-    val backend = openCodeBackend(project)
-    if (backend.getLifecycleState() != OpenCodeServerLifecycleState.RUNNING) return true
-    return MessageDialogBuilder.yesNo(
-            "Restart OpenCode Server",
-            "Restarting interrupts OpenCode work in this project only.",
-        )
-        .yesText("Restart")
-        .noText("Cancel")
-        .icon(Messages.getWarningIcon())
-        .ask(project)
-}
-
-internal fun confirmOpenCodeServerStop(project: Project?): Boolean {
-    val state = openCodeBackend(project).getLifecycleState()
-    if (!isOpenCodeServerStopEnabled(state)) return true
-    val consequence =
-        when (state) {
-            OpenCodeServerLifecycleState.RUNNING ->
-                "Stopping it interrupts OpenCode work in this project only."
-            OpenCodeServerLifecycleState.RESTARTING ->
-                "Stopping cancels the restart that is currently in progress."
-            else -> "Stopping cancels the start that is currently in progress."
-        }
-    return MessageDialogBuilder.yesNo(
-            "Stop OpenCode Server",
-            consequence,
-        )
-        .yesText("Stop")
-        .noText("Cancel")
-        .icon(Messages.getWarningIcon())
-        .ask(project)
-}
-
 /**
  * Gear-only escape hatch: recovers from corrupted embedded web-app state (a bad mirrored snapshot
  * or seeded project state that is re-applied on every load) without requiring the user to locate
@@ -623,7 +563,7 @@ internal class OpenCodeResetSandboxAction :
         val project = e.project ?: return
         if (openCodeBackend(project) !is SbxOpenCodeServerBackend) return
         if (!confirmOpenCodeSandboxReset(project)) return
-        requestOpenCodeSandboxReset(project)
+        OpenCodeProjectRuntime.getInstance(project).resetSandbox()
     }
 
     override fun update(e: AnActionEvent) {
@@ -668,18 +608,6 @@ internal class OpenCodeUpgradeSandboxBinaryAction :
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 }
 
-internal fun confirmOpenCodeSandboxBinaryUpgrade(project: Project?): Boolean {
-    return MessageDialogBuilder.yesNo(
-            "Upgrade OpenCode in Sandbox",
-            "This runs opencode upgrade inside the existing sandbox and restarts serve. " +
-                "The VM and sessions stay. Needs sandbox network access.",
-        )
-        .yesText("Upgrade")
-        .noText("Cancel")
-        .icon(Messages.getInformationIcon())
-        .ask(project)
-}
-
 internal class OpenCodeUpdateSandboxImageAction :
     DumbAwareAction(
         "Update OpenCode Sandbox Image",
@@ -696,7 +624,7 @@ internal class OpenCodeUpdateSandboxImageAction :
                     {
                         if (project.isDisposed) return@invokeLater
                         if (ok == true) {
-                            requestOpenCodeSandboxReset(project)
+                            OpenCodeProjectRuntime.getInstance(project).resetSandbox()
                         } else {
                             Messages.showErrorDialog(
                                 project,
@@ -721,94 +649,6 @@ internal class OpenCodeUpdateSandboxImageAction :
     }
 
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
-}
-
-internal fun confirmOpenCodeSandboxImageUpdate(project: Project?): Boolean {
-    val retention =
-        project?.let {
-            OpenCodeProjectSettingsState.getInstance(it)
-                .effectiveProjectDirectory(it.basePath)
-                ?.let(OpenCodeProjectSettingsConfigurable::sandboxSessionRetentionSummary)
-        } ?: "Conversation history retention is unknown until the VM is inspected."
-    return MessageDialogBuilder.yesNo(
-            "Update OpenCode Sandbox Image",
-            "This removes the cached official OpenCode Docker Sandbox image and recreates this project's sandbox " +
-                "so the next start pulls the latest template. $retention " +
-                "Host OpenCode history is not affected. Other sandboxes that still use the old image are unchanged " +
-                "until they are recreated.",
-        )
-        .yesText("Update and Recreate")
-        .noText("Cancel")
-        .icon(Messages.getWarningIcon())
-        .ask(project)
-}
-
-internal fun confirmOpenCodeSandboxExposure(project: Project?, exposure: SbxExposure?): Boolean {
-    val items = exposure?.items.orEmpty()
-    if (items.isEmpty()) return true
-    return MessageDialogBuilder.yesNo(
-            "Allow Sandbox Access",
-            "This project's opencode-sbx.yaml gives its Docker Sandbox access beyond the project:\n\n" +
-                items.joinToString("\n") { "• $it" } +
-                "\n\nKits can grant network access and run setup inside the VM. " +
-                "Allow only if you trust the source of this file. You are asked again when these grants change.",
-        )
-        .yesText("Allow and Start")
-        .noText("Cancel")
-        .icon(Messages.getWarningIcon())
-        .ask(project)
-}
-
-internal fun confirmDiscardForeignSandbox(project: Project?): Boolean {
-    return MessageDialogBuilder.yesNo(
-            "Create new sandbox",
-            "This force-removes the unmatched sandbox at this name or workspace, then creates one owned by this panel. " +
-                "Sessions in that VM are dropped.",
-        )
-        .yesText("Create new")
-        .noText("Cancel")
-        .icon(Messages.getWarningIcon())
-        .ask(project)
-}
-
-internal fun confirmOpenCodeSandboxRecreate(project: Project?, reasons: List<String>): Boolean {
-    val retention =
-        project?.let {
-            OpenCodeProjectSettingsState.getInstance(it)
-                .effectiveProjectDirectory(it.basePath)
-                ?.let(OpenCodeProjectSettingsConfigurable::sandboxSessionRetentionSummary)
-        } ?: "Conversation history retention is unknown until the VM is inspected."
-    return MessageDialogBuilder.yesNo(
-            "Recreate Sandbox",
-            "The sandbox differs from opencode-sbx.yaml:\n" +
-                reasons.joinToString("\n") { "• $it" } +
-                "\n\nRecreating removes the VM and creates a new one from the file. " +
-                "Packages and other VM-only state are dropped. $retention",
-        )
-        .yesText("Recreate")
-        .noText("Cancel")
-        .icon(Messages.getWarningIcon())
-        .ask(project)
-}
-
-internal fun confirmOpenCodeSandboxReset(project: Project?): Boolean {
-    val retention =
-        project?.let {
-            OpenCodeProjectSettingsState.getInstance(it)
-                .effectiveProjectDirectory(it.basePath)
-                ?.let(OpenCodeProjectSettingsConfigurable::sandboxSessionRetentionSummary)
-        } ?: "Conversation history retention is unknown until the VM is inspected."
-    return MessageDialogBuilder.yesNo(
-            "Reset Sandbox",
-            "This force-removes the plugin-owned Docker Sandbox VM and creates a new one, then starts OpenCode. " +
-                "Packages and other VM-only state are dropped. $retention " +
-                "An OpenCode 2.x binary kept for this sandbox is deleted and reinstalled on the next start (needs network). " +
-                "Host OpenCode history is not affected.",
-        )
-        .yesText("Reset Sandbox")
-        .noText("Cancel")
-        .icon(Messages.getWarningIcon())
-        .ask(project)
 }
 
 internal class OpenCodeResetWebStateAction :

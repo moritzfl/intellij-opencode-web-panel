@@ -16,6 +16,7 @@ import com.intellij.ui.components.JBPanelWithEmptyText
 import com.intellij.util.ui.components.BorderLayoutPanel
 import de.moritzf.opencodewebpanel.features.OpenCodeAgentStatusState
 import de.moritzf.opencodewebpanel.features.OpenCodeChatInputService
+import de.moritzf.opencodewebpanel.server.OpenCodeProjectRuntime
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
 import java.awt.Frame
 import java.awt.event.HierarchyEvent
@@ -30,6 +31,8 @@ internal interface OpenCodePanel : Disposable {
     fun prepareBrowserForReplacement(): CompletableFuture<Unit>
 
     fun checkAndLoadContent()
+
+    fun restartServer()
 
     fun dispatchChatBatch(delivery: OpenCodeChatInputService.Delivery): Boolean
 
@@ -63,6 +66,14 @@ internal constructor(
         get() = disposed || project.isDisposed
 
     init {
+        OpenCodeProjectRuntime.getInstance(project).bindPanelRestart(this) {
+            val current = panel
+            if (isDisposed || current == null) false
+            else {
+                current.restartServer()
+                true
+            }
+        }
         component.addHierarchyListener { event ->
             if (
                 event.changeFlags and HierarchyEvent.SHOWING_CHANGED.toLong() != 0L &&

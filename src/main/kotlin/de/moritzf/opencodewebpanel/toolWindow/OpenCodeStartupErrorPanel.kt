@@ -12,8 +12,8 @@ import com.intellij.util.ui.JBFont
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.components.BorderLayoutPanel
 import de.moritzf.opencodewebpanel.configuration.OpenCodePortMode
-import de.moritzf.opencodewebpanel.configuration.OpenCodeProjectSettingsListener
 import de.moritzf.opencodewebpanel.configuration.OpenCodeProjectSettingsState
+import de.moritzf.opencodewebpanel.server.OpenCodeProjectRuntime
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLogBuffer
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.server.SbxLaunchSpec
@@ -77,9 +77,7 @@ internal class OpenCodeStartupErrorPanel(
                 val directory = settings.effectiveProjectDirectory(project.basePath)
                 val spec = SbxLaunchSpec.load(directory)
                 if (spec != null) SbxLaunchSpec.persist(spec.copy(hostPort = null))
-                project.messageBus
-                    .syncPublisher(OpenCodeProjectSettingsListener.TOPIC)
-                    .serverRestartRequested()
+                OpenCodeProjectRuntime.getInstance(project).restart()
             }
         }
     private val adoptSandboxButton =

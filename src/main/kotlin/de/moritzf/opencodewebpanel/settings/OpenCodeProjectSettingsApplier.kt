@@ -10,6 +10,7 @@ import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.util.text.StringUtil
 import de.moritzf.opencodewebpanel.configuration.OpenCodeProjectSettingsListener
 import de.moritzf.opencodewebpanel.configuration.OpenCodeProjectSettingsState
+import de.moritzf.opencodewebpanel.server.OpenCodeProjectRuntime
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
@@ -17,8 +18,6 @@ import de.moritzf.opencodewebpanel.server.SbxExposure
 import de.moritzf.opencodewebpanel.server.SbxLaunchSpec
 import de.moritzf.opencodewebpanel.server.SbxOpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.SbxSandboxRecordStore
-import de.moritzf.opencodewebpanel.toolWindow.requestOpenCodeSandboxReset
-import de.moritzf.opencodewebpanel.toolWindow.requestOpenCodeServerRestart
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -101,9 +100,12 @@ internal class OpenCodeProjectSettingsApplier(private val project: Project) {
         plan.applyRuntime(
             leavingSharedBackend = shared,
             stop = oldBackend::stopServer,
-            restart = { onUi { requestOpenCodeServerRestart(project) } },
+            restart = { onUi { OpenCodeProjectRuntime.getInstance(project).restart() } },
             resetSandbox = {
-                onUi { requestOpenCodeSandboxReset(project, dropGuestOpenCode = false) }
+                onUi {
+                    OpenCodeProjectRuntime.getInstance(project)
+                        .resetSandbox(dropGuestOpenCode = false)
+                }
             },
             applyLive = {
                 val sandbox = oldBackend as? SbxOpenCodeServerBackend

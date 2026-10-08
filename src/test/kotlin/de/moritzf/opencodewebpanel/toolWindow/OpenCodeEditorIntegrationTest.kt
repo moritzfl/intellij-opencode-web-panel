@@ -184,6 +184,8 @@ class OpenCodeEditorIntegrationTest : FileEditorManagerTestCase() {
     }
 
     private class TestPanel : OpenCodePanel {
+        override fun restartServer() = Unit
+
         val focus = JTextField("draft")
         override val component = JPanel().apply { add(focus) }
         override val preferredFocus = focus

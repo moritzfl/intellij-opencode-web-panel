@@ -14,6 +14,7 @@ import de.moritzf.opencodewebpanel.configuration.OpenCodeProjectDirectoryMode
 import de.moritzf.opencodewebpanel.configuration.OpenCodeProjectSettingsListener
 import de.moritzf.opencodewebpanel.configuration.OpenCodeProjectSettingsState
 import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsState
+import de.moritzf.opencodewebpanel.server.OpenCodeProjectRuntime
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState
 import de.moritzf.opencodewebpanel.server.SbxCli
@@ -75,15 +76,17 @@ class OpenCodeProjectSettingsConfigurableTest {
                 override fun getBasePath(): String = temp.root.toPath().toRealPath().toString()
             }
         project.registerService(OpenCodeProjectSettingsState::class.java, projectSettings)
+        val runtime = OpenCodeProjectRuntime(project)
+        project.registerService(OpenCodeProjectRuntime::class.java, runtime)
+        runtime.bindPanelRestart(disposable.disposable) {
+            restarts++
+            true
+        }
         project.messageBus
             .connect(disposable.disposable)
             .subscribe(
                 OpenCodeProjectSettingsListener.TOPIC,
                 object : OpenCodeProjectSettingsListener {
-                    override fun serverRestartRequested() {
-                        restarts++
-                    }
-
                     override fun serverReloadRequested() {
                         reloads++
                     }

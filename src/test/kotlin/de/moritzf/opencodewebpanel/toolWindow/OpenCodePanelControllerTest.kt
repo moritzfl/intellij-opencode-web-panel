@@ -5,6 +5,7 @@ import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.util.Disposer
 import com.intellij.testFramework.ApplicationRule
 import de.moritzf.opencodewebpanel.features.OpenCodeChatInputService
+import de.moritzf.opencodewebpanel.server.OpenCodeProjectRuntime
 import java.util.concurrent.CompletableFuture
 import javax.swing.JPanel
 import org.junit.Assert.*
@@ -24,6 +25,9 @@ class OpenCodePanelControllerTest {
             controller = OpenCodePanelController(project) { candidates.removeFirst() }
             controller.ensurePanel()
             controller.replacePanel()
+            OpenCodeProjectRuntime.getInstance(project).restart()
+            assertEquals(1, first.restarts)
+            assertEquals(0, next.restarts)
             assertTrue(chat.send(listOf("draft")))
             assertEquals(1, first.deliveries.size)
             assertTrue(next.deliveries.isEmpty())
@@ -33,6 +37,9 @@ class OpenCodePanelControllerTest {
         next.ready.complete(Unit)
         onEdt {
             assertTrue(controller.isCurrent(next))
+            OpenCodeProjectRuntime.getInstance(project).restart()
+            assertEquals(1, first.restarts)
+            assertEquals(1, next.restarts)
             assertEquals(1, first.disposals)
             assertEquals(1, next.loads)
             assertFalse(chat.acknowledge(first.deliveries.single().attemptID, true))
@@ -127,6 +134,7 @@ class OpenCodePanelControllerTest {
         val ready = CompletableFuture<Unit>()
         val deliveries = mutableListOf<OpenCodeChatInputService.Delivery>()
         var loads = 0
+        var restarts = 0
         var disposals = 0
 
         override fun prepareBrowserForReplacement() = ready
@@ -141,6 +149,10 @@ class OpenCodePanelControllerTest {
         }
 
         override fun onHostChanged() = Unit
+
+        override fun restartServer() {
+            restarts++
+        }
 
         override fun dispose() {
             disposals++

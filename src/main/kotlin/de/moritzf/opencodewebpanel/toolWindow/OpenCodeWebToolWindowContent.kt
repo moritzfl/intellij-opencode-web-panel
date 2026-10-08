@@ -50,6 +50,7 @@ import de.moritzf.opencodewebpanel.server.OpenCodeGlobalEvent
 import de.moritzf.opencodewebpanel.server.OpenCodeGlobalEventListener
 import de.moritzf.opencodewebpanel.server.OpenCodeHostPaths
 import de.moritzf.opencodewebpanel.server.OpenCodeLifecycleStripModel
+import de.moritzf.opencodewebpanel.server.OpenCodeProjectRuntime
 import de.moritzf.opencodewebpanel.server.OpenCodeRecoveryNotice
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
@@ -71,6 +72,10 @@ import de.moritzf.opencodewebpanel.server.shouldShowStartupError
 import de.moritzf.opencodewebpanel.server.shouldTickLifecycleStrip
 import de.moritzf.opencodewebpanel.server.visibleRecoveryNotice
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable
+import de.moritzf.opencodewebpanel.ui.confirmDiscardForeignSandbox
+import de.moritzf.opencodewebpanel.ui.confirmOpenCodeSandboxExposure
+import de.moritzf.opencodewebpanel.ui.confirmOpenCodeSandboxRecreate
+import de.moritzf.opencodewebpanel.ui.confirmOpenCodeSandboxReset
 import java.awt.CardLayout
 import java.awt.Color
 import java.awt.Component
@@ -807,14 +812,6 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
             .subscribe(
                 OpenCodeProjectSettingsListener.TOPIC,
                 object : OpenCodeProjectSettingsListener {
-                    override fun serverRestartRequested() {
-                        ApplicationManager.getApplication().invokeLater {
-                            if (isContentDisposed()) return@invokeLater
-                            restartOpenCodeServer()
-                            schedulePanelReplacement()
-                        }
-                    }
-
                     override fun serverReloadRequested() {
                         ApplicationManager.getApplication().invokeLater {
                             if (isContentDisposed()) return@invokeLater
@@ -1211,11 +1208,25 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
                     notification.expire()
                     if (project.isDisposed) return
                     if (!confirmOpenCodeSandboxReset(project)) return
-                    requestOpenCodeSandboxReset(project)
+                    OpenCodeProjectRuntime.getInstance(project).resetSandbox()
                 }
             }
         )
         notification.notify(project)
+    }
+
+    override fun restartServer() {
+        ApplicationManager.getApplication().invokeLater {
+            if (host.isDisposed) return@invokeLater
+            // Resolve again after the EDT hop: a replacement may have finished in the meantime.
+            if (!host.isCurrent(this)) {
+                OpenCodeProjectRuntime.getInstance(project).restart()
+                return@invokeLater
+            }
+            if (isContentDisposed()) return@invokeLater
+            restartOpenCodeServer()
+            schedulePanelReplacement()
+        }
     }
 
     private fun restartOpenCodeServer() {
@@ -2002,7 +2013,8 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
                         "Remove this sandbox and create a new one from opencode-sbx.yaml",
                     ) {
                         if (confirmOpenCodeSandboxRecreate(project, sbx.pendingRecreateReasons())) {
-                            requestOpenCodeSandboxReset(project, dropGuestOpenCode = false)
+                            OpenCodeProjectRuntime.getInstance(project)
+                                .resetSandbox(dropGuestOpenCode = false)
                         }
                     }
                 else -> null

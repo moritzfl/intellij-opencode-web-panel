@@ -3,8 +3,6 @@ package de.moritzf.opencodewebpanel.configuration
 import com.intellij.util.messages.Topic
 
 interface OpenCodeProjectSettingsListener {
-    fun serverRestartRequested() {}
-
     fun serverReloadRequested() {}
 
     companion object {
