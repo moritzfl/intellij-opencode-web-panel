@@ -4,6 +4,22 @@
 
 ## [Unreleased]
 
+## [2.7.2] - 2026-10-08
+
+### Changed
+
+- Refactor configuration, settings, server, and browser internals into explicit,
+  acyclic layers enforced by ArchUnit tests.
+- Expand live browser and JCEF regression coverage for OpenCode 1.18 and 2.x,
+  including OpenCode 2.0.25.
+- Replace Python with Node.js for persisted-storage contract checks and enforce
+  consistent Kotlin formatting with ktfmt.
+
+### Fixed
+
+- Compatibility checks follow statically imported OpenCode assets and classify
+  new origin-owned storage keys, avoiding false failures with OpenCode 2.0.25.
+
 ## [2.7.1] - 2026-09-28
 
 ### Fixed
@@ -1097,7 +1113,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.7.1...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.7.2...HEAD
+[2.7.2]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.7.1...2.7.2
 [2.7.1]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.7.0...2.7.1
 [2.7.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.6.3...2.7.0
 [2.6.3]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.6.2...2.6.3
