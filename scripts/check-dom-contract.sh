@@ -9,7 +9,8 @@
 # Default base-url: http://127.0.0.1:4096
 #
 # 1.18 and CLI 2.x both run this script. CLI 2.x ships session/review/composer slots in lazy
-# `import(\`./chunk.js\`)` files under `/_assets/`; an index-only crawl is not a contract check.
+# imports under `/_assets/`; an index-only crawl is not a contract check. Follow both static
+# imports/re-exports and dynamic imports, with single, double or backtick quotes.
 # Quoted attribute markers (`"data-file"`) also match the backtick form CLI 2.x minifies to.
 
 set -euo pipefail
@@ -32,11 +33,11 @@ fi
 
 mkdir -p "$WORKDIR/js"
 : > "$WORKDIR/queue"
-: > "$WORKDIR/index_names"
+index_files=()
 while IFS= read -r asset; do
   name="${asset##*/}"
   echo "$name" >> "$WORKDIR/queue"
-  echo "$name" >> "$WORKDIR/index_names"
+  index_files+=("$WORKDIR/js/$name")
 done < <(grep -oE "/?_?assets/[A-Za-z0-9._-]+\.js" "$WORKDIR/index.html" | sort -u)
 if [ ! -s "$WORKDIR/queue" ]; then
   echo "FAIL: no JS assets found in $BASE_URL/ (auth problem or layout change?)" >&2
@@ -54,32 +55,37 @@ skip_chunk() {
   return 1
 }
 
+first_round=1
 while [ -s "$WORKDIR/queue" ]; do
   sort -u "$WORKDIR/queue" -o "$WORKDIR/queue.uniq"
   : > "$WORKDIR/queue"
   : > "$WORKDIR/this_round"
+  files=()
   while IFS= read -r name; do
     [ -n "$name" ] || continue
     [ -f "$JS_DIR/$name" ] && continue
     skip_chunk "$name" && continue
     echo "$name" >> "$WORKDIR/this_round"
+    files+=("$JS_DIR/$name")
   done < "$WORKDIR/queue.uniq"
   if [ ! -s "$WORKDIR/this_round" ]; then
     break
   fi
   cat "$WORKDIR/this_round" | xargs -P 8 -I{} sh -c \
-    'curl -fsu "$AUTH" "$BASE_URL/$ASSET_PREFIX/{}" -o "$JS_DIR/{}" || echo "FAIL fetch $ASSET_PREFIX/{}" >&2'
-  while IFS= read -r name; do
-    f="$JS_DIR/$name"
-    [ -f "$f" ] || continue
-    grep -oE 'import\(`\./[A-Za-z0-9._-]+\.js`\)' "$f" 2>/dev/null \
-      | sed -E 's/.*\.\///; s/`\)$//' || true
-    if grep -qxF "$name" "$WORKDIR/index_names"; then
-      grep -oE '_?assets/[A-Za-z0-9._-]+\.js' "$f" 2>/dev/null | sed 's#.*/##' \
+    'curl --connect-timeout 5 --max-time 30 -fsu "$AUTH" "$BASE_URL/$ASSET_PREFIX/$1" -o "$JS_DIR/$1" || { echo "FAIL fetch $ASSET_PREFIX/$1" >&2; exit 1; }' _ '{}'
+  {
+    # 2.0.25 moved Markdown into a statically imported chunk. Only following import(`...`)
+    # misses its DOM markers even though the browser loads them normally. Scan each round in
+    # one grep process: a complete 2.x graph has over a thousand chunks.
+    grep -hoE "(from[[:space:]]*|import[[:space:]]*\\(?[[:space:]]*)[\"'\`]\\./[A-Za-z0-9._-]+\\.js[\"'\`]" "${files[@]}" 2>/dev/null \
+      | sed -E 's#.*\./##; s/.$//' || true
+    if [ "$first_round" = 1 ]; then
+      grep -hoE '_?assets/[A-Za-z0-9._-]+\.js' "${index_files[@]}" 2>/dev/null | sed 's#.*/##' \
         | grep -E '^(route-|file-|shell-|screen-|session-|command-|dialog-|incompatible-|composer-|panel-|home-|titlebar-|new-session-|server-|select-|loader-)' \
         || true
     fi
-  done < "$WORKDIR/this_round" | sort -u >> "$WORKDIR/queue"
+  } | sort -u >> "$WORKDIR/queue"
+  first_round=0
 done
 
 ASSET_COUNT="$(find "$JS_DIR" -type f -name '*.js' | wc -l | tr -d ' ')"
@@ -184,13 +190,14 @@ MARKERS_V2=(
 
 # 2.0.12 introduced inert local Markdown links. Older CLI 2.x uses href/target instead.
 if [ "$CLI2X" = 1 ]; then
-  if curl -fsu "$AUTH" "$BASE_URL/api/info" | python3 -c '
-import json, re, sys
-try:
-    version = re.search(r"(\d+)\.(\d+)\.(\d+)", json.load(sys.stdin).get("version", ""))
-    sys.exit(0 if version and tuple(map(int, version.groups())) >= (2, 0, 12) else 1)
-except (ValueError, AttributeError):
-    sys.exit(1)
+  if curl -fsu "$AUTH" "$BASE_URL/api/info" | node --input-type=module -e '
+import { readFileSync } from "node:fs";
+try {
+  const version = JSON.parse(readFileSync(0, "utf8")).version?.match(/(\d+)\.(\d+)\.(\d+)/);
+  if (!version) process.exit(1);
+  const [major, minor, patch] = version.slice(1).map(Number);
+  process.exit(major > 2 || (major === 2 && (minor > 0 || patch >= 12)) ? 0 : 1);
+} catch { process.exit(1); }
 '; then
     MARKERS_V2+=('data-local-link')
   fi
@@ -235,7 +242,7 @@ fi
 # direct Persist.global/window/workspace/server key; extras fail until allowlisted.
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 set +e
-python3 "$SCRIPT_DIR/classify-persist-keys.py" "$WORKDIR/bundle.js" "$WORKDIR/persist.count"
+node "$SCRIPT_DIR/classify-persist-keys.mjs" "$WORKDIR/bundle.js" "$WORKDIR/persist.count"
 persist_rc=$?
 set -e
 read -r PERSIST_COUNT PERSIST_FAILED < "$WORKDIR/persist.count"
