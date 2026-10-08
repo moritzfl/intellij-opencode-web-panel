@@ -3,6 +3,7 @@ package de.moritzf.opencodewebpanel.features
 import com.google.gson.JsonObject
 import de.moritzf.opencodewebpanel.server.OpenCodeGlobalEvent
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
+import de.moritzf.opencodewebpanel.server.OpenCodeSessionInfo
 import de.moritzf.opencodewebpanel.server.objectMember
 import de.moritzf.opencodewebpanel.server.stringMember
 
@@ -16,8 +17,7 @@ import de.moritzf.opencodewebpanel.server.stringMember
  * may look up the session via [fetchSession]; call it off the EDT.
  */
 internal class OpenCodeNotificationEventProcessor(
-    private val fetchSession:
-        (directory: String, sessionID: String) -> OpenCodeServerProtocol.SessionInfo?,
+    private val fetchSession: (directory: String, sessionID: String) -> OpenCodeSessionInfo?,
     private val nowMillis: () -> Long = System::currentTimeMillis,
 ) {
     companion object {

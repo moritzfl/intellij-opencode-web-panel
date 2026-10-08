@@ -4,7 +4,7 @@ import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import de.moritzf.opencodewebpanel.server.OpenCodeGlobalEvent
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
-import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
+import de.moritzf.opencodewebpanel.server.OpenCodeSessionInfo
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -12,7 +12,7 @@ import org.junit.Test
 class OpenCodeSoundServiceTest {
 
     private val played = mutableListOf<String?>()
-    private val sessions = mutableMapOf<String, OpenCodeServerProtocol.SessionInfo>()
+    private val sessions = mutableMapOf<String, OpenCodeSessionInfo>()
     private val defaults = OpenCodeSoundSettings()
 
     init {
@@ -41,7 +41,7 @@ class OpenCodeSoundServiceTest {
 
     @Test
     fun idleStatusPlaysAgentSoundOncePerBusyTransition() {
-        sessions["ses_1"] = OpenCodeServerProtocol.SessionInfo("Done", parentID = null)
+        sessions["ses_1"] = OpenCodeSessionInfo("Done", parentID = null)
         handle(event("session.status", """{"sessionID":"ses_1","status":{"type":"busy"}}"""))
         handle(event("session.status", """{"sessionID":"ses_1","status":{"type":"idle"}}"""))
         handle(event("session.idle", """{"sessionID":"ses_1"}"""))
@@ -58,8 +58,8 @@ class OpenCodeSoundServiceTest {
 
     @Test
     fun startupIdleEventsDoNotSpillIntoFirstConversation() {
-        sessions["ses_1"] = OpenCodeServerProtocol.SessionInfo("Already idle", parentID = null)
-        sessions["ses_2"] = OpenCodeServerProtocol.SessionInfo("Also idle", parentID = null)
+        sessions["ses_1"] = OpenCodeSessionInfo("Already idle", parentID = null)
+        sessions["ses_2"] = OpenCodeSessionInfo("Also idle", parentID = null)
 
         handle(event("session.status", """{"sessionID":"ses_1","status":{"type":"idle"}}"""))
         handle(event("session.idle", """{"sessionID":"ses_1"}"""))
@@ -76,7 +76,7 @@ class OpenCodeSoundServiceTest {
 
     @Test
     fun skipsChildSessionsAndUnresolvedSessionsForAgent() {
-        sessions["ses_child"] = OpenCodeServerProtocol.SessionInfo("sub", parentID = "ses_parent")
+        sessions["ses_child"] = OpenCodeSessionInfo("sub", parentID = "ses_parent")
         handle(event("session.status", """{"sessionID":"ses_child","status":{"type":"busy"}}"""))
         handle(event("session.idle", """{"sessionID":"ses_child"}"""))
         handle(event("session.status", """{"sessionID":"ses_missing","status":{"type":"busy"}}"""))
@@ -92,7 +92,7 @@ class OpenCodeSoundServiceTest {
         assertTrue(played.isEmpty())
 
         OpenCodeSoundService.handleConnected(OpenCodeServerBackend.NATIVE_ID, 1)
-        sessions["ses_1"] = OpenCodeServerProtocol.SessionInfo("Done", parentID = null)
+        sessions["ses_1"] = OpenCodeSessionInfo("Done", parentID = null)
         handle(event("session.idle", """{"sessionID":"ses_1"}"""))
         assertEquals(listOf(OpenCodeSoundSettings.DEFAULT_AGENT), played)
 
@@ -104,8 +104,8 @@ class OpenCodeSoundServiceTest {
 
     @Test
     fun backendRestartDoesNotClearOtherBackendsBusyState() {
-        sessions["ses_native"] = OpenCodeServerProtocol.SessionInfo("Done", parentID = null)
-        sessions["ses_sbx"] = OpenCodeServerProtocol.SessionInfo("Done", parentID = null)
+        sessions["ses_native"] = OpenCodeSessionInfo("Done", parentID = null)
+        sessions["ses_sbx"] = OpenCodeSessionInfo("Done", parentID = null)
         handle(event("session.status", """{"sessionID":"ses_native","status":{"type":"busy"}}"""))
         handle(
             event(
@@ -129,7 +129,7 @@ class OpenCodeSoundServiceTest {
 
     @Test
     fun idleLookupUsesEventBackendId() {
-        sessions["ses_1"] = OpenCodeServerProtocol.SessionInfo("Done", parentID = null)
+        sessions["ses_1"] = OpenCodeSessionInfo("Done", parentID = null)
         val seen = mutableListOf<String>()
         OpenCodeSoundService.handleEvent(
             event(
@@ -159,7 +159,7 @@ class OpenCodeSoundServiceTest {
 
     @Test
     fun respectsAgentDisabled() {
-        sessions["ses_1"] = OpenCodeServerProtocol.SessionInfo("Done", parentID = null)
+        sessions["ses_1"] = OpenCodeSessionInfo("Done", parentID = null)
         handle(event("session.status", """{"sessionID":"ses_1","status":{"type":"busy"}}"""))
         handle(
             event("session.idle", """{"sessionID":"ses_1"}"""),
@@ -177,8 +177,8 @@ class OpenCodeSoundServiceTest {
 
     @Test
     fun sessionErrorPlaysErrorsSoundAndSkipsChildren() {
-        sessions["ses_1"] = OpenCodeServerProtocol.SessionInfo("Main", parentID = null)
-        sessions["ses_child"] = OpenCodeServerProtocol.SessionInfo("sub", parentID = "ses_1")
+        sessions["ses_1"] = OpenCodeSessionInfo("Main", parentID = null)
+        sessions["ses_child"] = OpenCodeSessionInfo("sub", parentID = "ses_1")
         handle(event("session.error", """{"sessionID":"ses_child"}"""))
         assertTrue(played.isEmpty())
         handle(event("session.error", """{"sessionID":"ses_1"}"""))
@@ -187,7 +187,7 @@ class OpenCodeSoundServiceTest {
 
     @Test
     fun usesCustomSoundIdsFromSettings() {
-        sessions["ses_1"] = OpenCodeServerProtocol.SessionInfo("Done", parentID = null)
+        sessions["ses_1"] = OpenCodeSessionInfo("Done", parentID = null)
         val custom = defaults.copy(agent = "alert-05", permissions = "yup-01", errors = "nope-12")
         handle(
             event("session.status", """{"sessionID":"ses_1","status":{"type":"busy"}}"""),

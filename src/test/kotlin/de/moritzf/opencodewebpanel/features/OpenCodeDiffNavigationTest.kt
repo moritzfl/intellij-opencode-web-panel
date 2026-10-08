@@ -1,6 +1,6 @@
 package de.moritzf.opencodewebpanel.features
 
-import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
+import de.moritzf.opencodewebpanel.server.OpenCodeSnapshotFileDiff
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -10,7 +10,7 @@ import org.junit.Test
 class OpenCodeDiffNavigationTest {
 
     private fun diff(file: String) =
-        OpenCodeServerProtocol.SnapshotFileDiff(
+        OpenCodeSnapshotFileDiff(
             file = file,
             patch = "--- a/$file\n+++ b/$file\n@@ -1 +1 @@\n-old\n+new\n",
             additions = 1,
@@ -61,7 +61,7 @@ class OpenCodeDiffNavigationTest {
             OpenCodeDiffNavigation.selectDiffs(diffs, "src/a/Main.kt", caseSensitive = true),
         )
         assertEquals(
-            emptyList<OpenCodeServerProtocol.SnapshotFileDiff>(),
+            emptyList<OpenCodeSnapshotFileDiff>(),
             OpenCodeDiffNavigation.selectDiffs(diffs, "src/c/Main.kt", caseSensitive = true),
         )
         assertEquals(diffs, OpenCodeDiffNavigation.selectDiffs(diffs, null))
@@ -80,7 +80,7 @@ class OpenCodeDiffNavigationTest {
             ),
         )
         assertEquals(
-            emptyList<OpenCodeServerProtocol.SnapshotFileDiff>(),
+            emptyList<OpenCodeSnapshotFileDiff>(),
             OpenCodeDiffNavigation.selectDiffs(
                 listOf(diff("src/a/Main.kt"), diff("src/b/Main.kt")),
                 "Main.kt",
@@ -88,7 +88,7 @@ class OpenCodeDiffNavigationTest {
             ),
         )
         assertEquals(
-            emptyList<OpenCodeServerProtocol.SnapshotFileDiff>(),
+            emptyList<OpenCodeSnapshotFileDiff>(),
             OpenCodeDiffNavigation.selectDiffs(
                 listOf(diff("Foo.kt"), diff("foo.kt")),
                 "FOO.kt",
@@ -145,7 +145,7 @@ class OpenCodeDiffNavigationTest {
             OpenCodeDiffNavigation.resolvePartDiffs(listOf(a, b), "src/B.kt", caseSensitive = true),
         )
         assertEquals(
-            emptyList<OpenCodeServerProtocol.SnapshotFileDiff>(),
+            emptyList<OpenCodeSnapshotFileDiff>(),
             OpenCodeDiffNavigation.resolvePartDiffs(listOf(a, b), "src/C.kt", caseSensitive = true),
         )
     }

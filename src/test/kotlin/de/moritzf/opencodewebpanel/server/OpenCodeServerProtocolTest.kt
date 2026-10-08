@@ -618,23 +618,23 @@ class OpenCodeServerProtocolTest {
     @Test
     fun parseSessionChildrenRejectsMalformedResponses() {
         assertEquals(
-            emptyList<OpenCodeServerProtocol.SessionInfo>(),
+            emptyList<OpenCodeSessionInfo>(),
             OpenCodeServerProtocol.parseSessionChildren(""),
         )
         assertEquals(
-            emptyList<OpenCodeServerProtocol.SessionInfo>(),
+            emptyList<OpenCodeSessionInfo>(),
             OpenCodeServerProtocol.parseSessionChildren("not json"),
         )
         assertEquals(
-            emptyList<OpenCodeServerProtocol.SessionInfo>(),
+            emptyList<OpenCodeSessionInfo>(),
             OpenCodeServerProtocol.parseSessionChildren("{}"),
         )
         assertEquals(
-            emptyList<OpenCodeServerProtocol.SessionInfo>(),
+            emptyList<OpenCodeSessionInfo>(),
             OpenCodeServerProtocol.parseSessionChildren("""{"data":{}}"""),
         )
         assertEquals(
-            emptyList<OpenCodeServerProtocol.SessionInfo>(),
+            emptyList<OpenCodeSessionInfo>(),
             OpenCodeServerProtocol.parseSessionChildren("""[{"title":"Missing id"}]"""),
         )
     }
@@ -779,8 +779,8 @@ class OpenCodeServerProtocolTest {
 
         assertEquals(
             listOf(
-                OpenCodeServerProtocol.PendingRequestSummary("per_1", "ses_1"),
-                OpenCodeServerProtocol.PendingRequestSummary("que_2", "ses_2"),
+                OpenCodePendingRequestSummary("per_1", "ses_1"),
+                OpenCodePendingRequestSummary("que_2", "ses_2"),
             ),
             requests,
         )
@@ -790,9 +790,7 @@ class OpenCodeServerProtocolTest {
                 is OpenCodeProtocolResult.Failure
         )
         assertEquals(
-            OpenCodeProtocolResult.Success(
-                listOf(OpenCodeServerProtocol.PendingRequestSummary("per_1", "ses_1"))
-            ),
+            OpenCodeProtocolResult.Success(listOf(OpenCodePendingRequestSummary("per_1", "ses_1"))),
             OpenCodeServerProtocol.parsePendingRequestsResult(
                 """[{"id":"per_1","sessionID":"ses_1"}]"""
             ),
@@ -807,7 +805,7 @@ class OpenCodeServerProtocolTest {
             )
         assertEquals(
             listOf(
-                OpenCodeServerProtocol.PendingRequestSummary(
+                OpenCodePendingRequestSummary(
                     "per_0ab82a936001Ab0k4zIgsRFD7a",
                     "ses_f547e1692ffelWnvCLl1OK8i4s",
                 )
@@ -833,9 +831,7 @@ class OpenCodeServerProtocolTest {
                 wireProtocol = OpenCodeWireProtocol.V2_CLI,
             )
         assertEquals(
-            OpenCodeProtocolResult.Success(
-                emptyList<OpenCodeServerProtocol.PendingRequestSummary>()
-            ),
+            OpenCodeProtocolResult.Success(emptyList<OpenCodePendingRequestSummary>()),
             result,
         )
     }
@@ -2993,7 +2989,7 @@ class OpenCodeServerProtocolTest {
                 "/tmp",
                 "invalid",
                 "per_1",
-                OpenCodeServerProtocol.PermissionResponse.ONCE,
+                OpenCodePermissionResponse.ONCE,
             )
         )
         assertFalse(
@@ -3003,7 +2999,7 @@ class OpenCodeServerProtocolTest {
                 "/tmp",
                 "ses_1",
                 "not a valid id",
-                OpenCodeServerProtocol.PermissionResponse.ONCE,
+                OpenCodePermissionResponse.ONCE,
             )
         )
     }
@@ -3018,7 +3014,7 @@ class OpenCodeServerProtocolTest {
                     "/tmp/project",
                     "ses_abc123",
                     "per_abc123",
-                    OpenCodeServerProtocol.PermissionResponse.ONCE,
+                    OpenCodePermissionResponse.ONCE,
                 )
             }
         assertTrue(accepted)
@@ -3040,7 +3036,7 @@ class OpenCodeServerProtocolTest {
                     "/tmp/project",
                     "ses_abc123",
                     "per_abc123",
-                    OpenCodeServerProtocol.PermissionResponse.ONCE,
+                    OpenCodePermissionResponse.ONCE,
                     wireProtocol = OpenCodeWireProtocol.V2_CLI,
                 )
             }

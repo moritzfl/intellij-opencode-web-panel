@@ -9,6 +9,7 @@ import de.moritzf.opencodewebpanel.server.OpenCodeGlobalEvent
 import de.moritzf.opencodewebpanel.server.OpenCodeGlobalEventListener
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
+import de.moritzf.opencodewebpanel.server.OpenCodeSessionInfo
 import de.moritzf.opencodewebpanel.server.objectMember
 import de.moritzf.opencodewebpanel.server.stringMember
 import org.jetbrains.annotations.TestOnly
@@ -93,7 +94,7 @@ internal object OpenCodeSoundService {
                 backendId: String,
                 directory: String,
                 sessionID: String,
-            ) -> OpenCodeServerProtocol.SessionInfo? =
+            ) -> OpenCodeSessionInfo? =
             ::fetchSessionInfo,
         play: (String?) -> Unit = OpenCodeSoundPlayer::playById,
     ) {
@@ -155,7 +156,7 @@ internal object OpenCodeSoundService {
         backendId: String,
         directory: String,
         sessionID: String,
-    ): OpenCodeServerProtocol.SessionInfo? {
+    ): OpenCodeSessionInfo? {
         val serverManager =
             OpenCodeServerBackendRegistry.getInstance().backend(backendId) ?: return null
         val serverUrl = serverManager.getServerUrl() ?: return null

@@ -2,6 +2,7 @@ package de.moritzf.opencodewebpanel.features
 
 import com.intellij.openapi.diagnostic.thisLogger
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
+import de.moritzf.opencodewebpanel.server.OpenCodeSessionInfo
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicLong
@@ -22,7 +23,7 @@ import java.util.concurrent.atomic.AtomicLong
 internal class OpenCodeForeignSessionWarning(
     private val enabled: () -> Boolean,
     private val workspaceDirectory: () -> String?,
-    private val loadSession: (sessionID: String) -> OpenCodeServerProtocol.SessionInfo?,
+    private val loadSession: (sessionID: String) -> OpenCodeSessionInfo?,
     private val guestToHostPrefixes: () -> List<Pair<String, String>> = { emptyList() },
     private val sandboxGuestPath: (workspace: String) -> String? = { null },
     private val executeAsync: (Runnable) -> Unit,

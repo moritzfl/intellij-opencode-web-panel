@@ -3,39 +3,67 @@ package de.moritzf.opencodewebpanel.server
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import de.moritzf.opencodewebpanel.server.OpenCodeApiContract.CLI_PERMISSION_LIST_PATH
+import de.moritzf.opencodewebpanel.server.OpenCodeApiContract.PERMISSION_LIST_PATH
+import de.moritzf.opencodewebpanel.server.OpenCodeApiContract.QUESTION_LIST_PATH
+import de.moritzf.opencodewebpanel.server.OpenCodeApiContract.buildServerRootUrl
+import de.moritzf.opencodewebpanel.server.OpenCodeApiContract.isMessageId
+import de.moritzf.opencodewebpanel.server.OpenCodeApiContract.isOpenCodeRecordId
+import de.moritzf.opencodewebpanel.server.OpenCodeApiContract.isPartId
+import de.moritzf.opencodewebpanel.server.OpenCodeApiContract.isPermissionId
+import de.moritzf.opencodewebpanel.server.OpenCodeApiContract.isSessionId
+import de.moritzf.opencodewebpanel.server.OpenCodeApiContract.usesCliHttpApi
 import de.moritzf.opencodewebpanel.server.OpenCodeHttpTransport.httpGet
 import de.moritzf.opencodewebpanel.server.OpenCodeHttpTransport.httpGetResult
 import de.moritzf.opencodewebpanel.server.OpenCodeHttpTransport.httpGetResultAndHeader
+import de.moritzf.opencodewebpanel.server.OpenCodeHttpTransport.httpPostJson
 import de.moritzf.opencodewebpanel.server.OpenCodeHttpTransport.httpPostResult
 import de.moritzf.opencodewebpanel.server.OpenCodeRecoveryClassifier.normalizeLastMessageForClassification
-import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol.CLI_PERMISSION_LIST_PATH
-import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol.PERMISSION_LIST_PATH
-import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol.PendingRequestSummary
-import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol.QUESTION_LIST_PATH
-import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol.RECENT_SESSION_WINDOW_MILLIS
-import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol.SessionInfo
-import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol.SessionSummary
-import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol.SnapshotFileDiff
-import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol.ToolPartChange
-import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol.buildServerRootUrl
-import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol.isMessageId
-import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol.isOpenCodeRecordId
-import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol.isPartId
-import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol.isSessionId
-import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol.usesCliHttpApi
 import java.net.HttpURLConnection
 import java.nio.charset.StandardCharsets
 
 /** Dual-version session REST operations and their loose JSON envelopes. */
 internal object OpenCodeSessionApi {
+    const val RECENT_SESSION_WINDOW_MILLIS = 5 * 60 * 1000L
+
+    fun replyToPermission(
+        serverUrl: String,
+        basicAuthHeader: String,
+        directory: String,
+        sessionID: String,
+        permissionID: String,
+        response: OpenCodePermissionResponse,
+        connectTimeoutMillis: Int = 5000,
+        readTimeoutMillis: Int = 5000,
+        wireProtocol: OpenCodeWireProtocol = OpenCodeWireProtocol.V1_18,
+    ): Boolean {
+        if (wireProtocol == OpenCodeWireProtocol.UNKNOWN) return false
+        if (!isSessionId(sessionID) || !isPermissionId(permissionID)) return false
+        val encodedDirectory = java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
+        val (url, body) =
+            if (usesCliHttpApi(wireProtocol)) {
+                buildServerRootUrl(serverUrl) +
+                    "/api/session/$sessionID/permission/$permissionID/reply" to
+                    "{\"decision\":\"${response.jsonValue}\"}"
+            } else {
+                buildServerRootUrl(serverUrl) +
+                    "/permission/$permissionID/reply?directory=" +
+                    encodedDirectory to "{\"reply\":\"${response.jsonValue}\"}"
+            }
+        return httpPostJson(url, basicAuthHeader, body, connectTimeoutMillis, readTimeoutMillis)
+    }
+
     private const val MESSAGE_PAGE_MAX = 40
 
     private const val MESSAGE_PAGE_LIMIT = 50
 
-    private data class SessionPage(val sessions: List<SessionSummary>, val nextCursor: String?)
+    private data class SessionPage(
+        val sessions: List<OpenCodeSessionSummary>,
+        val nextCursor: String?,
+    )
 
     private data class ParsedPendingRequests(
-        val requests: List<PendingRequestSummary>,
+        val requests: List<OpenCodePendingRequestSummary>,
         val malformedEntry: Boolean,
     )
 
@@ -47,7 +75,7 @@ internal object OpenCodeSessionApi {
         connectTimeoutMillis: Int = 3000,
         readTimeoutMillis: Int = 3000,
         wireProtocol: OpenCodeWireProtocol = OpenCodeWireProtocol.V1_18,
-    ): SessionInfo? {
+    ): OpenCodeSessionInfo? {
         if (wireProtocol == OpenCodeWireProtocol.UNKNOWN || !isSessionId(sessionID)) return null
         val encodedDirectory = java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
         val url =
@@ -77,7 +105,7 @@ internal object OpenCodeSessionApi {
         connectTimeoutMillis: Int = 3000,
         readTimeoutMillis: Int = 3000,
         wireProtocol: OpenCodeWireProtocol = OpenCodeWireProtocol.V1_18,
-    ): List<SessionInfo> {
+    ): List<OpenCodeSessionInfo> {
         if (wireProtocol == OpenCodeWireProtocol.UNKNOWN || !isSessionId(sessionID))
             return emptyList()
         val encodedDirectory = java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
@@ -101,13 +129,13 @@ internal object OpenCodeSessionApi {
         return parseSessionChildren(body)
     }
 
-    fun parseSessionInfo(json: String): SessionInfo? {
+    fun parseSessionInfo(json: String): OpenCodeSessionInfo? {
         val root = parseJsonObject(json) ?: return null
         val session = root.objectMember("data") ?: root
         return parseSessionInfoObject(session)
     }
 
-    fun parseSessionChildren(json: String): List<SessionInfo> {
+    fun parseSessionChildren(json: String): List<OpenCodeSessionInfo> {
         val parsed = runCatching { JsonParser.parseString(json) }.getOrNull() ?: return emptyList()
         val array =
             when {
@@ -121,9 +149,9 @@ internal object OpenCodeSessionApi {
         }
     }
 
-    private fun parseSessionInfoObject(session: JsonObject): SessionInfo? {
+    private fun parseSessionInfoObject(session: JsonObject): OpenCodeSessionInfo? {
         val id = session.stringMember("id")?.takeIf(::isSessionId) ?: return null
-        return SessionInfo(
+        return OpenCodeSessionInfo(
             title = session.stringMember("title").orEmpty(),
             parentID = session.stringMember("parentID")?.takeIf { it.isNotBlank() },
             id = id,
@@ -140,7 +168,7 @@ internal object OpenCodeSessionApi {
         connectTimeoutMillis: Int = 5000,
         readTimeoutMillis: Int = 5000,
         wireProtocol: OpenCodeWireProtocol = OpenCodeWireProtocol.V1_18,
-    ): OpenCodeProtocolResult<List<SnapshotFileDiff>> {
+    ): OpenCodeProtocolResult<List<OpenCodeSnapshotFileDiff>> {
         if (wireProtocol == OpenCodeWireProtocol.UNKNOWN) {
             return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_BODY)
         }
@@ -206,7 +234,7 @@ internal object OpenCodeSessionApi {
         connectTimeoutMillis: Int = 5000,
         readTimeoutMillis: Int = 5000,
         wireProtocol: OpenCodeWireProtocol = OpenCodeWireProtocol.V1_18,
-    ): OpenCodeProtocolResult<List<SnapshotFileDiff>> {
+    ): OpenCodeProtocolResult<List<OpenCodeSnapshotFileDiff>> {
         if (!usesCliHttpApi(wireProtocol)) {
             return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_BODY)
         }
@@ -247,7 +275,7 @@ internal object OpenCodeSessionApi {
         }
     }
 
-    fun parseSessionDiff(json: String): List<SnapshotFileDiff> {
+    fun parseSessionDiff(json: String): List<OpenCodeSnapshotFileDiff> {
         val array = sessionDiffArray(json) ?: return emptyList()
         return parseSessionDiffArray(array)
     }
@@ -262,12 +290,12 @@ internal object OpenCodeSessionApi {
         }
     }
 
-    private fun parseSessionDiffArray(array: JsonArray): List<SnapshotFileDiff> {
-        val results = mutableListOf<SnapshotFileDiff>()
+    private fun parseSessionDiffArray(array: JsonArray): List<OpenCodeSnapshotFileDiff> {
+        val results = mutableListOf<OpenCodeSnapshotFileDiff>()
         for (element in array) {
             val entry = element.takeIf { it.isJsonObject }?.asJsonObject ?: continue
             results.add(
-                SnapshotFileDiff(
+                OpenCodeSnapshotFileDiff(
                     file = entry.stringMember("file")?.takeIf { it.isNotBlank() },
                     patch = entry.stringMember("patch"),
                     additions = entry.longMember("additions") ?: 0L,
@@ -288,7 +316,7 @@ internal object OpenCodeSessionApi {
         connectTimeoutMillis: Int = 5000,
         readTimeoutMillis: Int = 5000,
         wireProtocol: OpenCodeWireProtocol = OpenCodeWireProtocol.V1_18,
-    ): OpenCodeProtocolResult<ToolPartChange> {
+    ): OpenCodeProtocolResult<OpenCodeToolPartChange> {
         if (wireProtocol == OpenCodeWireProtocol.UNKNOWN) {
             return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_BODY)
         }
@@ -336,12 +364,14 @@ internal object OpenCodeSessionApi {
                                 it.isNotBlank()
                             }
                         if (cursor == null) {
-                            return OpenCodeProtocolResult.Success(ToolPartChange(emptyList()))
+                            return OpenCodeProtocolResult.Success(
+                                OpenCodeToolPartChange(emptyList())
+                            )
                         }
                     }
                 }
             }
-            return OpenCodeProtocolResult.Success(ToolPartChange(emptyList()))
+            return OpenCodeProtocolResult.Success(OpenCodeToolPartChange(emptyList()))
         }
         var before: String? = null
         repeat(MESSAGE_PAGE_MAX) {
@@ -372,21 +402,21 @@ internal object OpenCodeSessionApi {
                         return OpenCodeProtocolResult.Success(parseToolPartChange(part))
                     before = page.value.second?.takeIf { it.isNotBlank() }
                     if (before == null) {
-                        return OpenCodeProtocolResult.Success(ToolPartChange(emptyList()))
+                        return OpenCodeProtocolResult.Success(OpenCodeToolPartChange(emptyList()))
                     }
                 }
             }
         }
-        return OpenCodeProtocolResult.Success(ToolPartChange(emptyList()))
+        return OpenCodeProtocolResult.Success(OpenCodeToolPartChange(emptyList()))
     }
 
-    fun parseToolPartChange(json: String): ToolPartChange {
-        val part = parseJsonObject(json) ?: return ToolPartChange(emptyList())
+    fun parseToolPartChange(json: String): OpenCodeToolPartChange {
+        val part = parseJsonObject(json) ?: return OpenCodeToolPartChange(emptyList())
         return parseToolPartChange(part)
     }
 
-    private fun parseToolPartChange(part: JsonObject): ToolPartChange {
-        if (part.stringMember("type") != "tool") return ToolPartChange(emptyList())
+    private fun parseToolPartChange(part: JsonObject): OpenCodeToolPartChange {
+        if (part.stringMember("type") != "tool") return OpenCodeToolPartChange(emptyList())
         val state = part.objectMember("state")
         val metadata = state?.objectMember("metadata")
         val input = state?.objectMember("input")
@@ -401,7 +431,7 @@ internal object OpenCodeSessionApi {
                         ?: file.stringMember("filePath")?.takeIf { it.isNotBlank() }
                         ?: input?.stringMember("path")?.takeIf { it.isNotBlank() }
                         ?: input?.stringMember("filePath")?.takeIf { it.isNotBlank() }
-                SnapshotFileDiff(
+                OpenCodeSnapshotFileDiff(
                     file = filePath,
                     patch = file.stringMember("patch") ?: file.stringMember("diff"),
                     additions = file.longMember("additions") ?: 0L,
@@ -416,16 +446,16 @@ internal object OpenCodeSessionApi {
                         },
                 )
             }
-            if (diffs.isNotEmpty()) return ToolPartChange(diffs)
+            if (diffs.isNotEmpty()) return OpenCodeToolPartChange(diffs)
         }
         val filediff = metadata?.objectMember("filediff")
         if (filediff != null) {
             val path =
                 filediff.stringMember("file")?.takeIf { it.isNotBlank() }
                     ?: input?.stringMember("filePath")?.takeIf { it.isNotBlank() }
-            return ToolPartChange(
+            return OpenCodeToolPartChange(
                 listOf(
-                    SnapshotFileDiff(
+                    OpenCodeSnapshotFileDiff(
                         file = path,
                         patch = filediff.stringMember("patch"),
                         additions = filediff.longMember("additions") ?: 0L,
@@ -439,7 +469,7 @@ internal object OpenCodeSessionApi {
             input?.stringMember("filePath")?.takeIf { it.isNotBlank() }
                 ?: input?.stringMember("path")?.takeIf { it.isNotBlank() }
                 ?: metadata?.stringMember("filepath")?.takeIf { it.isNotBlank() }
-        return ToolPartChange(emptyList(), fileHint = writePath)
+        return OpenCodeToolPartChange(emptyList(), fileHint = writePath)
     }
 
     fun findToolPartInMessages(json: String, partID: String): String? {
@@ -547,7 +577,7 @@ internal object OpenCodeSessionApi {
         connectTimeoutMillis: Int = 3000,
         readTimeoutMillis: Int = 3000,
         wireProtocol: OpenCodeWireProtocol = OpenCodeWireProtocol.V1_18,
-    ): OpenCodeProtocolResult<List<PendingRequestSummary>> {
+    ): OpenCodeProtocolResult<List<OpenCodePendingRequestSummary>> {
         if (wireProtocol == OpenCodeWireProtocol.UNKNOWN) {
             return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_BODY)
         }
@@ -576,12 +606,12 @@ internal object OpenCodeSessionApi {
         }
     }
 
-    fun parsePendingRequests(json: String): List<PendingRequestSummary> =
+    fun parsePendingRequests(json: String): List<OpenCodePendingRequestSummary> =
         parsePendingRequestsBody(json)?.requests.orEmpty()
 
     fun parsePendingRequestsResult(
         json: String
-    ): OpenCodeProtocolResult<List<PendingRequestSummary>> {
+    ): OpenCodeProtocolResult<List<OpenCodePendingRequestSummary>> {
         val parsed =
             parsePendingRequestsBody(json)
                 ?: return OpenCodeProtocolResult.Failure(
@@ -613,7 +643,7 @@ internal object OpenCodeSessionApi {
                         malformedEntry = true
                         null
                     } else {
-                        PendingRequestSummary(id, sessionID)
+                        OpenCodePendingRequestSummary(id, sessionID)
                     }
                 }
                 .distinctBy { it.id }
@@ -630,13 +660,13 @@ internal object OpenCodeSessionApi {
         connectTimeoutMillis: Int = 3000,
         readTimeoutMillis: Int = 3000,
         maxPages: Int = 10,
-    ): OpenCodeProtocolResult<List<SessionSummary>> {
+    ): OpenCodeProtocolResult<List<OpenCodeSessionSummary>> {
         val rootUrl = buildServerRootUrl(serverUrl)
         var url =
             rootUrl +
                 "/api/session?order=desc&limit=$limit&directory=" +
                 java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
-        val sessions = linkedMapOf<String, SessionSummary>()
+        val sessions = linkedMapOf<String, OpenCodeSessionSummary>()
         val seenCursors = mutableSetOf<String>()
         repeat(maxPages.coerceAtLeast(1)) {
             val response =
@@ -669,7 +699,11 @@ internal object OpenCodeSessionApi {
         return OpenCodeProtocolResult.Success(sessions.values.toList())
     }
 
-    fun parseSessionList(json: String, maxAgeMillis: Long, nowMillis: Long): List<SessionSummary> {
+    fun parseSessionList(
+        json: String,
+        maxAgeMillis: Long,
+        nowMillis: Long,
+    ): List<OpenCodeSessionSummary> {
         return parseSessionPage(json, maxAgeMillis, nowMillis)?.sessions.orEmpty()
     }
 
@@ -691,14 +725,14 @@ internal object OpenCodeSessionApi {
         // with each session carrying id ("ses_...") and time.{created,updated} epoch millis.
         val root = parseJsonObject(json) ?: return null
         val data = root.get("data")?.takeIf { it.isJsonArray }?.asJsonArray ?: return null
-        val results = mutableListOf<SessionSummary>()
+        val results = mutableListOf<OpenCodeSessionSummary>()
         for (element in data) {
             val session = element.takeIf { it.isJsonObject }?.asJsonObject ?: continue
             val id = session.stringMember("id")?.takeIf { it.startsWith("ses_") } ?: continue
             val updated = session.objectMember("time")?.longMember("updated") ?: continue
             if (nowMillis - updated <= maxAgeMillis) {
                 results.add(
-                    SessionSummary(
+                    OpenCodeSessionSummary(
                         id,
                         updated,
                         session.stringMember("parentID")?.takeIf { it.isNotBlank() },

@@ -28,7 +28,7 @@ import com.intellij.pom.Navigatable
 import com.intellij.testFramework.FileEditorManagerTestCase
 import com.intellij.testFramework.LightProjectDescriptor
 import com.intellij.util.ui.UIUtil
-import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
+import de.moritzf.opencodewebpanel.server.OpenCodeSnapshotFileDiff
 import java.beans.PropertyChangeListener
 import java.nio.file.Files
 import javax.swing.JPanel
@@ -177,7 +177,7 @@ class OpenCodeDiffRequestTest : FileEditorManagerTestCase() {
 
     private fun contents(file: VirtualFile?): List<DocumentContent> {
         val diff =
-            OpenCodeServerProtocol.SnapshotFileDiff(
+            OpenCodeSnapshotFileDiff(
                 file?.path ?: "missing.txt",
                 patch,
                 2,

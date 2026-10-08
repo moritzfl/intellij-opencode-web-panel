@@ -18,6 +18,7 @@ import de.moritzf.opencodewebpanel.server.OpenCodeHostPaths
 import de.moritzf.opencodewebpanel.server.OpenCodeProtocolResult
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
+import de.moritzf.opencodewebpanel.server.OpenCodeSnapshotFileDiff
 
 /**
  * Opens the IDE's native diff viewer for a diff target the user Ctrl/Cmd+Clicked or Alt+Clicked in
@@ -97,7 +98,7 @@ internal class OpenCodeDiffNavigation(
         filePath: String?,
         partID: String?,
         vcsMode: String?,
-    ): List<OpenCodeServerProtocol.SnapshotFileDiff>? {
+    ): List<OpenCodeSnapshotFileDiff>? {
         if (vcsMode != null) {
             if (filePath == null) return emptyList()
             val result =
@@ -158,14 +159,14 @@ internal class OpenCodeDiffNavigation(
         internal fun workspaceFileFallback(
             vcsMode: String?,
             filePath: String?,
-            diffs: List<OpenCodeServerProtocol.SnapshotFileDiff>,
+            diffs: List<OpenCodeSnapshotFileDiff>,
         ): String? = filePath?.takeIf { vcsMode == "working" && diffs.isEmpty() }
 
         internal fun resolvePartDiffs(
-            diffs: List<OpenCodeServerProtocol.SnapshotFileDiff>,
+            diffs: List<OpenCodeSnapshotFileDiff>,
             filePath: String?,
             caseSensitive: Boolean = SystemInfo.isFileSystemCaseSensitive,
-        ): List<OpenCodeServerProtocol.SnapshotFileDiff> {
+        ): List<OpenCodeSnapshotFileDiff> {
             if (diffs.size <= 1 || filePath == null) return diffs
             return selectDiffs(diffs, filePath, caseSensitive)
         }
@@ -175,10 +176,10 @@ internal class OpenCodeDiffNavigation(
          * the whole turn (basename-only matching used to open the wrong sibling file).
          */
         internal fun selectDiffs(
-            diffs: List<OpenCodeServerProtocol.SnapshotFileDiff>,
+            diffs: List<OpenCodeSnapshotFileDiff>,
             filePath: String?,
             caseSensitive: Boolean = SystemInfo.isFileSystemCaseSensitive,
-        ): List<OpenCodeServerProtocol.SnapshotFileDiff> {
+        ): List<OpenCodeSnapshotFileDiff> {
             if (filePath == null) return diffs
             val exact = diffs.filter { pathsEqual(it.file, filePath, caseSensitive) }
             if (exact.isNotEmpty()) return exact
@@ -209,7 +210,7 @@ internal class OpenCodeDiffNavigation(
         private fun normalizePath(path: String?): String? = path?.replace('\\', '/')?.trim(' ', '/')
     }
 
-    private fun buildDiffRequest(diff: OpenCodeServerProtocol.SnapshotFileDiff): DiffRequest? =
+    private fun buildDiffRequest(diff: OpenCodeSnapshotFileDiff): DiffRequest? =
         createOpenCodeDiffRequest(project, diff, resolveHighlightFile(diff.file))
 
     private fun resolveHighlightFile(filePath: String?): VirtualFile? {

@@ -57,6 +57,7 @@ import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleListener
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
+import de.moritzf.opencodewebpanel.server.OpenCodeSessionInfo
 import de.moritzf.opencodewebpanel.server.OpenCodeSuspendResumeListener
 import de.moritzf.opencodewebpanel.server.OpenCodeWireProtocol
 import de.moritzf.opencodewebpanel.server.SbxCli
@@ -2079,7 +2080,7 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
      * [prepareSession][OpenCodePermissionAutoResponder.prepareSession] only touches concurrent maps
      * and hops to a pooled thread for the REST walk.
      */
-    private fun loadDisplayedSession(sessionID: String): OpenCodeServerProtocol.SessionInfo? {
+    private fun loadDisplayedSession(sessionID: String): OpenCodeSessionInfo? {
         val serverUrl = serverManager.getServerUrl() ?: return null
         val directory = openCodeServerDirectory() ?: return null
         val password = serverManager.getServerPassword() ?: return null

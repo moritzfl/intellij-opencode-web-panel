@@ -4,6 +4,7 @@ import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import de.moritzf.opencodewebpanel.server.OpenCodeGlobalEvent
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
+import de.moritzf.opencodewebpanel.server.OpenCodeSessionInfo
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -11,7 +12,7 @@ import org.junit.Test
 
 class OpenCodeNotificationEventProcessorTest {
 
-    private val sessions = mutableMapOf<String, OpenCodeServerProtocol.SessionInfo>()
+    private val sessions = mutableMapOf<String, OpenCodeSessionInfo>()
     private var now = 1_000_000L
     private val fetchedSessions = mutableListOf<String>()
     private val processor =
@@ -70,7 +71,7 @@ class OpenCodeNotificationEventProcessorTest {
 
     @Test
     fun idleSessionNotifiesWithSessionTitle() {
-        sessions["ses_1"] = OpenCodeServerProtocol.SessionInfo("Fix the build", parentID = null)
+        sessions["ses_1"] = OpenCodeSessionInfo("Fix the build", parentID = null)
 
         val payload =
             notify(
@@ -96,7 +97,7 @@ class OpenCodeNotificationEventProcessorTest {
 
     @Test
     fun pairedIdleEventsMergeWithinWindowButNotBeyond() {
-        sessions["ses_1"] = OpenCodeServerProtocol.SessionInfo("Fix the build", parentID = null)
+        sessions["ses_1"] = OpenCodeSessionInfo("Fix the build", parentID = null)
 
         assertTrue(
             processor.process(event("session.idle", """{"sessionID":"ses_1"}"""))
@@ -119,7 +120,7 @@ class OpenCodeNotificationEventProcessorTest {
 
     @Test
     fun lifecycleResetClearsIdleMergeState() {
-        sessions["ses_1"] = OpenCodeServerProtocol.SessionInfo("Fix the build", parentID = null)
+        sessions["ses_1"] = OpenCodeSessionInfo("Fix the build", parentID = null)
         assertTrue(
             processor.process(event("session.idle", """{"sessionID":"ses_1"}"""))
                 is OpenCodeNotificationEventProcessor.Outcome.Notify
@@ -135,7 +136,7 @@ class OpenCodeNotificationEventProcessorTest {
 
     @Test
     fun idleMergeStateIsScopedToServerIdentity() {
-        sessions["ses_1"] = OpenCodeServerProtocol.SessionInfo("Fix the build", parentID = null)
+        sessions["ses_1"] = OpenCodeSessionInfo("Fix the build", parentID = null)
 
         assertTrue(
             processor.process(event("session.idle", """{"sessionID":"ses_1"}"""), idleScope = "old")
@@ -152,7 +153,7 @@ class OpenCodeNotificationEventProcessorTest {
         assertNull(processor.process(event("session.idle", """{"sessionID":"ses_unknown"}""")))
 
         // A failed lookup must not consume the paired idle event's dedupe opportunity.
-        sessions["ses_unknown"] = OpenCodeServerProtocol.SessionInfo("Recovered", parentID = null)
+        sessions["ses_unknown"] = OpenCodeSessionInfo("Recovered", parentID = null)
         assertTrue(
             processor.process(
                 event("session.status", """{"sessionID":"ses_unknown","status":{"type":"idle"}}""")
@@ -160,8 +161,7 @@ class OpenCodeNotificationEventProcessorTest {
         )
 
         now += 10_000
-        sessions["ses_child"] =
-            OpenCodeServerProtocol.SessionInfo("Subtask", parentID = "ses_parent")
+        sessions["ses_child"] = OpenCodeSessionInfo("Subtask", parentID = "ses_parent")
         assertNull(processor.process(event("session.idle", """{"sessionID":"ses_child"}""")))
     }
 
@@ -198,7 +198,7 @@ class OpenCodeNotificationEventProcessorTest {
             )
         assertEquals("ContextOverflowError", namedError.body)
 
-        sessions["ses_known"] = OpenCodeServerProtocol.SessionInfo("Fix the build", parentID = null)
+        sessions["ses_known"] = OpenCodeSessionInfo("Fix the build", parentID = null)
         val titledError =
             notify(
                 processor.process(
@@ -217,14 +217,13 @@ class OpenCodeNotificationEventProcessorTest {
             defaultBody.route,
         )
 
-        sessions["ses_child"] =
-            OpenCodeServerProtocol.SessionInfo("Subtask", parentID = "ses_parent")
+        sessions["ses_child"] = OpenCodeSessionInfo("Subtask", parentID = "ses_parent")
         assertNull(processor.process(event("session.error", """{"sessionID":"ses_child"}""")))
     }
 
     @Test
     fun permissionAndQuestionRequestsCarryRequestId() {
-        sessions["ses_1"] = OpenCodeServerProtocol.SessionInfo("Fix the build", parentID = null)
+        sessions["ses_1"] = OpenCodeSessionInfo("Fix the build", parentID = null)
 
         val permission =
             notify(
@@ -258,7 +257,7 @@ class OpenCodeNotificationEventProcessorTest {
 
     @Test
     fun fallbackIdIsStablePerEventContent() {
-        sessions["ses_1"] = OpenCodeServerProtocol.SessionInfo("Fix the build", parentID = null)
+        sessions["ses_1"] = OpenCodeSessionInfo("Fix the build", parentID = null)
         val first = notify(processor.process(event("session.idle", """{"sessionID":"ses_1"}""")))
         now += 10_000
         val second = notify(processor.process(event("session.idle", """{"sessionID":"ses_1"}""")))

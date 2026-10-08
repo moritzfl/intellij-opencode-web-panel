@@ -1,5 +1,6 @@
 package de.moritzf.opencodewebpanel.server
 
+import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsState
 import java.io.File
 import java.nio.file.Files
 
@@ -11,11 +12,11 @@ internal object OpenCodeProcessLaunch {
     private const val HOST = "127.0.0.1"
 
     fun buildOpenCodeCommand(
-        port: String = OpenCodeServerProtocol.DYNAMIC_PORT,
-        executable: String = OpenCodeServerProtocol.DEFAULT_EXECUTABLE,
+        port: String = OpenCodeSettingsState.DYNAMIC_PORT,
+        executable: String = OpenCodeSettingsState.DEFAULT_EXECUTABLE,
     ): List<String> {
         return listOf(
-            executable.ifBlank { OpenCodeServerProtocol.DEFAULT_EXECUTABLE },
+            executable.ifBlank { OpenCodeSettingsState.DEFAULT_EXECUTABLE },
             "serve",
             "--hostname",
             HOST,
@@ -64,7 +65,7 @@ internal object OpenCodeProcessLaunch {
     }
 
     fun detectExecutablePath(
-        executable: String = OpenCodeServerProtocol.DEFAULT_EXECUTABLE,
+        executable: String = OpenCodeSettingsState.DEFAULT_EXECUTABLE,
         path: String = resolvePath(),
         pathSeparator: String = File.pathSeparator,
         osName: String = System.getProperty("os.name").orEmpty(),
@@ -87,11 +88,11 @@ internal object OpenCodeProcessLaunch {
     }
 
     fun resolveExecutableForLaunch(
-        executable: String = OpenCodeServerProtocol.DEFAULT_EXECUTABLE,
+        executable: String = OpenCodeSettingsState.DEFAULT_EXECUTABLE,
         path: String = resolvePath(),
     ): String {
         return detectExecutablePath(executable, path)
-            ?: executable.ifBlank { OpenCodeServerProtocol.DEFAULT_EXECUTABLE }
+            ?: executable.ifBlank { OpenCodeSettingsState.DEFAULT_EXECUTABLE }
     }
 
     private fun commonExecutablePaths(environment: Map<String, String>): List<String> {

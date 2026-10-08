@@ -8,6 +8,7 @@ import de.moritzf.opencodewebpanel.server.OpenCodeProtocolResult
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.OpenCodeServerConnection
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
+import de.moritzf.opencodewebpanel.server.OpenCodeSessionSummary
 import de.moritzf.opencodewebpanel.server.OpenCodeWireProtocol
 import java.util.concurrent.ConcurrentHashMap
 
@@ -110,7 +111,7 @@ internal constructor(
             context: OpenCodeRecoveryContext,
             maxAgeMillis: Long,
             limit: Int,
-        ) -> OpenCodeProtocolResult<List<OpenCodeServerProtocol.SessionSummary>>,
+        ) -> OpenCodeProtocolResult<List<OpenCodeSessionSummary>>,
     private val fetchLastMessage:
         (
             context: OpenCodeRecoveryContext,
@@ -365,7 +366,7 @@ internal constructor(
         context: OpenCodeRecoveryContext,
         maxAgeMillis: Long,
         action: String,
-    ): List<OpenCodeServerProtocol.SessionSummary>? {
+    ): List<OpenCodeSessionSummary>? {
         repeat(RESTART_RECOVERY_ATTEMPTS) { attempt ->
             if (!stillEligible(context)) return null
             when (

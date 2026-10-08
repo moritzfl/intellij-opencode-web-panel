@@ -5,7 +5,6 @@ import com.intellij.openapi.util.SystemInfo
 import com.intellij.util.text.SemVer
 import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsState
 import de.moritzf.opencodewebpanel.server.OpenCodeHttpTransport.httpGetResult
-import de.moritzf.opencodewebpanel.server.OpenCodeHttpTransport.httpPostJson
 import de.moritzf.opencodewebpanel.server.OpenCodeHttpTransport.httpPostResult
 import java.io.File
 import java.net.URI
@@ -19,39 +18,6 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.ln
 import org.jetbrains.annotations.TestOnly
 
-enum class OpenCodeWireProtocol {
-    V1_18,
-    V2_CLI,
-    V1_18_EMBEDDED_V2,
-    UNKNOWN;
-
-    fun statusLabel(): String? =
-        when (this) {
-            V1_18,
-            V1_18_EMBEDDED_V2 -> "1.18"
-            V2_CLI -> "2.x"
-            UNKNOWN -> null
-        }
-}
-
-internal sealed interface OpenCodeProtocolResult<out T> {
-    data class Success<T>(val value: T) : OpenCodeProtocolResult<T>
-
-    data class Failure(
-        val kind: Kind,
-        val statusCode: Int? = null,
-    ) : OpenCodeProtocolResult<Nothing> {
-        enum class Kind {
-            INVALID_IDENTIFIER,
-            HTTP,
-            TIMEOUT,
-            IO,
-            TOO_LARGE,
-            INVALID_BODY,
-        }
-    }
-}
-
 internal object OpenCodeServerProtocol {
     private const val HOST = "127.0.0.1"
     const val SANDBOX_SERVE_HOST = "0.0.0.0"
@@ -64,26 +30,20 @@ internal object OpenCodeServerProtocol {
 
     private const val START_FAILURE_BACKOFF_BASE_MILLIS = 5_000L
     private const val START_FAILURE_BACKOFF_MAX_MILLIS = 60_000L
-    const val HEALTH_PATH = "/api/health"
-    const val GLOBAL_HEALTH_PATH = "/global/health"
-    const val STATUS_PATH = "/api/status"
+    const val HEALTH_PATH = OpenCodeApiContract.HEALTH_PATH
+    const val GLOBAL_HEALTH_PATH = OpenCodeApiContract.GLOBAL_HEALTH_PATH
+    const val STATUS_PATH = OpenCodeApiContract.STATUS_PATH
     /** CLI 2.0.8+ renamed [STATUS_PATH] to this. Same `{version,pid,urls}` identity JSON. */
-    const val INFO_PATH = "/api/info"
-    const val GLOBAL_EVENT_PATH = "/global/event"
-    const val CLI_EVENT_PATH = "/api/event"
+    const val INFO_PATH = OpenCodeApiContract.INFO_PATH
+    const val GLOBAL_EVENT_PATH = OpenCodeApiContract.GLOBAL_EVENT_PATH
+    const val CLI_EVENT_PATH = OpenCodeApiContract.CLI_EVENT_PATH
 
-    fun eventPath(protocol: OpenCodeWireProtocol): String? =
-        when (protocol) {
-            OpenCodeWireProtocol.V1_18,
-            OpenCodeWireProtocol.V1_18_EMBEDDED_V2 -> GLOBAL_EVENT_PATH
-            OpenCodeWireProtocol.V2_CLI -> CLI_EVENT_PATH
-            OpenCodeWireProtocol.UNKNOWN -> null
-        }
+    fun eventPath(protocol: OpenCodeWireProtocol): String? = OpenCodeApiContract.eventPath(protocol)
 
     fun usesCliHttpApi(protocol: OpenCodeWireProtocol): Boolean =
-        protocol == OpenCodeWireProtocol.V2_CLI
+        OpenCodeApiContract.usesCliHttpApi(protocol)
 
-    const val DISPOSE_PATH = "/global/dispose"
+    const val DISPOSE_PATH = OpenCodeApiContract.DISPOSE_PATH
     const val BASIC_AUTH_USERNAME = "opencode"
     const val DEFAULT_EXECUTABLE = OpenCodeSettingsState.DEFAULT_EXECUTABLE
     /** Bump this when the plugin requires a newer OpenCode release. */
@@ -93,16 +53,15 @@ internal object OpenCodeServerProtocol {
     const val OPEN_CODE_THEME_ID_STORAGE_KEY = "opencode-theme-id"
     const val OPEN_CODE_COLOR_SCHEME_STORAGE_KEY = "opencode-color-scheme"
     const val NOTIFICATION_GROUP_ID = "OpenCode Web Panel"
-    const val RECENT_SESSION_WINDOW_MILLIS = 5 * 60 * 1000L
+    const val RECENT_SESSION_WINDOW_MILLIS = OpenCodeSessionApi.RECENT_SESSION_WINDOW_MILLIS
     /** Cap REST response bodies so a large diff/list cannot exhaust heap. */
     const val MAX_HTTP_RESPONSE_CHARS = OpenCodeHttpTransport.MAX_HTTP_RESPONSE_CHARS
 
     private val minimumSupportedOpenCodeVersion =
         requireNotNull(SemVer.parseFromText(MINIMUM_SUPPORTED_OPENCODE_VERSION))
 
-    fun buildServerRootUrl(serverUrl: String): String {
-        return serverUrl.trimEnd('/')
-    }
+    fun buildServerRootUrl(serverUrl: String): String =
+        OpenCodeApiContract.buildServerRootUrl(serverUrl)
 
     fun buildProjectUrl(serverUrl: String, projectBasePath: String? = null): String {
         val root = serverUrl.trimEnd('/')
@@ -718,54 +677,41 @@ internal object OpenCodeServerProtocol {
      * carried by the `permission.asked`/`permission.replied` events. Returns true when the server
      * accepted the reply.
      */
-    enum class PermissionResponse(val jsonValue: String) {
-        ONCE("once"),
-        ALWAYS("always"),
-        REJECT("reject"),
-    }
-
     fun replyToPermission(
         serverUrl: String,
         basicAuthHeader: String,
         directory: String,
         sessionID: String,
         permissionID: String,
-        response: PermissionResponse,
+        response: OpenCodePermissionResponse,
         connectTimeoutMillis: Int = 5000,
         readTimeoutMillis: Int = 5000,
         wireProtocol: OpenCodeWireProtocol = OpenCodeWireProtocol.V1_18,
-    ): Boolean {
-        if (wireProtocol == OpenCodeWireProtocol.UNKNOWN) return false
-        if (!isSessionId(sessionID) || !isPermissionId(permissionID)) return false
-        val encodedDirectory = java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
-        val (url, body) =
-            if (usesCliHttpApi(wireProtocol)) {
-                buildServerRootUrl(serverUrl) +
-                    "/api/session/$sessionID/permission/$permissionID/reply" to
-                    "{\"decision\":\"${response.jsonValue}\"}"
-            } else {
-                buildServerRootUrl(serverUrl) +
-                    "/permission/$permissionID/reply?directory=" +
-                    encodedDirectory to "{\"reply\":\"${response.jsonValue}\"}"
-            }
-        return httpPostJson(url, basicAuthHeader, body, connectTimeoutMillis, readTimeoutMillis)
-    }
+    ): Boolean =
+        OpenCodeSessionApi.replyToPermission(
+            serverUrl,
+            basicAuthHeader,
+            directory,
+            sessionID,
+            permissionID,
+            response,
+            connectTimeoutMillis,
+            readTimeoutMillis,
+            wireProtocol,
+        )
 
     /**
      * OpenCode record IDs are URL-safe by construction; endpoint-specific helpers validate kind.
      */
-    fun isOpenCodeRecordId(value: String): Boolean {
-        return value.isNotBlank() && Regex("^[A-Za-z0-9_-]+$").matches(value)
-    }
+    fun isOpenCodeRecordId(value: String): Boolean = OpenCodeApiContract.isOpenCodeRecordId(value)
 
-    fun isSessionId(value: String): Boolean = value.startsWith("ses_") && isOpenCodeRecordId(value)
+    fun isSessionId(value: String): Boolean = OpenCodeApiContract.isSessionId(value)
 
-    fun isMessageId(value: String): Boolean = value.startsWith("msg_") && isOpenCodeRecordId(value)
+    fun isMessageId(value: String): Boolean = OpenCodeApiContract.isMessageId(value)
 
-    fun isPartId(value: String): Boolean = value.startsWith("prt_") && isOpenCodeRecordId(value)
+    fun isPartId(value: String): Boolean = OpenCodeApiContract.isPartId(value)
 
-    fun isPermissionId(value: String): Boolean =
-        value.startsWith("per_") && isOpenCodeRecordId(value)
+    fun isPermissionId(value: String): Boolean = OpenCodeApiContract.isPermissionId(value)
 
     private fun looksLikeAbsoluteFilesystemPath(value: String): Boolean {
         return value.startsWith('/') ||
@@ -1742,13 +1688,6 @@ internal object OpenCodeServerProtocol {
 
     // ─── Session lookup for notifications ───────────────────────────────────────
 
-    data class SessionInfo(
-        val title: String,
-        val parentID: String?,
-        val id: String = "",
-        val directory: String? = null,
-    )
-
     /**
      * Fetches one session (`GET /session/{sessionID}?directory=...`), used for notification titles
      * and to skip notifications for child sessions. Handles both the bare session object and the
@@ -1762,7 +1701,7 @@ internal object OpenCodeServerProtocol {
         connectTimeoutMillis: Int = 3000,
         readTimeoutMillis: Int = 3000,
         wireProtocol: OpenCodeWireProtocol = OpenCodeWireProtocol.V1_18,
-    ): SessionInfo? =
+    ): OpenCodeSessionInfo? =
         OpenCodeSessionApi.fetchSessionInfo(
             serverUrl,
             basicAuthHeader,
@@ -1785,7 +1724,7 @@ internal object OpenCodeServerProtocol {
         connectTimeoutMillis: Int = 3000,
         readTimeoutMillis: Int = 3000,
         wireProtocol: OpenCodeWireProtocol = OpenCodeWireProtocol.V1_18,
-    ): List<SessionInfo> =
+    ): List<OpenCodeSessionInfo> =
         OpenCodeSessionApi.fetchSessionChildren(
             serverUrl,
             basicAuthHeader,
@@ -1796,23 +1735,13 @@ internal object OpenCodeServerProtocol {
             wireProtocol,
         )
 
-    fun parseSessionInfo(json: String): SessionInfo? = OpenCodeSessionApi.parseSessionInfo(json)
+    fun parseSessionInfo(json: String): OpenCodeSessionInfo? =
+        OpenCodeSessionApi.parseSessionInfo(json)
 
-    fun parseSessionChildren(json: String): List<SessionInfo> =
+    fun parseSessionChildren(json: String): List<OpenCodeSessionInfo> =
         OpenCodeSessionApi.parseSessionChildren(json)
 
     // ─── Session diffs (for the "open diff in IDE" feature) ─────────────────────
-
-    /**
-     * One file's diff as returned by `GET /session/{id}/diff`; `patch` is a unified diff string.
-     */
-    data class SnapshotFileDiff(
-        val file: String?,
-        val patch: String?,
-        val additions: Long,
-        val deletions: Long,
-        val status: String?,
-    )
 
     /**
      * Fetches the diff for a session (`GET /session/{sessionID}/diff?directory=...`). With a
@@ -1828,7 +1757,7 @@ internal object OpenCodeServerProtocol {
         connectTimeoutMillis: Int = 5000,
         readTimeoutMillis: Int = 5000,
         wireProtocol: OpenCodeWireProtocol = OpenCodeWireProtocol.V1_18,
-    ): OpenCodeProtocolResult<List<SnapshotFileDiff>> =
+    ): OpenCodeProtocolResult<List<OpenCodeSnapshotFileDiff>> =
         OpenCodeSessionApi.fetchSessionDiffResult(
             serverUrl,
             basicAuthHeader,
@@ -1852,7 +1781,7 @@ internal object OpenCodeServerProtocol {
         connectTimeoutMillis: Int = 5000,
         readTimeoutMillis: Int = 5000,
         wireProtocol: OpenCodeWireProtocol = OpenCodeWireProtocol.V1_18,
-    ): OpenCodeProtocolResult<List<SnapshotFileDiff>> =
+    ): OpenCodeProtocolResult<List<OpenCodeSnapshotFileDiff>> =
         OpenCodeSessionApi.fetchVcsDiffResult(
             serverUrl,
             basicAuthHeader,
@@ -1864,23 +1793,13 @@ internal object OpenCodeServerProtocol {
         )
 
     @TestOnly
-    fun parseSessionDiff(json: String): List<SnapshotFileDiff> =
+    fun parseSessionDiff(json: String): List<OpenCodeSnapshotFileDiff> =
         OpenCodeSessionApi.parseSessionDiff(json)
-
-    /**
-     * Per-tool file changes from an edit/write/apply_patch part. [diffs] is the tool's own patch
-     * list (empty for write, which has no `filediff`/`files`). [fileHint] is the write tool's
-     * absolute path so callers can fall back to the turn snapshot.
-     */
-    data class ToolPartChange(
-        val diffs: List<SnapshotFileDiff>,
-        val fileHint: String? = null,
-    )
 
     /**
      * Loads the tool part [partID] (`prt_…`) from `GET /session/{sessionID}/message` and returns
      * its file changes. There is no GET-by-part; pages of 50 messages are walked via
-     * `X-Next-Cursor` / `before`. Missing part → empty [ToolPartChange], not HTTP failure.
+     * `X-Next-Cursor` / `before`. Missing part → empty [OpenCodeToolPartChange], not HTTP failure.
      */
     fun fetchToolPartChange(
         serverUrl: String,
@@ -1891,7 +1810,7 @@ internal object OpenCodeServerProtocol {
         connectTimeoutMillis: Int = 5000,
         readTimeoutMillis: Int = 5000,
         wireProtocol: OpenCodeWireProtocol = OpenCodeWireProtocol.V1_18,
-    ): OpenCodeProtocolResult<ToolPartChange> =
+    ): OpenCodeProtocolResult<OpenCodeToolPartChange> =
         OpenCodeSessionApi.fetchToolPartChange(
             serverUrl,
             basicAuthHeader,
@@ -1904,7 +1823,7 @@ internal object OpenCodeServerProtocol {
         )
 
     @TestOnly
-    fun parseToolPartChange(json: String): ToolPartChange =
+    fun parseToolPartChange(json: String): OpenCodeToolPartChange =
         OpenCodeSessionApi.parseToolPartChange(json)
 
     @TestOnly
@@ -1956,9 +1875,9 @@ internal object OpenCodeServerProtocol {
 
     // ─── Agent-status seeding ───────────────────────────────────────────────────
 
-    const val PERMISSION_LIST_PATH = "/permission"
-    const val QUESTION_LIST_PATH = "/question"
-    const val CLI_PERMISSION_LIST_PATH = "/api/permission/request"
+    const val PERMISSION_LIST_PATH = OpenCodeApiContract.PERMISSION_LIST_PATH
+    const val QUESTION_LIST_PATH = OpenCodeApiContract.QUESTION_LIST_PATH
+    const val CLI_PERMISSION_LIST_PATH = OpenCodeApiContract.CLI_PERMISSION_LIST_PATH
 
     /**
      * Fetches the current session statuses for a project directory (`GET
@@ -2013,8 +1932,6 @@ internal object OpenCodeServerProtocol {
     fun parsePendingRequestIds(json: String): List<String> =
         OpenCodeSessionApi.parsePendingRequestIds(json)
 
-    data class PendingRequestSummary(val id: String, val sessionID: String)
-
     fun fetchPendingRequestsResult(
         serverUrl: String,
         basicAuthHeader: String,
@@ -2023,7 +1940,7 @@ internal object OpenCodeServerProtocol {
         connectTimeoutMillis: Int = 3000,
         readTimeoutMillis: Int = 3000,
         wireProtocol: OpenCodeWireProtocol = OpenCodeWireProtocol.V1_18,
-    ): OpenCodeProtocolResult<List<PendingRequestSummary>> =
+    ): OpenCodeProtocolResult<List<OpenCodePendingRequestSummary>> =
         OpenCodeSessionApi.fetchPendingRequestsResult(
             serverUrl,
             basicAuthHeader,
@@ -2035,20 +1952,13 @@ internal object OpenCodeServerProtocol {
         )
 
     @TestOnly
-    fun parsePendingRequests(json: String): List<PendingRequestSummary> =
+    fun parsePendingRequests(json: String): List<OpenCodePendingRequestSummary> =
         OpenCodeSessionApi.parsePendingRequests(json)
 
     fun parsePendingRequestsResult(
         json: String
-    ): OpenCodeProtocolResult<List<PendingRequestSummary>> =
+    ): OpenCodeProtocolResult<List<OpenCodePendingRequestSummary>> =
         OpenCodeSessionApi.parsePendingRequestsResult(json)
-
-    data class SessionSummary(
-        val id: String,
-        val updatedMillis: Long,
-        val parentID: String? = null,
-        val directory: String? = null,
-    )
 
     /**
      * Fetches recent sessions for a project directory from the v2 API (`GET
@@ -2056,7 +1966,7 @@ internal object OpenCodeServerProtocol {
      * `time.updated` timestamp and parent ID, filtered to those updated within [maxAgeMillis] of
      * [nowMillis]. Note (verified against opencode 1.17.13): the listing is ordered by creation,
      * not by `time.updated`, and includes subagent child sessions — callers that want "most recent
-     * activity" must select by [SessionSummary.updatedMillis] themselves.
+     * activity" must select by [OpenCodeSessionSummary.updatedMillis] themselves.
      */
     fun fetchRecentSessionsResult(
         serverUrl: String,
@@ -2068,7 +1978,7 @@ internal object OpenCodeServerProtocol {
         connectTimeoutMillis: Int = 3000,
         readTimeoutMillis: Int = 3000,
         maxPages: Int = 10,
-    ): OpenCodeProtocolResult<List<SessionSummary>> =
+    ): OpenCodeProtocolResult<List<OpenCodeSessionSummary>> =
         OpenCodeSessionApi.fetchRecentSessionsResult(
             serverUrl,
             basicAuthHeader,
@@ -2082,7 +1992,11 @@ internal object OpenCodeServerProtocol {
         )
 
     @TestOnly
-    fun parseSessionList(json: String, maxAgeMillis: Long, nowMillis: Long): List<SessionSummary> =
+    fun parseSessionList(
+        json: String,
+        maxAgeMillis: Long,
+        nowMillis: Long,
+    ): List<OpenCodeSessionSummary> =
         OpenCodeSessionApi.parseSessionList(json, maxAgeMillis, nowMillis)
 
     @TestOnly

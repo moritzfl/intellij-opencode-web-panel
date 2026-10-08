@@ -13,12 +13,12 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.pom.Navigatable
 import com.intellij.util.diff.Diff
 import com.intellij.util.diff.FilesTooBigForDiffException
-import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
+import de.moritzf.opencodewebpanel.server.OpenCodeSnapshotFileDiff
 import de.moritzf.opencodewebpanel.server.OpenCodeUnifiedDiff
 
 internal fun createOpenCodeDiffRequest(
     project: Project,
-    diff: OpenCodeServerProtocol.SnapshotFileDiff,
+    diff: OpenCodeSnapshotFileDiff,
     highlightFile: VirtualFile?,
 ): SimpleDiffRequest? {
     val sides = OpenCodeUnifiedDiff.sides(diff.patch) ?: return null

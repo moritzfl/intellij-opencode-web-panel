@@ -2,9 +2,11 @@ package de.moritzf.opencodewebpanel.features
 
 import com.google.gson.JsonParser
 import de.moritzf.opencodewebpanel.server.OpenCodeGlobalEvent
+import de.moritzf.opencodewebpanel.server.OpenCodePendingRequestSummary
+import de.moritzf.opencodewebpanel.server.OpenCodePermissionResponse
 import de.moritzf.opencodewebpanel.server.OpenCodeProtocolResult
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
-import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
+import de.moritzf.opencodewebpanel.server.OpenCodeSessionInfo
 import java.util.ArrayDeque
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -17,7 +19,7 @@ class OpenCodePermissionAutoResponderTest {
         val directory: String,
         val sessionID: String,
         val requestID: String,
-        val response: OpenCodeServerProtocol.PermissionResponse,
+        val response: OpenCodePermissionResponse,
     )
 
     @Test
@@ -36,7 +38,7 @@ class OpenCodePermissionAutoResponderTest {
                     "/tmp/project",
                     "ses_a",
                     "per_a",
-                    OpenCodeServerProtocol.PermissionResponse.ONCE,
+                    OpenCodePermissionResponse.ONCE,
                 )
             ),
             fixture.replies,
@@ -49,8 +51,8 @@ class OpenCodePermissionAutoResponderTest {
             fixture(
                 pending =
                     listOf(
-                        OpenCodeServerProtocol.PendingRequestSummary("per_a", "ses_a"),
-                        OpenCodeServerProtocol.PendingRequestSummary("per_b", "ses_b"),
+                        OpenCodePendingRequestSummary("per_a", "ses_a"),
+                        OpenCodePendingRequestSummary("per_b", "ses_b"),
                     )
             )
 
@@ -139,9 +141,9 @@ class OpenCodePermissionAutoResponderTest {
             fixture(
                 pending =
                     listOf(
-                        OpenCodeServerProtocol.PendingRequestSummary("per_a", "ses_a"),
-                        OpenCodeServerProtocol.PendingRequestSummary("per_b", "ses_b"),
-                        OpenCodeServerProtocol.PendingRequestSummary("per_c", "ses_c"),
+                        OpenCodePendingRequestSummary("per_a", "ses_a"),
+                        OpenCodePendingRequestSummary("per_b", "ses_b"),
+                        OpenCodePendingRequestSummary("per_c", "ses_c"),
                     )
             )
         fixture.responder.setSessionEnabled("ses_a", true)
@@ -157,10 +159,7 @@ class OpenCodePermissionAutoResponderTest {
 
     @Test
     fun reconnectIgnoresForeignBackend() {
-        val fixture =
-            fixture(
-                pending = listOf(OpenCodeServerProtocol.PendingRequestSummary("per_a", "ses_a"))
-            )
+        val fixture = fixture(pending = listOf(OpenCodePendingRequestSummary("per_a", "ses_a")))
         fixture.responder.setSessionEnabled("ses_a", true)
         fixture.drain()
         fixture.replies.clear()
@@ -244,8 +243,7 @@ class OpenCodePermissionAutoResponderTest {
     fun sessionCreatedAfterAskSeedsPendingChild() {
         val fixture =
             fixture(
-                pending =
-                    listOf(OpenCodeServerProtocol.PendingRequestSummary("per_child", "ses_child")),
+                pending = listOf(OpenCodePendingRequestSummary("per_child", "ses_child")),
                 failedSessions = setOf("ses_child"),
             )
         fixture.responder.setSessionEnabled("ses_parent", true)
@@ -264,8 +262,7 @@ class OpenCodePermissionAutoResponderTest {
     fun enablingParentPrefetchesChildrenWhenSessionGetFails() {
         val fixture =
             fixture(
-                pending =
-                    listOf(OpenCodeServerProtocol.PendingRequestSummary("per_child", "ses_child")),
+                pending = listOf(OpenCodePendingRequestSummary("per_child", "ses_child")),
                 failedSessions = setOf("ses_child"),
                 children = mapOf("ses_parent" to listOf("ses_child")),
             )
@@ -279,8 +276,7 @@ class OpenCodePermissionAutoResponderTest {
     fun enablingParentPrefetchesNestedGrandchildren() {
         val fixture =
             fixture(
-                pending =
-                    listOf(OpenCodeServerProtocol.PendingRequestSummary("per_grand", "ses_grand")),
+                pending = listOf(OpenCodePendingRequestSummary("per_grand", "ses_grand")),
                 failedSessions = setOf("ses_child", "ses_grand"),
                 children =
                     mapOf(
@@ -309,7 +305,7 @@ class OpenCodePermissionAutoResponderTest {
                 loadSession = { _, _, _, sessionID ->
                     when (sessionID) {
                         "ses_child" ->
-                            OpenCodeServerProtocol.SessionInfo(
+                            OpenCodeSessionInfo(
                                 title = sessionID,
                                 parentID = "ses_parent",
                                 id = sessionID,
@@ -410,8 +406,8 @@ class OpenCodePermissionAutoResponderTest {
             fixture(
                 pending =
                     listOf(
-                        OpenCodeServerProtocol.PendingRequestSummary("per_child", "ses_child"),
-                        OpenCodeServerProtocol.PendingRequestSummary("per_other", "ses_other"),
+                        OpenCodePendingRequestSummary("per_child", "ses_child"),
+                        OpenCodePendingRequestSummary("per_other", "ses_other"),
                     ),
                 parents = mapOf("ses_child" to "ses_parent"),
             )
@@ -460,7 +456,7 @@ class OpenCodePermissionAutoResponderTest {
     fun retriesTransientPendingListFailure() {
         val fixture =
             fixture(
-                pending = listOf(OpenCodeServerProtocol.PendingRequestSummary("per_a", "ses_a")),
+                pending = listOf(OpenCodePendingRequestSummary("per_a", "ses_a")),
                 pendingFailures = 1,
             )
 
@@ -490,8 +486,7 @@ class OpenCodePermissionAutoResponderTest {
     fun enablingParentRetriesPendingChildLineageFailure() {
         val fixture =
             fixture(
-                pending =
-                    listOf(OpenCodeServerProtocol.PendingRequestSummary("per_child", "ses_child")),
+                pending = listOf(OpenCodePendingRequestSummary("per_child", "ses_child")),
                 parents = mapOf("ses_child" to "ses_parent"),
                 sessionFailures = 1,
             )
@@ -538,7 +533,7 @@ class OpenCodePermissionAutoResponderTest {
     }
 
     private fun fixture(
-        pending: List<OpenCodeServerProtocol.PendingRequestSummary> = emptyList(),
+        pending: List<OpenCodePendingRequestSummary> = emptyList(),
         parents: Map<String, String?> = emptyMap(),
         children: Map<String, List<String>> = emptyMap(),
         pendingFailures: Int = 0,
@@ -573,13 +568,13 @@ class OpenCodePermissionAutoResponderTest {
                             sessionID !in parents.values.filterNotNull()
                     ) {
                         // Unknown session: still resolve as a root so walk terminates.
-                        OpenCodeServerProtocol.SessionInfo(
+                        OpenCodeSessionInfo(
                             title = sessionID,
                             parentID = null,
                             id = sessionID,
                         )
                     } else {
-                        OpenCodeServerProtocol.SessionInfo(
+                        OpenCodeSessionInfo(
                             title = sessionID,
                             parentID = parents[sessionID],
                             id = sessionID,
@@ -588,7 +583,7 @@ class OpenCodePermissionAutoResponderTest {
                 },
                 loadChildren = { _, _, _, sessionID ->
                     children[sessionID].orEmpty().map { childID ->
-                        OpenCodeServerProtocol.SessionInfo(
+                        OpenCodeSessionInfo(
                             title = childID,
                             parentID = sessionID,
                             id = childID,

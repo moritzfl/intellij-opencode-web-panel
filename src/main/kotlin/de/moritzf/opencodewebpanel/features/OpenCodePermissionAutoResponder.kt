@@ -5,9 +5,12 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.util.concurrency.AppExecutorUtil
 import de.moritzf.opencodewebpanel.server.OpenCodeGlobalEvent
 import de.moritzf.opencodewebpanel.server.OpenCodeGlobalEventListener
+import de.moritzf.opencodewebpanel.server.OpenCodePendingRequestSummary
+import de.moritzf.opencodewebpanel.server.OpenCodePermissionResponse
 import de.moritzf.opencodewebpanel.server.OpenCodeProtocolResult
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
+import de.moritzf.opencodewebpanel.server.OpenCodeSessionInfo
 import de.moritzf.opencodewebpanel.server.objectMember
 import de.moritzf.opencodewebpanel.server.stringMember
 import java.util.concurrent.ConcurrentHashMap
@@ -44,7 +47,7 @@ internal class OpenCodePermissionAutoResponder(
             serverUrl: String,
             authHeader: String,
             directory: String,
-        ) -> OpenCodeProtocolResult<List<OpenCodeServerProtocol.PendingRequestSummary>> =
+        ) -> OpenCodeProtocolResult<List<OpenCodePendingRequestSummary>> =
         { url, auth, directory ->
             OpenCodeServerProtocol.fetchPendingRequestsResult(
                 url,
@@ -59,7 +62,7 @@ internal class OpenCodePermissionAutoResponder(
             authHeader: String,
             directory: String,
             sessionID: String,
-        ) -> OpenCodeServerProtocol.SessionInfo? =
+        ) -> OpenCodeSessionInfo? =
         { url, auth, directory, sessionID ->
             OpenCodeServerProtocol.fetchSessionInfo(url, auth, directory, sessionID)
         },
@@ -69,7 +72,7 @@ internal class OpenCodePermissionAutoResponder(
             authHeader: String,
             directory: String,
             sessionID: String,
-        ) -> List<OpenCodeServerProtocol.SessionInfo> =
+        ) -> List<OpenCodeSessionInfo> =
         { url, auth, directory, sessionID ->
             OpenCodeServerProtocol.fetchSessionChildren(url, auth, directory, sessionID)
         },
@@ -80,7 +83,7 @@ internal class OpenCodePermissionAutoResponder(
             directory: String,
             sessionID: String,
             requestID: String,
-            response: OpenCodeServerProtocol.PermissionResponse,
+            response: OpenCodePermissionResponse,
         ) -> Boolean =
         { url, auth, directory, sessionID, requestID, response ->
             OpenCodeServerProtocol.replyToPermission(
@@ -199,7 +202,7 @@ internal class OpenCodePermissionAutoResponder(
         }
         if (event.type != "permission.asked") return
         val request =
-            OpenCodeServerProtocol.PendingRequestSummary(
+            OpenCodePendingRequestSummary(
                 id =
                     event.properties
                         .stringMember("id")
@@ -214,7 +217,7 @@ internal class OpenCodePermissionAutoResponder(
 
     private fun considerRequest(
         directory: String,
-        request: OpenCodeServerProtocol.PendingRequestSummary,
+        request: OpenCodePendingRequestSummary,
         attempt: Int,
     ) {
         if (effectiveOverride(request.sessionID) == true) {
@@ -299,7 +302,7 @@ internal class OpenCodePermissionAutoResponder(
 
     private fun enqueueReply(
         directory: String,
-        request: OpenCodeServerProtocol.PendingRequestSummary,
+        request: OpenCodePendingRequestSummary,
         attempt: Int,
     ) {
         val inFlightKey = "${request.sessionID}:${request.id}"
@@ -326,7 +329,7 @@ internal class OpenCodePermissionAutoResponder(
                             directory,
                             request.sessionID,
                             request.id,
-                            OpenCodeServerProtocol.PermissionResponse.ONCE,
+                            OpenCodePermissionResponse.ONCE,
                         )
                     if (!accepted) {
                         shouldRetry = attempt < MAX_RETRIES

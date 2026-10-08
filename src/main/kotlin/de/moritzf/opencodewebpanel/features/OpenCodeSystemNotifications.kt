@@ -21,12 +21,14 @@ import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsListener
 import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsState
 import de.moritzf.opencodewebpanel.server.OpenCodeGlobalEvent
 import de.moritzf.opencodewebpanel.server.OpenCodeGlobalEventListener
+import de.moritzf.opencodewebpanel.server.OpenCodePermissionResponse
 import de.moritzf.opencodewebpanel.server.OpenCodeProtocolResult
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleListener
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
+import de.moritzf.opencodewebpanel.server.OpenCodeSessionInfo
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
@@ -90,7 +92,7 @@ internal class OpenCodeSystemNotifications(
     private fun permissionReplyAction(
         title: String,
         openCodeNotification: OpenCodeServerProtocol.SystemNotificationPayload,
-        response: OpenCodeServerProtocol.PermissionResponse,
+        response: OpenCodePermissionResponse,
         identity: OpenCodeNotificationServerIdentity,
     ): NotificationAction {
         return object : NotificationAction(title) {
@@ -103,7 +105,7 @@ internal class OpenCodeSystemNotifications(
 
     private fun replyToPermission(
         openCodeNotification: OpenCodeServerProtocol.SystemNotificationPayload,
-        response: OpenCodeServerProtocol.PermissionResponse,
+        response: OpenCodePermissionResponse,
         identity: OpenCodeNotificationServerIdentity,
     ) {
         if (!isCurrentServer(identity)) return
@@ -358,7 +360,7 @@ internal class OpenCodeSystemNotifications(
         private fun fetchSessionForNotification(
             directory: String,
             sessionID: String,
-        ): OpenCodeServerProtocol.SessionInfo? {
+        ): OpenCodeSessionInfo? {
             val serverManager = targetFor(directory)?.serverManager ?: return null
             val serverUrl = serverManager.getServerUrl() ?: return null
             val password = serverManager.getServerPassword() ?: return null
@@ -488,7 +490,7 @@ internal class OpenCodeSystemNotifications(
                     target.permissionReplyAction(
                         "Allow",
                         openCodeNotification,
-                        OpenCodeServerProtocol.PermissionResponse.ONCE,
+                        OpenCodePermissionResponse.ONCE,
                         identity,
                     )
                 )
@@ -496,7 +498,7 @@ internal class OpenCodeSystemNotifications(
                     target.permissionReplyAction(
                         "Always Allow",
                         openCodeNotification,
-                        OpenCodeServerProtocol.PermissionResponse.ALWAYS,
+                        OpenCodePermissionResponse.ALWAYS,
                         identity,
                     )
                 )
@@ -504,7 +506,7 @@ internal class OpenCodeSystemNotifications(
                     target.permissionReplyAction(
                         "Deny",
                         openCodeNotification,
-                        OpenCodeServerProtocol.PermissionResponse.REJECT,
+                        OpenCodePermissionResponse.REJECT,
                         identity,
                     )
                 )

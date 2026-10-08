@@ -2,7 +2,7 @@ package de.moritzf.opencodewebpanel.features
 
 import de.moritzf.opencodewebpanel.server.OpenCodeProtocolResult
 import de.moritzf.opencodewebpanel.server.OpenCodeServerConnection
-import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
+import de.moritzf.opencodewebpanel.server.OpenCodeSessionSummary
 import de.moritzf.opencodewebpanel.server.OpenCodeWireProtocol
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -32,8 +32,7 @@ class OpenCodeInterruptedSessionRecoveryTest {
         var listCalls = 0
         var messageCalls = 0
         val sent = mutableListOf<String>()
-        val sessionResults =
-            ArrayDeque<OpenCodeProtocolResult<List<OpenCodeServerProtocol.SessionSummary>>>()
+        val sessionResults = ArrayDeque<OpenCodeProtocolResult<List<OpenCodeSessionSummary>>>()
         var fetchMessage: (String) -> OpenCodeProtocolResult<String?> = {
             OpenCodeProtocolResult.Success("""{"type":"user"}""")
         }
@@ -74,12 +73,8 @@ class OpenCodeInterruptedSessionRecoveryTest {
             )
         }
 
-        fun sessions(
-            vararg ids: String
-        ): OpenCodeProtocolResult<List<OpenCodeServerProtocol.SessionSummary>> {
-            return OpenCodeProtocolResult.Success(
-                ids.map { OpenCodeServerProtocol.SessionSummary(it, 1L) }
-            )
+        fun sessions(vararg ids: String): OpenCodeProtocolResult<List<OpenCodeSessionSummary>> {
+            return OpenCodeProtocolResult.Success(ids.map { OpenCodeSessionSummary(it, 1L) })
         }
     }
 

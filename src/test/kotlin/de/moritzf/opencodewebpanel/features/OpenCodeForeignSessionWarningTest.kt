@@ -1,6 +1,6 @@
 package de.moritzf.opencodewebpanel.features
 
-import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
+import de.moritzf.opencodewebpanel.server.OpenCodeSessionInfo
 import de.moritzf.opencodewebpanel.server.SbxCli
 import java.nio.file.Files
 import org.junit.Assert.assertEquals
@@ -14,7 +14,7 @@ class OpenCodeForeignSessionWarningTest {
     @get:Rule val temp = TemporaryFolder()
     private val workspace = "/Users/me/web-ui"
     private var enabled = true
-    private val sessions = mutableMapOf<String, OpenCodeServerProtocol.SessionInfo>()
+    private val sessions = mutableMapOf<String, OpenCodeSessionInfo>()
     private val loaded = mutableListOf<String>()
     private val warnings = mutableListOf<String>()
     private var clears = 0
@@ -271,7 +271,7 @@ class OpenCodeForeignSessionWarningTest {
     @Test
     fun missingDirectoryDoesNotWarn() {
         sessions["ses_unknown"] =
-            OpenCodeServerProtocol.SessionInfo("Untitled", parentID = null, id = "ses_unknown")
+            OpenCodeSessionInfo("Untitled", parentID = null, id = "ses_unknown")
 
         warning.onDisplayedSessionChanged("ses_unknown")
 
@@ -339,8 +339,8 @@ class OpenCodeForeignSessionWarningTest {
         id: String,
         directory: String,
         title: String,
-    ): OpenCodeServerProtocol.SessionInfo {
-        return OpenCodeServerProtocol.SessionInfo(
+    ): OpenCodeSessionInfo {
+        return OpenCodeSessionInfo(
             title,
             parentID = null,
             id = id,
