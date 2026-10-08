@@ -5,11 +5,11 @@ import com.intellij.ui.jcef.JBCefBrowser
 import de.moritzf.opencodewebpanel.browser.OpenCodeBrowserScriptScheduler
 import de.moritzf.opencodewebpanel.browser.OpenCodeBrowserSnippets
 import de.moritzf.opencodewebpanel.browser.OpenCodeJsQuery
+import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsState
+import de.moritzf.opencodewebpanel.configuration.OpenCodeUiSetting
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.server.OpenCodeWireProtocol
-import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
-import de.moritzf.opencodewebpanel.settings.OpenCodeUiSetting
 
 /**
  * Per-document injection configuration, gates and scheduling. Browser ownership stays in the panel.

@@ -2,9 +2,9 @@ package de.moritzf.opencodewebpanel.features
 
 import com.intellij.ui.jcef.JBCefBrowser
 import de.moritzf.opencodewebpanel.browser.OpenCodeBrowserSnippets
+import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsState
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
-import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
 
 internal class OpenCodeLocalStorageBridge(
     private val browser: JBCefBrowser,

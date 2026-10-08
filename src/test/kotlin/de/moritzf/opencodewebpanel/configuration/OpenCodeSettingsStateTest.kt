@@ -1,4 +1,4 @@
-package de.moritzf.opencodewebpanel.settings
+package de.moritzf.opencodewebpanel.configuration
 
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import org.junit.Assert.assertEquals

@@ -8,6 +8,8 @@ import com.intellij.openapi.options.ConfigurationException
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.util.text.StringUtil
+import de.moritzf.opencodewebpanel.configuration.OpenCodeProjectSettingsListener
+import de.moritzf.opencodewebpanel.configuration.OpenCodeProjectSettingsState
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
@@ -47,8 +49,7 @@ internal class OpenCodeProjectSettingsApplier(private val project: Project) {
         // CLI with the XML port fallback; legacy application sandbox options never seed a spec.
         val baseline =
             stored
-                ?: SbxLaunchSpec.fromSettings(
-                        OpenCodeSettingsState.getInstance(),
+                ?: SbxLaunchSpec.defaults(
                         spec.canonicalDirectory,
                         hostPort = settings.hostPortOrNull(),
                     )

@@ -9,9 +9,10 @@ import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.wm.ToolWindowManager
+import de.moritzf.opencodewebpanel.configuration.OpenCodeProjectSettingsState
+import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsState
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
-import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsState
-import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
+import de.moritzf.opencodewebpanel.server.SbxLaunchSpec
 import java.io.File
 
 /** Must match the `toolWindow id` declared in plugin.xml. */
@@ -121,8 +122,10 @@ internal class OpenCodeAddSelectionToChatAction : DumbAwareAction() {
 }
 
 private fun openCodeProjectDirectory(project: Project): String? {
-    return OpenCodeProjectSettingsState.getInstance(project)
-        .effectiveOpenCodeDirectory(project.basePath)
+    return SbxLaunchSpec.hostOpenCodeDirectory(
+        OpenCodeProjectSettingsState.getInstance(project)
+            .effectiveProjectDirectory(project.basePath)
+    )
 }
 
 private fun sendToOpenCodeChat(project: Project, texts: List<String>) {

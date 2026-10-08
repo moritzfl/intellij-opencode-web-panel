@@ -26,6 +26,12 @@ import de.moritzf.opencodewebpanel.browser.OpenCodeBrowserSnippets
 import de.moritzf.opencodewebpanel.browser.OpenCodeDocumentStartInjector
 import de.moritzf.opencodewebpanel.browser.OpenCodeJsQuery
 import de.moritzf.opencodewebpanel.browser.createOpenCodeBrowserBeforeReplacement
+import de.moritzf.opencodewebpanel.configuration.OpenCodeProjectSettingsListener
+import de.moritzf.opencodewebpanel.configuration.OpenCodeProjectSettingsState
+import de.moritzf.opencodewebpanel.configuration.OpenCodeRestartScope
+import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsListener
+import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsState
+import de.moritzf.opencodewebpanel.configuration.OpenCodeUiSetting
 import de.moritzf.opencodewebpanel.features.OpenCodeAgentStatusState
 import de.moritzf.opencodewebpanel.features.OpenCodeAgentStatusTracker
 import de.moritzf.opencodewebpanel.features.OpenCodeCefFileDialogHandler
@@ -54,6 +60,7 @@ import de.moritzf.opencodewebpanel.server.OpenCodeSuspendResumeListener
 import de.moritzf.opencodewebpanel.server.OpenCodeWireProtocol
 import de.moritzf.opencodewebpanel.server.SbxCli
 import de.moritzf.opencodewebpanel.server.SbxFailureKind
+import de.moritzf.opencodewebpanel.server.SbxLaunchSpec
 import de.moritzf.opencodewebpanel.server.SbxOpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.isSuccessfulOpenCodeDocumentLoad
 import de.moritzf.opencodewebpanel.server.parkedEmbeddedCenterCard
@@ -63,13 +70,7 @@ import de.moritzf.opencodewebpanel.server.shouldShowPageOpeningStatus
 import de.moritzf.opencodewebpanel.server.shouldShowStartupError
 import de.moritzf.opencodewebpanel.server.shouldTickLifecycleStrip
 import de.moritzf.opencodewebpanel.server.visibleRecoveryNotice
-import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsListener
-import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsState
-import de.moritzf.opencodewebpanel.settings.OpenCodeRestartScope
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable
-import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsListener
-import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
-import de.moritzf.opencodewebpanel.settings.OpenCodeUiSetting
 import java.awt.CardLayout
 import java.awt.Color
 import java.awt.Component
@@ -1831,9 +1832,7 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
     }
 
     private fun openCodeProjectDirectory(): String? {
-        val raw =
-            OpenCodeProjectSettingsState.getInstance(project)
-                .effectiveOpenCodeDirectory(project.basePath) ?: return null
+        val raw = SbxLaunchSpec.hostOpenCodeDirectory(sandboxWorkspaceDirectory()) ?: return null
         return OpenCodeServerProtocol.canonicalOpenCodeDirectory(raw) ?: raw
     }
 

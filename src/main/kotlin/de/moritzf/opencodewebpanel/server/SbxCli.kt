@@ -4,6 +4,7 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.intellij.openapi.util.io.FileUtil
+import de.moritzf.opencodewebpanel.configuration.SbxSettingsValues
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
@@ -70,10 +71,10 @@ internal data class SbxSandboxRecord(
  * and config overlay travel as ProcessBuilder env with bare `-e KEY` only.
  */
 internal object SbxCli {
-    const val DEFAULT_EXECUTABLE = "sbx"
+    const val DEFAULT_EXECUTABLE = SbxSettingsValues.DEFAULT_EXECUTABLE
     const val AGENT = "opencode"
-    const val DEFAULT_MEMORY = "4g"
-    const val DEFAULT_CPUS = "2"
+    const val DEFAULT_MEMORY = SbxSettingsValues.DEFAULT_MEMORY
+    const val DEFAULT_CPUS = SbxSettingsValues.DEFAULT_CPUS
     const val NAME_PREFIX = "ide-ocwp-"
     const val OPENCODE_SERVER_PASSWORD_ENV = "OPENCODE_SERVER_PASSWORD"
     const val OPENCODE_CONFIG_CONTENT_ENV = "OPENCODE_CONFIG_CONTENT"
@@ -180,19 +181,13 @@ internal object SbxCli {
         return NAME_PREFIX + hex
     }
 
-    fun parseMemory(value: String?): String? {
-        val trimmed = value?.trim()?.lowercase().orEmpty()
-        return trimmed.takeIf { it.matches(Regex("""[1-9]\d*[gm]""")) }
-    }
+    fun parseMemory(value: String?): String? = SbxSettingsValues.parseMemory(value)
 
-    fun parseCpus(value: String?): String? {
-        val parsed = value?.trim()?.toIntOrNull() ?: return null
-        return parsed.takeIf { it in 1..32 }?.toString()
-    }
+    fun parseCpus(value: String?): String? = SbxSettingsValues.parseCpus(value)
 
-    fun sanitizeMemory(value: String?): String = parseMemory(value) ?: DEFAULT_MEMORY
+    fun sanitizeMemory(value: String?): String = SbxSettingsValues.sanitizeMemory(value)
 
-    fun sanitizeCpus(value: String?): String = parseCpus(value) ?: DEFAULT_CPUS
+    fun sanitizeCpus(value: String?): String = SbxSettingsValues.sanitizeCpus(value)
 
     /**
      * Names are joined into host paths; keep this in sync with the launcher's `valid_sandbox_name`.
@@ -243,9 +238,7 @@ internal object SbxCli {
         return command
     }
 
-    fun normalizeLineList(text: String?): String {
-        return parseLineList(text).joinToString("\n")
-    }
+    fun normalizeLineList(text: String?): String = SbxSettingsValues.normalizeLineList(text)
 
     fun parseKitRefs(
         text: String?,
@@ -422,15 +415,7 @@ internal object SbxCli {
 
     fun networkKitRef(): String = posixPath("./$PROJECT_CONTROL_DIR/$NETWORK_KIT_DIR")
 
-    fun parseLineList(text: String?): List<String> {
-        return text
-            .orEmpty()
-            .lineSequence()
-            .map { posixPath(it) }
-            .filter { it.isNotBlank() && !it.startsWith("#") }
-            .distinct()
-            .toList()
-    }
+    fun parseLineList(text: String?): List<String> = SbxSettingsValues.parseLineList(text)
 
     fun extraMountHostPaths(mounts: List<SbxExtraMount>, primaryWorkspace: String): List<String> {
         return extraMountsForCreate(mounts, primaryWorkspace).map { it.hostPath }
@@ -755,37 +740,13 @@ internal object SbxCli {
     private fun shellQuote(value: String): String = "'" + value.replace("'", "'\\''") + "'"
 
     fun normalizeExtraMountText(text: String?): String =
-        serializeExtraMountRows(parseExtraMountRows(text))
+        SbxSettingsValues.normalizeExtraMountText(text)
 
-    fun parseExtraMountRows(text: String?): List<Pair<String, String>> {
-        val rows = ArrayList<Pair<String, String>>()
-        val seen = HashSet<Pair<String, String>>()
-        for (rawLine in text.orEmpty().lineSequence()) {
-            // A `#` starts a comment only at the start or after whitespace (`C#Proj` is a path).
-            val line = COMMENT_AFTER_SPACE.replace(rawLine, "").trim()
-            if (line.isBlank()) continue
-            val parts = line.split('|', limit = 2).map { it.trim() }
-            val host = posixPath(parts[0])
-            if (host.isBlank()) continue
-            val sandbox = posixPath(parts.getOrElse(1) { host }.ifBlank { host })
-            val row = host to sandbox
-            if (seen.add(row)) rows += row
-        }
-        return rows
-    }
+    fun parseExtraMountRows(text: String?): List<Pair<String, String>> =
+        SbxSettingsValues.parseExtraMountRows(text)
 
-    private val COMMENT_AFTER_SPACE = Regex("(^|\\s)#.*$")
-
-    fun serializeExtraMountRows(rows: List<Pair<String, String>>): String {
-        return rows
-            .map { posixPath(it.first) to posixPath(it.second) }
-            .filter { it.first.isNotBlank() }
-            .map { (host, sandbox) ->
-                if (sandbox.isBlank() || sandbox == host) host else "$host | $sandbox"
-            }
-            .distinct()
-            .joinToString("\n")
-    }
+    fun serializeExtraMountRows(rows: List<Pair<String, String>>): String =
+        SbxSettingsValues.serializeExtraMountRows(rows)
 
     fun isAbsolutePosixPath(path: String): Boolean {
         return path.startsWith("/") && '\u0000' !in path && '\n' !in path && '\r' !in path

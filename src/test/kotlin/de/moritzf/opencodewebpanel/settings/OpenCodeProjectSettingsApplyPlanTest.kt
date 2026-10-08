@@ -1,5 +1,8 @@
 package de.moritzf.opencodewebpanel.settings
 
+import de.moritzf.opencodewebpanel.configuration.OpenCodePortMode
+import de.moritzf.opencodewebpanel.configuration.OpenCodeProjectDirectoryMode
+import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsState
 import de.moritzf.opencodewebpanel.server.SbxApplyEffect
 import de.moritzf.opencodewebpanel.server.SbxLaunchSpec
 import org.junit.Assert.assertEquals
@@ -10,7 +13,8 @@ import org.junit.Test
 
 class OpenCodeProjectSettingsApplyPlanTest {
     private val base =
-        SbxLaunchSpec.fromSettings(OpenCodeSettingsState(), "/workspace").copy(useSandbox = true)
+        SbxLaunchSpec.defaults("/workspace", hostPort = OpenCodeSettingsState().hostPortOrNull())
+            .copy(useSandbox = true)
     private val values =
         OpenCodeProjectSettingsValues(
             OpenCodeProjectDirectoryMode.AUTO,

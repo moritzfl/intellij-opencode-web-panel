@@ -5,7 +5,7 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Key
 import com.intellij.util.text.SemVer
-import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
+import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsState
 import java.net.HttpURLConnection
 import java.net.URI
 

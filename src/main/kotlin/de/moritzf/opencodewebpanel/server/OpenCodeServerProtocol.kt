@@ -3,6 +3,7 @@ package de.moritzf.opencodewebpanel.server
 import com.google.gson.JsonObject
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.util.text.SemVer
+import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsState
 import de.moritzf.opencodewebpanel.server.OpenCodeHttpTransport.httpGetResult
 import de.moritzf.opencodewebpanel.server.OpenCodeHttpTransport.httpPostJson
 import de.moritzf.opencodewebpanel.server.OpenCodeHttpTransport.httpPostResult
@@ -12,7 +13,6 @@ import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
-import java.security.SecureRandom
 import java.util.Base64
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
@@ -56,7 +56,7 @@ internal object OpenCodeServerProtocol {
     private const val HOST = "127.0.0.1"
     const val SANDBOX_SERVE_HOST = "0.0.0.0"
     const val SANDBOX_SERVE_PORT = 4096
-    const val DYNAMIC_PORT = "0"
+    const val DYNAMIC_PORT = OpenCodeSettingsState.DYNAMIC_PORT
     const val CHECK_INTERVAL_SECONDS = 30L
     const val HEALTH_CHECK_CONFIRMATION_ATTEMPTS = 2
     const val HEALTH_CHECK_CONFIRMATION_DELAY_MILLIS = 3_000L
@@ -85,7 +85,7 @@ internal object OpenCodeServerProtocol {
 
     const val DISPOSE_PATH = "/global/dispose"
     const val BASIC_AUTH_USERNAME = "opencode"
-    const val DEFAULT_EXECUTABLE = "opencode"
+    const val DEFAULT_EXECUTABLE = OpenCodeSettingsState.DEFAULT_EXECUTABLE
     /** Bump this when the plugin requires a newer OpenCode release. */
     const val MINIMUM_SUPPORTED_OPENCODE_VERSION = "1.18.0"
     const val OPEN_FILE_LINK_SCHEME = "opencode-web-panel"
@@ -97,7 +97,6 @@ internal object OpenCodeServerProtocol {
     /** Cap REST response bodies so a large diff/list cannot exhaust heap. */
     const val MAX_HTTP_RESPONSE_CHARS = OpenCodeHttpTransport.MAX_HTTP_RESPONSE_CHARS
 
-    private val secureRandom = SecureRandom()
     private val minimumSupportedOpenCodeVersion =
         requireNotNull(SemVer.parseFromText(MINIMUM_SUPPORTED_OPENCODE_VERSION))
 
@@ -1443,12 +1442,6 @@ internal object OpenCodeServerProtocol {
             httpProxy,
             stripInheritedProxy,
         )
-
-    fun generateServerPassword(): String {
-        val bytes = ByteArray(32)
-        secureRandom.nextBytes(bytes)
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
-    }
 
     fun checkServerResponding(
         serverUrl: String,

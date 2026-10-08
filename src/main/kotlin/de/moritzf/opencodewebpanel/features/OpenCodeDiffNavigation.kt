@@ -13,11 +13,11 @@ import com.intellij.openapi.util.SystemInfo
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.jcef.JBCefBrowser
+import de.moritzf.opencodewebpanel.configuration.OpenCodeProjectSettingsState
 import de.moritzf.opencodewebpanel.server.OpenCodeHostPaths
 import de.moritzf.opencodewebpanel.server.OpenCodeProtocolResult
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
-import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsState
 
 /**
  * Opens the IDE's native diff viewer for a diff target the user Ctrl/Cmd+Clicked or Alt+Clicked in

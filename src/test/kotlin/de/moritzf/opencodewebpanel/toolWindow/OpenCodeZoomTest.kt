@@ -1,6 +1,6 @@
 package de.moritzf.opencodewebpanel.toolWindow
 
-import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
+import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsState
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

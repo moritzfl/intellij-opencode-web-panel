@@ -1,4 +1,4 @@
-package de.moritzf.opencodewebpanel.settings
+package de.moritzf.opencodewebpanel.configuration
 
 import com.intellij.util.messages.Topic
 

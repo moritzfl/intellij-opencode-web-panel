@@ -1,6 +1,6 @@
 package de.moritzf.opencodewebpanel.server
 
-import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
+import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -8,7 +8,8 @@ import org.junit.Test
 
 class SbxApplyPreviewTest {
     private val base =
-        SbxLaunchSpec.fromSettings(OpenCodeSettingsState(), "/tmp/p").copy(useSandbox = true)
+        SbxLaunchSpec.defaults("/tmp/p", hostPort = OpenCodeSettingsState().hostPortOrNull())
+            .copy(useSandbox = true)
 
     @Test
     fun kitAppendIsLiveAndRemovalRecreates() {

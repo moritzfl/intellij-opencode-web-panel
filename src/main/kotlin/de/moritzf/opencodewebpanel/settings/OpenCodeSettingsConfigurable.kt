@@ -22,6 +22,13 @@ import com.intellij.ui.dsl.builder.HyperlinkEventAction
 import com.intellij.ui.dsl.builder.RightGap
 import com.intellij.ui.dsl.builder.panel
 import com.intellij.util.ui.UIUtil
+import de.moritzf.opencodewebpanel.configuration.OpenCodeBinaryMode
+import de.moritzf.opencodewebpanel.configuration.OpenCodePasswordStore
+import de.moritzf.opencodewebpanel.configuration.OpenCodeProxyMode
+import de.moritzf.opencodewebpanel.configuration.OpenCodeRestartScope
+import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsListener
+import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsState
+import de.moritzf.opencodewebpanel.configuration.OpenCodeUiSetting
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.server.SbxCli

@@ -1,4 +1,4 @@
-package de.moritzf.opencodewebpanel.settings
+package de.moritzf.opencodewebpanel.configuration
 
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.PersistentStateComponent
@@ -6,9 +6,6 @@ import com.intellij.openapi.components.RoamingType
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
-import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
-import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
-import de.moritzf.opencodewebpanel.server.SbxCli
 
 // Roaming is disabled deliberately: the state mixes machine-specific values (binary path,
 // fixed port) and the mirrored OpenCode settings snapshot (theme/language/model/`settings.v3`),
@@ -29,8 +26,8 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
     var sbxBinaryMode: String = OpenCodeBinaryMode.AUTO.name
     var sbxBinaryPath: String = ""
     var sbxNetworkPolicyConsent: Boolean = false
-    var sbxMemory: String = SbxCli.DEFAULT_MEMORY
-    var sbxCpus: String = SbxCli.DEFAULT_CPUS
+    var sbxMemory: String = SbxSettingsValues.DEFAULT_MEMORY
+    var sbxCpus: String = SbxSettingsValues.DEFAULT_CPUS
     var sbxShareHostOpencodeConfig: Boolean = false
     var sbxEnableIntellijMcp: Boolean = true
     var sbxExtraWorkspaces: String = ""
@@ -77,12 +74,12 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
         sbxBinaryMode = OpenCodeBinaryMode.fromStorageValue(state.sbxBinaryMode).name
         sbxBinaryPath = state.sbxBinaryPath.trim()
         sbxNetworkPolicyConsent = state.sbxNetworkPolicyConsent
-        sbxMemory = SbxCli.sanitizeMemory(state.sbxMemory)
-        sbxCpus = SbxCli.sanitizeCpus(state.sbxCpus)
+        sbxMemory = SbxSettingsValues.sanitizeMemory(state.sbxMemory)
+        sbxCpus = SbxSettingsValues.sanitizeCpus(state.sbxCpus)
         sbxShareHostOpencodeConfig = state.sbxShareHostOpencodeConfig
         sbxEnableIntellijMcp = state.sbxEnableIntellijMcp
-        sbxExtraWorkspaces = SbxCli.normalizeExtraMountText(state.sbxExtraWorkspaces)
-        sbxExtraKits = SbxCli.normalizeLineList(state.sbxExtraKits)
+        sbxExtraWorkspaces = SbxSettingsValues.normalizeExtraMountText(state.sbxExtraWorkspaces)
+        sbxExtraKits = SbxSettingsValues.normalizeLineList(state.sbxExtraKits)
         proxyMode = OpenCodeProxyMode.fromStorageValue(state.proxyMode).name
         uiZoomPercent = sanitizeUiZoomPercent(state.uiZoomPercent)
         openFileLinksInIde = state.openFileLinksInIde
@@ -117,7 +114,7 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
         openCodeLocalStorageSnapshotsByBackend = HashMap()
     }
 
-    fun localStorageSnapshot(backendId: String = OpenCodeServerBackend.NATIVE_ID): String {
+    fun localStorageSnapshot(backendId: String = LEGACY_NATIVE_STORAGE_KEY): String {
         val shared = sanitizeOpenCodeLocalStorageSnapshot(openCodeLocalStorageSnapshot)
         if (shared != "{}") return shared
         val keyed =
@@ -143,7 +140,7 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
 
     fun portArgument(): String {
         return when (portModeValue()) {
-            OpenCodePortMode.AUTO -> OpenCodeServerProtocol.DYNAMIC_PORT
+            OpenCodePortMode.AUTO -> DYNAMIC_PORT
             OpenCodePortMode.FIXED -> sanitizePort(fixedPort).toString()
         }
     }
@@ -154,16 +151,16 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
 
     fun executablePath(): String {
         return when (binaryModeValue()) {
-            OpenCodeBinaryMode.AUTO -> OpenCodeServerProtocol.DEFAULT_EXECUTABLE
-            OpenCodeBinaryMode.CUSTOM ->
-                binaryPath.ifBlank { OpenCodeServerProtocol.DEFAULT_EXECUTABLE }
+            OpenCodeBinaryMode.AUTO -> DEFAULT_EXECUTABLE
+            OpenCodeBinaryMode.CUSTOM -> binaryPath.ifBlank { DEFAULT_EXECUTABLE }
         }
     }
 
     fun sbxExecutablePath(): String {
         return when (sbxBinaryModeValue()) {
-            OpenCodeBinaryMode.AUTO -> SbxCli.DEFAULT_EXECUTABLE
-            OpenCodeBinaryMode.CUSTOM -> sbxBinaryPath.ifBlank { SbxCli.DEFAULT_EXECUTABLE }
+            OpenCodeBinaryMode.AUTO -> SbxSettingsValues.DEFAULT_EXECUTABLE
+            OpenCodeBinaryMode.CUSTOM ->
+                sbxBinaryPath.ifBlank { SbxSettingsValues.DEFAULT_EXECUTABLE }
         }
     }
 
@@ -172,6 +169,10 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
     }
 
     companion object {
+        const val DEFAULT_EXECUTABLE = "opencode"
+        const val DYNAMIC_PORT = "0"
+        // Historical snapshot key, independent of the current runtime backend identity.
+        private const val LEGACY_NATIVE_STORAGE_KEY = "native"
         const val DEFAULT_FIXED_PORT = 4096
         const val DEFAULT_UI_ZOOM_PERCENT = 100
         const val MIN_UI_ZOOM_PERCENT = 50
@@ -204,7 +205,7 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
             val result = HashMap<String, String>()
             source.orEmpty().forEach { (key, value) ->
                 val id = key.trim()
-                if (id.isEmpty() || id == OpenCodeServerBackend.NATIVE_ID) return@forEach
+                if (id.isEmpty() || id == LEGACY_NATIVE_STORAGE_KEY) return@forEach
                 val sanitized = sanitizeOpenCodeLocalStorageSnapshot(value)
                 if (sanitized != "{}") result[id] = sanitized
             }

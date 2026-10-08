@@ -11,13 +11,13 @@ import com.intellij.ui.components.JBTextArea
 import com.intellij.util.ui.JBFont
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.components.BorderLayoutPanel
+import de.moritzf.opencodewebpanel.configuration.OpenCodePortMode
+import de.moritzf.opencodewebpanel.configuration.OpenCodeProjectSettingsListener
+import de.moritzf.opencodewebpanel.configuration.OpenCodeProjectSettingsState
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLogBuffer
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.server.SbxLaunchSpec
-import de.moritzf.opencodewebpanel.settings.OpenCodePortMode
 import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsConfigurable
-import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsListener
-import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsState
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable
 import java.awt.Font
 import java.nio.file.Path

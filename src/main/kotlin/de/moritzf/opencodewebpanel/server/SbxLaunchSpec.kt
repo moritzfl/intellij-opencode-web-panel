@@ -1,7 +1,6 @@
 package de.moritzf.opencodewebpanel.server
 
 import com.intellij.openapi.diagnostic.logger
-import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
@@ -120,10 +119,9 @@ internal data class SbxLaunchSpec(
          * older releases have no settings UI any more, so they no longer decide a project's runtime
          * or seed its spec: a project without `opencode-sbx.yaml` runs the Host CLI.
          */
-        fun fromSettings(
-            settings: OpenCodeSettingsState,
+        fun defaults(
             canonicalDirectory: String,
-            hostPort: Int? = settings.hostPortOrNull(),
+            hostPort: Int? = null,
         ): SbxLaunchSpec {
             val directory = canonicalDirectory.trim()
             return SbxLaunchSpec(
@@ -142,6 +140,13 @@ internal data class SbxLaunchSpec(
         }
 
         fun parseYaml(text: String): SbxLaunchSpec? = parseYamlResult(text).spec
+
+        /** OpenCode's host-side cwd; backend identity and mounts still use the project root. */
+        fun hostOpenCodeDirectory(projectDirectory: String?): String? {
+            val root = projectDirectory ?: return null
+            val spec = load(root)
+            return if (spec?.useSandbox == true) spec.hostWorkingDirectory() else root
+        }
 
         internal data class ParseResult(val spec: SbxLaunchSpec?, val error: String?)
 
@@ -597,7 +602,6 @@ internal data class SbxLaunchSpec(
         }
 
         fun persist(
-            settings: OpenCodeSettingsState,
             canonicalDirectory: String,
             hostPort: Int? = null,
         ): Path? {
@@ -606,16 +610,10 @@ internal data class SbxLaunchSpec(
                     ?: canonicalDirectory.trim().takeIf { it.isNotBlank() }
                     ?: return null
             val existing = load(directory)
-            // The project spec owns every sandbox option. App defaults only seed a new project.
+            // The project spec owns every sandbox option. The port is a missing-spec fallback only.
             if (existing == null && projectSpecCandidates(directory).any { Files.exists(it) })
                 return null
-            val spec =
-                existing
-                    ?: fromSettings(
-                        settings,
-                        directory,
-                        hostPort = hostPort ?: settings.hostPortOrNull(),
-                    )
+            val spec = existing ?: defaults(directory, hostPort)
             return persist(spec, writeProjectSpec = !Files.exists(projectSpecPath(directory)))
         }
 

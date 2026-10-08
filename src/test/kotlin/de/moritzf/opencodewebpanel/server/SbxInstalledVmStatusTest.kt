@@ -1,6 +1,6 @@
 package de.moritzf.opencodewebpanel.server
 
-import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
+import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -11,7 +11,7 @@ class SbxInstalledVmStatusTest {
     @Test
     fun pendingWhenCreateSnapshotDiffers() {
         val spec =
-            SbxLaunchSpec.fromSettings(OpenCodeSettingsState(), "/tmp/p")
+            SbxLaunchSpec.defaults("/tmp/p", hostPort = OpenCodeSettingsState().hostPortOrNull())
                 .copy(
                     memory = "8g",
                     useSandbox = true,
@@ -35,7 +35,8 @@ class SbxInstalledVmStatusTest {
 
     @Test
     fun adoptedHintIgnoresSnapshot() {
-        val spec = SbxLaunchSpec.fromSettings(OpenCodeSettingsState(), "/tmp/p")
+        val spec =
+            SbxLaunchSpec.defaults("/tmp/p", hostPort = OpenCodeSettingsState().hostPortOrNull())
         assertEquals(
             "Adopted sandbox: create-time settings are unknown until Reset Sandbox.",
             SbxInstalledVmStatus.hint(SbxInstalledVmStatus.settings(spec, null), adopted = true),

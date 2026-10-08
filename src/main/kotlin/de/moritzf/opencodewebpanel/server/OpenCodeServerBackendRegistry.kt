@@ -3,7 +3,7 @@ package de.moritzf.opencodewebpanel.server
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
-import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsState
+import de.moritzf.opencodewebpanel.configuration.OpenCodeProjectSettingsState
 
 /**
  * Application-wide map from canonical directory to the OpenCode backend that owns that origin. Host

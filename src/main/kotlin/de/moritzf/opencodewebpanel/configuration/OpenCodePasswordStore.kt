@@ -1,11 +1,12 @@
-package de.moritzf.opencodewebpanel.settings
+package de.moritzf.opencodewebpanel.configuration
 
 import com.intellij.credentialStore.CredentialAttributes
 import com.intellij.credentialStore.Credentials
 import com.intellij.ide.passwordSafe.PasswordSafe
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
-import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
+import java.security.SecureRandom
+import java.util.Base64
 
 @Service(Service.Level.APP)
 class OpenCodePasswordStore {
@@ -38,7 +39,9 @@ class OpenCodePasswordStore {
     }
 
     fun generatePasswordForEditing(): String {
-        return OpenCodeServerProtocol.generateServerPassword()
+        val bytes = ByteArray(32)
+        secureRandom.nextBytes(bytes)
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
     }
 
     fun saveBlocking(password: String?) {
@@ -75,6 +78,7 @@ class OpenCodePasswordStore {
     }
 
     companion object {
+        private val secureRandom = SecureRandom()
         private const val SERVICE_NAME = "OpenCode Web Panel Server Password"
         private const val USER_NAME = "opencode-server-password"
 

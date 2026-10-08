@@ -6,15 +6,15 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import de.moritzf.opencodewebpanel.configuration.OpenCodeRuntimeMode
+import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsState
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleListener
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState
 import de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager
 import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsConfigurable
-import de.moritzf.opencodewebpanel.settings.OpenCodeRuntimeMode
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable
-import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
 import de.moritzf.opencodewebpanel.toolWindow.OPEN_CODE_RESET_ZOOM_ACTION_ID
 import de.moritzf.opencodewebpanel.toolWindow.OPEN_CODE_ZOOM_IN_ACTION_ID
 import de.moritzf.opencodewebpanel.toolWindow.OPEN_CODE_ZOOM_OUT_ACTION_ID

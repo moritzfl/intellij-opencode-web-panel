@@ -2,7 +2,7 @@ package de.moritzf.opencodewebpanel.server
 
 import com.intellij.openapi.application.PathManager
 import com.intellij.openapi.diagnostic.thisLogger
-import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
+import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsState
 import java.io.IOException
 import java.nio.charset.StandardCharsets
 import java.nio.file.FileAlreadyExistsException

@@ -1,6 +1,6 @@
 package de.moritzf.opencodewebpanel.server
 
-import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
+import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsState
 import java.nio.file.Files
 import java.nio.file.Path
 import org.junit.Assert.assertEquals
@@ -67,7 +67,8 @@ class SbxExposureTest {
         assertNotEquals(before, SbxExposure.of(spec, project.toString()).fingerprint)
     }
 
-    private fun base(project: String) = SbxLaunchSpec.fromSettings(OpenCodeSettingsState(), project)
+    private fun base(project: String) =
+        SbxLaunchSpec.defaults(project, hostPort = OpenCodeSettingsState().hostPortOrNull())
 
     @Test
     fun deepAndLateFilesAreIncluded() {

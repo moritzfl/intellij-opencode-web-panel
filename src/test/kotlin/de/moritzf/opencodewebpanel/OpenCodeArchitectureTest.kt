@@ -22,6 +22,8 @@ class OpenCodeArchitectureTest {
         // Check the dependency direction between the four layers documented in AGENTS.md.
         layeredArchitecture()
             .consideringOnlyDependenciesInLayers()
+            .layer("Configuration")
+            .definedBy("$root.configuration..")
             .layer("Server")
             .definedBy("$root.server..")
             .layer("Browser")
@@ -30,12 +32,14 @@ class OpenCodeArchitectureTest {
             .definedBy("$root.features..")
             .layer("Panel")
             .definedBy("$root.toolWindow..")
-            .whereLayer("Server")
+            .whereLayer("Configuration")
             .mayNotAccessAnyLayer()
+            .whereLayer("Server")
+            .mayOnlyAccessLayers("Configuration")
             .whereLayer("Browser")
-            .mayOnlyAccessLayers("Server")
+            .mayOnlyAccessLayers("Configuration", "Server")
             .whereLayer("Features")
-            .mayOnlyAccessLayers("Server", "Browser")
+            .mayOnlyAccessLayers("Configuration", "Server", "Browser")
             .check(classes)
     }
 }

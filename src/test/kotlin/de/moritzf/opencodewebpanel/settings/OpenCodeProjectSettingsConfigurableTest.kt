@@ -9,6 +9,11 @@ import com.intellij.testFramework.DisposableRule
 import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.replaceService
 import com.intellij.ui.table.TableView
+import de.moritzf.opencodewebpanel.configuration.OpenCodePortMode
+import de.moritzf.opencodewebpanel.configuration.OpenCodeProjectDirectoryMode
+import de.moritzf.opencodewebpanel.configuration.OpenCodeProjectSettingsListener
+import de.moritzf.opencodewebpanel.configuration.OpenCodeProjectSettingsState
+import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsState
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState
 import de.moritzf.opencodewebpanel.server.SbxCli
@@ -127,7 +132,7 @@ class OpenCodeProjectSettingsConfigurableTest {
             assertFalse(expected.enableIntellijMcp)
             assertTrue(expected.useSandbox)
             assertFalse(configurable.isModified())
-            SbxLaunchSpec.persist(appSettings, project.basePath!!)
+            SbxLaunchSpec.persist(project.basePath!!, hostPort = appSettings.hostPortOrNull())
             assertEquals(expected, SbxLaunchSpec.load(project.basePath))
 
             field<AbstractButton>("hostRuntimeRadioButton").isSelected = true
@@ -175,7 +180,7 @@ class OpenCodeProjectSettingsConfigurableTest {
     @Test
     fun unreadableKitBlocksApplyBeforeSavingOrAcknowledging() {
         val spec =
-            SbxLaunchSpec.fromSettings(appSettings, project.basePath!!)
+            SbxLaunchSpec.defaults(project.basePath!!, hostPort = appSettings.hostPortOrNull())
                 .copy(
                     useSandbox = true,
                     kits = listOf("./missing-kit"),
@@ -235,7 +240,7 @@ class OpenCodeProjectSettingsConfigurableTest {
                 assertTrue(configurable.isModified())
                 configurable.apply()
                 assertEquals(shared, SbxLaunchSpec.load(project.basePath)!!.shareHostOpencodeConfig)
-                SbxLaunchSpec.persist(appSettings, project.basePath!!)
+                SbxLaunchSpec.persist(project.basePath!!, hostPort = appSettings.hostPortOrNull())
                 configurable.disposeUIResources()
                 configurable = OpenCodeProjectSettingsConfigurable(project)
                 configurable.createComponent()
@@ -287,7 +292,7 @@ class OpenCodeProjectSettingsConfigurableTest {
         SwingUtilities.invokeAndWait {
             val directory = temp.root.toPath().toRealPath().toString()
             val spec =
-                SbxLaunchSpec.fromSettings(appSettings, directory)
+                SbxLaunchSpec.defaults(directory, hostPort = appSettings.hostPortOrNull())
                     .copy(
                         useSandbox = false,
                         hostPort = 49123,
@@ -309,7 +314,7 @@ class OpenCodeProjectSettingsConfigurableTest {
         SwingUtilities.invokeAndWait {
             val directory = temp.root.toPath().toRealPath().toString()
             val spec =
-                SbxLaunchSpec.fromSettings(appSettings, directory)
+                SbxLaunchSpec.defaults(directory, hostPort = appSettings.hostPortOrNull())
                     .copy(extraMounts = listOf(SbxExtraMount("/tmp/host", "/tmp/guest")))
             assertNotNull(SbxLaunchSpec.persist(spec))
             configurable.createComponent()
@@ -389,7 +394,7 @@ class OpenCodeProjectSettingsConfigurableTest {
             )
             // Persisting the form must carry the honored name into the machine copy path:
             // adoptStoredName keeps it instead of silently switching to the derived default.
-            val spec = SbxLaunchSpec.fromSettings(appSettings, directory)
+            val spec = SbxLaunchSpec.defaults(directory, hostPort = appSettings.hostPortOrNull())
             assertEquals(customName, spec.adoptStoredName(SbxLaunchSpec.load(directory)!!).name)
             assertFalse(configurable.isModified())
         }
@@ -403,7 +408,7 @@ class OpenCodeProjectSettingsConfigurableTest {
             // The old directory owns a spec with a kit; the destination has none.
             assertNotNull(
                 SbxLaunchSpec.persist(
-                    SbxLaunchSpec.fromSettings(appSettings, oldDirectory)
+                    SbxLaunchSpec.defaults(oldDirectory, hostPort = appSettings.hostPortOrNull())
                         .copy(kits = listOf("./old-kit"))
                 )
             )
@@ -442,13 +447,13 @@ class OpenCodeProjectSettingsConfigurableTest {
             val newDirectory = temp.newFolder("new with kits").toPath().toRealPath().toString()
             assertNotNull(
                 SbxLaunchSpec.persist(
-                    SbxLaunchSpec.fromSettings(appSettings, oldDirectory)
+                    SbxLaunchSpec.defaults(oldDirectory, hostPort = appSettings.hostPortOrNull())
                         .copy(kits = listOf("./old-kit"))
                 )
             )
             assertNotNull(
                 SbxLaunchSpec.persist(
-                    SbxLaunchSpec.fromSettings(appSettings, newDirectory)
+                    SbxLaunchSpec.defaults(newDirectory, hostPort = appSettings.hostPortOrNull())
                         .copy(kits = listOf("./dest-kit"))
                 )
             )

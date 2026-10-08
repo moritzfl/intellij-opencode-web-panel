@@ -7,10 +7,10 @@ import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.progress.Task.Backgroundable
 import com.intellij.openapi.project.Project
-import de.moritzf.opencodewebpanel.settings.OpenCodePasswordStore
-import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsState
-import de.moritzf.opencodewebpanel.settings.OpenCodeProxyMode
-import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
+import de.moritzf.opencodewebpanel.configuration.OpenCodePasswordStore
+import de.moritzf.opencodewebpanel.configuration.OpenCodeProjectSettingsState
+import de.moritzf.opencodewebpanel.configuration.OpenCodeProxyMode
+import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsState
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.nio.file.Path

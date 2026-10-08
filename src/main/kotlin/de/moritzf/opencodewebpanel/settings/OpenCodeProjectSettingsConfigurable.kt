@@ -26,6 +26,10 @@ import com.intellij.util.messages.MessageBusConnection
 import com.intellij.util.ui.ColumnInfo
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.ListTableModel
+import de.moritzf.opencodewebpanel.configuration.OpenCodePortMode
+import de.moritzf.opencodewebpanel.configuration.OpenCodeProjectDirectoryMode
+import de.moritzf.opencodewebpanel.configuration.OpenCodeProjectSettingsState
+import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsState
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleListener
@@ -831,8 +835,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         val directory = effectiveDirectory() ?: return null
         val canonical = OpenCodeServerProtocol.canonicalOpenCodeDirectory(directory) ?: directory
         return SbxLaunchSpec.load(canonical)
-            ?: SbxLaunchSpec.fromSettings(
-                OpenCodeSettingsState.getInstance(),
+            ?: SbxLaunchSpec.defaults(
                 canonical,
                 hostPort = OpenCodeProjectSettingsState.getInstance(project).hostPortOrNull(),
             )
@@ -1126,8 +1129,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         val destination =
             (inspection as? de.moritzf.opencodewebpanel.server.SbxLaunchSpecInspection.Valid)?.spec
                 ?: next?.let {
-                    SbxLaunchSpec.fromSettings(
-                        OpenCodeSettingsState.getInstance(),
+                    SbxLaunchSpec.defaults(
                         it,
                         hostPort =
                             OpenCodeProjectSettingsState.getInstance(project).hostPortOrNull(),

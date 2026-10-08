@@ -1,6 +1,6 @@
 package de.moritzf.opencodewebpanel.server
 
-import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
+import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsState
 import java.nio.file.Files
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -63,9 +63,10 @@ class SbxLaunchSpecTest {
                 sbxExtraWorkspaces = "~/docs | /home/agent/docs"
                 sbxShareHostOpencodeConfig = true
                 runtimeMode =
-                    de.moritzf.opencodewebpanel.settings.OpenCodeRuntimeMode.DOCKER_SANDBOX.name
+                    de.moritzf.opencodewebpanel.configuration.OpenCodeRuntimeMode.DOCKER_SANDBOX
+                        .name
             }
-        val spec = SbxLaunchSpec.fromSettings(settings, "/tmp/project")
+        val spec = SbxLaunchSpec.defaults("/tmp/project", hostPort = settings.hostPortOrNull())
         assertEquals(SbxCli.sandboxName("/tmp/project"), spec.name)
         assertEquals(SbxCli.DEFAULT_MEMORY, spec.memory)
         assertEquals(emptyList<String>(), spec.kits)
@@ -127,7 +128,7 @@ class SbxLaunchSpecTest {
             )
         obsolete.forEach { Files.writeString(control.resolve(it), "old generated helper") }
         val settings = OpenCodeSettingsState().apply { sbxMemory = "8g" }
-        val path = SbxLaunchSpec.persist(settings, root.toString())
+        val path = SbxLaunchSpec.persist(root.toString(), hostPort = settings.hostPortOrNull())
         assertNotNull(path)
         assertTrue(Files.isSameFile(SbxLaunchSpec.projectSpecPath(root.toString()), path!!))
         val text = Files.readString(path)
@@ -159,7 +160,7 @@ class SbxLaunchSpecTest {
         try {
             val settings = OpenCodeSettingsState()
             val expected =
-                SbxLaunchSpec.fromSettings(settings, root.toString())
+                SbxLaunchSpec.defaults(root.toString(), hostPort = settings.hostPortOrNull())
                     .copy(
                         useSandbox = true,
                         memory = "8g",
@@ -173,7 +174,9 @@ class SbxLaunchSpecTest {
             assertNotNull(SbxLaunchSpec.persist(expected))
             assertEquals(expected, SbxLaunchSpec.load(root.toString()))
             repeat(2) {
-                assertNotNull(SbxLaunchSpec.persist(settings, root.toString()))
+                assertNotNull(
+                    SbxLaunchSpec.persist(root.toString(), hostPort = settings.hostPortOrNull())
+                )
                 assertEquals(expected, SbxLaunchSpec.load(root.toString()))
             }
         } finally {
@@ -189,14 +192,17 @@ class SbxLaunchSpecTest {
             val second = Files.createDirectory(root.resolve("second")).toRealPath()
             val settings = OpenCodeSettingsState()
             val expected =
-                SbxLaunchSpec.fromSettings(settings, first.toString()).copy(useSandbox = false)
+                SbxLaunchSpec.defaults(first.toString(), hostPort = settings.hostPortOrNull())
+                    .copy(useSandbox = false)
             val path = SbxLaunchSpec.persist(expected)!!
             Files.createDirectories(SbxLaunchSpec.projectControlDir(second.toString()))
             Files.copy(path, SbxLaunchSpec.projectSpecPath(second.toString()))
             val loaded = SbxLaunchSpec.load(second.toString())!!
             assertEquals(second.toString(), loaded.canonicalDirectory)
             assertEquals(SbxCli.sandboxName(second.toString()), loaded.name)
-            assertNotNull(SbxLaunchSpec.persist(settings, second.toString()))
+            assertNotNull(
+                SbxLaunchSpec.persist(second.toString(), hostPort = settings.hostPortOrNull())
+            )
             assertEquals(loaded, SbxLaunchSpec.load(second.toString()))
         } finally {
             root.toFile().deleteRecursively()
@@ -211,7 +217,12 @@ class SbxLaunchSpecTest {
                 val path = SbxLaunchSpec.projectSpecPath(root.toString())
                 Files.createDirectories(path.parent)
                 Files.writeString(path, yaml)
-                assertNull(SbxLaunchSpec.persist(OpenCodeSettingsState(), root.toString()))
+                assertNull(
+                    SbxLaunchSpec.persist(
+                        root.toString(),
+                        hostPort = OpenCodeSettingsState().hostPortOrNull(),
+                    )
+                )
                 assertEquals(yaml, Files.readString(path))
                 val inspection = SbxLaunchSpec.inspect(root.toString())
                 assertTrue(inspection is SbxLaunchSpecInspection.Invalid)
@@ -280,7 +291,10 @@ class SbxLaunchSpecTest {
     @Test
     fun readOnlyMountsRoundTripAndAcceptTheSbxSuffix() {
         val spec =
-            SbxLaunchSpec.fromSettings(OpenCodeSettingsState(), "/tmp/project")
+            SbxLaunchSpec.defaults(
+                    "/tmp/project",
+                    hostPort = OpenCodeSettingsState().hostPortOrNull(),
+                )
                 .copy(
                     extraMounts =
                         listOf(
@@ -351,7 +365,10 @@ class SbxLaunchSpecTest {
     @Test
     fun yamlPreservesHashesInKitRefsAndMountPaths() {
         val expected =
-            SbxLaunchSpec.fromSettings(OpenCodeSettingsState(), "/tmp/project")
+            SbxLaunchSpec.defaults(
+                    "/tmp/project",
+                    hostPort = OpenCodeSettingsState().hostPortOrNull(),
+                )
                 .copy(
                     kits =
                         listOf(
@@ -419,7 +436,10 @@ class SbxLaunchSpecTest {
         try {
             val workdir = Files.createDirectory(root.resolve("app")).toRealPath()
             val spec =
-                SbxLaunchSpec.fromSettings(OpenCodeSettingsState(), root.toString())
+                SbxLaunchSpec.defaults(
+                        root.toString(),
+                        hostPort = OpenCodeSettingsState().hostPortOrNull(),
+                    )
                     .copy(
                         useSandbox = true,
                         workingDirectory = "./app",
@@ -429,10 +449,12 @@ class SbxLaunchSpecTest {
             assertEquals(root.toString(), loaded.canonicalDirectory)
             assertEquals(workdir.toString(), loaded.hostWorkingDirectory())
             val projectSettings =
-                de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsState()
+                de.moritzf.opencodewebpanel.configuration.OpenCodeProjectSettingsState()
             assertEquals(
                 workdir.toString(),
-                projectSettings.effectiveOpenCodeDirectory(root.toString()),
+                SbxLaunchSpec.hostOpenCodeDirectory(
+                    projectSettings.effectiveProjectDirectory(root.toString())
+                ),
             )
             assertEquals(
                 root.toString(),
@@ -456,7 +478,10 @@ class SbxLaunchSpecTest {
                     )
                     .toRealPath()
             val spec =
-                SbxLaunchSpec.fromSettings(OpenCodeSettingsState(), root.toString())
+                SbxLaunchSpec.defaults(
+                        root.toString(),
+                        hostPort = OpenCodeSettingsState().hostPortOrNull(),
+                    )
                     .copy(
                         useSandbox = true,
                         workingDirectory = "./app",
@@ -534,7 +559,12 @@ class SbxLaunchSpecTest {
         val root = Files.createTempDirectory("opencode-sbx-migrate")
         Files.writeString(root.resolve(SbxLaunchSpec.PROJECT_SPEC_NAME), "canonicalDirectory: ./\n")
         Files.writeString(root.resolve(SbxLaunchSpec.PROJECT_LAUNCHER_UNIX), "legacy")
-        assertNotNull(SbxLaunchSpec.persist(OpenCodeSettingsState(), root.toString()))
+        assertNotNull(
+            SbxLaunchSpec.persist(
+                root.toString(),
+                hostPort = OpenCodeSettingsState().hostPortOrNull(),
+            )
+        )
         assertFalse(Files.exists(root.resolve(SbxLaunchSpec.PROJECT_SPEC_NAME)))
         assertFalse(Files.exists(root.resolve(SbxLaunchSpec.PROJECT_LAUNCHER_UNIX)))
         assertTrue(Files.isRegularFile(SbxLaunchSpec.projectSpecPath(root.toString())))
@@ -547,7 +577,12 @@ class SbxLaunchSpecTest {
             val control = SbxLaunchSpec.projectControlDir(root.toString())
             Files.createDirectories(control)
             Files.writeString(control.resolve(SbxLaunchSpec.PROJECT_LAUNCHER_WINDOWS), "legacy cmd")
-            assertNotNull(SbxLaunchSpec.persist(OpenCodeSettingsState(), root.toString()))
+            assertNotNull(
+                SbxLaunchSpec.persist(
+                    root.toString(),
+                    hostPort = OpenCodeSettingsState().hostPortOrNull(),
+                )
+            )
             assertFalse(Files.exists(control.resolve(SbxLaunchSpec.PROJECT_LAUNCHER_WINDOWS)))
             assertTrue(Files.isRegularFile(control.resolve(SbxLaunchSpec.PROJECT_LAUNCHER_UNIX)))
         } finally {
@@ -560,7 +595,10 @@ class SbxLaunchSpecTest {
         val root = Files.createTempDirectory("opencode-sbx-port").toRealPath()
         try {
             val spec =
-                SbxLaunchSpec.fromSettings(OpenCodeSettingsState(), root.toString())
+                SbxLaunchSpec.defaults(
+                        root.toString(),
+                        hostPort = OpenCodeSettingsState().hostPortOrNull(),
+                    )
                     .copy(hostPort = 49123)
             assertNotNull(SbxLaunchSpec.persist(spec))
             assertEquals("49123", SbxLaunchSpec.portArgument(root.toString(), "0"))

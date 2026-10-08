@@ -3,12 +3,12 @@ package de.moritzf.opencodewebpanel.features
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
+import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsState
 import de.moritzf.opencodewebpanel.server.OpenCodeProtocolResult
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.OpenCodeServerConnection
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.server.OpenCodeWireProtocol
-import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
 import java.util.concurrent.ConcurrentHashMap
 
 internal data class OpenCodeRecoveryContext(

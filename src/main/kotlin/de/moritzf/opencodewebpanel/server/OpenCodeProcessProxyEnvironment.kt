@@ -5,8 +5,8 @@ import com.intellij.util.net.JdkProxyProvider
 import com.intellij.util.net.ProxyAuthentication
 import com.intellij.util.net.ProxyConfiguration
 import com.intellij.util.net.ProxySettings
-import de.moritzf.opencodewebpanel.settings.OpenCodeProxyMode
-import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
+import de.moritzf.opencodewebpanel.configuration.OpenCodeProxyMode
+import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsState
 import java.net.InetSocketAddress
 import java.net.Proxy
 import java.net.URI

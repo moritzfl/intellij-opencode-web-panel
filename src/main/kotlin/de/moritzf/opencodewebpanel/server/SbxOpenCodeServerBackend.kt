@@ -13,8 +13,8 @@ import com.intellij.openapi.progress.impl.BackgroundableProcessIndicator
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.util.ui.EdtInvocationManager
-import de.moritzf.opencodewebpanel.settings.OpenCodePasswordStore
-import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
+import de.moritzf.opencodewebpanel.configuration.OpenCodePasswordStore
+import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsState
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.nio.file.Path
@@ -830,7 +830,10 @@ internal class SbxOpenCodeServerBackend(
             val ls = requiredCommand("List sandboxes", SbxCli.buildLsCommand(sbx), 30_000L)
             if (!isCurrentStart(startId)) return
             val settings = OpenCodeSettingsState.getInstance()
-            if (SbxLaunchSpec.persist(settings, canonicalDirectory) == null) {
+            if (
+                SbxLaunchSpec.persist(canonicalDirectory, hostPort = settings.hostPortOrNull()) ==
+                    null
+            ) {
                 val inspection = SbxLaunchSpec.inspect(canonicalDirectory)
                 val details =
                     if (inspection is SbxLaunchSpecInspection.Invalid) {

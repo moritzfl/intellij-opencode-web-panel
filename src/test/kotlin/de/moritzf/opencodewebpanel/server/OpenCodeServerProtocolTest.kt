@@ -1827,14 +1827,6 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
-    fun generateServerPasswordReturnsUrlSafeSecret() {
-        val password = OpenCodeServerProtocol.generateServerPassword()
-
-        assertTrue(password.length >= 40)
-        assertTrue(password.matches(Regex("[A-Za-z0-9_-]+")))
-    }
-
-    @Test
     fun shouldHandleBasicAuthChallengeOnlyForOpenCodeServer() {
         val serverUrl = "http://127.0.0.1:60482"
 

@@ -1,4 +1,4 @@
-package de.moritzf.opencodewebpanel.settings
+package de.moritzf.opencodewebpanel.configuration
 
 import com.intellij.openapi.components.PersistentStateComponent
 import com.intellij.openapi.components.Service
@@ -6,8 +6,6 @@ import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.io.FileUtil
-import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
-import de.moritzf.opencodewebpanel.server.SbxLaunchSpec
 
 // Shareable .idea file for team-visible project settings (custom OpenCode directory, XML port
 // fallback). Path-macro substitution keeps project-relative paths portable. getState() is null
@@ -50,7 +48,7 @@ class OpenCodeProjectSettingsState : PersistentStateComponent<OpenCodeProjectSet
 
     fun portArgument(): String {
         return when (portModeValue()) {
-            OpenCodePortMode.AUTO -> OpenCodeServerProtocol.DYNAMIC_PORT
+            OpenCodePortMode.AUTO -> OpenCodeSettingsState.DYNAMIC_PORT
             OpenCodePortMode.FIXED -> OpenCodeSettingsState.sanitizePort(fixedPort).toString()
         }
     }
@@ -87,13 +85,6 @@ class OpenCodeProjectSettingsState : PersistentStateComponent<OpenCodeProjectSet
                     .ifBlank { autoDetectedProjectDirectory(ideProjectBasePath).orEmpty() }
                     .ifBlank { null }
         }
-    }
-
-    /** OpenCode's host-side cwd; the sandbox still mounts [effectiveProjectDirectory]. */
-    fun effectiveOpenCodeDirectory(ideProjectBasePath: String?): String? {
-        val root = effectiveProjectDirectory(ideProjectBasePath) ?: return null
-        val spec = SbxLaunchSpec.load(root)
-        return if (spec?.useSandbox == true) spec.hostWorkingDirectory() else root
     }
 
     companion object {

@@ -11,8 +11,8 @@ import com.intellij.openapi.util.Disposer
 import com.intellij.testFramework.ApplicationRule
 import com.intellij.testFramework.DisposableRule
 import com.intellij.testFramework.replaceService
-import de.moritzf.opencodewebpanel.settings.OpenCodeBinaryMode
-import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
+import de.moritzf.opencodewebpanel.configuration.OpenCodeBinaryMode
+import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsState
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -135,7 +135,10 @@ class SbxOpenCodeServerBackendTest {
     fun setupChecksRunOnSerialWorkerAfterPendingStop() {
         assertNotNull(
             SbxLaunchSpec.persist(
-                SbxLaunchSpec.fromSettings(OpenCodeSettingsState.getInstance(), directory)
+                SbxLaunchSpec.defaults(
+                    directory,
+                    hostPort = OpenCodeSettingsState.getInstance().hostPortOrNull(),
+                )
             )
         )
         behavior = { command ->
@@ -336,7 +339,7 @@ class SbxOpenCodeServerBackendTest {
     fun startInstallsV2FromSpecWhenGuestBinMissing() {
         val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
         val spec =
-            SbxLaunchSpec.fromSettings(settings, directory)
+            SbxLaunchSpec.defaults(directory, hostPort = settings.hostPortOrNull())
                 .copy(
                     useSandbox = true,
                     openCodeVersion = SbxOpenCodeVersion.V2,
@@ -378,7 +381,7 @@ class SbxOpenCodeServerBackendTest {
     fun startSkipsV2InstallWhenGuestBinPresent() {
         val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
         val spec =
-            SbxLaunchSpec.fromSettings(settings, directory)
+            SbxLaunchSpec.defaults(directory, hostPort = settings.hostPortOrNull())
                 .copy(
                     useSandbox = true,
                     openCodeVersion = SbxOpenCodeVersion.V2,
@@ -415,7 +418,7 @@ class SbxOpenCodeServerBackendTest {
     fun leftoverGuestServeIsKilledBeforeLaunch() {
         val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
         val spec =
-            SbxLaunchSpec.fromSettings(settings, directory)
+            SbxLaunchSpec.defaults(directory, hostPort = settings.hostPortOrNull())
                 .copy(useSandbox = true, enableIntellijMcp = false)
         assertNotNull(SbxLaunchSpec.persist(spec))
         store.save(
@@ -459,7 +462,7 @@ class SbxOpenCodeServerBackendTest {
         val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
         assertNotNull(
             SbxLaunchSpec.persist(
-                SbxLaunchSpec.fromSettings(settings, directory)
+                SbxLaunchSpec.defaults(directory, hostPort = settings.hostPortOrNull())
                     .copy(
                         useSandbox = true,
                         openCodeVersion = SbxOpenCodeVersion.V2,
@@ -520,7 +523,7 @@ class SbxOpenCodeServerBackendTest {
     fun appendedKitsPreserveSandboxAndCheckpointSuccessfulAdditions() {
         val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
         val spec =
-            SbxLaunchSpec.fromSettings(settings, directory)
+            SbxLaunchSpec.defaults(directory, hostPort = settings.hostPortOrNull())
                 .copy(
                     useSandbox = true,
                     kits = listOf("./first-kit", "./second-kit"),
@@ -561,7 +564,7 @@ class SbxOpenCodeServerBackendTest {
         store.remove(directory)
         val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
         val spec =
-            SbxLaunchSpec.fromSettings(settings, directory)
+            SbxLaunchSpec.defaults(directory, hostPort = settings.hostPortOrNull())
                 .copy(
                     useSandbox = true,
                     memory = "8g",
@@ -617,7 +620,7 @@ class SbxOpenCodeServerBackendTest {
         assertFalse(settings.enableServerLogs)
         assertNotNull(
             SbxLaunchSpec.persist(
-                SbxLaunchSpec.fromSettings(settings, directory)
+                SbxLaunchSpec.defaults(directory, hostPort = settings.hostPortOrNull())
                     .copy(
                         useSandbox = true,
                         enableIntellijMcp = false,
@@ -684,7 +687,10 @@ class SbxOpenCodeServerBackendTest {
         trusted = false
         OpenCodeSettingsState.getInstance().sbxNetworkPolicyConsent = true
         val spec =
-            SbxLaunchSpec.fromSettings(OpenCodeSettingsState.getInstance(), directory)
+            SbxLaunchSpec.defaults(
+                    directory,
+                    hostPort = OpenCodeSettingsState.getInstance().hostPortOrNull(),
+                )
                 .copy(useSandbox = true, enableIntellijMcp = false)
         assertNotNull(SbxLaunchSpec.persist(spec))
         behavior = { command ->
@@ -705,7 +711,10 @@ class SbxOpenCodeServerBackendTest {
         outsideDir.toFile().deleteOnExit()
         val outside = outsideDir.toString()
         val spec =
-            SbxLaunchSpec.fromSettings(OpenCodeSettingsState.getInstance(), directory)
+            SbxLaunchSpec.defaults(
+                    directory,
+                    hostPort = OpenCodeSettingsState.getInstance().hostPortOrNull(),
+                )
                 .copy(
                     useSandbox = true,
                     enableIntellijMcp = false,
@@ -755,7 +764,7 @@ class SbxOpenCodeServerBackendTest {
         store.remove(directory)
         val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
         val spec =
-            SbxLaunchSpec.fromSettings(settings, directory)
+            SbxLaunchSpec.defaults(directory, hostPort = settings.hostPortOrNull())
                 .copy(useSandbox = true, enableIntellijMcp = false)
         assertNotNull(SbxLaunchSpec.persist(spec))
         behavior = { command ->
@@ -778,7 +787,7 @@ class SbxOpenCodeServerBackendTest {
     fun extraWorkspaceFirstDoesNotMarkOwnedSandboxForeign() {
         val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
         val spec =
-            SbxLaunchSpec.fromSettings(settings, directory)
+            SbxLaunchSpec.defaults(directory, hostPort = settings.hostPortOrNull())
                 .copy(useSandbox = true, enableIntellijMcp = false)
         assertNotNull(SbxLaunchSpec.persist(spec))
         store.save(
@@ -849,7 +858,7 @@ class SbxOpenCodeServerBackendTest {
         val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
         val mount = temp.newFolder("shared-config").toPath().toRealPath().toString()
         val spec =
-            SbxLaunchSpec.fromSettings(settings, directory)
+            SbxLaunchSpec.defaults(directory, hostPort = settings.hostPortOrNull())
                 .copy(
                     useSandbox = true,
                     openCodeVersion = SbxOpenCodeVersion.V2,
@@ -880,7 +889,7 @@ class SbxOpenCodeServerBackendTest {
     fun livePortApplyRemapsWithoutStoppingTheVm() {
         val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
         val spec =
-            SbxLaunchSpec.fromSettings(settings, directory)
+            SbxLaunchSpec.defaults(directory, hostPort = settings.hostPortOrNull())
                 .copy(
                     useSandbox = true,
                     hostPort = 49123,
@@ -918,7 +927,7 @@ class SbxOpenCodeServerBackendTest {
         val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
         assertNotNull(
             SbxLaunchSpec.persist(
-                SbxLaunchSpec.fromSettings(settings, directory)
+                SbxLaunchSpec.defaults(directory, hostPort = settings.hostPortOrNull())
                     .copy(
                         useSandbox = true,
                         hostPort = 49123,
@@ -968,7 +977,7 @@ class SbxOpenCodeServerBackendTest {
     fun liveKitApplyAppendsWithoutStoppingTheVm() {
         val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
         val spec =
-            SbxLaunchSpec.fromSettings(settings, directory)
+            SbxLaunchSpec.defaults(directory, hostPort = settings.hostPortOrNull())
                 .copy(
                     useSandbox = true,
                     kits = listOf("./first-kit", "./second-kit"),
@@ -1037,7 +1046,7 @@ class SbxOpenCodeServerBackendTest {
     fun adoptedSandboxIsNotDeletedWhenProvisioningDiffers() {
         val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
         val spec =
-            SbxLaunchSpec.fromSettings(settings, directory)
+            SbxLaunchSpec.defaults(directory, hostPort = settings.hostPortOrNull())
                 .copy(
                     useSandbox = true,
                     kits = listOf("./new-kit"),
@@ -1064,7 +1073,7 @@ class SbxOpenCodeServerBackendTest {
     fun adoptedSandboxNeverReceivesKitAdds() {
         val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
         val spec =
-            SbxLaunchSpec.fromSettings(settings, directory)
+            SbxLaunchSpec.defaults(directory, hostPort = settings.hostPortOrNull())
                 .copy(
                     useSandbox = true,
                     kits = listOf("./team-kit"),
@@ -1094,19 +1103,19 @@ class SbxOpenCodeServerBackendTest {
         for ((spec, recordKits, workspaces) in
             listOf(
                 Triple(
-                    SbxLaunchSpec.fromSettings(settings, directory)
+                    SbxLaunchSpec.defaults(directory, hostPort = settings.hostPortOrNull())
                         .copy(kits = listOf("./b", "./a")),
                     "./a\n./b",
                     listOf(directory),
                 ),
                 Triple(
-                    SbxLaunchSpec.fromSettings(settings, directory)
+                    SbxLaunchSpec.defaults(directory, hostPort = settings.hostPortOrNull())
                         .copy(shareHostOpencodeConfig = true),
                     "",
                     listOf(directory),
                 ),
                 Triple(
-                    SbxLaunchSpec.fromSettings(settings, directory),
+                    SbxLaunchSpec.defaults(directory, hostPort = settings.hostPortOrNull()),
                     "",
                     listOf(directory, removed),
                 ),
@@ -1138,7 +1147,7 @@ class SbxOpenCodeServerBackendTest {
         val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
         assertNotNull(
             SbxLaunchSpec.persist(
-                SbxLaunchSpec.fromSettings(settings, directory)
+                SbxLaunchSpec.defaults(directory, hostPort = settings.hostPortOrNull())
                     .copy(
                         useSandbox = true,
                         enableIntellijMcp = false,
@@ -1167,7 +1176,7 @@ class SbxOpenCodeServerBackendTest {
         val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
         assertNotNull(
             SbxLaunchSpec.persist(
-                SbxLaunchSpec.fromSettings(settings, directory)
+                SbxLaunchSpec.defaults(directory, hostPort = settings.hostPortOrNull())
                     .copy(
                         useSandbox = true,
                         enableIntellijMcp = false,
@@ -1201,7 +1210,7 @@ class SbxOpenCodeServerBackendTest {
         val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
         assertNotNull(
             SbxLaunchSpec.persist(
-                SbxLaunchSpec.fromSettings(settings, directory)
+                SbxLaunchSpec.defaults(directory, hostPort = settings.hostPortOrNull())
                     .copy(useSandbox = true, enableIntellijMcp = false)
             )
         )
@@ -1384,7 +1393,7 @@ class SbxOpenCodeServerBackendTest {
     private fun startWithLinkFailure(result: SbxCommandResult): String {
         val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
         val spec =
-            SbxLaunchSpec.fromSettings(settings, directory)
+            SbxLaunchSpec.defaults(directory, hostPort = settings.hostPortOrNull())
                 .copy(useSandbox = true, enableIntellijMcp = false)
         assertNotNull(SbxLaunchSpec.persist(spec))
         store.save(

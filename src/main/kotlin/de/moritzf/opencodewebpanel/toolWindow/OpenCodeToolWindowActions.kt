@@ -28,6 +28,10 @@ import com.intellij.ui.components.JBTextField
 import com.intellij.util.ui.JBFont
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
+import de.moritzf.opencodewebpanel.configuration.OpenCodeProjectSettingsListener
+import de.moritzf.opencodewebpanel.configuration.OpenCodeProjectSettingsState
+import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsListener
+import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsState
 import de.moritzf.opencodewebpanel.features.OpenCodeReleaseUpdates
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
@@ -39,11 +43,7 @@ import de.moritzf.opencodewebpanel.server.SbxSandboxRecordStore
 import de.moritzf.opencodewebpanel.server.isOpenCodePageReloadEnabled
 import de.moritzf.opencodewebpanel.server.isOpenCodeServerStopEnabled
 import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsConfigurable
-import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsListener
-import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsState
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable
-import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsListener
-import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
 import java.awt.BorderLayout
 import java.awt.Font
 import java.awt.Graphics

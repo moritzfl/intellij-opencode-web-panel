@@ -33,6 +33,8 @@ import de.moritzf.opencodewebpanel.browser.OpenCodeBrowserSnippets
 import de.moritzf.opencodewebpanel.browser.OpenCodeDocumentStartInjector
 import de.moritzf.opencodewebpanel.browser.OpenCodeJsQuery
 import de.moritzf.opencodewebpanel.browser.createOpenCodeBrowserBeforeReplacement
+import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsState
+import de.moritzf.opencodewebpanel.configuration.OpenCodeUiSetting
 import de.moritzf.opencodewebpanel.features.OpenCodeChatInputService
 import de.moritzf.opencodewebpanel.features.OpenCodeFileDropHandler
 import de.moritzf.opencodewebpanel.features.OpenCodeWaylandClipboard
@@ -42,8 +44,6 @@ import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.server.OpenCodeWireProtocol
 import de.moritzf.opencodewebpanel.server.SbxCli
 import de.moritzf.opencodewebpanel.server.SbxProcessRunner
-import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsState
-import de.moritzf.opencodewebpanel.settings.OpenCodeUiSetting
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodeBrowserContextMenuHandler
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodeBrowserShortcutHandler
 import de.moritzf.opencodewebpanel.toolWindow.OpenCodePageLifecycle
