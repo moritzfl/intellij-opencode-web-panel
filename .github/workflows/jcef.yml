@@ -1,4 +1,4 @@
-name: JCEF integration
+name: OpenCode compatibility
 
 on:
   workflow_dispatch:
@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   jcef:
-    name: JCEF (${{ matrix.version }})
+    name: Compatibility (${{ matrix.version }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -39,13 +39,18 @@ jobs:
           # Re-extract the IDE: restored transform workspaces can fail Gradle's immutability check.
           # setup-gradle removes these paths after restore and before save; downloads stay cached.
           gradle-home-cache-excludes: caches/*/transforms
-      - name: Install display dependencies and OpenCode
+      - name: Install browsers, display dependencies, and OpenCode
         run: |
           sudo apt-get update
           sudo apt-get install -y xvfb libnss3 libatk-bridge2.0-0 libgbm1 libasound2t64
-          npm install --global '${{ matrix.package }}'
+          npm install --global @playwright/cli@0.1.15 '${{ matrix.package }}'
           opencode --version
           echo "OPENCODE_JCEF_EXECUTABLE=$(command -v opencode)" >> "$GITHUB_ENV"
+          playwright-cli install-browser chrome --with-deps
+      - name: Verify DOM, wire, and browser behavior
+        run: |
+          node --test scripts/classify-persist-keys.test.mjs
+          node scripts/check-browser-contract.mjs
       - name: Exercise real JCEF callbacks, injection lifecycle, replacement, editor transfers, and clipboard
         run: |
           xvfb-run --auto-servernum ./gradlew test --rerun -Pjcef \

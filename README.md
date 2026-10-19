@@ -309,10 +309,12 @@ Run `ktfmtFormat` before committing Kotlin changes. For IDE formatting, install 
 [ktfmt IntelliJ plugin](https://plugins.jetbrains.com/plugin/14912-ktfmt) and select KotlinLang style.
 The Gradle formatter is authoritative; `.editorconfig` aligns basic editor indentation and line width.
 
-The **JCEF integration** GitHub Actions workflow runs weekly and supports manual runs.
-It checks real Chromium callbacks, browser replacement, editor transfers, and IDE clipboard
-delivery against the latest stable OpenCode 1.x and 2.x releases, logging the installed
-versions on each run. Skipped checks fail the workflow. Ordinary
+The **OpenCode compatibility** GitHub Actions workflow runs every Monday and supports manual runs.
+It installs the latest stable OpenCode 1.x and 2.x releases and checks DOM markers, API contracts,
+browser behavior, real JCEF callbacks, browser replacement, editor transfers, and IDE clipboard
+delivery. Installed versions are logged on each run; skipped JCEF tests fail the workflow.
+Push and pull-request builds also check DOM, API, and browser behavior against both latest releases
+and a pinned 1.18 baseline. Ordinary
 `check` stays headless; run `./gradlew test -Pjcef` locally with a display and OpenCode installed.
 Use `-PlocalIdePath="/path/to/IntelliJ IDEA"` to test an installed IDE/JCEF version.
 
