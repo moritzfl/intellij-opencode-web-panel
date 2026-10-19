@@ -35,6 +35,10 @@ jobs:
         with:
           node-version: 24
       - uses: gradle/actions/setup-gradle@v5
+        with:
+          # Re-extract the IDE: restored transform workspaces can fail Gradle's immutability check.
+          # setup-gradle removes these paths after restore and before save; downloads stay cached.
+          gradle-home-cache-excludes: caches/*/transforms
       - name: Install display dependencies and OpenCode
         run: |
           sudo apt-get update

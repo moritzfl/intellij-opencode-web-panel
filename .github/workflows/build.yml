@@ -53,6 +53,9 @@ jobs:
       # Setup Gradle
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v5
+        with:
+          # Regenerate IDE transforms instead of restoring damaged immutable workspaces.
+          gradle-home-cache-excludes: caches/*/transforms
 
       # Build plugin
       - name: Build plugin
@@ -106,6 +109,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v5
         with:
           cache-read-only: true
+          gradle-home-cache-excludes: caches/*/transforms
 
       # Run tests
       - name: Smoke Test Sandbox Launcher
@@ -153,6 +157,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v5
         with:
           cache-read-only: true
+          gradle-home-cache-excludes: caches/*/transforms
       - name: Install browser and OpenCode
         run: |
           npm install --global @playwright/cli@0.1.15 '${{ matrix.package }}'
@@ -230,6 +235,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v5
         with:
           cache-read-only: true
+          gradle-home-cache-excludes: caches/*/transforms
 
       # Run Verify Plugin task and IntelliJ Plugin Verifier tool
       - name: Run Plugin Verification tasks
@@ -270,6 +276,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v5
         with:
           cache-read-only: true
+          gradle-home-cache-excludes: caches/*/transforms
 
       # Remove old release drafts by using the curl request for the available releases with a draft flag
       - name: Remove Old Release Drafts

@@ -43,6 +43,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v5
         with:
           cache-read-only: true
+          gradle-home-cache-excludes: caches/*/transforms
 
       # Update the Unreleased section with the current release note
       - name: Patch Changelog
