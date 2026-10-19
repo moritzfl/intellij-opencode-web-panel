@@ -401,6 +401,18 @@ class OpenCodeJcefLiveRuntimeSwitchTest {
                     browser,
                     "document.querySelector('main [contenteditable=true]').textContent.replace(/\\u200b/g, '')",
                 )
+            // CLI 2.0.32 can render an attachment card instead of an image thumbnail.
+            fun attachmentNames() =
+                JsonParser.parseString(
+                        evaluate(
+                            browser,
+                            """JSON.stringify(Array.from(document.querySelectorAll(
+                                'main img[alt], [data-slot="composer-attachments"] [data-slot="attachment-card-title"]'
+                            ), element => element.getAttribute('alt') ?? element.textContent))""",
+                        )
+                    )
+                    .asJsonArray
+                    .map { it.asString }
             evaluate(
                 browser,
                 """(() => {
@@ -494,10 +506,7 @@ class OpenCodeJcefLiveRuntimeSwitchTest {
                 viaMenu = true,
             )
             OpenCodeJcefTestHelper.awaitCondition("screenshot clipboard attachment") {
-                evaluate(
-                    browser,
-                    "document.querySelectorAll('img[alt^=\"pasted-image-\"]').length",
-                ) == "1"
+                attachmentNames().count { it.startsWith("pasted-image-") } == 1
             }
             assertEquals("before NEW afterAB", draft())
             assertEquals("5", evaluate(browser, "window.__pasteEvents"))
@@ -520,10 +529,7 @@ class OpenCodeJcefLiveRuntimeSwitchTest {
                 }
             )
             OpenCodeJcefTestHelper.awaitCondition("copied image file attachment") {
-                evaluate(
-                    browser,
-                    "document.querySelectorAll('img[alt=\"copied-image.png\"]').length",
-                ) == "1"
+                attachmentNames().count { it == "copied-image.png" } == 1
             }
             assertEquals("before NEW afterAB", draft())
             assertEquals("6", evaluate(browser, "window.__pasteEvents"))
