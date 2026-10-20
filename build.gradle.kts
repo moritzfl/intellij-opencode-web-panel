@@ -146,6 +146,17 @@ tasks {
 
     wrapper { gradleVersion = providers.gradleProperty("gradleVersion").get() }
 
+    register<JavaExec>("checkSbxContract") {
+        dependsOn(testClasses)
+        classpath = sourceSets.test.get().runtimeClasspath + sourceSets.test.get().compileClasspath
+        mainClass = "de.moritzf.opencodewebpanel.server.SbxContractCheck"
+        args(
+            providers.gradleProperty("sbxExecutable").getOrElse("sbx"),
+            providers.gradleProperty("sbxLive").getOrElse("false"),
+            layout.buildDirectory.dir("sbx-contract").get().asFile.absolutePath,
+        )
+    }
+
     publishPlugin { dependsOn(patchChangelog) }
 
     // Headful Chromium tests (JetBrains JBCefTestHelper pattern). Exclude their classes entirely

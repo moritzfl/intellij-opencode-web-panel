@@ -4,6 +4,19 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Support Docker Sandboxes 0.48+ sandbox/template list arrays, updated create and
+  diagnostic flags, and non-interactive template removal while retaining older CLI support.
+  Fixes [#20](https://github.com/moritzfl/intellij-opencode-web-panel/issues/20).
+- Keep standalone launcher inventory parsing compatible with both list shapes,
+  extra fields, and pretty printing; reject malformed inventory before creation or removal.
+
+### Added
+
+- Docker Sandboxes compatibility checks against a pinned baseline and the latest
+  stable CLI, plus an opt-in live JSON contract check using the plugin's parsers.
+
 ## [2.7.2] - 2026-10-08
 
 ### Changed

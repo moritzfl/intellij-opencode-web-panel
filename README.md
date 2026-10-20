@@ -318,6 +318,27 @@ and a pinned 1.18 baseline. Ordinary
 `check` stays headless; run `./gradlew test -Pjcef` locally with a display and OpenCode installed.
 Use `-PlocalIdePath="/path/to/IntelliJ IDEA"` to test an installed IDE/JCEF version.
 
+The **Docker Sandboxes compatibility** workflow checks sbx 0.39.0 and the latest
+stable Docker release on pushes, pull requests, Mondays, and manual runs. It verifies
+14 consumed CLI command surfaces against the plugin's actual command builders,
+runs JSON-parser regressions (legacy envelopes and current arrays), and tests the
+standalone launcher. Release versions and CLI output are retained in the run artifacts.
+
+```bash
+./gradlew checkSbxContract                         # commands/flags, no Docker login needed
+./gradlew checkSbxContract -PsbxLive=true          # also validate real JSON using production parsers
+./gradlew checkSbxContract -PsbxExecutable=/path/to/sbx
+bash scripts/check-sbx-launcher.sh
+```
+
+The live gate needs an existing Docker sign-in. It reads sandbox inventory, each
+sandbox's ports, templates, policy, and diagnostics; sbx may start its daemon, but
+the gate does not create/start/remove VMs or change policy. Reports go to
+`build/sbx-contract`. Hosted CI checks CLI surface and recorded JSON fixtures, not
+authenticated runtime behavior. Empty inventories cannot verify populated row
+fields; repeat the live check with existing sandboxes after sbx updates. Last live
+JSON validation: **sbx 0.49.1**, macOS, 2026-10-20.
+
 Repository: https://github.com/moritzfl/intellij-opencode-web-panel
 
 ## Acknowledgements
