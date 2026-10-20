@@ -218,6 +218,53 @@ invoke
 result malformed-inventory test "$STATUS" -eq 1
 result malformed-inventory-no-create test "$(cat "$SMOKE_LOG/calls")" = $'daemon\nls'
 
+# v0.48+ removes the envelope. Reuse, ownership checks and recreate must agree.
+fixture array-inventory
+export SMOKE_INVENTORY="${SMOKE_INVENTORY#*\"sandboxes\":}"
+export SMOKE_INVENTORY="${SMOKE_INVENTORY%\}}"
+invoke --version
+result array-inventory expect_args --version
+
+fixture pretty-array-inventory
+row="${SMOKE_INVENTORY#*\"sandboxes\":[}"
+row="${row%\]\}}"
+row="${row/\"name\":/\"name\" :    }"
+export SMOKE_INVENTORY=$'[\n {"name":"another-sandbox","metadata":{"name":"ignored","text":"braces } [ and \\\" quotes"}},\n '"$row"$'\n]'
+invoke --version
+result pretty-array-inventory expect_args --version
+
+fixture extended-legacy-inventory
+export SMOKE_INVENTORY='{"future":{"sandboxes":[]},'"${SMOKE_INVENTORY#\{}"
+invoke --version
+result extended-legacy-inventory expect_args --version
+
+fixture array-foreign-vm
+export SMOKE_INVENTORY="${SMOKE_INVENTORY#*\"sandboxes\":}"
+export SMOKE_INVENTORY="${SMOKE_INVENTORY%\}}"
+export SMOKE_INVENTORY="${SMOKE_INVENTORY/$(host_path "$PROJECT")/unmounted-project}"
+invoke --recreate
+result array-foreign-recreate test "$STATUS" -eq 1
+result array-foreign-no-remove test "$(cat "$SMOKE_LOG/calls")" = $'daemon\nls'
+
+inventory_case=0
+for inventory in '[]' '{"sandboxes":[]}' $'\n [\n ]\n'; do
+  inventory_case=$((inventory_case + 1))
+  fixture "empty-inventory-$inventory_case"
+  export SMOKE_INVENTORY="$inventory"
+  invoke --recreate
+  result empty-recreate-reaches-create test "$STATUS" -eq 23
+  result empty-recreate-no-remove test "$(cat "$SMOKE_LOG/calls")" = $'daemon\nls\nls\ncreate'
+done
+
+for inventory in '[' '{"sandboxes":[' '{}' 'null' '[] noise' '[garbage]' '[{"name":"broken"}' '[{},]' '[{}]' '{"other":{"sandboxes":[]}}' '{"sandboxes":[],"sandboxes":[]}' ; do
+  inventory_case=$((inventory_case + 1))
+  fixture "truncated-inventory-$inventory_case"
+  export SMOKE_INVENTORY="$inventory"
+  invoke --recreate
+  result invalid-recreate test "$STATUS" -eq 1
+  result invalid-recreate-no-remove test "$(cat "$SMOKE_LOG/calls")" = $'daemon\nls'
+done
+
 fixture foreign-vm
 export SMOKE_INVENTORY="${SMOKE_INVENTORY/$(host_path "$PROJECT")/unmounted-project}"
 invoke

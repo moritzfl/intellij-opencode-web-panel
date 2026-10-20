@@ -222,7 +222,6 @@ internal object SbxCli {
             mutableListOf(
                 executable,
                 "create",
-                "-q",
                 "--name",
                 name,
                 "--memory",
@@ -937,8 +936,11 @@ internal object SbxCli {
     fun buildTemplateRmCommand(
         executable: String = DEFAULT_EXECUTABLE,
         ref: String,
+        force: Boolean = true,
     ): List<String> {
-        return listOf(executable, "template", "rm", ref)
+        return listOf(executable, "template", "rm") +
+            (if (force) listOf("--force") else emptyList()) +
+            ref
     }
 
     fun buildStopCommand(
@@ -974,8 +976,16 @@ internal object SbxCli {
     }
 
     fun buildDiagnoseJsonCommand(executable: String = DEFAULT_EXECUTABLE): List<String> {
-        return listOf(executable, "diagnose", "-o", "json")
+        return listOf(executable, "diagnose", "--format", "json")
     }
+
+    fun buildLegacyDiagnoseJsonCommand(executable: String = DEFAULT_EXECUTABLE): List<String> =
+        listOf(executable, "diagnose", "-o", "json")
+
+    fun optionUnsupported(output: String, option: String): Boolean =
+        output.contains("unknown flag: $option") ||
+            output.contains("flag provided but not defined: $option") ||
+            output.contains("unrecognized option '$option'")
 
     fun buildPolicyInitCommand(
         executable: String = DEFAULT_EXECUTABLE,
@@ -1031,13 +1041,7 @@ internal object SbxCli {
     }
 
     fun parseTemplateLsJson(json: String): List<SbxTemplateImage> {
-        val root =
-            runCatching { JsonParser.parseString(json) }
-                .getOrNull()
-                ?.takeIf { it.isJsonObject }
-                ?.asJsonObject ?: return emptyList()
-        val images =
-            root.get("images")?.takeIf { it.isJsonArray }?.asJsonArray ?: return emptyList()
+        val images = parseListArray(json, "images") ?: return emptyList()
         return images.mapNotNull { element ->
             val obj = element.takeIf { it.isJsonObject }?.asJsonObject ?: return@mapNotNull null
             val id = obj.stringMember("id")?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
@@ -1066,16 +1070,22 @@ internal object SbxCli {
     fun parseLsJson(json: String): List<SbxSandboxListEntry> = parseLsJsonOrNull(json).orEmpty()
 
     fun parseLsJsonOrNull(json: String): List<SbxSandboxListEntry>? {
-        val root =
-            runCatching { JsonParser.parseString(json) }
-                .getOrNull()
-                ?.takeIf { it.isJsonObject }
-                ?.asJsonObject ?: return null
-        val sandboxes = root.get("sandboxes")?.takeIf { it.isJsonArray }?.asJsonArray ?: return null
+        val sandboxes = parseListArray(json, "sandboxes") ?: return null
         // An entry without name or id cannot be matched by ownership (id) or conflict (name)
         // checks; skip it instead of discarding the whole inventory.
         return sandboxes.mapNotNull { element ->
             element.takeIf { it.isJsonObject }?.asJsonObject?.let(::parseSandboxListEntry)
+        }
+    }
+
+    /** sbx 0.48 removed the envelopes from sandbox and template lists. */
+    private fun parseListArray(json: String, legacyKey: String): JsonArray? {
+        val root = runCatching { JsonParser.parseString(json) }.getOrNull() ?: return null
+        return when {
+            root.isJsonArray -> root.asJsonArray
+            root.isJsonObject ->
+                root.asJsonObject.get(legacyKey)?.takeIf { it.isJsonArray }?.asJsonArray
+            else -> null
         }
     }
 
@@ -1170,6 +1180,15 @@ internal object SbxCli {
             val virtualization = root.objectMember("virtualization")
             if (virtualization?.booleanMember("supported") == false) return true
             if (virtualization?.booleanMember("available") == false) return true
+            val checks = root.get("checks")?.takeIf { it.isJsonArray }?.asJsonArray
+            if (
+                checks?.any {
+                    val check = it.takeIf { it.isJsonObject }?.asJsonObject
+                    check?.stringMember("name").equals("Virtualization", ignoreCase = true) &&
+                        check?.stringMember("status") == "fail"
+                } == true
+            )
+                return true
             val errors = root.get("errors")?.takeIf { it.isJsonArray }?.asJsonArray
             if (errors != null) {
                 val text =

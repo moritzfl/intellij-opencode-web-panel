@@ -61,7 +61,6 @@ class SbxLauncherTest {
         assertEquals(
             listOf(
                 "create",
-                "-q",
                 "--name",
                 SbxCli.sandboxName(project.toString()),
                 "--memory",
@@ -211,7 +210,6 @@ class SbxLauncherTest {
         assertEquals(
             listOf(
                 "create",
-                "-q",
                 "--name",
                 SbxCli.sandboxName(project.toString()),
                 "--memory",
@@ -1310,7 +1308,6 @@ class SbxLauncherTest {
     private fun createArgs(project: Path, name: String = SbxCli.sandboxName(project.toString())) =
         listOf(
             "create",
-            "-q",
             "--name",
             name,
             "--memory",

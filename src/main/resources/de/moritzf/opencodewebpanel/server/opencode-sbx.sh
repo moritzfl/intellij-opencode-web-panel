@@ -658,7 +658,7 @@ fi
 sandbox_json() {
   local inventory
   inventory="$("$SBX" ls --json)" || return 2
-  if [[ ! "$inventory" =~ \"sandboxes\"[[:space:]]*:[[:space:]]*\[ ]]; then
+  if ! json_sandbox_objects "$inventory" >/dev/null; then
     echo "opencode-sbx: invalid sandbox inventory; refusing to create or remove a VM." >&2
     return 2
   fi
@@ -666,59 +666,100 @@ sandbox_json() {
 }
 
 json_sandbox_objects() {
-  printf '%s' "$1" | awk '
-    {
-      line = line $0
+  # No jq/runtime dependency in the standalone launcher. Validate the whole JSON
+  # before emitting rows; accept both list envelopes and ignore unknown fields.
+  printf '%s' "$1" | awk -v wanted="${2:-}" '
+    function fail() { exit 2 }
+    function whitespace() { while (substr(text, pos, 1) ~ /[ \t\r\n]/ && pos <= length(text)) pos++ }
+    function string(    start,c,escape) {
+      start = pos++
+      while (pos <= length(text)) {
+        c = substr(text, pos++, 1)
+        if (c == "\"") return substr(text, start, pos - start)
+        if (c ~ /[[:cntrl:]]/) fail()
+        if (c == "\\") {
+          escape = substr(text, pos++, 1)
+          if (escape == "u") {
+            if (substr(text, pos, 4) !~ /^[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]$/) fail()
+            pos += 4
+          } else if (escape !~ /^["\\\/bfnrt]$/) fail()
+        }
+      }
+      fail()
     }
+    function value(depth, rows,    c,key,start,tail) {
+      if (depth > 64) fail()
+      whitespace()
+      c = substr(text, pos, 1)
+      if (rows && c != "[") fail()
+      if (c == "\"") { string(); return }
+      if (c == "{") {
+        pos++; whitespace()
+        if (substr(text, pos, 1) == "}") { pos++; return }
+        while (pos <= length(text)) {
+          whitespace()
+          if (substr(text, pos, 1) != "\"") fail()
+          key = string(); whitespace()
+          if (substr(text, pos++, 1) != ":") fail()
+          if (depth == 0 && key == "\"sandboxes\"") {
+            if (found++) fail()
+            value(depth + 1, 1)
+          } else {
+            whitespace(); start = pos
+            value(depth + 1, 0)
+            if (depth == rowDepth && key == "\"name\"") rowName = substr(text, start, pos - start)
+          }
+          whitespace(); c = substr(text, pos++, 1)
+          if (c == "}") return
+          if (c != ",") fail()
+        }
+        fail()
+      }
+      if (c == "[") {
+        pos++; whitespace()
+        if (substr(text, pos, 1) == "]") { pos++; return }
+        while (pos <= length(text)) {
+          whitespace(); start = pos
+          if (rows && substr(text, pos, 1) != "{") fail()
+          if (rows) { rowDepth = depth + 1; rowName = "" }
+          value(depth + 1, 0)
+          if (rows) {
+            if (rowName !~ /^".+"$/) fail()
+            if (wanted == "" || rowName == "\"" wanted "\"") objects[++count] = substr(text, start, pos - start)
+          }
+          whitespace(); c = substr(text, pos++, 1)
+          if (c == "]") return
+          if (c != ",") fail()
+        }
+        fail()
+      }
+      tail = substr(text, pos)
+      if (!match(tail, /^(true|false|null|-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?)/)) fail()
+      pos += RLENGTH
+    }
+    { text = text $0 "\n" }
     END {
-      start = index(line, "\"sandboxes\"")
-      if (start == 0) exit
-      rest = substr(line, start)
-      br = index(rest, "[")
-      if (br == 0) exit
-      rest = substr(rest, br + 1)
-      depth = 0
-      obj = ""
-      in_str = 0
-      esc = 0
-      for (i = 1; i <= length(rest); i++) {
-        c = substr(rest, i, 1)
-        if (in_str) {
-          obj = obj c
-          if (esc) esc = 0
-          else if (c == "\\") esc = 1
-          else if (c == "\"") in_str = 0
-          continue
-        }
-        if (c == "\"") { in_str = 1; if (depth > 0) obj = obj c; continue }
-        if (c == "{") { depth++; obj = obj c; continue }
-        if (c == "}") {
-          obj = obj c
-          depth--
-          if (depth == 0 && obj != "") { print obj; obj = "" }
-          continue
-        }
-        if (depth > 0) obj = obj c
-        if (c == "]" && depth == 0) break
+      pos = 1; whitespace()
+      array = substr(text, pos, 1) == "["
+      if (!array && substr(text, pos, 1) != "{") fail()
+      if (array) found = 1
+      value(0, array); whitespace()
+      if (!found || pos <= length(text)) fail()
+      # Existing callers consume one object per line, including pretty-printed JSON.
+      for (i = 1; i <= count; i++) {
+        gsub(/[\r\n]/, "", objects[i])
+        print objects[i]
       }
     }
   '
 }
 
 sandbox_entry_for_name() {
-  local name="$1" json obj needle
+  local name="$1" json obj
   if [[ $# -ge 2 ]]; then json="$2"; else json="$(sandbox_json)" || return 2; fi
-  needle="\"$name\""
-  while IFS= read -r obj; do
-    [[ -z "$obj" ]] && continue
-    case "$obj" in
-      *"\"name\":${needle}"*|*"\"name\": ${needle}"*)
-        printf '%s' "$obj"
-        return 0
-        ;;
-    esac
-  done < <(json_sandbox_objects "$json")
-  return 1
+  obj="$(json_sandbox_objects "$json" "$name")" || return 2
+  [[ -n "$obj" ]] || return 1
+  printf '%s' "$obj"
 }
 
 # sbx prints Go JSON: `&` is \u0026 and Windows paths use escaped backslashes.
@@ -760,11 +801,7 @@ fi
 if [[ "$RECREATE" -eq 1 ]]; then
   # Inventory errors are not proof that the VM is absent. Only drop its persisted
   # binary after an owned VM was removed successfully, or verified absent.
-  recreate_inventory="$("$SBX" ls --json)" || exit 1
-  if [[ "$recreate_inventory" != *'"sandboxes"'* ]]; then
-    echo "opencode-sbx: cannot verify sandbox ownership before recreate." >&2
-    exit 1
-  fi
+  recreate_inventory="$(sandbox_json)" || exit 1
   if recreate_entry="$(sandbox_entry_for_name "$NAME" "$recreate_inventory")"; then
     if ! entry_has_workspace "$recreate_entry" "$CANONICAL"; then
       echo "opencode-sbx: refusing to recreate sandbox $NAME for another workspace." >&2
@@ -927,7 +964,7 @@ if [[ -z "$EXISTING_ENTRY" ]]; then
   if [[ "$HOST_PORT" =~ ^[1-9][0-9]*$ ]] && [[ "$HOST_PORT" -le 65535 ]]; then
     PUBLISH="127.0.0.1:${HOST_PORT}:${IN_VM_PORT}/tcp4"
   fi
-  create=( "$SBX" create -q --name "$NAME" --memory "$MEMORY" --cpus "$CPUS" --publish "$PUBLISH" )
+  create=( "$SBX" create --name "$NAME" --memory "$MEMORY" --cpus "$CPUS" --publish "$PUBLISH" )
   for kit in "${KITS[@]+"${KITS[@]}"}"; do
     [[ -n "$kit" ]] && create+=( --kit "$kit" )
   done

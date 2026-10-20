@@ -157,6 +157,16 @@ class SbxCliTest {
         assertTrue(SbxCli.diagnoseReportsUnsupported("""{"virtualization":{"available":false}}"""))
         assertTrue(SbxCli.diagnoseReportsUnsupported("""{"errors":["Apple silicon only"]}"""))
         assertFalse(SbxCli.diagnoseReportsUnsupported("""{"supported":true}"""))
+        assertTrue(
+            SbxCli.diagnoseReportsUnsupported(
+                """{"checks":[{"name":"Virtualization","status":"fail","message":"not supported"}]}"""
+            )
+        )
+        assertFalse(
+            SbxCli.diagnoseReportsUnsupported(
+                """{"checks":[{"name":"Authentication","status":"fail"},{"name":"Virtualization","status":"pass"}]}"""
+            )
+        )
         assertTrue(SbxCli.looksUnsupportedHost("Mac OS X", "x86_64"))
         assertFalse(SbxCli.looksUnsupportedHost("Mac OS X", "aarch64"))
     }
@@ -213,7 +223,6 @@ class SbxCliTest {
             listOf(
                 "sbx",
                 "create",
-                "-q",
                 "--name",
                 "ide-ocwp-abc",
                 "--memory",
@@ -520,7 +529,6 @@ class SbxCliTest {
             listOf(
                 "sbx",
                 "create",
-                "-q",
                 "--name",
                 "ide-ocwp-abc",
                 "--memory",
@@ -547,7 +555,6 @@ class SbxCliTest {
             listOf(
                 "sbx",
                 "create",
-                "-q",
                 "--name",
                 "ide-ocwp-abc",
                 "--memory",
@@ -585,7 +592,6 @@ class SbxCliTest {
             listOf(
                 "sbx",
                 "create",
-                "-q",
                 "--name",
                 "ide-ocwp-abc",
                 "--memory",
@@ -858,7 +864,7 @@ class SbxCliTest {
             SbxCli.buildTemplateLsCommand(),
         )
         assertEquals(
-            listOf("sbx", "template", "rm", SbxCli.DEFAULT_OPENCODE_TEMPLATE),
+            listOf("sbx", "template", "rm", "--force", SbxCli.DEFAULT_OPENCODE_TEMPLATE),
             SbxCli.buildTemplateRmCommand(ref = SbxCli.DEFAULT_OPENCODE_TEMPLATE),
         )
     }
@@ -882,9 +888,68 @@ class SbxCliTest {
     }
 
     @Test
+    fun parsesCurrentLiveInventoryFixtures() {
+        // Captured on macOS with sbx 0.49.1, 2026-10-20; names/host paths anonymized.
+        val sandbox = SbxCli.parseLsJsonOrNull(resource("sbx-ls-0.49.1.json"))!!.single()
+        assertEquals("dd1642cc-c281-4521-a030-f7cbe04641b0", sandbox.id)
+        assertEquals("stopped", sandbox.status)
+        assertEquals(
+            listOf(
+                "/workspace/project",
+                "/workspace/project/opencode-sbx:ro",
+                "/home/user/.config/opencode:ro",
+            ),
+            sandbox.workspaces,
+        )
+        assertTrue(sandbox.ports.isEmpty())
+        assertEquals(
+            listOf("docker.io/docker/sandbox-templates:opencode-docker"),
+            SbxCli.officialOpencodeTemplateRefs(
+                SbxCli.parseTemplateLsJson(resource("sbx-template-ls-0.49.1.json"))
+            ),
+        )
+    }
+
+    @Test
+    fun sandboxAndTemplateListsAcceptBothEnvelopesAndIgnoreAdditionalFields() {
+        val legacy = resource("sbx-ls-running.json")
+        val array =
+            com.google.gson.JsonParser.parseString(legacy).asJsonObject.getAsJsonArray("sandboxes")
+        array[0].asJsonObject.addProperty("detached", false)
+        array[0].asJsonObject.addProperty("created_at", "2026-10-20T08:00:00Z")
+        assertEquals(SbxCli.parseLsJson(legacy), SbxCli.parseLsJsonOrNull(array.toString()))
+        assertEquals(
+            SbxCli.parseLsJson(legacy),
+            SbxCli.parseLsJsonOrNull("""{"future":true,"sandboxes":$array}"""),
+        )
+        assertEquals(emptyList<SbxSandboxListEntry>(), SbxCli.parseLsJsonOrNull(" \n [] \n"))
+
+        val templates = resource("sbx-template-ls.json")
+        val images =
+            com.google.gson.JsonParser.parseString(templates).asJsonObject.getAsJsonArray("images")
+        images[0].asJsonObject.addProperty("future", "ignored")
+        assertEquals(
+            SbxCli.parseTemplateLsJson(templates),
+            SbxCli.parseTemplateLsJson(images.toString()),
+        )
+    }
+
+    @Test
     fun malformedSandboxInventoryIsNotAnEmptyInventory() {
         assertNull(SbxCli.parseLsJsonOrNull("ERROR: daemon unavailable"))
         assertNull(SbxCli.parseLsJsonOrNull("{}"))
+        for (invalid in
+            listOf(
+                "null",
+                "true",
+                "42",
+                "[",
+                "[] trailing",
+                "{\"sandboxes\":null}",
+                "{\"sandboxes\":{}}",
+            )) {
+            assertNull(invalid, SbxCli.parseLsJsonOrNull(invalid))
+        }
         assertEquals(
             "Entries without an id are skipped, not a reason to distrust the whole inventory",
             emptyList<SbxSandboxListEntry>(),

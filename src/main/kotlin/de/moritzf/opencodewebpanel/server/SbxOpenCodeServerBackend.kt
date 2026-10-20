@@ -587,11 +587,20 @@ internal class SbxOpenCodeServerBackend(
                         )
                     SbxCli.officialOpencodeTemplateRefs(SbxCli.parseTemplateLsJson(listed.stdout))
                         .forEach { ref ->
-                            requiredCommand(
-                                "Remove template",
-                                SbxCli.buildTemplateRmCommand(executable, ref),
-                                60_000L,
-                            )
+                            try {
+                                requiredCommand(
+                                    "Remove template",
+                                    SbxCli.buildTemplateRmCommand(executable, ref),
+                                    60_000L,
+                                )
+                            } catch (e: SbxCommandFailure) {
+                                if (!SbxCli.optionUnsupported(e.output, "--force")) throw e
+                                requiredCommand(
+                                    "Remove template (legacy CLI)",
+                                    SbxCli.buildTemplateRmCommand(executable, ref, force = false),
+                                    60_000L,
+                                )
+                            }
                         }
                     result.complete(true)
                 } catch (e: SbxCommandFailure) {
@@ -807,12 +816,20 @@ internal class SbxOpenCodeServerBackend(
                 fail(startId, SbxFailureKind.SBX_NOT_FOUND)
                 return
             }
-            val diagnose =
+            var diagnose =
                 runStartupCommand(
                     "Checking Docker Sandboxes",
                     SbxCli.buildDiagnoseJsonCommand(sbx),
                     30_000L,
                 )
+            if (diagnose.exitCode != 0 && SbxCli.optionUnsupported(diagnose.output, "--format")) {
+                diagnose =
+                    runStartupCommand(
+                        "Checking Docker Sandboxes (legacy CLI)",
+                        SbxCli.buildLegacyDiagnoseJsonCommand(sbx),
+                        30_000L,
+                    )
+            }
             if (
                 SbxCli.diagnoseReportsUnsupported(diagnose.stdout) ||
                     SbxCli.looksUnsupportedHost(
@@ -1624,7 +1641,7 @@ internal class SbxOpenCodeServerBackend(
 
     private fun dumpDiagnose(output: String) {
         if (output.isBlank()) return
-        serverLogBuffer.append("========== sbx diagnose -o json ==========")
+        serverLogBuffer.append("========== sbx diagnose (JSON) ==========")
         output.lineSequence().forEach { line -> serverLogBuffer.append(line) }
     }
 

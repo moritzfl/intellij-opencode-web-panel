@@ -169,6 +169,54 @@ class SbxOpenCodeServerBackendTest {
     }
 
     @Test
+    fun templateRemovalUsesForceAndFallsBackOnlyOnLegacyFlagRejection() {
+        val commands = mutableListOf<List<String>>()
+        behavior = { command ->
+            commands += command
+            when {
+                command[2] == "ls" ->
+                    SbxCommandResult(
+                        0,
+                        """[{"id":"image-id","repository":"docker.io/docker/sandbox-templates","tag":"opencode-docker"}]""",
+                    )
+                "--force" in command -> SbxCommandResult(1, "unknown flag: --force")
+                else -> SbxCommandResult(0, "removed")
+            }
+        }
+        assertTrue(backend.dropCachedOfficialOpencodeTemplates().get(5, TimeUnit.SECONDS))
+        assertEquals(3, commands.size)
+        assertTrue("--force" in commands[1])
+        assertFalse("--force" in commands[2])
+    }
+
+    @Test
+    fun diagnoseFallsBackOnlyForUnsupportedFormatFlag() {
+        val commands = mutableListOf<List<String>>()
+        behavior = { command ->
+            when (command[1]) {
+                "diagnose" -> {
+                    commands += command
+                    if ("--format" in command) SbxCommandResult(1, "unknown flag: --format")
+                    else SbxCommandResult(0, "{}")
+                }
+                "daemon" -> SbxCommandResult(19, "stop after diagnose")
+                else -> error("Unexpected command $command")
+            }
+        }
+        backend.ensureStarted(project, directory, { false }, {}, {})
+        drain()
+        val executable = commands.first().first()
+        assertEquals(
+            listOf(
+                SbxCli.buildDiagnoseJsonCommand(executable),
+                SbxCli.buildLegacyDiagnoseJsonCommand(executable),
+            ),
+            commands,
+        )
+        assertFalse(SbxCli.optionUnsupported("failed to format diagnostic report", "--format"))
+    }
+
+    @Test
     fun legacyDaemonFallbackIsUsedOnlyWhenDetachIsUnsupported() {
         val daemonCommands = mutableListOf<List<String>>()
         behavior = { command ->
