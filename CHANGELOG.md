@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [2.7.3] - 2026-10-20
+
 ### Fixed
 
 - Support Docker Sandboxes 0.48+ sandbox/template list arrays, updated create and
@@ -1126,7 +1128,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.7.2...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.7.3...HEAD
+[2.7.3]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.7.2...2.7.3
 [2.7.2]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.7.1...2.7.2
 [2.7.1]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.7.0...2.7.1
 [2.7.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.6.3...2.7.0
