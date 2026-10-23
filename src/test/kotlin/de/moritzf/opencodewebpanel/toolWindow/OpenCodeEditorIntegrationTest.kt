@@ -9,7 +9,10 @@ import com.intellij.testFramework.FileEditorManagerTestCase
 import com.intellij.testFramework.LightVirtualFile
 import com.intellij.util.ui.UIUtil
 import de.moritzf.opencodewebpanel.features.OpenCodeChatInputService
+import java.awt.Container
+import java.awt.Dimension
 import java.util.concurrent.CompletableFuture
+import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.JTextField
 import javax.swing.SwingConstants
@@ -56,6 +59,21 @@ class OpenCodeEditorIntegrationTest : FileEditorManagerTestCase() {
         assertEquals("keep this draft", panel.focus.text)
         assertEquals(1, panel.loads)
         assertEquals(0, panel.disposals)
+    }
+
+    fun testEditorToolbarStaysOnTheRightOfThePanel() {
+        controller.moveToEditor()
+        val file = requireNotNull(controller.editorFile)
+        val shell = FileEditorManager.getInstance(project).getEditors(file).single().component
+        val toolbarRow = requireNotNull(findComponent(shell, OPEN_CODE_EDITOR_TOOLBAR_ROW_NAME))
+        val toolbar = requireNotNull(toolbarRow.components.singleOrNull())
+
+        toolbar.preferredSize = Dimension(120, 24)
+        toolbarRow.setSize(900, 32)
+        toolbarRow.doLayout()
+
+        assertTrue("editor toolbar should not start on the left", toolbar.x > 0)
+        assertEquals(toolbarRow.width, toolbar.x + toolbar.width)
     }
 
     fun testChatActivationKeepsEditorPlacementAndInFlightDelivery() {
@@ -181,6 +199,18 @@ class OpenCodeEditorIntegrationTest : FileEditorManagerTestCase() {
         assertSame(replacement.component, controller.component.getComponent(0))
         assertEquals(1, panel.disposals)
         assertEquals(1, replacement.loads)
+    }
+
+    private fun findComponent(root: Container, name: String): JComponent? {
+        for (child in root.components) {
+            if (child is JComponent && child.name == name) return child
+            if (child is Container) {
+                findComponent(child, name)?.let {
+                    return it
+                }
+            }
+        }
+        return null
     }
 
     private class TestPanel : OpenCodePanel {

@@ -10,6 +10,8 @@ import com.intellij.openapi.util.IconLoader
 import com.intellij.util.ui.components.BorderLayoutPanel
 import javax.swing.JComponent
 
+internal const val OPEN_CODE_EDITOR_TOOLBAR_ROW_NAME = "OpenCode.Editor.ToolbarRow"
+
 /** IntelliJ supplies the editor/provider; this file only lends it the project's live panel. */
 internal class OpenCodeEditorFile(private val controller: OpenCodePanelController) :
     UIComponentVirtualFile(
@@ -33,7 +35,15 @@ internal class OpenCodeEditorFile(private val controller: OpenCodePanelControlle
         val toolbar =
             ActionManager.getInstance().createActionToolbar("OpenCode.Editor", actions, true)
         toolbar.targetComponent = shell
-        shell.addToTop(toolbar.component)
+        // The tool window keeps these actions on the right of its title bar. Right-align the
+        // editor host as well so moving the panel does not move the toolbar across the page.
+        val toolbarRow =
+            BorderLayoutPanel().apply {
+                isOpaque = false
+                name = OPEN_CODE_EDITOR_TOOLBAR_ROW_NAME
+                addToRight(toolbar.component)
+            }
+        shell.addToTop(toolbarRow)
         Disposer.register(editor) { controller.editorClosed(this, shell) }
         return object : Content {
             override fun createComponent(): JComponent {
