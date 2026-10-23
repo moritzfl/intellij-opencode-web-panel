@@ -101,7 +101,7 @@ the IDE exits. Server ownership is application-wide, so reopening the project ca
 
 Use **Find Action → Move OpenCode Panel** to toggle between the two hosts. To assign a keyboard shortcut, open **Settings/Preferences → Keymap** and search for **Move OpenCode Panel**. No shortcut is assigned by default.
 
-While the panel is in an editor, reopening the tool window offers **Show in Editor** and **Move to Tool Window**. Chat context actions and **Show in OpenCode** notifications activate the current host.
+While the panel is in an editor, clicking the OpenCode tool window icon returns to that editor instead of opening the side panel; use **Move to Tool Window** in the editor toolbar to bring the panel back. Chat context actions and **Show in OpenCode** notifications activate the current host.
 
 ### Context Menu Actions
 

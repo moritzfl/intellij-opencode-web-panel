@@ -9,10 +9,9 @@ import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.wm.ToolWindow
+import com.intellij.openapi.wm.ex.ToolWindowManagerListener
 import com.intellij.serviceContainer.NonInjectable
 import com.intellij.ui.BadgeIconSupplier
-import com.intellij.ui.SimpleTextAttributes
-import com.intellij.ui.components.JBPanelWithEmptyText
 import com.intellij.util.ui.components.BorderLayoutPanel
 import de.moritzf.opencodewebpanel.features.OpenCodeAgentStatusState
 import de.moritzf.opencodewebpanel.features.OpenCodeChatInputService
@@ -74,6 +73,16 @@ internal constructor(
                 true
             }
         }
+        project.messageBus
+            .connect(this)
+            .subscribe(
+                ToolWindowManagerListener.TOPIC,
+                object : ToolWindowManagerListener {
+                    override fun toolWindowShown(window: ToolWindow) {
+                        onToolWindowShown(window)
+                    }
+                },
+            )
         component.addHierarchyListener { event ->
             if (
                 event.changeFlags and HierarchyEvent.SHOWING_CHANGED.toLong() != 0L &&
@@ -137,20 +146,6 @@ internal constructor(
         isInEditor = true
         editorShell = shell
         moveComponent(shell)
-        toolWindowComponent.removeAll()
-        toolWindowComponent.addToCenter(
-            JBPanelWithEmptyText().apply {
-                emptyText.appendLine("OpenCode is open in the editor.")
-                emptyText.appendLine("Show in Editor", SimpleTextAttributes.LINK_ATTRIBUTES) {
-                    activate {}
-                }
-                emptyText.appendLine("Move to Tool Window", SimpleTextAttributes.LINK_ATTRIBUTES) {
-                    moveToToolWindow()
-                }
-            }
-        )
-        toolWindowComponent.revalidate()
-        toolWindowComponent.repaint()
     }
 
     internal fun editorClosed(file: OpenCodeEditorFile, shell: BorderLayoutPanel) {
@@ -193,6 +188,24 @@ internal constructor(
     fun attachToolWindow(window: ToolWindow) {
         toolWindow = window
         ensurePanel()
+    }
+
+    /**
+     * While the live panel is in the editor, the tool window has no content of its own. Clicking
+     * its stripe icon must return to that editor instead of opening an empty side panel.
+     */
+    private fun onToolWindowShown(window: ToolWindow) {
+        if (window !== toolWindow) return
+        redirectToolWindowToEditor()
+    }
+
+    private fun redirectToolWindowToEditor() {
+        if (isDisposed || !isInEditor || editorShell == null) return
+        ApplicationManager.getApplication().invokeLater {
+            if (isDisposed || !isInEditor || editorShell == null) return@invokeLater
+            toolWindow?.hide(null)
+            activate {}
+        }
     }
 
     internal fun ensurePanel() {

@@ -5,12 +5,15 @@ import com.intellij.openapi.fileEditor.FileEditorManagerKeys
 import com.intellij.openapi.fileEditor.FileEditorProvider
 import com.intellij.openapi.fileEditor.impl.FileEditorOpenOptions
 import com.intellij.openapi.util.Disposer
+import com.intellij.openapi.wm.ToolWindow
+import com.intellij.openapi.wm.ex.ToolWindowManagerListener
 import com.intellij.testFramework.FileEditorManagerTestCase
 import com.intellij.testFramework.LightVirtualFile
 import com.intellij.util.ui.UIUtil
 import de.moritzf.opencodewebpanel.features.OpenCodeChatInputService
 import java.awt.Container
 import java.awt.Dimension
+import java.lang.reflect.Proxy
 import java.util.concurrent.CompletableFuture
 import javax.swing.JComponent
 import javax.swing.JPanel
@@ -74,6 +77,25 @@ class OpenCodeEditorIntegrationTest : FileEditorManagerTestCase() {
 
         assertTrue("editor toolbar should not start on the left", toolbar.x > 0)
         assertEquals(toolbarRow.width, toolbar.x + toolbar.width)
+    }
+
+    fun testSidebarActivationReturnsToEditorInsteadOfOpeningAnEmptyToolWindow() {
+        controller.moveToEditor()
+        val file = requireNotNull(controller.editorFile)
+        val manager = FileEditorManager.getInstance(project)
+        val editor = manager.getEditors(file).single()
+        editor.component
+        var hidden = false
+        val window = toolWindowStub { hidden = true }
+        controller.attachToolWindow(window)
+
+        project.messageBus.syncPublisher(ToolWindowManagerListener.TOPIC).toolWindowShown(window)
+        UIUtil.dispatchAllInvocationEvents()
+
+        assertTrue("tool window should collapse again", hidden)
+        assertTrue(controller.isInEditor)
+        assertTrue(manager.isFileOpen(file))
+        assertTrue(UIUtil.isAncestor(editor.component, controller.component))
     }
 
     fun testChatActivationKeepsEditorPlacementAndInFlightDelivery() {
@@ -200,6 +222,28 @@ class OpenCodeEditorIntegrationTest : FileEditorManagerTestCase() {
         assertEquals(1, panel.disposals)
         assertEquals(1, replacement.loads)
     }
+
+    private fun toolWindowStub(onHide: () -> Unit): ToolWindow =
+        Proxy.newProxyInstance(
+            ToolWindow::class.java.classLoader,
+            arrayOf(ToolWindow::class.java),
+        ) { proxy, method, args ->
+            when (method.name) {
+                "hide" -> {
+                    onHide()
+                    null
+                }
+                "isDisposed" -> false
+                "isVisible",
+                "isActive" -> true
+                "getProject" -> project
+                "getId" -> "OpenCode"
+                "toString" -> "OpenCode tool window stub"
+                "hashCode" -> System.identityHashCode(proxy)
+                "equals" -> proxy === args?.firstOrNull()
+                else -> null
+            }
+        } as ToolWindow
 
     private fun findComponent(root: Container, name: String): JComponent? {
         for (child in root.components) {
