@@ -5,6 +5,7 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.fileEditor.FileEditorManager
+import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
@@ -115,7 +116,7 @@ internal constructor(
         isInEditor = true
         try {
             val manager = FileEditorManager.getInstance(project)
-            manager.openFile(file, true)
+            OpenFileDescriptor(project, file).navigateInEditor(project, true)
             if (manager.isFileOpen(file)) {
                 toolWindow?.hide(null)
                 focusPanel {}
@@ -232,7 +233,7 @@ internal constructor(
         if (isDisposed) return
         val file = editorFile.takeIf { isInEditor }
         if (file != null) {
-            FileEditorManager.getInstance(project).openFile(file, true, true)
+            OpenFileDescriptor(project, file).navigateInEditor(project, true)
             focusPanel(action)
         } else {
             toolWindow?.activate({ focusPanel(action) }, true)

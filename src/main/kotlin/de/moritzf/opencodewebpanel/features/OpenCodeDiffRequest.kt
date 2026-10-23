@@ -7,6 +7,8 @@ import com.intellij.diff.util.LineCol
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
+import com.intellij.openapi.fileEditor.TextEditor
+import com.intellij.openapi.fileEditor.impl.text.TextEditorProvider
 import com.intellij.openapi.fileTypes.FileTypeManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
@@ -69,9 +71,10 @@ private class OpenCodeDiffContent(
                 val descriptor = sourceDescriptor(position) ?: return
                 // Generic navigation may select Project View or an already selected preview
                 // provider.
-                val editor =
-                    FileEditorManager.getInstance(project).openTextEditor(descriptor, requestFocus)
-                        ?: return
+                if (!descriptor.navigateInEditor(project, requestFocus)) return
+                val manager = FileEditorManager.getInstance(project)
+                manager.setSelectedEditor(file, TextEditorProvider.getInstance().editorTypeId)
+                val editor = (manager.getSelectedEditor(file) as? TextEditor)?.editor ?: return
                 // A navigatable preview may have consumed the descriptor before text was selected.
                 descriptor.navigateIn(editor)
             }
