@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+## [2.7.5] - 2026-10-23
+
+### Fixed
+
+- Clicking the OpenCode tool window icon while the panel is open in an editor now
+  returns to that editor instead of opening an empty side panel. Use
+  **Move to Tool Window** in the editor toolbar to bring the panel back.
+
 ## [2.7.4] - 2026-10-23
 
 ### Fixed
@@ -1135,7 +1143,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.7.4...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.7.5...HEAD
+[2.7.5]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.7.4...2.7.5
 [2.7.4]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.7.3...2.7.4
 [2.7.3]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.7.2...2.7.3
 [2.7.2]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.7.1...2.7.2
