@@ -56,6 +56,8 @@ ops = {
     ("/api/session/active", "get"): None,
     ("/api/session/{sessionID}", "get"): None,
     ("/api/session/{sessionID}/message", "get"): None,
+    ("/api/session/{sessionID}/message/{messageID}", "get"): None,
+    ("/api/model", "get"): None,
     ("/api/session/{sessionID}/diff", "get"): None,
     ("/api/vcs/diff", "get"): None,
     ("/api/session/{sessionID}/prompt", "post"): None,

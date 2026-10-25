@@ -186,6 +186,8 @@ MARKERS_V2=(
   'select-v2'
   'select-v2-listbox'
   'session-review-v2-sidebar-header'
+  # Also in 1.18, but only the CLI 2.x response-model label depends on it.
+  'text-part-meta'
 )
 
 # 2.0.12 introduced inert local Markdown links. Older CLI 2.x uses href/target instead.

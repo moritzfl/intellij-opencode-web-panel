@@ -84,6 +84,52 @@ async (page, { origin, serverKey, workspace, authorization, snippets, stallOrigi
     await home.evaluate(() => document.execCommand('undo'));
     assert(await search.inputValue() === 'before OLD after', 'Plain input paste lost native undo');
     await home.close();
+
+    // OpenCode 2.x drops agent and model from the response line below 768px; the panel adds them back.
+    const metaLabel = () => {
+      const meta = document.querySelector('[data-slot="text-part-meta"]');
+      return meta && { text: meta.textContent, label: meta.getAttribute('data-opencode-intellij-response-model') };
+    };
+    const countMessageRequests = () => {
+      window.__messageRequests = 0;
+      const original = window.fetch;
+      window.fetch = function(input) {
+        const url = typeof input === 'string' ? input : (input && input.url) || '';
+        if (/\/api\/session\/[^/]+\/message\/[^/?]+/.test(new URL(url, location.href).pathname)) window.__messageRequests += 1;
+        return original.apply(this, arguments);
+      };
+    };
+    for (const early of [true, false]) {
+      const narrowContext = await page.context().browser().newContext({
+        extraHTTPHeaders: { Authorization: authorization }, viewport: { width: 700, height: 900 },
+      });
+      const narrow = await narrowContext.newPage();
+      await narrow.addInitScript(countMessageRequests);
+      await narrow.addInitScript(snippets.seed);
+      if (early) await narrow.addInitScript(snippets.responseModel);
+      await narrow.goto(`${origin}/server/${serverKey}/session/${session.id}`);
+      await narrow.locator('[data-slot="text-part-meta"]').waitFor({ state: 'attached' });
+      // OpenCode before #54775 (e.g. 2.0.x) still names the model below 768px.
+      const native = (await narrow.evaluate(metaLabel)).text.split(' \u00B7 ').includes('test');
+      // Late install misses the page's history response, like a turn that finishes after load.
+      if (!early) await narrow.evaluate(snippets.responseModel);
+      if (native) {
+        await narrow.evaluate(() => new Promise(resolve => setTimeout(resolve, 500)));
+        assert(!(await narrow.evaluate(metaLabel)).label, 'Response model repeated a model OpenCode already shows');
+      } else {
+        await narrow.waitForFunction(() => document.querySelector('[data-slot="text-part-meta"]')
+          ?.getAttribute('data-opencode-intellij-response-model') === 'Build \u00B7 test \u00B7 ')
+          .catch(async () => { throw new Error('Response model label missing: ' + JSON.stringify(await narrow.evaluate(metaLabel))); });
+        assert(await narrow.evaluate(() => window.__messageRequests) === (early ? 0 : 1),
+          early ? 'Response model ignored the page history response' : 'Late response model did not fetch its message once');
+      }
+      await narrow.setViewportSize({ width: 1300, height: 900 });
+      await narrow.waitForFunction(() => {
+        const meta = document.querySelector('[data-slot="text-part-meta"]');
+        return meta && meta.textContent.includes('test') && !meta.hasAttribute('data-opencode-intellij-response-model');
+      }).catch(async () => { throw new Error('Wide response line repeated the model: ' + JSON.stringify(await narrow.evaluate(metaLabel))); });
+      await narrowContext.close();
+    }
   }
   await page.evaluate(() => { window.__fileCalls = []; window.__codeCalls = []; window.__diffCalls = []; window.__chunkCalls = []; });
   await page.evaluate(snippets.diffs);

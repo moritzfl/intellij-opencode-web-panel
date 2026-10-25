@@ -62,6 +62,9 @@ object OpenCodeBrowserContractExport {
                 "watchdog" to
                     OpenCodeBrowserSnippets.buildEventStreamWatchdogScript(enabled = true),
                 "pathHover" to OpenCodeBrowserSnippets.buildPathHoverPreviewScript(enabled = true),
+                "compact" to OpenCodeBrowserSnippets.buildCompactLayoutScript(enabled = true),
+                "responseModel" to
+                    OpenCodeBrowserSnippets.buildResponseModelLabelScript(enabled = true),
                 "nativeWatchdog" to
                     OpenCodeBrowserSnippets.buildEventStreamWatchdogScript(
                         enabled = true,
