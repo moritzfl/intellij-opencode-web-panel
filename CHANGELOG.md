@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [2.7.6] - 2026-10-25
+
 ### Added
 
 - In the compact view, a response's info line shows its agent and model again,
