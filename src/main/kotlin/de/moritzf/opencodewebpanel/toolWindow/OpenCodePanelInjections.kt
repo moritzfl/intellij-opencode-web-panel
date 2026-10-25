@@ -98,6 +98,14 @@ internal class OpenCodePanelInjections(
             enabledInSettings = { OpenCodeSettingsState.getInstance().fasterPathHoverPreview },
             buildScript = { OpenCodeBrowserSnippets.buildPathHoverPreviewScript(enabled = true) },
         )
+    val responseModelLabelFeature =
+        EarlyInjectedFeature(
+            enabledInSettings = {
+                OpenCodeSettingsState.getInstance().showResponseModelInCompactLayout &&
+                    serverManager.getWireProtocol() == OpenCodeWireProtocol.V2_CLI
+            },
+            buildScript = { OpenCodeBrowserSnippets.buildResponseModelLabelScript(enabled = true) },
+        )
     val eventStreamWatchdogFeature =
         EarlyInjectedFeature(
             enabledInSettings = {
@@ -132,6 +140,7 @@ internal class OpenCodePanelInjections(
             compactHomeLayoutFeature,
             hideWebsiteButtonFeature,
             pathHoverPreviewFeature,
+            responseModelLabelFeature,
             eventStreamWatchdogFeature,
             chunkLoadRecoveryFeature,
         )

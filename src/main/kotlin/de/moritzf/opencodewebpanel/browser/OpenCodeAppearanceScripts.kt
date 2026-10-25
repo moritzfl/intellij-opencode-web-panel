@@ -85,6 +85,189 @@ internal object OpenCodeAppearanceScripts {
         return script.trimIndent()
     }
 
+    fun buildResponseModelLabelScript(enabled: Boolean): String? {
+        if (!enabled) return null
+        @Language("JavaScript")
+        val script =
+            """
+            (() => {
+              if (window.__opencodeIntellijResponseModelInstalled) return;
+              if (typeof window.fetch !== 'function' || typeof window.MutationObserver !== 'function') return;
+              window.__opencodeIntellijResponseModelInstalled = true;
+              const ATTR = 'data-opencode-intellij-response-model';
+              const STYLE_ID = 'opencode-intellij-response-model';
+              const META = '[data-slot="text-part-meta"]';
+              const SEPARATOR = ' \u00B7 ';
+              const CSS = META + '[' + ATTR + ']::before { content: attr(' + ATTR + '); }';
+              const MESSAGE_PATH = /^\/api\/session\/[^/]+\/message(?:\/[^/]+)?$/;
+              const nativeFetch = window.fetch;
+              const previousFetch = nativeFetch.bind(window);
+              const messages = new Map();
+              const names = new Map();
+              const requested = new Set();
+              const watched = new WeakSet();
+              let capturing = 0;
+              let style = null;
+              const ensureStyle = () => {
+                if (style && style.isConnected) return;
+                const parent = document.head || document.documentElement;
+                if (!parent) return;
+                if (!style) {
+                  style = document.createElement('style');
+                  style.id = STYLE_ID;
+                  style.textContent = CSS;
+                }
+                parent.appendChild(style);
+              };
+              const capitalize = (value) => (value ? value[0].toUpperCase() + value.slice(1) : '');
+              // Mirrors OpenCode's own label: catalog name (else id), plus a non-default variant.
+              const modelLabel = (info) => {
+                const name = names.get(info.providerID + '/' + info.modelID) || info.modelID;
+                return !info.variant || info.variant === 'default' ? name : name + ' (' + capitalize(info.variant) + ')';
+              };
+              const rememberMessage = (message) => {
+                if (!message || message.type !== 'assistant' || typeof message.id !== 'string') return;
+                const model = message.model;
+                const time = message.time;
+                // The line belongs to a finished turn; a record captured mid-turn is refetched.
+                if (!model || typeof model.id !== 'string' || !model.id || !time || time.completed == null) return;
+                messages.set(message.id, {
+                  agent: typeof message.agent === 'string' ? message.agent : '',
+                  providerID: typeof model.providerID === 'string' ? model.providerID : '',
+                  modelID: model.id,
+                  variant: typeof model.variant === 'string' ? model.variant : '',
+                });
+              };
+              const messageIDOf = (meta) => {
+                const part = meta.closest('[data-component="text-part"]');
+                const id = (part && part.getAttribute('data-timeline-part-id')) || '';
+                const index = id.indexOf(':text:');
+                return index > 0 ? id.slice(0, index) : '';
+              };
+              const narrow = () => {
+                try { return window.matchMedia('(max-width: 767px)').matches === true; }
+                catch (_) { return false; }
+              };
+              const requestMessage = (messageID) => {
+                if (requested.has(messageID)) return;
+                const route = location.pathname.match(/\/session\/(ses_[^/]+)\/?$/);
+                if (!route) return;
+                requested.add(messageID);
+                const path = '/api/session/' + route[1] + '/message/' + encodeURIComponent(messageID);
+                previousFetch(path, { headers: { accept: 'application/json' } })
+                  .then((response) => (response && response.ok ? response.json() : null))
+                  .then((json) => {
+                    ingest(path, json);
+                    refresh();
+                  })
+                  .catch(() => {});
+              };
+              const decorate = (meta) => {
+                const messageID = messageIDOf(meta);
+                const info = messageID ? messages.get(messageID) : null;
+                let label = '';
+                if (info) {
+                  const model = modelLabel(info);
+                  const segments = (meta.textContent || '').split(SEPARATOR).map((segment) => segment.trim());
+                  // The wide layout already names the model; never repeat it.
+                  if (segments.indexOf(model) === -1 && segments.indexOf(info.modelID) === -1) {
+                    label = [capitalize(info.agent), model].filter(Boolean).join(SEPARATOR) + SEPARATOR;
+                  }
+                } else if (messageID && capturing === 0 && narrow()) {
+                  // The page's own history response may still be parsing; ask only after it settled.
+                  requestMessage(messageID);
+                }
+                if (label) {
+                  if (meta.getAttribute(ATTR) !== label) meta.setAttribute(ATTR, label);
+                } else if (meta.hasAttribute(ATTR)) {
+                  meta.removeAttribute(ATTR);
+                }
+              };
+              // OpenCode rewrites the line in place (duration, interruption, breakpoint changes).
+              const textObserver = new MutationObserver((records) => {
+                const changed = new Set();
+                records.forEach((record) => {
+                  const node = record.target.nodeType === 1 ? record.target : record.target.parentElement;
+                  const meta = node && node.closest ? node.closest(META) : null;
+                  if (meta) changed.add(meta);
+                });
+                changed.forEach(decorate);
+              });
+              const watch = (meta) => {
+                if (!watched.has(meta)) {
+                  watched.add(meta);
+                  textObserver.observe(meta, { characterData: true, childList: true, subtree: true });
+                }
+                decorate(meta);
+              };
+              const refresh = () => {
+                ensureStyle();
+                document.querySelectorAll(META).forEach(watch);
+              };
+              const ingest = (path, json) => {
+                const data = json && typeof json === 'object' ? json.data : null;
+                if (!data) return;
+                if (path === '/api/model') {
+                  if (!Array.isArray(data)) return;
+                  data.forEach((model) => {
+                    if (!model || typeof model.id !== 'string' || typeof model.providerID !== 'string') return;
+                    if (typeof model.name !== 'string' || !model.name || model.status === 'deprecated') return;
+                    names.set(model.providerID + '/' + model.id, model.name);
+                  });
+                } else {
+                  (Array.isArray(data) ? data : [data]).forEach(rememberMessage);
+                }
+              };
+              const requestUrl = (input) => {
+                if (typeof input === 'string') return input;
+                if (input && typeof input.url === 'string') return input.url;
+                if (input && typeof input.href === 'string') return input.href;
+                return '';
+              };
+              const observeFetch = (input, init, pending) => {
+                const method = (init && init.method) || (input && typeof input === 'object' && input.method) || 'GET';
+                if (String(method).toUpperCase() !== 'GET') return;
+                let path = '';
+                try { path = new URL(requestUrl(input), location.href).pathname; } catch (_) { return; }
+                if (path !== '/api/model' && !MESSAGE_PATH.test(path)) return;
+                // Reuse the page's own catalog and history responses instead of requesting them again.
+                capturing += 1;
+                const settle = (json) => {
+                  capturing -= 1;
+                  ingest(path, json);
+                  refresh();
+                };
+                Promise.resolve(pending)
+                  .then((response) => (response && response.ok && typeof response.clone === 'function'
+                    ? response.clone().json() : null))
+                  .then(settle, () => settle(null))
+                  .catch(() => {});
+              };
+              window.fetch = function(input, init) {
+                const pending = previousFetch.apply(window, arguments);
+                try { observeFetch(input, init, pending); } catch (_) {}
+                return pending;
+              };
+              if (typeof globalThis === 'object' && globalThis.fetch === nativeFetch) {
+                globalThis.fetch = window.fetch;
+              }
+              const scan = (node) => {
+                if (!node || node.nodeType !== 1) return;
+                if (node.matches(META)) watch(node);
+                else if (node.firstElementChild) node.querySelectorAll(META).forEach(watch);
+              };
+              const observer = new MutationObserver((records) => {
+                ensureStyle();
+                for (const record of records) record.addedNodes.forEach(scan);
+              });
+              observer.observe(document, { childList: true, subtree: true });
+              refresh();
+              document.addEventListener('DOMContentLoaded', refresh, { once: true });
+            })();
+        """
+        return script.trimIndent()
+    }
+
     fun buildMatchMediaPatchScript(compact: Boolean, theme: Boolean, dark: Boolean): String? {
         if (!compact && !theme) return null
         val compactLiteral = compact.toString()

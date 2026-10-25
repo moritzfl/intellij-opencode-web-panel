@@ -40,6 +40,7 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
     var openDiffsInIde: Boolean = true
     var enableChatFileDrop: Boolean = true
     var forceCompactLayout: Boolean = true
+    var showResponseModelInCompactLayout: Boolean = true
     var hideWebsiteButton: Boolean = true
     var fasterPathHoverPreview: Boolean = true
     var syncThemeWithIde: Boolean = true
@@ -88,6 +89,7 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
         openDiffsInIde = state.openDiffsInIde
         enableChatFileDrop = state.enableChatFileDrop
         forceCompactLayout = state.forceCompactLayout
+        showResponseModelInCompactLayout = state.showResponseModelInCompactLayout
         hideWebsiteButton = state.hideWebsiteButton
         fasterPathHoverPreview = state.fasterPathHoverPreview
         syncThemeWithIde = state.syncThemeWithIde

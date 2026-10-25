@@ -190,6 +190,16 @@ class OpenCodeSettingsStateTest {
     }
 
     @Test
+    fun showResponseModelInCompactLayoutDefaultsOnAndLoads() {
+        assertTrue(OpenCodeSettingsState().showResponseModelInCompactLayout)
+        val settings = OpenCodeSettingsState()
+        settings.loadState(
+            OpenCodeSettingsState().apply { showResponseModelInCompactLayout = false }
+        )
+        assertFalse(settings.showResponseModelInCompactLayout)
+    }
+
+    @Test
     fun hideWebsiteButtonIsEnabledByDefault() {
         assertEquals(true, OpenCodeSettingsState().hideWebsiteButton)
     }

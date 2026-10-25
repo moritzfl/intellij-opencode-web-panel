@@ -90,6 +90,26 @@ internal object OpenCodeBrowserSnippets {
         OpenCodeAppearanceScripts.buildMatchMediaPatchScript(compact, theme, dark)
 
     /**
+     * OpenCode 2.x drops the agent and model from a response's info line below 768px (`session-ui`
+     * `AssistantTextContent`), so the compact panel cannot show which model answered — for example
+     * the model an auto-routing provider picked. Adds them back in front of the line, matching the
+     * wide layout, via a stylesheet `::before` fed by an attribute on
+     * `[data-slot="text-part-meta"]` (OpenCode's text node stays untouched).
+     *
+     * The assistant message id comes from the text part's `data-timeline-part-id`
+     * (`<messageID>:text:<n>`). Agent and model come from the page's own `GET
+     * /api/session/{id}/message[/{messageID}]` responses and model names from its `GET /api/model`
+     * catalog; only a turn finished after load needs one `GET
+     * /api/session/{id}/message/{messageID}`, and only while the narrow layout is active. A line
+     * that already names the model (wide layout) is left alone.
+     *
+     * Must run before the SPA bundle captures `window.fetch` (`onLoadStart`). CLI 2.x only: 1.18
+     * keeps the model in the line at every width.
+     */
+    fun buildResponseModelLabelScript(enabled: Boolean): String? =
+        OpenCodeAppearanceScripts.buildResponseModelLabelScript(enabled)
+
+    /**
      * Gives the SPA's `/global/event` reader the stall detection it does not have, so a socket the
      * OS severed silently (laptop sleep, VPN/adapter change — common on Windows, where a half-open
      * TCP connection is not reset) cannot leave the page permanently deaf.

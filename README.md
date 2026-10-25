@@ -231,6 +231,7 @@ and [OpenCode provider accounts](https://opencode.ai/v2/docs/cli/providers).
 - Enable click-to-navigate for code references in chat.
 - Enable file drop and paste into chat, using `@relative/path` for project file references.
 - Lock OpenCode to compact layout for panel-friendly use, with a full-width Home session list in OpenCode 2.x.
+- Show each response's agent and model in the compact view, which OpenCode 2.x otherwise omits.
 - Hide OpenCode's floating website/help button in the panel.
 - Sync OpenCode's system color scheme with the IDE theme.
 - Suppress project-switch prompts that are not useful inside the embedded panel.

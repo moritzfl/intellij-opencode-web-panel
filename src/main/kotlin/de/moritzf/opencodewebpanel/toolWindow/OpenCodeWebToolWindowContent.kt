@@ -764,6 +764,7 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
                                 if (enabled) scheduleFlushPendingChatInput(delayMillis = 0)
                             }
                             OpenCodeUiSetting.COMPACT_LAYOUT -> applyCompactLayout()
+                            OpenCodeUiSetting.RESPONSE_MODEL_LABEL -> applyResponseModelLabel()
                             OpenCodeUiSetting.HIDE_WEBSITE_BUTTON -> applyHideWebsiteButton()
                             OpenCodeUiSetting.PATH_HOVER_PREVIEW -> applyPathHoverPreview()
                             OpenCodeUiSetting.IDE_THEME_SYNC -> applyIdeThemeSync(enabled)
@@ -1907,6 +1908,12 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
     private fun applyCompactLayout() {
         // Reload rebuilds all early scripts: both the media-query patch and V2 Home stylesheet.
         reloadForEarlyFeatureToggle(injections.matchMediaPatchFeature)
+    }
+
+    private fun applyResponseModelLabel() {
+        // Only CLI 2.x installs it; other protocols have nothing to add or remove.
+        if (serverManager.getWireProtocol() != OpenCodeWireProtocol.V2_CLI) return
+        reloadForEarlyFeatureToggle(injections.responseModelLabelFeature)
     }
 
     private fun applyHideWebsiteButton() {

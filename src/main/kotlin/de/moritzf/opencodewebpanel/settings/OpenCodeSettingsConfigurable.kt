@@ -137,6 +137,8 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
         JBCheckBox("Open diffs in the IDE on Ctrl/Cmd+Click or Alt+Click")
     private val enableChatFileDropCheckBox = JBCheckBox("Enable file drop and paste into chat")
     private val forceCompactLayoutCheckBox = JBCheckBox("Lock to compact view")
+    private val showResponseModelInCompactLayoutCheckBox =
+        JBCheckBox("Show agent and model on responses in compact view")
     private val hideWebsiteButtonCheckBox = JBCheckBox("Hide the OpenCode website button")
     private val fasterPathHoverPreviewCheckBox =
         JBCheckBox("Faster path previews on tabs, projects, and sessions")
@@ -233,6 +235,12 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
                 { forceCompactLayout },
                 { value -> forceCompactLayout = value },
                 OpenCodeUiSetting.COMPACT_LAYOUT,
+            ),
+            CheckBoxSettingBinding(
+                showResponseModelInCompactLayoutCheckBox,
+                { showResponseModelInCompactLayout },
+                { value -> showResponseModelInCompactLayout = value },
+                OpenCodeUiSetting.RESPONSE_MODEL_LABEL,
             ),
             CheckBoxSettingBinding(
                 hideWebsiteButtonCheckBox,
@@ -470,6 +478,12 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
                     cell(forceCompactLayoutCheckBox)
                         .comment(
                             "Keep the compact mobile layout even when the panel is wide, with a full-width Home session list in OpenCode 2.x. On: classic review panel. Off: OpenCode's native responsive layout and redesigned desktop review panel."
+                        )
+                }
+                row {
+                    cell(showResponseModelInCompactLayoutCheckBox)
+                        .comment(
+                            "OpenCode 2.x leaves the agent and model out of a response's info line in the compact view. Adds them back, as in the wide layout, so the model that actually answered stays visible, including automatically routed ones. Turn off if an OpenCode update clashes with it."
                         )
                 }
                 row {

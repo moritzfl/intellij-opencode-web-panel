@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+### Added
+
+- In the compact view, a response's info line shows its agent and model again,
+  as in the wide layout, so the model that actually answered stays visible
+  (for example, the one an automatic model router picked). OpenCode 2.x omits
+  them below 768px. Toggle under **Browser Appearance**.
+
 ## [2.7.5] - 2026-10-23
 
 ### Fixed

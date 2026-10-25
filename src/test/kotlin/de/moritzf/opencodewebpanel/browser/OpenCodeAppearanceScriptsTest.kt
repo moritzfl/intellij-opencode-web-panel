@@ -59,6 +59,32 @@ class OpenCodeAppearanceScriptsTest {
     }
 
     @Test
+    fun buildResponseModelLabelScriptIsMissingWhenDisabled() {
+        assertNull(OpenCodeBrowserSnippets.buildResponseModelLabelScript(enabled = false))
+    }
+
+    @Test
+    fun buildResponseModelLabelScriptDecoratesTheMetaLineWithoutOwningIt() {
+        val script = OpenCodeBrowserSnippets.buildResponseModelLabelScript(enabled = true)!!
+
+        // DOM markers are contracts; real-page behavior is exercised by the browser gate.
+        assertTrue(script.contains("[data-slot=\"text-part-meta\"]"))
+        assertTrue(script.contains("[data-component=\"text-part\"]"))
+        assertTrue(script.contains("data-timeline-part-id"))
+        assertTrue(script.contains("indexOf(':text:')"))
+        assertTrue(script.contains("::before { content: attr("))
+        // Chains the earlier fetch wrappers and only reads catalog/history responses.
+        assertTrue(script.contains("previousFetch.apply(window, arguments)"))
+        assertTrue(script.contains("path !== '/api/model'"))
+        assertTrue(script.contains("response.clone().json()"))
+        // Fallback requests only while the narrow layout hides the model.
+        assertTrue(script.contains("matchMedia('(max-width: 767px)')"))
+        // Never rewrites OpenCode's own text node.
+        assertFalse(script.contains("meta.textContent ="))
+        assertFalse(script.contains(".data ="))
+    }
+
+    @Test
     fun buildHideWebsiteButtonScriptIsMissingWhenDisabled() {
         assertNull(OpenCodeBrowserSnippets.buildHideWebsiteButtonScript(enabled = false))
     }

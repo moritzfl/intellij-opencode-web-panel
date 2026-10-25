@@ -98,6 +98,8 @@ class OpenCodeInjectedScriptSyntaxTest {
                 "hideWebsite" to
                     OpenCodeBrowserSnippets.buildHideWebsiteButtonScript(enabled = true),
                 "pathHover" to OpenCodeBrowserSnippets.buildPathHoverPreviewScript(enabled = true),
+                "responseModel" to
+                    OpenCodeBrowserSnippets.buildResponseModelLabelScript(enabled = true),
                 "eventWatchdog" to
                     OpenCodeBrowserSnippets.buildEventStreamWatchdogScript(enabled = true),
                 "forceReconnect" to OpenCodeBrowserSnippets.buildForceEventReconnectScript(),
