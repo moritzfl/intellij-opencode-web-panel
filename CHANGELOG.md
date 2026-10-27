@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [2.8.0] - 2026-10-27
+
 ### Added
 
 - Opted in to the JetBrains Marketplace error handler: exception and freeze
