@@ -22,6 +22,9 @@
         <projectConfigurable id="opencode.web.panel.project.settings" parentId="tools" displayName="OpenCode Web Panel (Project)" instance="de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsConfigurable"/>
         <applicationService serviceImplementation="de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry"/>
         <notificationGroup id="OpenCode Web Panel" displayType="BALLOON"/>
+        <!-- Opt in to the JetBrains Marketplace error handler so uncaught exceptions and IDE
+             freezes attributed to this plugin are reported to the plugin page. -->
+        <errorHandler implementation="com.intellij.diagnostic.JetBrainsMarketplaceErrorReportSubmitter"/>
         <toolWindow factoryClass="de.moritzf.opencodewebpanel.toolWindow.OpenCodeWebToolWindowFactoryImpl" id="OpenCode" anchor="right" icon="/icons/opencode.svg"/>
     </extensions>
 

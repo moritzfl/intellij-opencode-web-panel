@@ -286,6 +286,16 @@ Project-specific settings are stored with the IDE project.
 - Reload or reopen the tool window.
 - Report the issue with the OpenCode version and plugin version.
 
+**Reporting exceptions and freezes**
+
+- The plugin opts in to the JetBrains Marketplace error handler, so exception
+  and freeze reports attributed to it can go to the plugin author.
+- The IDE's error dialog shows the technical details before you send. Automatic
+  reporting only happens if **Send error reports to JetBrains automatically** is
+  enabled in the IDE settings.
+- Reports appear under the **Exceptions** and **Freezes** tabs of the plugin page
+  on JetBrains Marketplace.
+
 ## Development
 
 Useful development commands:

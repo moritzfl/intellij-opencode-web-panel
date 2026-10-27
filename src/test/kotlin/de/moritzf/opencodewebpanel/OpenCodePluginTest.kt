@@ -130,6 +130,11 @@ class OpenCodePluginTest : BasePlatformTestCase() {
         )
         assertTrue(pluginXml.contains("notificationGroup"))
         assertTrue(pluginXml.contains("displayType=\"BALLOON\""))
+        assertTrue(
+            pluginXml.contains(
+                "errorHandler implementation=\"com.intellij.diagnostic.JetBrainsMarketplaceErrorReportSubmitter\""
+            )
+        )
         assertFalse(pluginXml.contains("postStartupActivity"))
     }
 
