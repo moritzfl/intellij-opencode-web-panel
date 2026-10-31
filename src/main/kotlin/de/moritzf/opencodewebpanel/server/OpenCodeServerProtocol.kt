@@ -251,6 +251,7 @@ internal object OpenCodeServerProtocol {
         guestToHostPrefixes: List<Pair<String, String>> = emptyList(),
         home: String? = null,
         guessIncomplete: Boolean = true,
+        environment: Map<String, String> = System.getenv(),
     ): FileLinkTarget? {
         if (href.isNullOrBlank()) return null
         val cleanedHref =
@@ -262,7 +263,7 @@ internal object OpenCodeServerProtocol {
         if (isOpenCodeSessionRouteHref(href) || isOpenCodeSessionRouteHref(cleanedHref)) return null
         if (isUnixRootRelativeHref(cleanedHref) && !lastPathSegmentLooksLikeFile(cleanedHref))
             return null
-        val parsed = parseFileLink(cleanedHref) ?: return null
+        val parsed = parseFileLink(cleanedHref, environment) ?: return null
         val aliased =
             parsed.copy(paths = aliasedFileLinkSpellings(parsed, guestToHostPrefixes, home))
         val bases =
@@ -719,12 +720,16 @@ internal object OpenCodeServerProtocol {
             Regex("^[A-Za-z]:[\\\\/]").containsMatchIn(value)
     }
 
-    private fun parseFileLink(href: String): ParsedFileLink? {
+    private fun parseFileLink(
+        href: String,
+        environment: Map<String, String> = System.getenv(),
+    ): ParsedFileLink? {
         val withoutFragment = href.substringBefore('#')
         val fragment = href.substringAfter('#', missingDelimiterValue = "")
         val pathPart = withoutFragment.substringBefore('?')
         val query = withoutFragment.substringAfter('?', missingDelimiterValue = "")
-        val decodedPaths = decodeFileLinkPaths(pathPart).takeIf { it.isNotEmpty() } ?: return null
+        val decodedPaths =
+            decodeFileLinkPaths(pathPart, environment).takeIf { it.isNotEmpty() } ?: return null
         val fragmentLineColumn = parseLineColumn(fragment)
         val queryLine = parseQueryLine(query)
         val explicitLine = fragmentLineColumn?.first ?: queryLine
@@ -787,6 +792,59 @@ internal object OpenCodeServerProtocol {
         if (path == "~") return root
         if (path.startsWith("~/") || path.startsWith("~\\")) return root + path.substring(1)
         return path
+    }
+
+    private val ENVIRONMENT_PLACEHOLDER = Regex("""%([A-Za-z_][A-Za-z0-9_]{0,63})%""")
+
+    /**
+     * Expands Windows-style `%NAME%` placeholders (`%LOCALAPPDATA%\Temp\x.md`) from [environment],
+     * looked up case-insensitively as Windows does. Unknown names stay literal: they may be part of
+     * a file name, and the caller keeps the unexpanded spelling as well.
+     */
+    internal fun expandEnvironmentPlaceholders(
+        path: String,
+        environment: Map<String, String> = System.getenv(),
+    ): String {
+        if (!path.contains('%') || environment.isEmpty()) return path
+        return ENVIRONMENT_PLACEHOLDER.replace(path) { match ->
+            val name = match.groupValues[1]
+            environment.entries
+                .firstOrNull { it.key.equals(name, ignoreCase = true) }
+                ?.value
+                ?.takeIf { it.isNotBlank() } ?: match.value
+        }
+    }
+
+    /**
+     * Decodes `%XX` escape runs, unlike [java.net.URLDecoder] which rejects the entire string when
+     * one escape is malformed. Anything that is not a complete escape stays literal, so a Windows
+     * placeholder and a percent-encoded segment can share one path.
+     */
+    internal fun decodePercentEscapes(value: String): String {
+        if (!value.contains('%')) return value
+        fun isHex(ch: Char) = ch.isDigit() || ch in 'a'..'f' || ch in 'A'..'F'
+        fun isEscapeAt(text: String, index: Int) =
+            index + 2 < text.length &&
+                text[index] == '%' &&
+                isHex(text[index + 1]) &&
+                isHex(text[index + 2])
+
+        val out = StringBuilder(value.length)
+        var index = 0
+        while (index < value.length) {
+            if (!isEscapeAt(value, index)) {
+                out.append(value[index])
+                index++
+                continue
+            }
+            val bytes = ArrayList<Byte>()
+            while (isEscapeAt(value, index)) {
+                bytes += value.substring(index + 1, index + 3).toInt(16).toByte()
+                index += 3
+            }
+            out.append(String(bytes.toByteArray(), StandardCharsets.UTF_8))
+        }
+        return out.toString()
     }
 
     /**
@@ -912,14 +970,19 @@ internal object OpenCodeServerProtocol {
      * used to fail. Both spellings are returned because a file name may also legitimately contain a
      * literal `%`.
      */
-    private fun decodeFileLinkPaths(value: String): List<String> {
+    private fun decodeFileLinkPaths(
+        value: String,
+        environment: Map<String, String> = System.getenv(),
+    ): List<String> {
         if (value.startsWith("sandbox:", ignoreCase = true)) {
-            return withPercentDecoded(value.substringAfter(':'))
+            return withPercentDecoded(value.substringAfter(':'), environment)
         }
-        if (!value.startsWith("file:", ignoreCase = true)) return withPercentDecoded(value)
+        if (!value.startsWith("file:", ignoreCase = true)) {
+            return withPercentDecoded(value, environment)
+        }
         val uri =
             runCatching { URI(value) }.getOrNull()
-                ?: return withPercentDecoded(value.removePrefix("file:"))
+                ?: return withPercentDecoded(value.removePrefix("file:"), environment)
         val host = uri.host.orEmpty()
         // `file:src/Main.kt` (no authority) is an opaque URI: `path` is null and the payload sits
         // in the scheme-specific part. That is the form the panel itself writes for dropped files.
@@ -931,26 +994,27 @@ internal object OpenCodeServerProtocol {
                     "$host/${path.trimStart('/')}"
                 else -> path
             }
-        return withPercentDecoded(decoded.replace(Regex("^/([A-Za-z]:/)"), "$1"))
+        return withPercentDecoded(
+            decoded.replace(Regex("^/([A-Za-z]:/)"), "$1"),
+            environment,
+        )
     }
 
-    private fun withPercentDecoded(value: String): List<String> {
+    private fun withPercentDecoded(
+        value: String,
+        environment: Map<String, String> = System.getenv(),
+    ): List<String> {
         val trimmed = value.trim()
         if (trimmed.isBlank()) return emptyList()
+        // Models print Windows environment placeholders verbatim (`%LOCALAPPDATA%\Temp\x.md`),
+        // which no filesystem can resolve. Expand the ones this machine defines first, so their
+        // `%` is not read as the start of a percent escape either.
+        val expanded = expandEnvironmentPlaceholders(trimmed, environment)
         // `+` is a literal in a path segment, so decode percent escapes only. A malformed escape
-        // (`%zz`, a trailing `%`) throws, leaving just the raw spelling.
-        val decoded =
-            if (trimmed.contains('%')) {
-                runCatching {
-                        URLDecoder.decode(trimmed.replace("+", "%2B"), StandardCharsets.UTF_8)
-                    }
-                    .getOrNull()
-                    ?.let(::stripBidiMarks)
-                    ?.takeIf { it.isNotBlank() && it != trimmed }
-            } else {
-                null
-            }
-        return listOfNotNull(decoded, stripBidiMarks(trimmed))
+        // (`%zz`, a trailing `%`, an unexpanded `%NAME%`) stays literal instead of aborting the
+        // whole decode, so `%LOCALAPPDATA%\Temp\My%20File.md` still resolves.
+        val decoded = stripBidiMarks(decodePercentEscapes(expanded)).takeIf { it != expanded }
+        return listOfNotNull(decoded, stripBidiMarks(expanded), stripBidiMarks(trimmed))
             .flatMap { path ->
                 // Markdown can render a Windows absolute path as `/C:/...`. Normalize it before
                 // Path.of rejects the colon; keep ordinary `/src/...` and Unix paths unchanged.

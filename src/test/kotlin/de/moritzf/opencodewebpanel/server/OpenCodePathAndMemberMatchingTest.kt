@@ -648,6 +648,83 @@ class OpenCodePathAndMemberMatchingTest {
     }
 
     @Test
+    fun resolveFileLinkExpandsWindowsEnvironmentPlaceholders() {
+        withTree("Temp/opencode/opencode2-compat/smoke-report.md", "Temp/opencode/My File.md") {
+            root ->
+            val environment = mapOf("LOCALAPPDATA" to root.toString())
+            val bases = listOf(root.toString())
+            val report = root.file("Temp/opencode/opencode2-compat/smoke-report.md")
+
+            assertEquals(
+                report,
+                OpenCodeServerProtocol.resolveFileLinkWithBases(
+                        "%LOCALAPPDATA%\\Temp\\opencode\\opencode2-compat\\smoke-report.md",
+                        bases,
+                        environment = environment,
+                    )
+                    ?.path,
+            )
+            // marked runs `encodeURI` over markdown hrefs, which escapes the separators too.
+            assertEquals(
+                report,
+                OpenCodeServerProtocol.resolveFileLinkWithBases(
+                        "%LOCALAPPDATA%%5CTemp%5Copencode%5Copencode2-compat%5Csmoke-report.md",
+                        bases,
+                        environment = environment,
+                    )
+                    ?.path,
+            )
+            // An unexpanded placeholder must not swallow the percent-encoded segment next to it.
+            assertEquals(
+                root.file("Temp/opencode/My File.md"),
+                OpenCodeServerProtocol.resolveFileLinkWithBases(
+                        "%LOCALAPPDATA%\\Temp\\opencode\\My%20File.md",
+                        bases,
+                        environment = environment,
+                    )
+                    ?.path,
+            )
+            // Environment lookup is case-insensitive, as on Windows.
+            assertEquals(
+                report,
+                OpenCodeServerProtocol.resolveFileLinkWithBases(
+                        "%localappdata%\\Temp\\opencode\\opencode2-compat\\smoke-report.md",
+                        bases,
+                        environment = environment,
+                    )
+                    ?.path,
+            )
+        }
+    }
+
+    @Test
+    fun resolveFileLinkKeepsUnknownEnvironmentPlaceholdersLiteral() {
+        withTree("reports/%NOPE%/smoke-report.md") { root ->
+            assertEquals(
+                root.file("reports/%NOPE%/smoke-report.md"),
+                OpenCodeServerProtocol.resolveFileLinkWithBases(
+                        "%NOPE%\\smoke-report.md",
+                        listOf(root.resolve("reports").toString()),
+                        environment = mapOf("LOCALAPPDATA" to root.toString()),
+                    )
+                    ?.path,
+            )
+        }
+    }
+
+    @Test
+    fun decodePercentEscapesLeavesMalformedEscapesLiteral() {
+        assertEquals("%zz%LO", OpenCodeServerProtocol.decodePercentEscapes("%zz%LO"))
+        assertEquals("100%", OpenCodeServerProtocol.decodePercentEscapes("100%"))
+        assertEquals("a b", OpenCodeServerProtocol.decodePercentEscapes("a%20b"))
+        assertEquals("a/b", OpenCodeServerProtocol.decodePercentEscapes("a%2Fb"))
+        assertEquals(
+            "%LOCALAPPDATA%\\Temp",
+            OpenCodeServerProtocol.decodePercentEscapes("%LOCALAPPDATA%\\Temp"),
+        )
+    }
+
+    @Test
     fun parseCodeReferenceHandlesAbsolutePathWithLine() {
         val ref = OpenCodeServerProtocol.parseCodeReference("/tmp/project/src/Main.kt:42")!!
 
