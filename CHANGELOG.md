@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [2.8.2] - 2026-10-31
+
 ### Fixed
 
 - The compact panel's response model label no longer repeats the model on wide
