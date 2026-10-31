@@ -133,7 +133,6 @@ MARKERS_COMMON=(
   'tab.close'
   'mod+w'
   'session.new'
-  'mod+shift+s'
   'home.toggle'
   'sidebar.toggle'
   'mod+b'
@@ -171,6 +170,9 @@ MARKERS_V1=(
   'prompt-input'
   'lastProjectSession'
   'layout.page'
+  # CLI 2.2 replaced the classic new-session chord with tabs (`tab.new` = `mod+t,mod+n`);
+  # `session.new` survives only as a palette/slash command without a keybind.
+  'mod+shift+s'
 )
 
 # CLI 2.x-only. Dual-selector injections already cover these alongside the 1.18 names.
