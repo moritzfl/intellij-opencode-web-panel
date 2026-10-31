@@ -4,13 +4,7 @@
 
 ## [Unreleased]
 
-## [2.8.0] - 2026-10-27
-
-### Added
-
-- Opted in to the JetBrains Marketplace error handler: exception and freeze
-  reports attributed to this plugin now reach the plugin page's Exceptions and
-  Freezes tabs, subject to the IDE's error-reporting consent setting.
+## [2.8.1] - 2026-10-31
 
 ### Fixed
 
@@ -18,6 +12,14 @@
   placeholder literally (`%LOCALAPPDATA%\Temp\report.md`) open the expanded
   file, and a placeholder can share one path with a percent-encoded segment
   such as `My%20File.md`.
+
+## [2.8.0] - 2026-10-27
+
+### Added
+
+- Opted in to the JetBrains Marketplace error handler: exception and freeze
+  reports attributed to this plugin now reach the plugin page's Exceptions and
+  Freezes tabs, subject to the IDE's error-reporting consent setting.
 
 ## [2.7.6] - 2026-10-25
 
