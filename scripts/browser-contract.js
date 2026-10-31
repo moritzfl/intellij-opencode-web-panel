@@ -1,5 +1,10 @@
 async (page, { origin, serverKey, workspace, authorization, snippets, stallOrigin }) => {
   const assert = (condition, message) => { if (!condition) throw new Error(message); };
+  // Pin the SPA language so the remaining label-based assertions (1.18's "New session") do not
+  // depend on the developer's OS locale; the served UI is otherwise localized.
+  await page.addInitScript(() => {
+    try { localStorage.setItem('opencode.global.dat:language', JSON.stringify({ locale: 'en' })); } catch (_) {}
+  });
   await page.setExtraHTTPHeaders({ Authorization: authorization });
   const identity = await page.request.get(`${origin}/api/info`, { headers: { Authorization: authorization } });
   const v2 = (identity.headers()['content-type'] || '').includes('application/json') && identity.ok();
@@ -154,7 +159,14 @@ async (page, { origin, serverKey, workspace, authorization, snippets, stallOrigi
       window.__fileCalls.at(-1)?.partID === 'call-contract-edit'), 'Dynamically rendered tool icon lost its file/part');
     await page.evaluate(() => { window.__fileCalls = []; });
     // Exercise real file-tree rows and Markdown rendered from a real workspace file.
-    await page.getByRole('button', { name: 'Toggle review', exact: true }).click();
+    // CLI 2.2.5 moved the review panel into the side-pane tab bar: the toggle opens the pane and
+    // the Review action creates the tab. Earlier 2.x opens the panel directly.
+    await page.locator('[data-slot="session-review-toggle"]').click();
+    await page.waitForTimeout(500);
+    if (!(await page.locator('[data-slot="session-review-v2-sidebar"]').count())) {
+      const reviewAction = page.locator('[role="tabpanel"] button:has(use[href="#opencode-v2-icon-review"])');
+      if (await reviewAction.count()) await reviewAction.first().click();
+    }
     await page.locator('[data-slot="session-review-v2-file-name"]').waitFor();
     await page.locator('[data-slot="session-review-v2-file-name"]').click({ modifiers: ['Alt'] });
     assert(await page.evaluate(() => window.__diffCalls.at(-1)?.vcsMode === 'working'), 'Preview header did not open working-tree diff');
@@ -182,26 +194,53 @@ async (page, { origin, serverKey, workspace, authorization, snippets, stallOrigi
       popup.remove();
     });
     assert(await mode.getAttribute('data-opencode-intellij-review-mode') === 'git', 'Unrelated dropdown overwrote review mode');
-    await page.getByRole('button', { name: 'Open file', exact: true }).click();
-    const folder = page.locator('[data-slot="file-tree-v2-row"][data-path="src"]');
-    await folder.click();
-    await page.locator('[data-slot="file-tree-v2-row"][data-path="src/Main.kt"]').waitFor();
-    assert(await page.evaluate(() => window.__fileCalls.length === 0), 'Plain directory click was intercepted');
-    await page.locator('[data-slot="file-tree-v2-row"][data-path="README.md"]').click();
-    await page.locator('[data-component="markdown"] a[data-local-link="src/Main.kt"]').waitFor();
-    assert(await page.evaluate(() => window.__fileCalls.length === 0), 'Plain file preview was intercepted');
+    // 2.2.5 opens the file browser as a new side-pane tab action; 2.1.x has an "Open file" button
+    // in the review panel's own tab bar. Both are the same plus icon, so scope by container.
+    const sidePaneAdd = page.locator('[data-slot="session-side-pane"] [data-slot="tabs-list"] button:has(use[href="#opencode-v2-icon-plus"])');
+    if (await sidePaneAdd.count()) {
+      await sidePaneAdd.first().click();
+      await page.locator('[role="tabpanel"] button:has(use[href="#opencode-v2-icon-file-tree"])').first().click();
+    } else {
+      await page.locator('[data-slot="session-review-content"] [data-slot="tabs-list"] button:has(use[href="#opencode-v2-icon-plus"])').first().click();
+    }
+    // CLI 2.2.5 replaced the DOM file tree with a virtualized pierre web component (open shadow
+    // root, no data-path rows), so the plugin cannot intercept its rows; plain clicks must reach
+    // the component and preview the file. Older 2.x keeps data-path rows.
+    const pierreTree = page.locator('file-tree-container');
+    if (await pierreTree.count()) {
+      const tree = pierreTree.first();
+      await tree.getByText('src', { exact: true }).first().click();
+      await tree.getByText('Main.kt', { exact: true }).first().waitFor();
+      assert(await page.evaluate(() => window.__fileCalls.length === 0), 'Plain directory click was intercepted');
+      await tree.getByText('README.md', { exact: true }).first().click();
+      await page.locator('[data-component="markdown"] a[data-local-link="src/Main.kt"]').waitFor();
+      assert(await page.evaluate(() => window.__fileCalls.length === 0), 'Plain file preview was intercepted');
+    } else {
+      const folder = page.locator('[data-slot="file-tree-v2-row"][data-path="src"]');
+      await folder.click();
+      await page.locator('[data-slot="file-tree-v2-row"][data-path="src/Main.kt"]').waitFor();
+      assert(await page.evaluate(() => window.__fileCalls.length === 0), 'Plain directory click was intercepted');
+      await page.locator('[data-slot="file-tree-v2-row"][data-path="README.md"]').click();
+      await page.locator('[data-component="markdown"] a[data-local-link="src/Main.kt"]').waitFor();
+      assert(await page.evaluate(() => window.__fileCalls.length === 0), 'Plain file preview was intercepted');
+    }
     await page.locator('[data-component="markdown"] a[data-local-link="src/Main.kt"]').click();
     assert(await page.evaluate(() => window.__fileCalls.at(-1)?.href === 'src/Main.kt'), 'Semantic Markdown file link was ignored');
     const absolute = page.locator('[data-component="markdown"] a[data-local-link="/src/Main.kt"]');
     await absolute.focus();
     await absolute.press('Enter');
     assert(await page.evaluate(() => window.__fileCalls.at(-1)?.href === '/src/Main.kt'), 'Keyboard/root-relative Markdown link was ignored');
-    await page.locator('[data-slot="file-tree-v2-row"][data-path="src/Main.kt"]').click({ modifiers: ['Alt'] });
-    assert(await page.evaluate(() => window.__fileCalls.at(-1)?.href === 'src/Main.kt'), 'Modified file-tree click was ignored');
+    if (!(await pierreTree.count())) {
+      await page.locator('[data-slot="file-tree-v2-row"][data-path="src/Main.kt"]').click({ modifiers: ['Alt'] });
+      assert(await page.evaluate(() => window.__fileCalls.at(-1)?.href === 'src/Main.kt'), 'Modified file-tree click was ignored');
+    }
   }
 
   // Compatibility canaries on the real page: older Markdown hrefs and future SPA routes.
   // These supplement the native V2 DOM checks, rather than substituting a synthetic page.
+  // The file handler ignores a repeated href for 750ms (double-delivery guard); let the last
+  // real click expire before replaying the same paths.
+  await page.waitForTimeout(800);
   const links = await page.evaluate(() => {
     const markdown = document.createElement('div');
     markdown.setAttribute('data-component', 'markdown');
@@ -276,6 +315,7 @@ async (page, { origin, serverKey, workspace, authorization, snippets, stallOrigi
   const broken = await brokenContext.newPage();
   const blockedScripts = [];
   await broken.addInitScript(`
+    try { localStorage.setItem('opencode.global.dat:language', JSON.stringify({ locale: 'en' })); } catch (_) {}
     window.__chunkCalls = [];
     window.addEventListener('error', event => event.stopImmediatePropagation(), true);
     window.addEventListener('unhandledrejection', event => event.stopImmediatePropagation(), true);
