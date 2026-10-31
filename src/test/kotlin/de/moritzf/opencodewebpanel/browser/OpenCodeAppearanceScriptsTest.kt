@@ -69,6 +69,9 @@ class OpenCodeAppearanceScriptsTest {
 
         // DOM markers are contracts; real-page behavior is exercised by the browser gate.
         assertTrue(script.contains("[data-slot=\"text-part-meta\"]"))
+        // CLI 2.2.5 splits the line into item spans with an aria-hidden `·` separator, so the
+        // joined text no longer has ` · ` gaps; both shapes must be read.
+        assertTrue(script.contains("[data-slot=\"text-part-meta-item\"]"))
         assertTrue(script.contains("[data-component=\"text-part\"]"))
         assertTrue(script.contains("data-timeline-part-id"))
         assertTrue(script.contains("indexOf(':text:')"))

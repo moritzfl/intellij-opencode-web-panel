@@ -148,6 +148,16 @@ internal object OpenCodeAppearanceScripts {
                 try { return window.matchMedia('(max-width: 767px)').matches === true; }
                 catch (_) { return false; }
               };
+              // OpenCode 2.2.5 renders each value as its own `text-part-meta-item` span with an
+              // aria-hidden `·` separator, so the joined text has no ` · ` gaps. Older
+              // generations keep one text node; fall back to splitting that.
+              const metaSegments = (meta) => {
+                const items = meta.querySelectorAll('[data-slot="text-part-meta-item"]');
+                if (items.length) {
+                  return Array.from(items, (item) => (item.textContent || '').trim());
+                }
+                return (meta.textContent || '').split(SEPARATOR).map((segment) => segment.trim());
+              };
               const requestMessage = (messageID) => {
                 if (requested.has(messageID)) return;
                 const route = location.pathname.match(/\/session\/(ses_[^/]+)\/?$/);
@@ -168,7 +178,7 @@ internal object OpenCodeAppearanceScripts {
                 let label = '';
                 if (info) {
                   const model = modelLabel(info);
-                  const segments = (meta.textContent || '').split(SEPARATOR).map((segment) => segment.trim());
+                  const segments = metaSegments(meta);
                   // The wide layout already names the model; never repeat it.
                   if (segments.indexOf(model) === -1 && segments.indexOf(info.modelID) === -1) {
                     label = [capitalize(info.agent), model].filter(Boolean).join(SEPARATOR) + SEPARATOR;

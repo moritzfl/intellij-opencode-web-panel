@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- The compact panel's response model label no longer repeats the model on wide
+  layouts with CLI 2.2.5. That version renders the response line as separate
+  `text-part-meta-item` spans (no ` · ` gaps in the joined text) and omits the
+  agent even at wide width.
+
 ## [2.8.1] - 2026-10-31
 
 ### Fixed
