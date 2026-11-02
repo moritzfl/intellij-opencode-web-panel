@@ -25,7 +25,8 @@ class OpenCodeBrowserShortcutHandlerTest {
                 null,
             )
 
-        assertEquals(listOf("mod+t"), keybinds.newLayout)
+        // mod+n first: CLI 2.2 consumes mod+t for a side-pane tab while that pane is focused.
+        assertEquals(listOf("mod+n,mod+t"), keybinds.newLayout)
         assertEquals(listOf("mod+shift+s"), keybinds.classic)
     }
 

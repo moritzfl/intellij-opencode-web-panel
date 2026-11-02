@@ -30,7 +30,9 @@ internal enum class OpenCodeBrowserCommand(
 ) {
     NEW_SESSION(
         "OpenCodeWebPanel.NewSession",
-        newLayoutBindings = listOf(OpenCodeCommandBinding("tab.new", "mod+t")),
+        // CLI 2.2 also binds mod+t to a new side-pane tab while that pane has focus; mod+n only
+        // reaches `tab.new`. mod+t stays as the fallback when mod+n is not consumed.
+        newLayoutBindings = listOf(OpenCodeCommandBinding("tab.new", "mod+n,mod+t")),
         classicBindings = listOf(OpenCodeCommandBinding("session.new", "mod+shift+s")),
     ),
     CLOSE_TAB(

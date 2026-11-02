@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **OpenCode: New Session** starts a new session on CLI 2.2 even while the
+  side pane has focus. CLI 2.2 binds `mod+t` to a new side-pane tab there, so
+  the action now sends OpenCode's other default `tab.new` chord, `mod+n`, first.
+
 ## [2.8.2] - 2026-10-31
 
 ### Fixed
