@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [2.8.3] - 2026-11-02
+
 ### Fixed
 
 - **OpenCode: New Session** starts a new session on CLI 2.2 even while the
