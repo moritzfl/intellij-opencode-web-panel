@@ -49,7 +49,7 @@ object SbxContractCheck {
             for (flag in flags) {
                 check(
                     Regex("(?m)^\\s*(?:-[A-Za-z],\\s*)?${Regex.escape(flag)}(?:[ ,=]|$)")
-                        .containsMatchIn(text)
+                        .containsMatchIn(text),
                 ) {
                     "${path.joinToString(" ")} no longer advertises $flag"
                 }
@@ -104,7 +104,7 @@ object SbxContractCheck {
             runCatching {
                 surface(listOf("create"), listOf(executable, "create", "--ocwp-missing-flag"))
             }
-                .isFailure
+                .isFailure,
         ) {
             "The flag-removal canary must fail"
         }
@@ -123,7 +123,7 @@ object SbxContractCheck {
         for ((index, entry) in entries.withIndex()) {
             val raw = listArray(inventory, "sandboxes")[index].asJsonObject
             check(
-                entry.workspaces == raw.getAsJsonArray("workspaces")?.map { it.asString }.orEmpty()
+                entry.workspaces == raw.getAsJsonArray("workspaces")?.map { it.asString }.orEmpty(),
             ) {
                 "Workspace paths were lost"
             }
@@ -131,7 +131,7 @@ object SbxContractCheck {
             val ports = run(SbxCli.buildPortsCommand(executable, entry.name))
             check(
                 SbxCli.parsePortsJson(ports).size ==
-                    JsonParser.parseString(ports).asJsonArray.size()
+                    JsonParser.parseString(ports).asJsonArray.size(),
             ) {
                 "Port mappings were lost"
             }
@@ -149,7 +149,7 @@ object SbxContractCheck {
                     val rule = it.asJsonObject
                     rule.get("scope")?.asString == "global" ||
                         rule.get("applies_to")?.asString == "all"
-                }
+                },
         ) {
             "Global policy detection changed"
         }
@@ -158,12 +158,12 @@ object SbxContractCheck {
         check(
             diagnostics.has("checks") ||
                 diagnostics.has("virtualization") ||
-                diagnostics.has("supported")
+                diagnostics.has("supported"),
         ) {
             "Unrecognized diagnose JSON"
         }
         println(
-            "PASS: live ls (${entries.size} rows), ports (${entries.size} sandboxes), template ls, policy ls, diagnose JSON"
+            "PASS: live ls (${entries.size} rows), ports (${entries.size} sandboxes), template ls, policy ls, diagnose JSON",
         )
         println("Reports: ${output.toAbsolutePath()}")
     }

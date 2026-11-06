@@ -33,7 +33,7 @@ class OpenCodeGlobalEventStreamTest {
         assertEquals(
             "payload",
             OpenCodeGlobalEventStream.sseBlockData(
-                ": comment\nevent: message\nid: 7\ndata: payload"
+                ": comment\nevent: message\nid: 7\ndata: payload",
             ),
         )
     }
@@ -61,7 +61,7 @@ class OpenCodeGlobalEventStreamTest {
                   }
                 }
                 """
-                    .trimIndent()
+                    .trimIndent(),
             )!!
 
         assertEquals("/tmp/project", event.directory)
@@ -75,13 +75,13 @@ class OpenCodeGlobalEventStreamTest {
     fun parseGlobalEventRejectsMissingIdOrProperties() {
         assertNull(
             OpenCodeGlobalEventStream.parseGlobalEvent(
-                """{"directory":"/tmp/project","payload":{"type":"session.idle","properties":{}}}"""
-            )
+                """{"directory":"/tmp/project","payload":{"type":"session.idle","properties":{}}}""",
+            ),
         )
         assertNull(
             OpenCodeGlobalEventStream.parseGlobalEvent(
-                """{"directory":"/tmp/project","payload":{"id":"evt_1","type":"session.idle"}}"""
-            )
+                """{"directory":"/tmp/project","payload":{"id":"evt_1","type":"session.idle"}}""",
+            ),
         )
     }
 
@@ -157,7 +157,7 @@ class OpenCodeGlobalEventStreamTest {
             OpenCodeGlobalEventStream.parseCliEvent(
                 """{"id":"evt_connected","type":"server.connected","data":{}}""",
                 fallbackDirectory = null,
-            )
+            ),
         )
     }
 
@@ -190,7 +190,7 @@ class OpenCodeGlobalEventStreamTest {
             OpenCodeGlobalEventStream.parseCliEvent(
                 javaClass
                     .getResource(
-                        "/de/moritzf/opencodewebpanel/server/wire/v2_cli/event-permission-asked.json"
+                        "/de/moritzf/opencodewebpanel/server/wire/v2_cli/event-permission-asked.json",
                     )!!
                     .readText(),
                 fallbackDirectory = "/fallback",
@@ -202,7 +202,7 @@ class OpenCodeGlobalEventStreamTest {
             OpenCodeGlobalEventStream.parseCliEvent(
                 javaClass
                     .getResource(
-                        "/de/moritzf/opencodewebpanel/server/wire/v2_cli/event-permission-replied.json"
+                        "/de/moritzf/opencodewebpanel/server/wire/v2_cli/event-permission-replied.json",
                     )!!
                     .readText(),
                 fallbackDirectory = "/fallback",
@@ -217,18 +217,18 @@ class OpenCodeGlobalEventStreamTest {
         assertNull(OpenCodeGlobalEventStream.parseGlobalEvent("not json"))
         assertNull(OpenCodeGlobalEventStream.parseGlobalEvent("[]"))
         assertNull(
-            OpenCodeGlobalEventStream.parseGlobalEvent("""{"payload": {"type": "session.idle"}}""")
+            OpenCodeGlobalEventStream.parseGlobalEvent("""{"payload": {"type": "session.idle"}}"""),
         )
         assertNull(
             OpenCodeGlobalEventStream.parseGlobalEvent(
-                """{"directory": " ", "payload": {"type": "session.idle"}}"""
-            )
+                """{"directory": " ", "payload": {"type": "session.idle"}}""",
+            ),
         )
         assertNull(OpenCodeGlobalEventStream.parseGlobalEvent("""{"directory": "/tmp"}"""))
         assertNull(
             OpenCodeGlobalEventStream.parseGlobalEvent(
-                """{"directory": "/tmp", "payload": {"properties": {}}}"""
-            )
+                """{"directory": "/tmp", "payload": {"properties": {}}}""",
+            ),
         )
     }
 
@@ -249,7 +249,7 @@ class OpenCodeGlobalEventStreamTest {
                             ": keep-alive\n\n" +
                             "data: {\"directory\":\"/tmp/project\",\"payload\":{\"id\":\"evt_2\",\"type\":\"permission.asked\"," +
                             "\"properties\":{\"id\":\"per_1\"}}}\n\n")
-                        .toByteArray(StandardCharsets.UTF_8)
+                        .toByteArray(StandardCharsets.UTF_8),
                 )
                 body.flush()
             }
@@ -311,7 +311,7 @@ class OpenCodeGlobalEventStreamTest {
                     ("data: {\"id\":\"evt_c\",\"type\":\"server.connected\",\"data\":{}}\n\n" +
                             ": heartbeat\n\n" +
                             "data: {\"id\":\"evt_s\",\"type\":\"session.execution.started\",\"data\":{\"sessionID\":\"ses_1\"}}\n\n")
-                        .toByteArray(StandardCharsets.UTF_8)
+                        .toByteArray(StandardCharsets.UTF_8),
                 )
                 body.flush()
             }
@@ -378,7 +378,7 @@ class OpenCodeGlobalEventStreamTest {
                     body.write(
                         ("data: {\"directory\":\"/tmp/project\",\"payload\":{\"id\":\"evt_ok\",\"type\":\"session.idle\"," +
                                 "\"properties\":{\"sessionID\":\"ses_ok\"}}}\n\n")
-                            .toByteArray(StandardCharsets.UTF_8)
+                            .toByteArray(StandardCharsets.UTF_8),
                     )
                     body.flush()
                 }

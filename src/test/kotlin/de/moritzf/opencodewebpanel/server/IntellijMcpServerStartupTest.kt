@@ -50,32 +50,32 @@ class IntellijMcpServerStartupTest {
                 IntellijMcpServerStartupStatus(
                     IntellijMcpServerStartupState.ENABLED_NOT_RUNNING,
                     "not running",
-                )
-            )
+                ),
+            ),
         )
         assertFalse(
             IntellijMcpServerStartup.shouldWaitFor(
                 IntellijMcpServerStartupStatus(
                     IntellijMcpServerStartupState.ENABLED,
                     "running",
-                )
-            )
+                ),
+            ),
         )
         assertFalse(
             IntellijMcpServerStartup.shouldWaitFor(
                 IntellijMcpServerStartupStatus(
                     IntellijMcpServerStartupState.NOT_CONFIGURED_OR_DISABLED,
                     "disabled",
-                )
-            )
+                ),
+            ),
         )
         assertFalse(
             IntellijMcpServerStartup.shouldWaitFor(
                 IntellijMcpServerStartupStatus(
                     IntellijMcpServerStartupState.UNAVAILABLE,
                     "unavailable",
-                )
-            )
+                ),
+            ),
         )
         assertFalse(
             IntellijMcpServerStartup.shouldWaitFor(
@@ -84,7 +84,7 @@ class IntellijMcpServerStartupTest {
                     "not running",
                 ),
                 enabled = false,
-            )
+            ),
         )
     }
 

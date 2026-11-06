@@ -37,7 +37,7 @@ class OpenCodeStorageScriptsTest {
     fun buildRestoreOpenCodeLocalStorageScriptRestoresOpenCodeKeysOnlyWhenMissing() {
         val script =
             OpenCodeBrowserSnippets.buildRestoreOpenCodeLocalStorageScript(
-                "{\"opencode.global.dat:language\":\"{\\\"locale\\\":\\\"de\\\"}\"}"
+                "{\"opencode.global.dat:language\":\"{\\\"locale\\\":\\\"de\\\"}\"}",
             )!!
 
         // DOM markers/callbacks are contracts; real-page behavior is exercised by the browser gate.
@@ -49,7 +49,7 @@ class OpenCodeStorageScriptsTest {
     fun buildSyncOpenCodeLocalStorageScriptMirrorsOpenCodeKeys() {
         val script =
             OpenCodeBrowserSnippets.buildSyncOpenCodeLocalStorageScript(
-                "window.intellijStore(payload)"
+                "window.intellijStore(payload)",
             )!!
 
         // DOM markers/callbacks are contracts; real-page behavior is exercised by the browser gate.

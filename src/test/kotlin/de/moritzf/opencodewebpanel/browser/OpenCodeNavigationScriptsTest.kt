@@ -41,7 +41,7 @@ class OpenCodeNavigationScriptsTest {
     @Test
     fun buildFileLinkHandlerScriptIsMissingWhenDisabled() {
         assertNull(
-            OpenCodeBrowserSnippets.buildFileLinkHandlerScript("/tmp/project", enabled = false)
+            OpenCodeBrowserSnippets.buildFileLinkHandlerScript("/tmp/project", enabled = false),
         )
     }
 
@@ -58,8 +58,8 @@ class OpenCodeNavigationScriptsTest {
         assertTrue(script.contains("Failed to forward file link to IntelliJ"))
         assertTrue(
             script.contains(
-                "${OpenCodeServerProtocol.OPEN_FILE_LINK_SCHEME}://${OpenCodeServerProtocol.OPEN_FILE_LINK_HOST}"
-            )
+                "${OpenCodeServerProtocol.OPEN_FILE_LINK_SCHEME}://${OpenCodeServerProtocol.OPEN_FILE_LINK_HOST}",
+            ),
         )
         assertFalse(script.contains("window.location.assign(target)"))
     }
@@ -89,7 +89,7 @@ class OpenCodeNavigationScriptsTest {
             OpenCodeBrowserSnippets.buildExternalLinkHandlerScript(
                 enabled = false,
                 openExternalCallback = "callback(href)",
-            )
+            ),
         )
     }
 
@@ -99,7 +99,7 @@ class OpenCodeNavigationScriptsTest {
             OpenCodeBrowserSnippets.buildExternalLinkHandlerScript(
                 enabled = true,
                 openExternalCallback = null,
-            )
+            ),
         )
     }
 
@@ -109,7 +109,7 @@ class OpenCodeNavigationScriptsTest {
             OpenCodeBrowserSnippets.buildCodeNavigationScript(
                 enabled = false,
                 openCodeCallback = "callback(ref)",
-            )
+            ),
         )
     }
 
@@ -119,7 +119,7 @@ class OpenCodeNavigationScriptsTest {
             OpenCodeBrowserSnippets.buildCodeNavigationScript(
                 enabled = true,
                 openCodeCallback = null,
-            )
+            ),
         )
     }
 
@@ -157,7 +157,7 @@ class OpenCodeNavigationScriptsTest {
             OpenCodeBrowserSnippets.buildDiffNavigationScript(
                 enabled = false,
                 openDiffCallback = "cb(payload)",
-            )
+            ),
         )
     }
 
@@ -167,7 +167,7 @@ class OpenCodeNavigationScriptsTest {
             OpenCodeBrowserSnippets.buildDiffNavigationScript(
                 enabled = true,
                 openDiffCallback = null,
-            )
+            ),
         )
     }
 

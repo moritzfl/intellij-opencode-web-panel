@@ -148,7 +148,7 @@ internal object OpenCodeSoundService {
 
     private fun currentSettings(): OpenCodeSoundSettings {
         return parseOpenCodeSoundSettings(
-            OpenCodeSettingsState.getInstance().localStorageSnapshot()
+            OpenCodeSettingsState.getInstance().localStorageSnapshot(),
         )
     }
 

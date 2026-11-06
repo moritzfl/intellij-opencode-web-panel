@@ -16,7 +16,7 @@ class OpenCodeRecoveryScriptsTest {
                 OpenCodeBrowserSnippets.buildEventStreamWatchdogScript(
                     enabled = false,
                     wireProtocol = protocol,
-                )
+                ),
             )
         }
     }
@@ -98,8 +98,8 @@ class OpenCodeRecoveryScriptsTest {
         val script = OpenCodeBrowserSnippets.buildEventStreamWatchdogScript(enabled = true)!!
         assertTrue(
             script.contains(
-                "const STALL_MS = ${OpenCodeBrowserSnippets.EVENT_STREAM_STALL_TIMEOUT_MILLIS};"
-            )
+                "const STALL_MS = ${OpenCodeBrowserSnippets.EVENT_STREAM_STALL_TIMEOUT_MILLIS};",
+            ),
         )
 
         val clamped =
@@ -109,8 +109,8 @@ class OpenCodeRecoveryScriptsTest {
             )!!
         assertTrue(
             clamped.contains(
-                "const STALL_MS = ${OpenCodeBrowserSnippets.MIN_EVENT_STREAM_STALL_TIMEOUT_MILLIS};"
-            )
+                "const STALL_MS = ${OpenCodeBrowserSnippets.MIN_EVENT_STREAM_STALL_TIMEOUT_MILLIS};",
+            ),
         )
     }
 
@@ -130,7 +130,7 @@ class OpenCodeRecoveryScriptsTest {
             OpenCodeBrowserSnippets.buildChunkLoadRecoveryScript(
                 enabled = false,
                 fatalCallback = "report();",
-            )
+            ),
         )
     }
 
@@ -142,7 +142,7 @@ class OpenCodeRecoveryScriptsTest {
             OpenCodeBrowserSnippets.buildChunkLoadRecoveryScript(
                 enabled = true,
                 fatalCallback = null,
-            )
+            ),
         )
     }
 
@@ -152,7 +152,7 @@ class OpenCodeRecoveryScriptsTest {
             OpenCodeBrowserSnippets.buildRendererHeartbeatScript(
                 enabled = false,
                 heartbeatCallback = "beat();",
-            )
+            ),
         )
     }
 
@@ -165,7 +165,7 @@ class OpenCodeRecoveryScriptsTest {
             OpenCodeBrowserSnippets.buildRendererHeartbeatScript(
                 enabled = true,
                 heartbeatCallback = null,
-            )
+            ),
         )
     }
 

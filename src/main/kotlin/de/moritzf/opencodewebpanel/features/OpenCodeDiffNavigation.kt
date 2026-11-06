@@ -184,7 +184,7 @@ internal class OpenCodeDiffNavigation(
             val exact = diffs.filter { pathsEqual(it.file, filePath, caseSensitive) }
             if (exact.isNotEmpty()) return exact
             return listOfNotNull(
-                diffs.singleOrNull { matchesFile(it.file, filePath, caseSensitive) }
+                diffs.singleOrNull { matchesFile(it.file, filePath, caseSensitive) },
             )
         }
 

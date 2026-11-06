@@ -83,10 +83,10 @@ internal object OpenCodeHttpTransport {
                         readBounded(reader, maxResponseChars)
                     }
                         ?: return OpenCodeProtocolResult.Failure(
-                            OpenCodeProtocolResult.Failure.Kind.TOO_LARGE
+                            OpenCodeProtocolResult.Failure.Kind.TOO_LARGE,
                         )
                 OpenCodeProtocolResult.Success(
-                    body to headerName?.let { connection.getHeaderField(it) }
+                    body to headerName?.let { connection.getHeaderField(it) },
                 )
             } finally {
                 connection.disconnect()

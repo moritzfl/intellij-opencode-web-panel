@@ -409,7 +409,7 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
         )
     private val toolWindowIconSupplier by lazy {
         BadgeIconSupplier(
-            IconLoader.getIcon("/icons/opencode.svg", OpenCodeWebToolWindowContent::class.java)
+            IconLoader.getIcon("/icons/opencode.svg", OpenCodeWebToolWindowContent::class.java),
         )
     }
 
@@ -565,7 +565,7 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
                         return
                     resetMirroredBrowserCursor()
                 }
-            }
+            },
         )
         browser.jbCefClient.addRequestHandler(requestHandler, browser.cefBrowser)
         browser.jbCefClient.addLoadHandler(loadHandler, browser.cefBrowser)
@@ -892,7 +892,7 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
                 notePanelRecovery("failed chunk import")
                 thisLogger()
                     .warn(
-                        "OpenCode page raised a failed chunk import ($payload); verifying server health"
+                        "OpenCode page raised a failed chunk import ($payload); verifying server health",
                     )
                 serverManager.verifyServerNow(
                     callbackActive = { !isContentDisposed() },
@@ -950,7 +950,7 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
         }
         thisLogger()
             .info(
-                "jcef page channels attached available=${allJsQueries().count { it.isAvailable }}/${allJsQueries().size}"
+                "jcef page channels attached available=${allJsQueries().count { it.isAvailable }}/${allJsQueries().size}",
             )
         if (allJsQueries().any { !it.isAvailable } || !fileDropHandler.isResultChannelAvailable()) {
             scheduleRecoveryFromMissingCallbacks()
@@ -1058,7 +1058,7 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
     }
 
     private fun scheduleFlushPendingChatInput(
-        delayMillis: Int = PENDING_CHAT_INPUT_FLUSH_DELAY_MILLIS
+        delayMillis: Int = PENDING_CHAT_INPUT_FLUSH_DELAY_MILLIS,
     ) {
         val service = OpenCodeChatInputService.getInstance(project)
         addAlarmRequest(openProjectAlarm, delayMillis) { service.dispatchPending() }
@@ -1078,7 +1078,7 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
     }
 
     private fun updateLifecycleIndicator(
-        state: OpenCodeServerLifecycleState = serverManager.getLifecycleState()
+        state: OpenCodeServerLifecycleState = serverManager.getLifecycleState(),
     ) {
         if (state != OpenCodeServerLifecycleState.RUNNING) {
             resetAgentStatusTracking()
@@ -1212,7 +1212,7 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
                     if (!confirmOpenCodeSandboxReset(project)) return
                     OpenCodeProjectRuntime.getInstance(project).resetSandbox()
                 }
-            }
+            },
         )
         notification.notify(project)
     }
@@ -1442,7 +1442,7 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
         thisLogger().info("Loading OpenCode project page")
         thisLogger()
             .info(
-                "jcef loadProjectPage backend=${serverManager.backendId} server=$serverUrl current=${safeBrowserUrl()} created=$cefBrowserCreated queries=${allJsQueries().count { it.isAvailable }}/${allJsQueries().size}"
+                "jcef loadProjectPage backend=${serverManager.backendId} server=$serverUrl current=${safeBrowserUrl()} created=$cefBrowserCreated queries=${allJsQueries().count { it.isAvailable }}/${allJsQueries().size}",
             )
         openProjectScriptScheduled = false
         pageLifecycle.forgetTarget()
@@ -1529,7 +1529,7 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
                 } else if (!installed) {
                     thisLogger()
                         .info(
-                            "OpenCode document-start script was unavailable; using onLoadStart fallback"
+                            "OpenCode document-start script was unavailable; using onLoadStart fallback",
                         )
                 }
                 ApplicationManager.getApplication().invokeLater {
@@ -1555,7 +1555,7 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
                     if (keepCurrent) {
                         thisLogger()
                             .warn(
-                                "Keeping the current OpenCode page because its document-start script could not be replaced"
+                                "Keeping the current OpenCode page because its document-start script could not be replaced",
                             )
                         pageLifecycle.keepCurrentPage()
                         updateLifecycleIndicator()
@@ -1579,7 +1579,7 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
         cefBrowserCreated = true
         thisLogger()
             .info(
-                "jcef prepare replacement queries=${allJsQueries().count { it.isAvailable }}/${allJsQueries().size}"
+                "jcef prepare replacement queries=${allJsQueries().count { it.isAvailable }}/${allJsQueries().size}",
             )
         return createOpenCodeBrowserBeforeReplacement(browser).thenApply {
             documentStartInjector.markRendererReady()
@@ -1631,7 +1631,7 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
                 OpenCodePageLifecycle.Timeout.GAVE_UP -> {
                     thisLogger()
                         .warn(
-                            "OpenCode page failed to load after ${OpenCodePageLoadWatchdog.MAX_RETRIES} retries"
+                            "OpenCode page failed to load after ${OpenCodePageLoadWatchdog.MAX_RETRIES} retries",
                         )
                     updateLifecycleIndicator()
                     return@addAlarmRequest
@@ -1640,7 +1640,7 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
             }
             thisLogger()
                 .warn(
-                    "OpenCode page load timed out; retrying (${pageLifecycle.retryCount}/${OpenCodePageLoadWatchdog.MAX_RETRIES})"
+                    "OpenCode page load timed out; retrying (${pageLifecycle.retryCount}/${OpenCodePageLoadWatchdog.MAX_RETRIES})",
                 )
             val liveUrl = serverManager.getServerUrl()
             if (liveUrl != serverUrl) return@addAlarmRequest
@@ -1686,7 +1686,7 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
     }
 
     private fun applyBrowserZoom(
-        zoomPercent: Int = OpenCodeSettingsState.getInstance().uiZoomPercent
+        zoomPercent: Int = OpenCodeSettingsState.getInstance().uiZoomPercent,
     ) {
         val zoomPercent = OpenCodeSettingsState.sanitizeUiZoomPercent(zoomPercent)
         browser.cefBrowser.zoomLevel = OpenCodeServerProtocol.toCefZoomLevel(zoomPercent)
@@ -1893,14 +1893,14 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
             notification.addAction(
                 NotificationAction.createSimple("Copy password") {
                     CopyPasteManager.getInstance().setContents(StringSelection(password))
-                }
+                },
             )
         }
         notification.addAction(
             NotificationAction.createSimple("Open settings") {
                 ShowSettingsUtil.getInstance()
                     .showSettingsDialog(project, OpenCodeSettingsConfigurable::class.java)
-            }
+            },
         )
         notification.notify(project)
     }

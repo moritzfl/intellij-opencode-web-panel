@@ -76,7 +76,7 @@ class OpenCodeInjectedScriptSyntaxTest {
                     ),
                 "restoreStorage" to
                     OpenCodeBrowserSnippets.buildRestoreOpenCodeLocalStorageScript(
-                        """{"settings.v3":"{\\"x\\":1}"}"""
+                        """{"settings.v3":"{\\"x\\":1}"}""",
                     ),
                 "syncStorage" to
                     OpenCodeBrowserSnippets.buildSyncOpenCodeLocalStorageScript(callback),
@@ -118,7 +118,7 @@ class OpenCodeInjectedScriptSyntaxTest {
                     OpenCodeBrowserSnippets.buildIdeThemeSyncScript(enabled = true, dark = true),
                 "projectSwitch" to
                     OpenCodeBrowserSnippets.buildProjectSwitchPromptSuppressionScript(
-                        enabled = true
+                        enabled = true,
                     ),
                 "cursor" to
                     OpenCodeBrowserSnippets.buildCursorMirrorScript(

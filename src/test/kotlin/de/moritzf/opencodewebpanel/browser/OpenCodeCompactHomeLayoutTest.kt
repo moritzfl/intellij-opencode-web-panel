@@ -17,8 +17,8 @@ class OpenCodeCompactHomeLayoutTest {
 
         assertTrue(
             script.contains(
-                "div:has(> section [data-component=\"home-session-search\"]):not(:has(> aside))"
-            )
+                "div:has(> section [data-component=\"home-session-search\"]):not(:has(> aside))",
+            ),
         )
         assertTrue(script.contains("max-width: none !important"))
         assertTrue(script.contains("grid-template-columns: minmax(0, 1fr) !important"))
@@ -33,7 +33,7 @@ class OpenCodeCompactHomeLayoutTest {
         val script = OpenCodeBrowserSnippets.buildCompactHomeLayoutScript(enabled = true)!!
 
         assertTrue(
-            script.contains("if (window.__opencodeIntellijCompactHomeLayoutInstalled) return;")
+            script.contains("if (window.__opencodeIntellijCompactHomeLayoutInstalled) return;"),
         )
         assertTrue(script.contains("document.getElementById(STYLE_ID)"))
         assertTrue(script.contains("if (ensureQueued) return;"))

@@ -44,7 +44,7 @@ class SbxApplyPreviewTest {
             SbxApplyPreview.build("/tmp/p", base, base.copy(hostPort = 4096), false, true, "")
         assertEquals(SbxApplyEffect.LIVE, sandbox.effect)
         assertTrue(
-            sandbox.copy(changes = sandbox.changes.map { it.copy(summary = "Port") }).reloadPage
+            sandbox.copy(changes = sandbox.changes.map { it.copy(summary = "Port") }).reloadPage,
         )
         val host =
             SbxApplyPreview.build(
@@ -165,7 +165,7 @@ class SbxApplyPreviewTest {
         assertTrue(
             SbxApplyPreview.build("/tmp/p", old, base, false, false, "")
                 .message()
-                .contains("Extra mount removed")
+                .contains("Extra mount removed"),
         )
         assertEquals(
             SbxApplyEffect.RECREATE,

@@ -109,19 +109,19 @@ class OpenCodeFileDropHandlerTest {
             OpenCodeFileDropHandler.afterDropShouldRestoreBrowserFocus(
                 focusInsideBrowser = false,
                 focusOwnerMissing = true,
-            )
+            ),
         )
         assertTrue(
             OpenCodeFileDropHandler.afterDropShouldRestoreBrowserFocus(
                 focusInsideBrowser = true,
                 focusOwnerMissing = false,
-            )
+            ),
         )
         assertFalse(
             OpenCodeFileDropHandler.afterDropShouldRestoreBrowserFocus(
                 focusInsideBrowser = false,
                 focusOwnerMissing = false,
-            )
+            ),
         )
     }
 
@@ -138,7 +138,7 @@ class OpenCodeFileDropHandlerTest {
                 OpenCodeFileDropHandler.shouldUseDroppedImageFlavor(
                     listOf(directory.toFile()),
                     null,
-                )
+                ),
             )
         } finally {
             Files.deleteIfExists(directory)
@@ -157,7 +157,7 @@ class OpenCodeFileDropHandlerTest {
                 OpenCodeFileDropHandler.shouldUseDroppedImageFlavor(
                     listOf(file.toFile()),
                     projectRoot.toString(),
-                )
+                ),
             )
         } finally {
             projectRoot.toFile().deleteRecursively()
@@ -171,7 +171,7 @@ class OpenCodeFileDropHandlerTest {
             Files.write(file, byteArrayOf(1, 2, 3))
 
             assertFalse(
-                OpenCodeFileDropHandler.shouldUseDroppedImageFlavor(listOf(file.toFile()), null)
+                OpenCodeFileDropHandler.shouldUseDroppedImageFlavor(listOf(file.toFile()), null),
             )
         } finally {
             Files.deleteIfExists(file)
@@ -205,7 +205,7 @@ class OpenCodeFileDropHandlerTest {
                 initialDirectory = null,
                 currentDirectory = null,
                 browserUrl = "http://127.0.0.1:4096/server/key/session/ses_1",
-            )
+            ),
         )
 
         assertFalse(
@@ -219,7 +219,7 @@ class OpenCodeFileDropHandlerTest {
                 initialDirectory = "/project",
                 currentDirectory = "/project",
                 browserUrl = "http://127.0.0.1:4096/server/key/session/ses_2",
-            )
+            ),
         )
     }
 }

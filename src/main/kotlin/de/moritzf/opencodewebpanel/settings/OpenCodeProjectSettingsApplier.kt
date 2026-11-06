@@ -38,7 +38,7 @@ internal class OpenCodeProjectSettingsApplier(private val project: Project) {
                     .getOrDefault(false)
         if (!validWorkingDirectory) {
             throw ConfigurationException(
-                "OpenCode working directory must be an existing folder inside the mounted repository."
+                "OpenCode working directory must be an existing folder inside the mounted repository.",
             )
         }
         val settings = OpenCodeProjectSettingsState.getInstance(project)
@@ -74,7 +74,7 @@ internal class OpenCodeProjectSettingsApplier(private val project: Project) {
         val oldBackend = registry.backendFor(project)
         if (SbxLaunchSpec.persist(plan.spec) == null) {
             throw ConfigurationException(
-                "Could not save ${SbxLaunchSpec.PROJECT_SPEC_NAME}. Check the project directory permissions and IDE log."
+                "Could not save ${SbxLaunchSpec.PROJECT_SPEC_NAME}. Check the project directory permissions and IDE log.",
             )
         }
         if (plan.spec.useSandbox) {

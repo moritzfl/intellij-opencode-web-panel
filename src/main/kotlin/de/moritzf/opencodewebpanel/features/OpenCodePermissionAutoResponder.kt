@@ -165,7 +165,7 @@ internal class OpenCodePermissionAutoResponder(
                 } finally {
                     lineageInFlight.remove(sessionID)
                 }
-            }
+            },
         )
     }
 
@@ -241,7 +241,7 @@ internal class OpenCodePermissionAutoResponder(
                 if (!resolved && attempt < MAX_RETRIES && isCurrentDirectory(directory)) {
                     scheduleRetry(attempt) { considerRequest(directory, request, attempt + 1) }
                 }
-            }
+            },
         )
     }
 
@@ -296,7 +296,7 @@ internal class OpenCodePermissionAutoResponder(
                 if (unresolvedLineage && attempt < MAX_RETRIES && hasEnabledTarget(onlySessionID)) {
                     scheduleRetry(attempt) { seedPendingRequests(onlySessionID, attempt + 1) }
                 }
-            }
+            },
         )
     }
 
@@ -335,7 +335,7 @@ internal class OpenCodePermissionAutoResponder(
                         shouldRetry = attempt < MAX_RETRIES
                         if (!shouldRetry) {
                             log.info(
-                                "Auto-accept permission reply failed for ${request.id} in ${request.sessionID}"
+                                "Auto-accept permission reply failed for ${request.id} in ${request.sessionID}",
                             )
                         }
                     }
@@ -345,7 +345,7 @@ internal class OpenCodePermissionAutoResponder(
                 if (shouldRetry && isCurrentForRequest(directory, request.sessionID)) {
                     scheduleRetry(attempt) { enqueueReply(directory, request, attempt + 1) }
                 }
-            }
+            },
         )
     }
 

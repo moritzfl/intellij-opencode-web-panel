@@ -286,7 +286,7 @@ class OpenCodeNotificationDispatchTest {
                 },
                 process = { event, _ ->
                     OpenCodeNotificationEventProcessor.Outcome.Dismiss(
-                        "processed:${event.recordId}"
+                        "processed:${event.recordId}",
                     )
                 },
                 dispatch = { outcome, _ -> outcomes.add(outcome) },
@@ -322,7 +322,7 @@ class OpenCodeNotificationDispatchTest {
                                 "permission.asked",
                                 "per_1",
                                 "ses_1",
-                            )
+                            ),
                         ),
                         authoritative = false,
                     )
@@ -334,7 +334,7 @@ class OpenCodeNotificationDispatchTest {
                 },
                 process = { event, _ ->
                     OpenCodeNotificationEventProcessor.Outcome.Dismiss(
-                        "processed:${event.recordId}"
+                        "processed:${event.recordId}",
                     )
                 },
                 dispatch = { outcome, _ -> outcomes.add(outcome) },
@@ -367,14 +367,14 @@ class OpenCodeNotificationDispatchTest {
                                 "permission.asked",
                                 "per_1",
                                 "ses_1",
-                            )
+                            ),
                         ),
                         authoritative = true,
                     )
                 },
                 reconcileActiveRequestKeys = { _, _ ->
                     outcomes.add(
-                        OpenCodeNotificationEventProcessor.Outcome.Dismiss("request:stale")
+                        OpenCodeNotificationEventProcessor.Outcome.Dismiss("request:stale"),
                     )
                 },
                 process = { _, _ ->

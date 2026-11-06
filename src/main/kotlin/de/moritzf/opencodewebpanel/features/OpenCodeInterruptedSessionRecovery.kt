@@ -269,7 +269,7 @@ internal constructor(
                                     thisLogger()
                                         .info(
                                             "OpenCode session $sessionID was severed by a system suspend; " +
-                                                "sending continuation prompt"
+                                                "sending continuation prompt",
                                         )
                                     when (val sendResult = sendContinuePrompt(context, sessionID)) {
                                         is OpenCodeProtocolResult.Success -> Unit
@@ -349,7 +349,7 @@ internal constructor(
                     continue
                 thisLogger()
                     .info(
-                        "OpenCode session $sessionID was interrupted; sending continuation prompt"
+                        "OpenCode session $sessionID was interrupted; sending continuation prompt",
                     )
                 when (val result = sendContinuePrompt(context, sessionID)) {
                     is OpenCodeProtocolResult.Success -> Unit

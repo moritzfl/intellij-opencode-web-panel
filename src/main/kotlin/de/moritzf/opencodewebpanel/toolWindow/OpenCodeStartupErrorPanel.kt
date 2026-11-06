@@ -136,11 +136,11 @@ internal class OpenCodeStartupErrorPanel(
                             add(openSettingsButton)
                             add(Box.createHorizontalStrut(JBUI.scale(8)))
                             add(viewLogButton)
-                        }
+                        },
                     )
                     add(logTitleLabel)
                     components.filterIsInstance<JComponent>().forEach { it.alignmentX = 0f }
-                }
+                },
             )
             addToCenter(logScrollPane)
         }

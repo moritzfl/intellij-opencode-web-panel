@@ -17,7 +17,7 @@ internal constructor(
     private val backend: () -> OpenCodeServerBackend,
 ) {
     constructor(
-        project: Project
+        project: Project,
     ) : this(
         project,
         { OpenCodeServerBackendRegistry.getInstance().backendFor(project) },

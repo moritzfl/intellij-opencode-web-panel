@@ -5,7 +5,7 @@ package de.moritzf.opencodewebpanel.toolWindow
  * the EDT; document/address callbacks only update the volatile revisions and load acknowledgement.
  */
 internal class OpenCodePageLifecycle(
-    private val nowMillis: () -> Long = System::currentTimeMillis
+    private val nowMillis: () -> Long = System::currentTimeMillis,
 ) {
     @Volatile
     var loadSucceeded = false

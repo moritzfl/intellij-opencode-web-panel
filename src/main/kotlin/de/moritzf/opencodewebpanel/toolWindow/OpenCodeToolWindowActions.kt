@@ -387,7 +387,7 @@ internal class OpenCodeZoomInAction :
     override fun update(e: AnActionEvent) {
         val current =
             OpenCodeSettingsState.sanitizeUiZoomPercent(
-                OpenCodeSettingsState.getInstance().uiZoomPercent
+                OpenCodeSettingsState.getInstance().uiZoomPercent,
             )
         e.presentation.isEnabled = current < OpenCodeSettingsState.MAX_UI_ZOOM_PERCENT
         e.presentation.description = "Enlarge the panel. Now $current%."
@@ -407,7 +407,7 @@ internal class OpenCodeZoomOutAction :
     override fun update(e: AnActionEvent) {
         val current =
             OpenCodeSettingsState.sanitizeUiZoomPercent(
-                OpenCodeSettingsState.getInstance().uiZoomPercent
+                OpenCodeSettingsState.getInstance().uiZoomPercent,
             )
         e.presentation.isEnabled = current > OpenCodeSettingsState.MIN_UI_ZOOM_PERCENT
         e.presentation.description = "Shrink the panel. Now $current%."
@@ -429,7 +429,7 @@ internal class OpenCodeResetZoomAction :
     override fun update(e: AnActionEvent) {
         val current =
             OpenCodeSettingsState.sanitizeUiZoomPercent(
-                OpenCodeSettingsState.getInstance().uiZoomPercent
+                OpenCodeSettingsState.getInstance().uiZoomPercent,
             )
         val defaultZoom = OpenCodeSettingsState.DEFAULT_UI_ZOOM_PERCENT
         e.presentation.isEnabled = current != defaultZoom

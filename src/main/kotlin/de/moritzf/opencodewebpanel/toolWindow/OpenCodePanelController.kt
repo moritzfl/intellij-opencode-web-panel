@@ -262,7 +262,7 @@ internal constructor(
                     OpenCodeAgentStatusState.ATTENTION -> icons.warningIcon
                     OpenCodeAgentStatusState.BUSY -> icons.liveIndicatorIcon
                     else -> icons.originalIcon
-                }
+                },
             )
     }
 
@@ -320,7 +320,7 @@ internal constructor(
                 OpenCodeRendererWatchdog.resetProcessRecreatesAfterStall()
                 replacePanel()
             }
-                .component
+                .component,
         )
         component.revalidate()
         component.repaint()

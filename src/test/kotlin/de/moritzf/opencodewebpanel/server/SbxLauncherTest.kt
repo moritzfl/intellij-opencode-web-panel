@@ -554,7 +554,7 @@ class SbxLauncherTest {
         assertEquals("""{"jsonrpc":"2.0","id":1,"result":{}}""" + "\n", launcherOutput())
         assertTrue(
             Files.readString(temp.root.toPath().resolve("launcher-error.txt"))
-                .contains("Preparing sandbox")
+                .contains("Preparing sandbox"),
         )
     }
 
@@ -687,7 +687,7 @@ class SbxLauncherTest {
             expectedExit = 1,
         )
         assertTrue(
-            launcherOutput().contains("installer did not produce a runnable OpenCode 2.x binary")
+            launcherOutput().contains("installer did not produce a runnable OpenCode 2.x binary"),
         )
         assertEquals(
             listOf("probe", "install", "probe"),
@@ -1011,7 +1011,7 @@ class SbxLauncherTest {
         val output = launcherOutput()
         assertFalse(output.contains("${project}/C:"))
         assertTrue(
-            output.contains("C:/definitely-missing-ocwp-test") || output.contains("No such file")
+            output.contains("C:/definitely-missing-ocwp-test") || output.contains("No such file"),
         )
     }
 
@@ -1072,7 +1072,7 @@ class SbxLauncherTest {
         assertEquals("", Files.readString(temp.root.resolve("launcher-output.txt").toPath()).trim())
         assertTrue(
             Files.readString(temp.root.resolve("launcher-error.txt").toPath())
-                .contains("spec already exists")
+                .contains("spec already exists"),
         )
     }
 
@@ -1107,8 +1107,8 @@ class SbxLauncherTest {
         assertFalse(Files.exists(scriptDirectory.resolve("opencode-sbx.yaml")))
         assertFalse(
             Files.exists(
-                scriptDirectory.resolve(SbxCli.PROJECT_CONTROL_DIR).resolve("opencode-sbx.yaml")
-            )
+                scriptDirectory.resolve(SbxCli.PROJECT_CONTROL_DIR).resolve("opencode-sbx.yaml"),
+            ),
         )
     }
 
@@ -1334,7 +1334,7 @@ class SbxLauncherTest {
         val home = Files.createDirectories(temp.root.toPath().resolve("home")).toRealPath()
         val dir =
             Files.createDirectories(
-                home.resolve(".local/share/opencode-web-panel/sbx").resolve(name)
+                home.resolve(".local/share/opencode-web-panel/sbx").resolve(name),
             )
         return listOf(dir.toRealPath().toString())
     }
@@ -1462,7 +1462,7 @@ class SbxLauncherTest {
                         .trimIndent() + "\n",
                 )
                 .toFile()
-                .setExecutable(true, true)
+                .setExecutable(true, true),
         )
         val output = temp.root.resolve("launcher-output.txt")
         val error = temp.root.resolve("launcher-error.txt")
@@ -1506,7 +1506,7 @@ class SbxLauncherTest {
                                         } else {
                                             ""
                                         }),
-                            )
+                            ),
                         )
                     if (serverPassword != null)
                         environment()["OPENCODE_SERVER_PASSWORD"] = serverPassword

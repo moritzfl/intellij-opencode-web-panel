@@ -66,7 +66,7 @@ internal class OpenCodePanelInjections(
                             serverUrl,
                         )
                     }
-            }
+            },
         )
     val matchMediaPatchFeature =
         EarlyInjectedFeature(
@@ -190,7 +190,7 @@ internal class OpenCodePanelInjections(
                     openDiffCallback =
                         query(OpenCodeUiSetting.DIFF_NAVIGATION)
                             .inject(
-                                "messageID + '\\n' + filePath + '\\n' + partID + '\\n' + (typeof vcsMode === 'string' ? vcsMode : '')"
+                                "messageID + '\\n' + filePath + '\\n' + partID + '\\n' + (typeof vcsMode === 'string' ? vcsMode : '')",
                             ),
                 )
             },

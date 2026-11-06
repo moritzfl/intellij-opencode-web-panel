@@ -82,7 +82,7 @@ class OpenCodeProcessProxyEnvironmentTest {
         assertEquals(
             "http://[::1]:8080",
             OpenCodeProcessProxyEnvironment.formatProxyUrl(
-                IdeHttpProxy(IdeHttpProxy.Protocol.HTTP, "::1", 8080)
+                IdeHttpProxy(IdeHttpProxy.Protocol.HTTP, "::1", 8080),
             ),
         )
     }
@@ -171,11 +171,11 @@ class OpenCodeProcessProxyEnvironmentTest {
     fun fromJavaProxyMapsHttpAndSocksAddresses() {
         val http =
             OpenCodeProcessProxyEnvironment.fromJavaProxy(
-                Proxy(Proxy.Type.HTTP, InetSocketAddress.createUnresolved("127.0.0.1", 7897))
+                Proxy(Proxy.Type.HTTP, InetSocketAddress.createUnresolved("127.0.0.1", 7897)),
             )
         val socks =
             OpenCodeProcessProxyEnvironment.fromJavaProxy(
-                Proxy(Proxy.Type.SOCKS, InetSocketAddress.createUnresolved("10.0.0.1", 1080))
+                Proxy(Proxy.Type.SOCKS, InetSocketAddress.createUnresolved("10.0.0.1", 1080)),
             )
 
         assertEquals(IdeHttpProxy(IdeHttpProxy.Protocol.HTTP, "127.0.0.1", 7897), http)
@@ -187,8 +187,8 @@ class OpenCodeProcessProxyEnvironmentTest {
         assertNull(OpenCodeProcessProxyEnvironment.fromJavaProxy(Proxy.NO_PROXY))
         assertNull(
             OpenCodeProcessProxyEnvironment.fromJavaProxy(
-                Proxy(Proxy.Type.HTTP, InetSocketAddress.createUnresolved("proxy.example", 0))
-            )
+                Proxy(Proxy.Type.HTTP, InetSocketAddress.createUnresolved("proxy.example", 0)),
+            ),
         )
     }
 

@@ -51,7 +51,7 @@ class OpenCodeBrowserShortcutHandlerTest {
             OpenCodeBrowserShortcutHandler.resolveOpenCodeKeybinds(
                 OpenCodeBrowserCommand.NEW_SESSION,
                 snapshot,
-            ) == OpenCodeResolvedKeybinds(newLayout = listOf("alt+t"), classic = listOf("alt+s"))
+            ) == OpenCodeResolvedKeybinds(newLayout = listOf("alt+t"), classic = listOf("alt+s")),
         )
     }
 
@@ -63,7 +63,7 @@ class OpenCodeBrowserShortcutHandlerTest {
             OpenCodeBrowserShortcutHandler.resolveOpenCodeKeybinds(
                 OpenCodeBrowserCommand.CYCLE_AGENT,
                 snapshot,
-            ) == OpenCodeResolvedKeybinds(newLayout = listOf("alt+j"), classic = listOf("alt+j"))
+            ) == OpenCodeResolvedKeybinds(newLayout = listOf("alt+j"), classic = listOf("alt+j")),
         )
     }
 
@@ -87,7 +87,7 @@ class OpenCodeBrowserShortcutHandlerTest {
             OpenCodeBrowserShortcutHandler.resolveOpenCodeKeybinds(
                 OpenCodeBrowserCommand.CYCLE_AGENT_REVERSE,
                 snapshot,
-            ) == OpenCodeResolvedKeybinds(newLayout = listOf("alt+k"), classic = listOf("alt+k"))
+            ) == OpenCodeResolvedKeybinds(newLayout = listOf("alt+k"), classic = listOf("alt+k")),
         )
     }
 
@@ -99,7 +99,7 @@ class OpenCodeBrowserShortcutHandlerTest {
             OpenCodeBrowserShortcutHandler.resolveOpenCodeKeybinds(
                 OpenCodeBrowserCommand.CYCLE_AGENT,
                 snapshot,
-            ) == OpenCodeResolvedKeybinds(newLayout = emptyList(), classic = emptyList())
+            ) == OpenCodeResolvedKeybinds(newLayout = emptyList(), classic = emptyList()),
         )
     }
 
@@ -109,7 +109,7 @@ class OpenCodeBrowserShortcutHandlerTest {
             OpenCodeBrowserShortcutHandler.resolveOpenCodeKeybinds(
                 OpenCodeBrowserCommand.CYCLE_AGENT,
                 "not-json",
-            ) == OpenCodeResolvedKeybinds(newLayout = listOf("mod+."), classic = listOf("mod+."))
+            ) == OpenCodeResolvedKeybinds(newLayout = listOf("mod+."), classic = listOf("mod+.")),
         )
     }
 
@@ -122,35 +122,35 @@ class OpenCodeBrowserShortcutHandlerTest {
                 OpenCodeBrowserCommand.CHOOSE_MODEL,
                 serverUrl,
                 "$serverUrl/server/key/session/ses_123",
-            )
+            ),
         )
         assertTrue(
             OpenCodeBrowserShortcutHandler.isCommandAvailable(
                 OpenCodeBrowserCommand.CHOOSE_MODEL,
                 serverUrl,
                 "$serverUrl/new-session?draftId=draft",
-            )
+            ),
         )
         assertFalse(
             OpenCodeBrowserShortcutHandler.isCommandAvailable(
                 OpenCodeBrowserCommand.CHOOSE_MODEL,
                 serverUrl,
                 "$serverUrl/",
-            )
+            ),
         )
         assertFalse(
             OpenCodeBrowserShortcutHandler.isCommandAvailable(
                 OpenCodeBrowserCommand.CHOOSE_MODEL,
                 serverUrl,
                 "https://example.com/session/ses_123",
-            )
+            ),
         )
         assertTrue(
             OpenCodeBrowserShortcutHandler.isCommandAvailable(
                 OpenCodeBrowserCommand.NEW_SESSION,
                 serverUrl,
                 "$serverUrl/",
-            )
+            ),
         )
     }
 

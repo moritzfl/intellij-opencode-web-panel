@@ -129,7 +129,7 @@ internal class OpenCodeBrowserRequestHandler(
             )
         thisLogger()
             .info(
-                "jcef auth challenge host=$host port=$port proxy=$isProxy ready=$ready url=$serverUrl reply=$reply"
+                "jcef auth challenge host=$host port=$port proxy=$isProxy ready=$ready url=$serverUrl reply=$reply",
             )
         return when (reply) {
             OpenCodeServerProtocol.BasicAuthChallengeReply.IGNORE -> false

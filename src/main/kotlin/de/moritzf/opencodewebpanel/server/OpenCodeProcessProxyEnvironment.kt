@@ -96,7 +96,7 @@ internal object OpenCodeProcessProxyEnvironment {
     }
 
     private fun fromStaticProxy(
-        static: ProxyConfiguration.StaticProxyConfiguration
+        static: ProxyConfiguration.StaticProxyConfiguration,
     ): IdeHttpProxy? {
         if (static.host.isBlank() || static.port !in 1..65535) return null
         return IdeHttpProxy(

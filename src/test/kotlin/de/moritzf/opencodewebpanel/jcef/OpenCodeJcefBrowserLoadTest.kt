@@ -106,7 +106,7 @@ class OpenCodeJcefBrowserLoadTest {
                             server.origin,
                         ),
                         timeoutMillis = OpenCodeJcefTestHelper.WAIT_BROWSER_SECONDS * 1_000,
-                    )
+                    ),
                 )
 
                 OpenCodeJcefTestHelper.invokeAndWaitForLoad(browser, foreignServer.origin + "/") {
@@ -150,14 +150,14 @@ class OpenCodeJcefBrowserLoadTest {
                 disposableRule.disposable,
             )
             assertTrue(
-                injector.installAndWait("(window.__documentStartRuns ||= []).push('old');", 10_000)
+                injector.installAndWait("(window.__documentStartRuns ||= []).push('old');", 10_000),
             )
             injector.installAsync("(window.__documentStartRuns ||= []).push('superseded');")
             assertTrue(
                 injector.installAndWait(
                     "(window.__documentStartRuns ||= []).push('latest');",
                     10_000,
-                )
+                ),
             )
 
             OpenCodeJcefTestHelper.invokeAndWaitForLoad(browser, server.origin + "/") {
@@ -205,7 +205,7 @@ class OpenCodeJcefBrowserLoadTest {
                             OpenCodeBrowserSnippets.MIN_EVENT_STREAM_STALL_TIMEOUT_MILLIS,
                     )!!,
                     timeoutMillis = OpenCodeJcefTestHelper.WAIT_BROWSER_SECONDS * 1_000,
-                )
+                ),
             )
 
             val targetUrl = server.origin + "/?watchdog=1"
@@ -213,7 +213,7 @@ class OpenCodeJcefBrowserLoadTest {
                 browser.loadURL(targetUrl)
             }
             Thread.sleep(
-                OpenCodeBrowserSnippets.MIN_EVENT_STREAM_STALL_TIMEOUT_MILLIS.toLong() + 3_000
+                OpenCodeBrowserSnippets.MIN_EVENT_STREAM_STALL_TIMEOUT_MILLIS.toLong() + 3_000,
             )
             assertEquals(1, server.eventStreamCount.get())
         }
@@ -244,7 +244,7 @@ class OpenCodeJcefBrowserLoadTest {
                                 OpenCodeBrowserSnippets.MIN_EVENT_STREAM_STALL_TIMEOUT_MILLIS,
                         )!!,
                         timeoutMillis = OpenCodeJcefTestHelper.WAIT_BROWSER_SECONDS * 1_000,
-                    )
+                    ),
                 )
 
                 val targetUrl = server.origin + "/?watchdog=1"

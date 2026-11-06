@@ -307,7 +307,7 @@ class SbxLauncherWorkingDirectoryTest {
         val process =
             ProcessBuilder(
                     listOf(bash.toString(), SbxCli.guestBindPath(fixture.launcher.toString())) +
-                        args.toList()
+                        args.toList(),
                 )
                 .directory(fixture.project.toFile())
                 .redirectErrorStream(mergeErrorStream)

@@ -201,7 +201,7 @@ class OpenCodeJcefLiveRuntimeSwitchTest {
                                 "OPENCODE_DISABLE_MODELS_FETCH" to "1",
                                 "OPENCODE_DISABLE_AUTOUPDATE" to "1",
                                 "OPENCODE_SERVER_PASSWORD" to "probe-only",
-                            )
+                            ),
                         )
                 }
                 .start()
@@ -347,7 +347,7 @@ class OpenCodeJcefLiveRuntimeSwitchTest {
                     .getAction(IdeActions.ACTION_PASTE)
                     .shortcutSet
                     .shortcuts
-                    .contains(remapped)
+                    .contains(remapped),
             )
             fun paste(
                 value: Transferable,
@@ -364,7 +364,7 @@ class OpenCodeJcefLiveRuntimeSwitchTest {
                                 null,
                                 CefMenuModel.MenuId.MENU_ID_PASTE,
                                 0,
-                            )
+                            ),
                         )
                     } else {
                         // ApplicationRule's JFrame cannot acquire OS focus reliably. Supply that
@@ -409,7 +409,7 @@ class OpenCodeJcefLiveRuntimeSwitchTest {
                             """JSON.stringify(Array.from(document.querySelectorAll(
                                 'main img[alt], [data-slot="composer-attachments"] [data-slot="attachment-card-title"]'
                             ), element => element.getAttribute('alt') ?? element.textContent))""",
-                        )
+                        ),
                     )
                     .asJsonArray
                     .map { it.asString }
@@ -526,7 +526,7 @@ class OpenCodeJcefLiveRuntimeSwitchTest {
                             throw UnsupportedFlavorException(flavor)
                         return listOf(imageFile)
                     }
-                }
+                },
             )
             OpenCodeJcefTestHelper.awaitCondition("copied image file attachment") {
                 attachmentNames().count { it == "copied-image.png" } == 1
@@ -566,7 +566,7 @@ class OpenCodeJcefLiveRuntimeSwitchTest {
         val readOnEdt = AtomicReference(false)
         val result =
             AtomicReference<OpenCodeWaylandClipboard.Result>(
-                OpenCodeWaylandClipboard.Result.Text("NEW")
+                OpenCodeWaylandClipboard.Result.Text("NEW"),
             )
         val blocked = AtomicReference<CountDownLatch?>()
         val started = CountDownLatch(1)
@@ -590,7 +590,7 @@ class OpenCodeJcefLiveRuntimeSwitchTest {
                                 reads.incrementAndGet()
                                 readOnEdt.set(
                                     readOnEdt.get() ||
-                                        ApplicationManager.getApplication().isDispatchThread
+                                        ApplicationManager.getApplication().isDispatchThread,
                                 )
                                 blocked.get()?.let { gate ->
                                     started.countDown()
@@ -805,7 +805,7 @@ class OpenCodeJcefLiveRuntimeSwitchTest {
                     .newProject(
                         Path.of(workspace),
                         OpenProjectTask.build().withProjectName("Live editor transfer"),
-                    )
+                    ),
             )
         chat = OpenCodeChatInputService.getInstance(project)
         // EditorWindow.closeFile has different selection semantics for closed projects.
@@ -844,7 +844,7 @@ class OpenCodeJcefLiveRuntimeSwitchTest {
                         override fun checkAndLoadContent() = Unit // Already on the real session.
 
                         override fun dispatchChatBatch(
-                            delivery: OpenCodeChatInputService.Delivery
+                            delivery: OpenCodeChatInputService.Delivery,
                         ): Boolean {
                             val script =
                                 OpenCodeBrowserSnippets.buildDispatchDroppedFilesScript(
@@ -854,7 +854,7 @@ class OpenCodeJcefLiveRuntimeSwitchTest {
                                     batchId = delivery.attemptID,
                                     resultCallback =
                                         chatQuery.inject(
-                                            "batchId + '\\n' + (accepted ? '1' : '0')"
+                                            "batchId + '\\n' + (accepted ? '1' : '0')",
                                         ),
                                 )!!
                             browser.cefBrowser.executeJavaScript(script, origins[0], 0)
@@ -1196,7 +1196,7 @@ class OpenCodeJcefLiveRuntimeSwitchTest {
                 assertTrue("Sandbox serve exited", serve.isAlive)
                 sandboxUrl =
                     SbxCli.publishedHostPorts(
-                            SbxCli.parsePortsJson(run(SbxCli.buildPortsCommand(sbx, name)))
+                            SbxCli.parsePortsJson(run(SbxCli.buildPortsCommand(sbx, name))),
                         )
                         .map(OpenCodeServerProtocol::publishedSandboxUrl)
                         .firstOrNull {

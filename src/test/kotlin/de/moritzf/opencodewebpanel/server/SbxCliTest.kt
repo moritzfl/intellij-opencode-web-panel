@@ -159,13 +159,13 @@ class SbxCliTest {
         assertFalse(SbxCli.diagnoseReportsUnsupported("""{"supported":true}"""))
         assertTrue(
             SbxCli.diagnoseReportsUnsupported(
-                """{"checks":[{"name":"Virtualization","status":"fail","message":"not supported"}]}"""
-            )
+                """{"checks":[{"name":"Virtualization","status":"fail","message":"not supported"}]}""",
+            ),
         )
         assertFalse(
             SbxCli.diagnoseReportsUnsupported(
-                """{"checks":[{"name":"Authentication","status":"fail"},{"name":"Virtualization","status":"pass"}]}"""
-            )
+                """{"checks":[{"name":"Authentication","status":"fail"},{"name":"Virtualization","status":"pass"}]}""",
+            ),
         )
         assertTrue(SbxCli.looksUnsupportedHost("Mac OS X", "x86_64"))
         assertFalse(SbxCli.looksUnsupportedHost("Mac OS X", "aarch64"))
@@ -180,13 +180,13 @@ class SbxCliTest {
         assertEquals(
             listOf("~/docs" to "/home/agent/docs", "/no/such/dir" to "/home/agent/missing"),
             SbxCli.parseExtraMountRows(
-                " ~/docs | /home/agent/docs \n\n /no/such/dir | /home/agent/missing \n ~/docs | /home/agent/docs "
+                " ~/docs | /home/agent/docs \n\n /no/such/dir | /home/agent/missing \n ~/docs | /home/agent/docs ",
             ),
         )
         assertEquals(
             "~/docs | /home/agent/docs\n/no/such/dir | /home/agent/missing",
             SbxCli.normalizeExtraMountText(
-                " ~/docs | /home/agent/docs \n\n /no/such/dir | /home/agent/missing \n ~/docs | /home/agent/docs "
+                " ~/docs | /home/agent/docs \n\n /no/such/dir | /home/agent/missing \n ~/docs | /home/agent/docs ",
             ),
         )
         val command =
@@ -394,7 +394,7 @@ class SbxCliTest {
         val current =
             record.copy(
                 createSnapshot =
-                    SbxCli.createSnapshot("4g", "2", true, listOf("/tmp/p/opencode-sbx.yaml:ro"))
+                    SbxCli.createSnapshot("4g", "2", true, listOf("/tmp/p/opencode-sbx.yaml:ro")),
             )
         assertTrue(
             SbxCli.staleCreateReasons(
@@ -404,7 +404,7 @@ class SbxCliTest {
                     true,
                     listOf("/tmp/p/opencode-sbx.yaml:ro"),
                 )
-                .isEmpty()
+                .isEmpty(),
         )
         assertEquals(
             listOf("memory", "CPU count"),
@@ -426,7 +426,7 @@ class SbxCliTest {
                     shareHostConfig = false,
                     persistSandboxSessions = true,
                 )
-                .contains("persisted sandbox sessions")
+                .contains("persisted sandbox sessions"),
         )
     }
 
@@ -476,8 +476,8 @@ class SbxCliTest {
         assertTrue(replaceScript.contains("rm -rf"))
         assertTrue(
             replaceScript.startsWith(
-                "set -- '${SbxCli.guestBindPath(mount.hostPath)}' '${mount.sandboxPath}'\n"
-            )
+                "set -- '${SbxCli.guestBindPath(mount.hostPath)}' '${mount.sandboxPath}'\n",
+            ),
         )
         val windowsPersist =
             SbxExtraMount(
@@ -487,7 +487,7 @@ class SbxCliTest {
         assertEquals(
             "set -- '/c/Users/me/AppData/Local/opencode-web-panel/sbx/ide-ocwp-abc' '/home/agent/.local/share/opencode'\n${SbxCli.extraMountLinkScript(false)}",
             decodedGuestScript(
-                SbxCli.buildLinkExtraMountCommand(name = "ide-ocwp-abc", mount = windowsPersist)
+                SbxCli.buildLinkExtraMountCommand(name = "ide-ocwp-abc", mount = windowsPersist),
             ),
         )
         assertTrue(
@@ -496,11 +496,11 @@ class SbxCliTest {
                         name = "ide-ocwp-abc",
                         mount =
                             SbxExtraMount("C:/Users/O'Brien/docs #1", "/home/agent/O'Brien/docs"),
-                    )
+                    ),
                 )!!
                 .startsWith(
-                    "set -- '/c/Users/O'\\''Brien/docs #1' '/home/agent/O'\\''Brien/docs'\n"
-                )
+                    "set -- '/c/Users/O'\\''Brien/docs #1' '/home/agent/O'\\''Brien/docs'\n",
+                ),
         )
         assertFalse(SbxCli.persistMountIsAttached(emptyList(), mount))
         assertTrue(SbxCli.persistMountIsAttached(listOf(mount.hostPath), mount))
@@ -620,7 +620,7 @@ class SbxCliTest {
         assertEquals(
             64342,
             SbxCli.ideMcpLoopbackPort(
-                "IntelliJ MCP server is running at http://127.0.0.1:64342/sse"
+                "IntelliJ MCP server is running at http://127.0.0.1:64342/sse",
             ),
         )
         assertNull(SbxCli.ideMcpLoopbackPort("IntelliJ MCP server is running"))
@@ -787,7 +787,7 @@ class SbxCliTest {
     @Test
     fun failedPinnedInstallCannotReportSuccessFromAnOldBinary() {
         org.junit.Assume.assumeTrue(
-            java.nio.file.Files.isExecutable(java.nio.file.Path.of("/bin/sh"))
+            java.nio.file.Files.isExecutable(java.nio.file.Path.of("/bin/sh")),
         )
         val root = java.nio.file.Files.createTempDirectory("ocwp-install-failure")
         try {
@@ -838,13 +838,13 @@ class SbxCliTest {
         val script = decodedGuestScript(command)!!
         assertTrue(
             script.contains(
-                "pkill -TERM -f '[o]pencode serve --hostname 0.0.0.0 --port 4096 --print-logs'"
-            )
+                "pkill -TERM -f '[o]pencode serve --hostname 0.0.0.0 --port 4096 --print-logs'",
+            ),
         )
         assertTrue(
             script.contains(
-                "pkill -KILL -f '[o]pencode serve --hostname 0.0.0.0 --port 4096 --print-logs'"
-            )
+                "pkill -KILL -f '[o]pencode serve --hostname 0.0.0.0 --port 4096 --print-logs'",
+            ),
         )
         assertTrue(script.contains("pkill -0 -f"))
         assertFalse(script.contains("^opencode serve"))
@@ -880,7 +880,7 @@ class SbxCliTest {
         assertEquals("running", sandbox.status)
         assertEquals(
             listOf(
-                "/var/folders/9z/vghfln3n0s5c12b80dfmwmww0000gn/T/opencode/sbx-ocwp-spike-project"
+                "/var/folders/9z/vghfln3n0s5c12b80dfmwmww0000gn/T/opencode/sbx-ocwp-spike-project",
             ),
             sandbox.workspaces,
         )
@@ -905,7 +905,7 @@ class SbxCliTest {
         assertEquals(
             listOf("docker.io/docker/sandbox-templates:opencode-docker"),
             SbxCli.officialOpencodeTemplateRefs(
-                SbxCli.parseTemplateLsJson(resource("sbx-template-ls-0.49.1.json"))
+                SbxCli.parseTemplateLsJson(resource("sbx-template-ls-0.49.1.json")),
             ),
         )
     }
@@ -993,14 +993,14 @@ class SbxCliTest {
         assertFalse(SbxCli.policyIsInitialized("""{"rules":[]}"""))
         assertFalse(
             SbxCli.policyIsInitialized(
-                """{"rules":[{"scope":"sandbox","applies_to":"sandbox:x"}]}"""
-            )
+                """{"rules":[{"scope":"sandbox","applies_to":"sandbox:x"}]}""",
+            ),
         )
         assertFalse(SbxCli.policyIsInitialized("not json"))
         assertTrue(
             SbxCli.policyIsInitialized(
-                """{"rules":[{"id":"default-ai-services","scope":"global","applies_to":"all"}]}"""
-            )
+                """{"rules":[{"id":"default-ai-services","scope":"global","applies_to":"all"}]}""",
+            ),
         )
     }
 
@@ -1086,7 +1086,7 @@ class SbxCliTest {
             SbxCli.findOwnedSandbox(
                 listOf(entry),
                 record.copy(sandboxId = "00000000-0000-0000-0000-000000000000"),
-            )
+            ),
         )
         val fixture = SbxCli.parseLsJson(resource("sbx-ls-running.json"))
         assertEquals(

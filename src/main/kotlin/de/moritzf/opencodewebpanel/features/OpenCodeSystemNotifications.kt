@@ -415,7 +415,7 @@ internal class OpenCodeSystemNotifications(
                     val status = failure.statusCode?.let { ", HTTP $it" }.orEmpty()
                     thisLogger()
                         .warn(
-                            "Failed to reconcile pending OpenCode requests (${failure.kind}$status)"
+                            "Failed to reconcile pending OpenCode requests (${failure.kind}$status)",
                         )
                 }
             val requests =
@@ -492,7 +492,7 @@ internal class OpenCodeSystemNotifications(
                         openCodeNotification,
                         OpenCodePermissionResponse.ONCE,
                         identity,
-                    )
+                    ),
                 )
                 ideNotification.addAction(
                     target.permissionReplyAction(
@@ -500,7 +500,7 @@ internal class OpenCodeSystemNotifications(
                         openCodeNotification,
                         OpenCodePermissionResponse.ALWAYS,
                         identity,
-                    )
+                    ),
                 )
                 ideNotification.addAction(
                     target.permissionReplyAction(
@@ -508,7 +508,7 @@ internal class OpenCodeSystemNotifications(
                         openCodeNotification,
                         OpenCodePermissionResponse.REJECT,
                         identity,
-                    )
+                    ),
                 )
             }
             ideNotification.addAction(
@@ -518,7 +518,7 @@ internal class OpenCodeSystemNotifications(
                         targetFor(openCodeNotification.directory)
                             ?.openSession(openCodeNotification.sessionID)
                     }
-                }
+                },
             )
             OpenCodeServerProtocol.notificationDismissKeys(openCodeNotification).forEach { key ->
                 registerForAutoDismiss(key, ideNotification)

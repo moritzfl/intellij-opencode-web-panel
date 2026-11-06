@@ -29,7 +29,7 @@ class OpenCodeSessionApiTest {
                     assertEquals(
                         "$protocol: $invalid",
                         OpenCodeProtocolResult.Failure(
-                            OpenCodeProtocolResult.Failure.Kind.INVALID_BODY
+                            OpenCodeProtocolResult.Failure.Kind.INVALID_BODY,
                         ),
                         OpenCodeServerProtocol.fetchLastMessageJsonResult(
                             "http://127.0.0.1:${server.address.port}",

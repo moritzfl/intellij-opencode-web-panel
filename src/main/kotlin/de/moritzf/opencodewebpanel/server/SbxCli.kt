@@ -175,7 +175,7 @@ internal object SbxCli {
             MessageDigest.getInstance("SHA-256")
                 .digest(
                     sandboxIdentityPath(canonicalDirectory, osName)
-                        .toByteArray(StandardCharsets.UTF_8)
+                        .toByteArray(StandardCharsets.UTF_8),
                 )
         val hex = digest.joinToString("") { byte -> "%02x".format(byte) }.take(12)
         return NAME_PREFIX + hex
@@ -373,21 +373,21 @@ internal object SbxCli {
         out.append("name: opencode-network\n")
         out.append("displayName: OpenCode extra network\n")
         out.append(
-            "description: Uncomment hosts this sandbox should reach, then recreate the sandbox.\n"
+            "description: Uncomment hosts this sandbox should reach, then recreate the sandbox.\n",
         )
         out.append("permissions:\n")
         out.append("  network:\n")
         out.append("    allow:\n")
         out.append("      # Uncomment what this sandbox should reach, then recreate it.\n")
         out.append(
-            "      # Balanced does not include every provider (for example xAI is not included).\n"
+            "      # Balanced does not include every provider (for example xAI is not included).\n",
         )
         out.append("      #\n")
         out.append(
-            "      # All outbound TCP: uncomment ALL THREE lines (hostnames, IPv4 and IPv6).\n"
+            "      # All outbound TCP: uncomment ALL THREE lines (hostnames, IPv4 and IPv6).\n",
         )
         out.append(
-            "      # This also permits local-network TCP access. UDP and ICMP remain blocked.\n"
+            "      # This also permits local-network TCP access. UDP and ICMP remain blocked.\n",
         )
         out.append("      # CIDRs alone do not allow hostname requests such as api.x.ai:443.\n")
         out.append("      # - \"*\"\n")
@@ -395,7 +395,7 @@ internal object SbxCli {
         out.append("      # - \"::/0\"\n")
         out.append("      #\n")
         out.append(
-            "      # Local-network additions (loopback + RFC1918), NOT a local-only restriction.\n"
+            "      # Local-network additions (loopback + RFC1918), NOT a local-only restriction.\n",
         )
         out.append("      # Existing global/agent-kit internet allows still apply.\n")
         out.append("      # - localhost\n")
@@ -505,7 +505,7 @@ internal object SbxCli {
 
     fun sandboxPersistDataHome(sandboxName: String, dataRoot: Path = persistDataDir()): String {
         return posixPath(
-            dataRoot.resolve("sbx").resolve(requireValidSandboxName(sandboxName)).toString()
+            dataRoot.resolve("sbx").resolve(requireValidSandboxName(sandboxName)).toString(),
         )
     }
 
@@ -530,7 +530,7 @@ internal object SbxCli {
             dataRoot
                 .resolve("sbx-opencode")
                 .resolve(requireValidSandboxName(sandboxName))
-                .toString()
+                .toString(),
         )
     }
 
@@ -647,7 +647,7 @@ internal object SbxCli {
                 Path.of(workspace)
                     .resolve(expandHostMountPath(mount.hostPath, hostHome, environment))
                     .normalize()
-                    .toString()
+                    .toString(),
             )
         val sandbox =
             if (mount.sandboxPath.isBlank() || mount.sandboxPath == mount.hostPath) {
@@ -768,14 +768,14 @@ internal object SbxCli {
         val match =
             HOST_MOUNT_VARIABLE.matchEntire(path)
                 ?: throw IllegalArgumentException(
-                    "Invalid host mount variable; use \${NAME} or \${NAME:-fallback}"
+                    "Invalid host mount variable; use \${NAME} or \${NAME:-fallback}",
                 )
         val name = match.groupValues[1]
         val value =
             environment[name]?.takeIf { it.isNotEmpty() }
                 ?: match.groups[2]?.value
                 ?: throw IllegalArgumentException(
-                    "Host environment variable $name is not set for a sandbox mount"
+                    "Host environment variable $name is not set for a sandbox mount",
                 )
         val expanded = value + match.groupValues[3]
         require(expanded.isNotBlank()) { "Host mount path must not be empty" }
@@ -898,7 +898,7 @@ internal object SbxCli {
             done
             pkill -KILL -f '$${SERVE_PKILL_PATTERN}' || true
             """
-                    .trimIndent()
+                    .trimIndent(),
             )
     }
 

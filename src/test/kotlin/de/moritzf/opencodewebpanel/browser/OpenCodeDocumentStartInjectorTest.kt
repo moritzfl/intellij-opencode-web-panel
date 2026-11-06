@@ -26,7 +26,7 @@ class OpenCodeDocumentStartInjectorTest {
             OpenCodeDocumentStartInjector.parseIdentifier("""{"result":{"identifier":"id-2"}}"""),
         )
         assertNull(
-            OpenCodeDocumentStartInjector.parseIdentifier("""{"error":{"message":"nope"}}""")
+            OpenCodeDocumentStartInjector.parseIdentifier("""{"error":{"message":"nope"}}"""),
         )
         assertNull(OpenCodeDocumentStartInjector.parseIdentifier("not-json"))
         assertNull(OpenCodeDocumentStartInjector.parseIdentifier(null))
@@ -48,9 +48,9 @@ class OpenCodeDocumentStartInjectorTest {
             OpenCodeDocumentStartInjector.safeCefBoolean {
                 throw NullPointerException(
                     "Cannot invoke \"java.lang.Boolean.booleanValue()\" because the return value of " +
-                        "\"com.jetbrains.cef.remote.RpcContext.execObj\" is null"
+                        "\"com.jetbrains.cef.remote.RpcContext.execObj\" is null",
                 )
-            }
+            },
         )
     }
 
@@ -61,28 +61,28 @@ class OpenCodeDocumentStartInjectorTest {
                 installed = false,
                 hasInstalledScript = true,
                 currentPageIsOpenCode = true,
-            )
+            ),
         )
         assertFalse(
             OpenCodeDocumentStartInjector.shouldKeepCurrentPage(
                 installed = false,
                 hasInstalledScript = true,
                 currentPageIsOpenCode = false,
-            )
+            ),
         )
         assertFalse(
             OpenCodeDocumentStartInjector.shouldKeepCurrentPage(
                 installed = false,
                 hasInstalledScript = false,
                 currentPageIsOpenCode = false,
-            )
+            ),
         )
         assertFalse(
             OpenCodeDocumentStartInjector.shouldKeepCurrentPage(
                 installed = true,
                 hasInstalledScript = true,
                 currentPageIsOpenCode = true,
-            )
+            ),
         )
     }
 

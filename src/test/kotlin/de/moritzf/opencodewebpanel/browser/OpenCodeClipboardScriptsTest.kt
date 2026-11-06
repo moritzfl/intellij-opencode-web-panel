@@ -18,15 +18,15 @@ class OpenCodeClipboardScriptsTest {
                         mime = "text/plain",
                         lastModified = 123,
                         base64 = "aGVsbG8=",
-                    )
-                )
+                    ),
+                ),
             )!!
 
         assertTrue(script.contains("new DataTransfer()"))
         assertTrue(script.contains("new File([decode(entry.base64)], entry.name"))
         assertTrue(script.contains("[data-component=\"prompt-input\"][contenteditable=\"true\"]"))
         assertTrue(
-            script.contains("[data-component=\"composer-editor\"][contenteditable=\"true\"]")
+            script.contains("[data-component=\"composer-editor\"][contenteditable=\"true\"]"),
         )
         assertTrue(script.contains("const event = new DragEvent('drop'"))
         assertTrue(script.contains("return event.defaultPrevented"))
@@ -61,8 +61,8 @@ class OpenCodeClipboardScriptsTest {
                         mime = "text/plain",
                         lastModified = 1,
                         base64 = "aGVsbG8=",
-                    )
-                )
+                    ),
+                ),
             )!!
 
         assertTrue(script.contains("a\\u003Cb\\u2028c\\u2029d\\u0000e"))
@@ -95,13 +95,13 @@ class OpenCodeClipboardScriptsTest {
 
         assertTrue(
             script.contains(
-                "results.push(dispatchDrop((transfer) => transfer.setData('text/plain', 'file:CHANGELOG.md')))"
-            )
+                "results.push(dispatchDrop((transfer) => transfer.setData('text/plain', 'file:CHANGELOG.md')))",
+            ),
         )
         assertTrue(
             script.contains(
-                "results.push(dispatchDrop((transfer) => transfer.setData('text/plain', 'file:gradle.properties')))"
-            )
+                "results.push(dispatchDrop((transfer) => transfer.setData('text/plain', 'file:gradle.properties')))",
+            ),
         )
     }
 
@@ -152,7 +152,7 @@ class OpenCodeClipboardScriptsTest {
                 emptyList(),
                 textPlain = emptyList(),
                 enabled = true,
-            )
+            ),
         )
     }
 
@@ -166,17 +166,17 @@ class OpenCodeClipboardScriptsTest {
                         mime = "text/plain",
                         lastModified = 123,
                         base64 = "aGVsbG8=",
-                    )
+                    ),
                 ),
                 enabled = false,
-            )
+            ),
         )
     }
 
     @Test
     fun clipboardScriptsAreMissingWhenDisabled() {
         assertNull(
-            OpenCodeBrowserSnippets.buildCaptureClipboardPasteScript("paste-1", enabled = false)
+            OpenCodeBrowserSnippets.buildCaptureClipboardPasteScript("paste-1", enabled = false),
         )
         assertNull(
             OpenCodeBrowserSnippets.buildClipboardPasteScript(
@@ -186,7 +186,7 @@ class OpenCodeClipboardScriptsTest {
                 "paste-1",
                 "callback(result)",
                 enabled = false,
-            )
+            ),
         )
     }
 
@@ -200,7 +200,7 @@ class OpenCodeClipboardScriptsTest {
                 "paste-1",
                 null,
                 enabled = true,
-            )
+            ),
         )
     }
 }

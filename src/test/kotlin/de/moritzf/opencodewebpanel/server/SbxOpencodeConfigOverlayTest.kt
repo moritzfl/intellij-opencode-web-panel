@@ -17,7 +17,7 @@ class SbxOpencodeConfigOverlayTest {
                         ideaMcpPort = 64342,
                         hostConfigJson =
                             """{"mcp":{"other":{"type":"remote","url":"http://[::1]:9999/sse"}}}""",
-                    )
+                    ),
                 )
                 .asJsonObject
         assertFalse(overlay.has("providers"))
@@ -37,7 +37,7 @@ class SbxOpencodeConfigOverlayTest {
                 SbxOpenCodeVersion.V1,
                 shareHostConfig = false,
                 ideaMcpPort = null,
-            )
+            ),
         )
     }
 
@@ -81,7 +81,7 @@ class SbxOpencodeConfigOverlayTest {
                         ideaMcpPort = 64342,
                         hostConfigJson =
                             """{"mcp":{"other":{"type":"remote","url":"http://localhost:9999/sse","enabled":false,"timeout":1000,"oauth":{"clientId":"example"}}}}""",
-                    )
+                    ),
                 )
                 .asJsonObject
                 .getAsJsonObject("mcp")
@@ -103,7 +103,7 @@ class SbxOpencodeConfigOverlayTest {
                         ideaMcpPort = 64342,
                         hostConfigJson =
                             """{"mcp":{"servers":{"other":{"type":"remote","url":"http://localhost:9999/mcp","disabled":true,"timeout":{"startup":1000},"oauth":{"client_id":"example"}}}}}""",
-                    )
+                    ),
                 )
                 .asJsonObject
                 .getAsJsonObject("mcp")
@@ -125,7 +125,7 @@ class SbxOpencodeConfigOverlayTest {
                         version = SbxOpenCodeVersion.V2,
                         shareHostConfig = false,
                         ideaMcpPort = 64342,
-                    )
+                    ),
                 )
                 .asJsonObject
                 .getAsJsonObject("mcp")
@@ -143,7 +143,7 @@ class SbxOpencodeConfigOverlayTest {
                 SbxOpenCodeVersion.V2,
                 shareHostConfig = false,
                 ideaMcpPort = null,
-            )
+            ),
         )
     }
 
@@ -216,7 +216,7 @@ class SbxOpencodeConfigOverlayTest {
         assertEquals(
             "http://user:tok@host.docker.internal:8080/mcp?a=1#frag",
             SbxOpencodeConfigOverlay.rewriteLoopbackUrl(
-                "http://user:tok@localhost:8080/mcp?a=1#frag"
+                "http://user:tok@localhost:8080/mcp?a=1#frag",
             ),
         )
     }

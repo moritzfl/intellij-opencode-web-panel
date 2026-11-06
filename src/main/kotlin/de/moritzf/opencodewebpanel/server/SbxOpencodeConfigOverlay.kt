@@ -23,7 +23,7 @@ internal object SbxOpencodeConfigOverlay {
     fun hostLegacyConfigPath(): Path = hostConfigDir().resolve("config.json")
 
     fun hostConfigShareMount(
-        exists: (Path) -> Boolean = { Files.isDirectory(it) }
+        exists: (Path) -> Boolean = { Files.isDirectory(it) },
     ): SbxExtraMount? {
         val host = hostConfigDir()
         if (!exists(host)) return null

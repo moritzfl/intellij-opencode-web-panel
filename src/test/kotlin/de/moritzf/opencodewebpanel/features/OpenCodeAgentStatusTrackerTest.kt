@@ -21,7 +21,7 @@ class OpenCodeAgentStatusTrackerTest {
             state.applyEvent(
                 "session.status",
                 properties("""{"sessionID":"ses_1","status":{"type":"busy"}}"""),
-            )
+            ),
         )
         assertEquals(OpenCodeAgentStatusState.BUSY, state.current())
 
@@ -29,13 +29,13 @@ class OpenCodeAgentStatusTrackerTest {
             state.applyEvent(
                 "session.status",
                 properties("""{"sessionID":"ses_2","status":{"type":"retry"}}"""),
-            )
+            ),
         )
         assertTrue(
             state.applyEvent(
                 "session.status",
                 properties("""{"sessionID":"ses_1","status":{"type":"idle"}}"""),
-            )
+            ),
         )
         assertEquals(OpenCodeAgentStatusState.BUSY, state.current())
 
@@ -80,7 +80,7 @@ class OpenCodeAgentStatusTrackerTest {
                 "session.status",
                 "evt_1",
                 properties("""{"sessionID":"ses_1","status":{"type":"busy"}}"""),
-            )
+            ),
         )
         tracker.eventReceived(
             OpenCodeGlobalEvent(
@@ -88,7 +88,7 @@ class OpenCodeAgentStatusTrackerTest {
                 "permission.asked",
                 "evt_2",
                 properties("""{"id":"per_1"}"""),
-            )
+            ),
         )
         assertEquals(OpenCodeAgentStatusState.ATTENTION, tracker.currentState())
         assertTrue(tracker.isBusy())
@@ -99,14 +99,14 @@ class OpenCodeAgentStatusTrackerTest {
         val state = OpenCodeAgentStatusState()
         assertFalse(state.applyEvent("message.updated", properties("""{"sessionID":"ses_1"}""")))
         assertFalse(
-            state.applyEvent("session.status", properties("""{"status":{"type":"busy"}}"""))
+            state.applyEvent("session.status", properties("""{"status":{"type":"busy"}}""")),
         )
         assertFalse(state.applyEvent("session.status", properties("""{"sessionID":"ses_1"}""")))
         assertFalse(
             state.applyEvent(
                 "session.status",
                 properties("""{"sessionID":"ses_1","status":{"type":"queued"}}"""),
-            )
+            ),
         )
         assertFalse(state.applyEvent("session.idle", properties("{}")))
         assertFalse(state.applyEvent("permission.asked", properties("""{"sessionID":"ses_1"}""")))
@@ -199,7 +199,7 @@ class OpenCodeAgentStatusTrackerTest {
             busy.copy(
                 properties = properties("""{"sessionID":"ses_a","status":{"type":"idle"}}"""),
                 backendId = "foreign",
-            )
+            ),
         )
         assertEquals(listOf(OpenCodeAgentStatusState.BUSY), transitions)
     }
@@ -226,7 +226,7 @@ class OpenCodeAgentStatusTrackerTest {
                 "permission.asked",
                 "evt_1",
                 properties("""{"id":"per_1"}"""),
-            )
+            ),
         )
 
         tracker.seed()
@@ -237,7 +237,7 @@ class OpenCodeAgentStatusTrackerTest {
                 "permission.replied",
                 "evt_2",
                 properties("""{"requestID":"per_1"}"""),
-            )
+            ),
         )
 
         assertEquals(
@@ -273,7 +273,7 @@ class OpenCodeAgentStatusTrackerTest {
                 "session.status",
                 "evt_1",
                 properties("""{"sessionID":"ses_1","status":{"type":"idle"}}"""),
-            )
+            ),
         )
 
         var displayed = OpenCodeAgentStatusState.IDLE
@@ -314,7 +314,7 @@ class OpenCodeAgentStatusTrackerTest {
                 "session.status",
                 "evt_1",
                 properties("""{"sessionID":"ses_2","status":{"type":"busy"}}"""),
-            )
+            ),
         )
 
         assertTrue(tracker.isCurrentPresentation(queued.first, queued.second))

@@ -55,8 +55,8 @@ class OpenCodeClipboardTextTest {
             }
         assertNull(
             OpenCodeClipboardText.read(
-                contents(DataFlavor("text/plain;class=java.io.Reader") to { reader })
-            )
+                contents(DataFlavor("text/plain;class=java.io.Reader") to { reader }),
+            ),
         )
         org.junit.Assert.assertTrue(closed)
     }

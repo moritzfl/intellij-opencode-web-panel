@@ -138,8 +138,8 @@ class SbxOpenCodeServerBackendTest {
                 SbxLaunchSpec.defaults(
                     directory,
                     hostPort = OpenCodeSettingsState.getInstance().hostPortOrNull(),
-                )
-            )
+                ),
+            ),
         )
         behavior = { command ->
             when (command[1]) {
@@ -349,7 +349,7 @@ class SbxOpenCodeServerBackendTest {
                             onOutputLine("## 2.8%")
                             stages += streaming.startupStage()
                             onOutputLine(
-                                "####################################                                 50.0%"
+                                "####################################                                 50.0%",
                             )
                             stages += streaming.startupStage()
                             onOutputLine("Installing OpenCode version: 2.0.8")
@@ -515,8 +515,8 @@ class SbxOpenCodeServerBackendTest {
                         useSandbox = true,
                         openCodeVersion = SbxOpenCodeVersion.V2,
                         enableIntellijMcp = false,
-                    )
-            )
+                    ),
+            ),
         )
         behavior = { command ->
             when {
@@ -672,8 +672,8 @@ class SbxOpenCodeServerBackendTest {
                     .copy(
                         useSandbox = true,
                         enableIntellijMcp = false,
-                    )
-            )
+                    ),
+            ),
         )
         lateinit var subject: SbxOpenCodeServerBackend
         var observedDuringCreate: OpenCodeStartupProgress? = null
@@ -783,7 +783,7 @@ class SbxOpenCodeServerBackendTest {
         assertTrue(
             backend
                 .startFailureMessage()!!
-                .contains("Host path mounted read-write: ${SbxCli.posixPath(outside)}")
+                .contains("Host path mounted read-write: ${SbxCli.posixPath(outside)}"),
         )
 
         // A spec edited while the consent dialog is open must not inherit its acknowledgement.
@@ -866,7 +866,7 @@ class SbxOpenCodeServerBackendTest {
                 SbxCommandResult(
                     1,
                     "error: failed to start sandbox: start runtime: request failed: 500 Internal Server Error",
-                )
+                ),
             )
 
         assertTrue(message.startsWith("Docker Sandboxes could not start the sandbox VM."))
@@ -884,7 +884,7 @@ class SbxOpenCodeServerBackendTest {
             startWithLinkFailure(SbxCommandResult(-1, "\nCommand timed out after 30000ms"))
 
         assertTrue(
-            message.startsWith("Docker Sandboxes did not respond while preparing sandbox mounts.")
+            message.startsWith("Docker Sandboxes did not respond while preparing sandbox mounts."),
         )
         assertTrue(message.contains("stopped VM"))
         assertTrue(message.contains("sbx daemon status"))
@@ -980,8 +980,8 @@ class SbxOpenCodeServerBackendTest {
                         useSandbox = true,
                         hostPort = 49123,
                         enableIntellijMcp = false,
-                    )
-            )
+                    ),
+            ),
         )
         val portCommands = mutableListOf<String>()
         behavior = { command ->
@@ -1170,7 +1170,7 @@ class SbxOpenCodeServerBackendTest {
             )) {
             calls.clear()
             assertNotNull(
-                SbxLaunchSpec.persist(spec.copy(useSandbox = true, enableIntellijMcp = false))
+                SbxLaunchSpec.persist(spec.copy(useSandbox = true, enableIntellijMcp = false)),
             )
             store.save(directory, record.copy(kits = recordKits))
             behavior = { command ->
@@ -1200,8 +1200,8 @@ class SbxOpenCodeServerBackendTest {
                         useSandbox = true,
                         enableIntellijMcp = false,
                         kits = listOf("./b"),
-                    )
-            )
+                    ),
+            ),
         )
         store.save(directory, record.copy(kits = "./a"))
         behavior = { command ->
@@ -1230,10 +1230,10 @@ class SbxOpenCodeServerBackendTest {
                         enableIntellijMcp = false,
                         extraMounts =
                             listOf(
-                                SbxExtraMount("/definitely/missing/ocwp-mount", "/home/agent/data")
+                                SbxExtraMount("/definitely/missing/ocwp-mount", "/home/agent/data"),
                             ),
-                    )
-            )
+                    ),
+            ),
         )
         store.save(directory, record)
         behavior = { command ->
@@ -1259,8 +1259,8 @@ class SbxOpenCodeServerBackendTest {
         assertNotNull(
             SbxLaunchSpec.persist(
                 SbxLaunchSpec.defaults(directory, hostPort = settings.hostPortOrNull())
-                    .copy(useSandbox = true, enableIntellijMcp = false)
-            )
+                    .copy(useSandbox = true, enableIntellijMcp = false),
+            ),
         )
         behavior = { command ->
             when (command[1]) {

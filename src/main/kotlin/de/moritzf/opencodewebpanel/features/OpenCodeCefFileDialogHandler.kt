@@ -71,7 +71,7 @@ internal class OpenCodeCefFileDialogHandler(
                             callback.Cancel()
                         } else {
                             callback.Continue(
-                                Vector(selected.map { it.toNioPath().toAbsolutePath().toString() })
+                                Vector(selected.map { it.toNioPath().toAbsolutePath().toString() }),
                             )
                         }
                     } catch (_: Exception) {

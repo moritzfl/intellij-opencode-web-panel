@@ -114,14 +114,14 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
             row {
                 cell(autoPortRadioButton)
                     .comment(
-                        "Pick a free loopback port. Docker Sandbox still serves 4096 inside the VM; the published host port is ephemeral."
+                        "Pick a free loopback port. Docker Sandbox still serves 4096 inside the VM; the published host port is ephemeral.",
                     )
             }
             row {
                 cell(fixedPortRadioButton).gap(RightGap.SMALL)
                 cell(fixedPortField)
                     .comment(
-                        "Bind this loopback port. Docker Sandbox republishes VM 4096 here. Default: ${OpenCodeSettingsState.DEFAULT_FIXED_PORT}."
+                        "Bind this loopback port. Docker Sandbox republishes VM 4096 here. Default: ${OpenCodeSettingsState.DEFAULT_FIXED_PORT}.",
                     )
             }
         }
@@ -199,17 +199,17 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                 .withTitle("Select Host Path")
                 .withDescription("Choose a file or folder to mount into the sandbox.")
                 .withShowHiddenFiles(true)
-                .apply { isForcedToUseIdeaFileChooser = true }
+                .apply { isForcedToUseIdeaFileChooser = true },
         )
     private val kitPathEditor =
         BrowsePathCellEditor(
             FileChooserDescriptorFactory.createSingleFolderDescriptor()
                 .withTitle("Select Kit")
                 .withDescription(
-                    "Choose a local kit directory. File refs, Git URLs, and OCI refs can be typed. Protect sandbox files only overlays kit directories."
+                    "Choose a local kit directory. File refs, Git URLs, and OCI refs can be typed. Protect sandbox files only overlays kit directories.",
                 )
                 .withShowHiddenFiles(true)
-                .apply { isForcedToUseIdeaFileChooser = true }
+                .apply { isForcedToUseIdeaFileChooser = true },
         )
     private val extraMountTableModel =
         ListTableModel<ExtraMountRow>(
@@ -275,7 +275,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                 }
 
                 override fun getEditor(item: KitRow): TableCellEditor = kitPathEditor
-            }
+            },
         )
     private val kitTable =
         TableView<KitRow>(kitTableModel).apply {
@@ -306,57 +306,57 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
             row("OpenCode working directory:") {
                 cell(sbxWorkingDirectoryField)
                     .comment(
-                        "Relative to the mounted repository root (default ./). For a monorepo, use e.g. ./app. Changing this restarts OpenCode without recreating the VM."
+                        "Relative to the mounted repository root (default ./). For a monorepo, use e.g. ./app. Changing this restarts OpenCode without recreating the VM.",
                     )
             }
             row("Memory:") {
                 cell(sbxMemoryField)
                     .comment(
-                        "Used when creating a sandbox (default ${SbxCli.DEFAULT_MEMORY}). An existing VM keeps its value until Reset Sandbox (gear menu)."
+                        "Used when creating a sandbox (default ${SbxCli.DEFAULT_MEMORY}). An existing VM keeps its value until Reset Sandbox (gear menu).",
                     )
             }
             row("CPUs:") {
                 cell(sbxCpusField)
                     .comment(
-                        "Used when creating a sandbox (default ${SbxCli.DEFAULT_CPUS}). An existing VM keeps its value until Reset Sandbox (gear menu)."
+                        "Used when creating a sandbox (default ${SbxCli.DEFAULT_CPUS}). An existing VM keeps its value until Reset Sandbox (gear menu).",
                     )
             }
             row {
                 cell(sbxShareHostConfigCheckBox)
                     .comment(
-                        "Mounts the host OpenCode config directory read-only (opencode.json/jsonc, skills, agents, commands, plugins). Credentials embedded in those files are readable too; host auth.json and the host credential database are not shared. Configure provider access separately with sbx secret or OpenCode inside the sandbox. Changing this needs a new VM; Apply asks before recreating it."
+                        "Mounts the host OpenCode config directory read-only (opencode.json/jsonc, skills, agents, commands, plugins). Credentials embedded in those files are readable too; host auth.json and the host credential database are not shared. Configure provider access separately with sbx secret or OpenCode inside the sandbox. Changing this needs a new VM; Apply asks before recreating it.",
                     )
             }
             buttonsGroup("OpenCode version:") {
                 row {
                     cell(sbxOpenCodeV1RadioButton)
                         .comment(
-                            "Kit OpenCode 1.x. A leftover 2.x binary at ~/.opencode/bin is not launched."
+                            "Kit OpenCode 1.x. A leftover 2.x binary at ~/.opencode/bin is not launched.",
                         )
                 }
                 row {
                     cell(sbxOpenCodeV2RadioButton)
                         .comment(
-                            "Installs OpenCode 2.x to ~/.opencode/bin when missing, then launches it. New sandboxes keep the binary on the host until Reset Sandbox; existing VMs get that mount at Reset. Select this before the first start if sharing OpenCode 2 config. Needs network to opencode.ai and registry.npmjs.org."
+                            "Installs OpenCode 2.x to ~/.opencode/bin when missing, then launches it. New sandboxes keep the binary on the host until Reset Sandbox; existing VMs get that mount at Reset. Select this before the first start if sharing OpenCode 2 config. Needs network to opencode.ai and registry.npmjs.org.",
                         )
                 }
             }
             row {
                 cell(sbxProtectSandboxFilesCheckBox)
                     .comment(
-                        "Overlays the opencode-sbx/ folder (spec, launchers, extra-network kit) and other local kit directories as read-only extra workspaces on the writable project tree. Git/OCI kits are unchanged. Applies when the sandbox is created (gear menu → Reset Sandbox)."
+                        "Overlays the opencode-sbx/ folder (spec, launchers, extra-network kit) and other local kit directories as read-only extra workspaces on the writable project tree. Git/OCI kits are unchanged. Applies when the sandbox is created (gear menu → Reset Sandbox).",
                     )
             }
             row {
                 cell(sbxPersistSandboxSessionsCheckBox)
                     .comment(
-                        "Keeps this sandbox's OpenCode conversations on the host under a plugin data directory (not Host CLI's opencode.db). Reset Sandbox recreates the VM but remounts the same store. Applies at create time."
+                        "Keeps this sandbox's OpenCode conversations on the host under a plugin data directory (not Host CLI's opencode.db). Reset Sandbox recreates the VM but remounts the same store. Applies at create time.",
                     )
             }
             row {
                 cell(sbxEnableIntellijMcpCheckBox)
                     .comment(
-                        "Overlays the IntelliJ MCP server as host.docker.internal. Ignored by opencode-sbx.sh."
+                        "Overlays the IntelliJ MCP server as host.docker.internal. Ignored by opencode-sbx.sh.",
                     )
             }
             row {
@@ -364,7 +364,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                     .label("Mounts:", LabelPosition.TOP)
                     .align(AlignX.FILL)
                     .comment(
-                        "Host file or folder is mounted as-is; a symlink is created at the sandbox path when they differ. Adding or removing a mount, or changing Read-only, needs a new VM; Apply asks before recreating it. Changing only the sandbox path applies on restart. Use + to add a row; double-click a cell to edit it."
+                        "Host file or folder is mounted as-is; a symlink is created at the sandbox path when they differ. Adding or removing a mount, or changing Read-only, needs a new VM; Apply asks before recreating it. Changing only the sandbox path applies on restart. Use + to add a row; double-click a cell to edit it.",
                     )
             }
             row {
@@ -387,7 +387,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
             row {
                 cell(createNetworkKitButton)
                     .comment(
-                        "Writes opencode-sbx/opencode-network-kit/spec.yaml with hosts commented out. Configure it before the first Apply. Editing an already installed kit does not update the sandbox: Reset Sandbox reloads it but deletes VM-only data. Restart alone is insufficient. Network access belongs in a kit, not the launch YAML."
+                        "Writes opencode-sbx/opencode-network-kit/spec.yaml with hosts commented out. Configure it before the first Apply. Editing an already installed kit does not update the sandbox: Reset Sandbox reloads it but deletes VM-only data. Restart alone is insufficient. Network access belongs in a kit, not the launch YAML.",
                     )
             }
             row { cell(installedHintLabel) }
@@ -395,13 +395,13 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
             row {
                 cell(checkSetupButton)
                     .comment(
-                        "Checks saved settings and the existing running VM. Use the extra-network kit to configure blocked hosts."
+                        "Checks saved settings and the existing running VM. Use the extra-network kit to configure blocked hosts.",
                     )
             }
             row { cell(setupCheckResultLabel) }
             row {
                 comment(
-                    "Sbx location, login, and network policy: Tools → OpenCode Web Panel → Docker Sandboxes."
+                    "Sbx location, login, and network policy: Tools → OpenCode Web Panel → Docker Sandboxes.",
                 )
             }
         }
@@ -416,7 +416,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                 row {
                     cell(autoProjectDirectoryRadioButton)
                         .comment(
-                            "Use this IDE project's root: ${project.basePath ?: "not available"}."
+                            "Use this IDE project's root: ${project.basePath ?: "not available"}.",
                         )
                 }
                 row {
@@ -444,13 +444,13 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                     row {
                         cell(hostRuntimeRadioButton)
                             .comment(
-                                "Native opencode serve on this machine. Stored as useSandbox: false in opencode-sbx.yaml."
+                                "Native opencode serve on this machine. Stored as useSandbox: false in opencode-sbx.yaml.",
                             )
                     }
                     row {
                         cell(sbxRuntimeRadioButton)
                             .comment(
-                                "OpenCode inside a Docker Sandbox. Requires sbx and a Docker account. Apple silicon macOS, Windows 11 with WHP, or KVM Linux."
+                                "OpenCode inside a Docker Sandbox. Requires sbx and a Docker account. Apple silicon macOS, Windows 11 with WHP, or KVM Linux.",
                             )
                     }
                 }
@@ -495,12 +495,12 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         val nextDirectory = projectDirectory()
         if (nextMode == OpenCodeProjectDirectoryMode.CUSTOM && nextDirectory.isBlank()) {
             throw ConfigurationException(
-                "OpenCode project directory must not be empty when custom mode is selected."
+                "OpenCode project directory must not be empty when custom mode is selected.",
             )
         }
         if (nextMode == OpenCodeProjectDirectoryMode.CUSTOM && !File(nextDirectory).isDirectory) {
             throw ConfigurationException(
-                "OpenCode project directory must be an existing directory."
+                "OpenCode project directory must be an existing directory.",
             )
         }
         if (selectedPortMode() == OpenCodePortMode.FIXED) {
@@ -520,7 +520,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         if (effectiveDirectory() != loadedSpecDirectory) {
             onDirectoryTargetChanged()
             throw ConfigurationException(
-                "Loaded the sandbox settings of the new OpenCode directory. Review them, then apply again."
+                "Loaded the sandbox settings of the new OpenCode directory. Review them, then apply again.",
             )
         }
         if (sbxRuntimeRadioButton.isSelected) {
@@ -545,7 +545,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                             .ask(panel)
                 ) {
                     throw ConfigurationException(
-                        "Invalid sandbox spec at ${inspection.path}: ${inspection.reason}"
+                        "Invalid sandbox spec at ${inspection.path}: ${inspection.reason}",
                     )
                 }
             }
@@ -578,7 +578,8 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                             try {
                                 exposure = SbxExposure.of(spec, spec.canonicalDirectory)
                             } catch (
-                                cancelled: com.intellij.openapi.progress.ProcessCanceledException) {
+                                cancelled:
+                                    com.intellij.openapi.progress.ProcessCanceledException,) {
                                 throw cancelled
                             } catch (error: Exception) {
                                 failure = error
@@ -617,7 +618,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                     .noText("Cancel")
                     .icon(
                         if (recreate || exposureUnacknowledged) Messages.getWarningIcon()
-                        else Messages.getInformationIcon()
+                        else Messages.getInformationIcon(),
                     )
                     .ask(panel)
             if (!confirmed) throw ConfigurationException("Cancelled.")
@@ -679,7 +680,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                 override fun focusLost(e: java.awt.event.FocusEvent) {
                     onDirectoryTargetChanged()
                 }
-            }
+            },
         )
         detectProjectDirectoryButton.addActionListener { detectProjectDirectory() }
         hostRuntimeRadioButton.addItemListener { updateSandboxControls() }
@@ -770,7 +771,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                                 "Setup check failed. Check the sbx installation and try again."
                             } else {
                                 de.moritzf.opencodewebpanel.server.SbxSetupChecklist.format(
-                                    steps.orEmpty()
+                                    steps.orEmpty(),
                                 )
                             }
                         setupCheckResultLabel.text =
@@ -1082,7 +1083,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                             useSandbox = sandbox,
                             owned = owned,
                             running = state == OpenCodeServerLifecycleState.RUNNING,
-                        )
+                        ),
                     )
                     .replace("\n", "<br>") +
                 "</html>"
@@ -1101,7 +1102,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
 
     private fun fixedPortOrDefault(): Int {
         return OpenCodeSettingsState.sanitizePort(
-            fixedPortField.text.trim().toIntOrNull() ?: OpenCodeSettingsState.DEFAULT_FIXED_PORT
+            fixedPortField.text.trim().toIntOrNull() ?: OpenCodeSettingsState.DEFAULT_FIXED_PORT,
         )
     }
 
@@ -1156,7 +1157,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
      * hydrates.
      */
     private fun showSpecStatus(
-        inspection: de.moritzf.opencodewebpanel.server.SbxLaunchSpecInspection
+        inspection: de.moritzf.opencodewebpanel.server.SbxLaunchSpecInspection,
     ) {
         val invalid =
             inspection as? de.moritzf.opencodewebpanel.server.SbxLaunchSpecInspection.Invalid
@@ -1166,7 +1167,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                 "<html>" +
                     com.intellij.openapi.util.text.StringUtil.escapeXmlEntities(
                         "Invalid ${SbxCli.posixPath(invalid.path.toString())}: ${invalid.reason}. " +
-                            "OpenCode will not start until the file is fixed, or replaced with these values on Apply."
+                            "OpenCode will not start until the file is fixed, or replaced with these values on Apply.",
                     ) +
                     "</html>"
             sbxRuntimeRadioButton.isSelected = true
@@ -1187,7 +1188,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
     private class KitRow(var ref: String = "")
 
     private class BrowsePathCellEditor(
-        descriptor: com.intellij.openapi.fileChooser.FileChooserDescriptor
+        descriptor: com.intellij.openapi.fileChooser.FileChooserDescriptor,
     ) : AbstractCellEditor(), TableCellEditor {
         private val field =
             TextFieldWithBrowseButton().apply { addBrowseFolderListener(null, descriptor) }

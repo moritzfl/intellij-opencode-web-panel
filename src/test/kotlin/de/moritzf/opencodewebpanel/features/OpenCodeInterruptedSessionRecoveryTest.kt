@@ -82,7 +82,7 @@ class OpenCodeInterruptedSessionRecoveryTest {
     fun failedSessionListLeavesGenerationRetryableThenValidRunIsDone() {
         val harness = Harness()
         harness.sessionResults.add(
-            OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.HTTP, 503)
+            OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.HTTP, 503),
         )
         harness.sessionResults.add(harness.sessions("ses_1"))
         val recovery = harness.recovery()
@@ -100,7 +100,7 @@ class OpenCodeInterruptedSessionRecoveryTest {
         val harness = Harness()
         repeat(3) {
             harness.sessionResults.add(
-                OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.HTTP, 503)
+                OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.HTTP, 503),
             )
         }
         harness.sessionResults.add(harness.sessions("ses_1"))
@@ -234,7 +234,7 @@ class OpenCodeInterruptedSessionRecoveryTest {
                 OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.HTTP, 503)
             } else {
                 OpenCodeProtocolResult.Success(
-                    """{"type":"assistant","time":{"created":900000,"completed":2000000},"error":{"name":"FetchError"}}"""
+                    """{"type":"assistant","time":{"created":900000,"completed":2000000},"error":{"name":"FetchError"}}""",
                 )
             }
         }
@@ -250,12 +250,12 @@ class OpenCodeInterruptedSessionRecoveryTest {
     fun suspendRecoveryRetriesTransientSessionListFailure() {
         val harness = Harness()
         harness.sessionResults.add(
-            OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.HTTP, 503)
+            OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.HTTP, 503),
         )
         harness.sessionResults.add(harness.sessions("ses_1"))
         harness.fetchMessage = {
             OpenCodeProtocolResult.Success(
-                """{"type":"assistant","time":{"created":900000,"completed":2000000},"error":{"name":"FetchError"}}"""
+                """{"type":"assistant","time":{"created":900000,"completed":2000000},"error":{"name":"FetchError"}}""",
             )
         }
         val recovery = harness.recovery()
@@ -289,7 +289,7 @@ class OpenCodeInterruptedSessionRecoveryTest {
         harness.fetchMessage = {
             harness.generation++
             OpenCodeProtocolResult.Success(
-                """{"type":"assistant","time":{"created":900000,"completed":2000000},"error":{"name":"FetchError"}}"""
+                """{"type":"assistant","time":{"created":900000,"completed":2000000},"error":{"name":"FetchError"}}""",
             )
         }
         val recovery = harness.recovery()

@@ -501,7 +501,7 @@ internal data class SbxLaunchSpec(
                 val stored = Path.of(SbxCli.posixPath(spec.canonicalDirectory))
                 val resolved =
                     OpenCodeServerProtocol.canonicalOpenCodeDirectory(
-                        workspaceBaseForSpec(path).resolve(stored).toString()
+                        workspaceBaseForSpec(path).resolve(stored).toString(),
                     )
                         ?: return SbxLaunchSpecInspection.Invalid(
                             path,

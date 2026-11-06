@@ -373,7 +373,7 @@ internal object OpenCodeServerProtocol {
     private val QUALIFIED_CLASS = Regex("^(?:[a-zA-Z_][a-zA-Z0-9_]*\\.)+[A-Z][a-zA-Z0-9_]*$")
     private val TYPE_MEMBER_CALL =
         Regex(
-            """^((?:[a-zA-Z_][a-zA-Z0-9_]*\.)*[A-Z][a-zA-Z0-9_]*)(?:[.#]([a-z_][a-zA-Z0-9_]*))?\s*\(.*\)$"""
+            """^((?:[a-zA-Z_][a-zA-Z0-9_]*\.)*[A-Z][a-zA-Z0-9_]*)(?:[.#]([a-z_][a-zA-Z0-9_]*))?\s*\(.*\)$""",
         )
     private val TYPE_MEMBER_BARE =
         Regex("""^((?:[a-zA-Z_][a-zA-Z0-9_]*\.)*[A-Z][a-zA-Z0-9_]*)[.#]([a-z_][a-zA-Z0-9_]*)$""")
@@ -553,7 +553,7 @@ internal object OpenCodeServerProtocol {
         val call = Regex("""\b$escaped\s*\(""")
         val declarationHint =
             Regex(
-                """\b(?:fun|func|fn|def|function|void|public|protected|private|internal|static|override|open|suspend|async|final|abstract|class|object)\b"""
+                """\b(?:fun|func|fn|def|function|void|public|protected|private|internal|static|override|open|suspend|async|final|abstract|class|object)\b""",
             )
         val lines =
             source
@@ -1470,7 +1470,7 @@ internal object OpenCodeServerProtocol {
         if (isHealthyJson(health)) return true
         if (health is OpenCodeProtocolResult.Success) return false
         return isCliStatusJson(
-            fetchCliIdentityResult(root, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis)
+            fetchCliIdentityResult(root, basicAuthHeader, connectTimeoutMillis, readTimeoutMillis),
         )
     }
 
@@ -1502,7 +1502,7 @@ internal object OpenCodeServerProtocol {
                     basicAuthHeader,
                     connectTimeoutMillis,
                     readTimeoutMillis,
-                )
+                ),
             )
             ?.stringMember("version")
     }
@@ -1664,7 +1664,7 @@ internal object OpenCodeServerProtocol {
     fun startFailureBackoffMillis(consecutiveFailures: Int): Long {
         val exponent = (consecutiveFailures - 1).coerceIn(0, 4)
         return (START_FAILURE_BACKOFF_BASE_MILLIS shl exponent).coerceAtMost(
-            START_FAILURE_BACKOFF_MAX_MILLIS
+            START_FAILURE_BACKOFF_MAX_MILLIS,
         )
     }
 
@@ -2020,7 +2020,7 @@ internal object OpenCodeServerProtocol {
         OpenCodeSessionApi.parsePendingRequests(json)
 
     fun parsePendingRequestsResult(
-        json: String
+        json: String,
     ): OpenCodeProtocolResult<List<OpenCodePendingRequestSummary>> =
         OpenCodeSessionApi.parsePendingRequestsResult(json)
 

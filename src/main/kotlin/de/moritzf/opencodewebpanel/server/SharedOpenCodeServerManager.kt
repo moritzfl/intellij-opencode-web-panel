@@ -162,7 +162,7 @@ class SharedOpenCodeServerManager(private val canonicalDirectory: String) :
                 )
                 thisLogger()
                     .warn(
-                        "Delaying OpenCode server start after recent failure by ${backoffMillis}ms"
+                        "Delaying OpenCode server start after recent failure by ${backoffMillis}ms",
                     )
                 scheduler.schedule(
                     {
@@ -250,7 +250,7 @@ class SharedOpenCodeServerManager(private val canonicalDirectory: String) :
         synchronized(lock) { serverRunning = running }
         setLifecycleState(
             if (running) OpenCodeServerLifecycleState.RUNNING
-            else OpenCodeServerLifecycleState.STOPPED
+            else OpenCodeServerLifecycleState.STOPPED,
         )
     }
 
@@ -573,7 +573,7 @@ class SharedOpenCodeServerManager(private val canonicalDirectory: String) :
         if (backoffMillis > 0) {
             thisLogger()
                 .warn(
-                    "Skipping OpenCode server restart during startup backoff for ${backoffMillis}ms"
+                    "Skipping OpenCode server restart during startup backoff for ${backoffMillis}ms",
                 )
             return
         }
@@ -713,7 +713,7 @@ class SharedOpenCodeServerManager(private val canonicalDirectory: String) :
                         if (isCurrentStart(startId)) {
                             thisLogger()
                                 .warn(
-                                    "OpenCode process output stream ended; triggering immediate health check"
+                                    "OpenCode process output stream ended; triggering immediate health check",
                                 )
                             ApplicationManager.getApplication().executeOnPooledThread {
                                 if (isCurrentStart(startId)) checkServerHealth()
@@ -866,7 +866,7 @@ class SharedOpenCodeServerManager(private val canonicalDirectory: String) :
 
         setLifecycleState(
             if (success) OpenCodeServerLifecycleState.RUNNING
-            else OpenCodeServerLifecycleState.FAILED
+            else OpenCodeServerLifecycleState.FAILED,
         )
 
         if (success) {
@@ -963,7 +963,7 @@ class SharedOpenCodeServerManager(private val canonicalDirectory: String) :
             if (firstNotice) {
                 thisLogger()
                     .info(
-                        "OpenCode server is responding although the tracked launcher process has exited"
+                        "OpenCode server is responding although the tracked launcher process has exited",
                     )
             }
         } else if (!responding) {
@@ -1124,7 +1124,7 @@ class SharedOpenCodeServerManager(private val canonicalDirectory: String) :
             } catch (e: Exception) {
                 thisLogger()
                     .warn(
-                        "Could not publish OpenCode server lifecycle state ${state.name}: ${e.message}"
+                        "Could not publish OpenCode server lifecycle state ${state.name}: ${e.message}",
                     )
             }
         }

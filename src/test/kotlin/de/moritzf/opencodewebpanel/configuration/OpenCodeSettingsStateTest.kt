@@ -37,7 +37,7 @@ class OpenCodeSettingsStateTest {
             OpenCodeSettingsState().apply {
                 sbxMemory = "8G"
                 sbxCpus = "4"
-            }
+            },
         )
         assertEquals("8g", settings.sbxMemory)
         assertEquals("4", settings.sbxCpus)
@@ -45,7 +45,7 @@ class OpenCodeSettingsStateTest {
             OpenCodeSettingsState().apply {
                 sbxMemory = "huge"
                 sbxCpus = "99"
-            }
+            },
         )
         assertEquals("4g", settings.sbxMemory)
         assertEquals("2", settings.sbxCpus)
@@ -194,7 +194,7 @@ class OpenCodeSettingsStateTest {
         assertTrue(OpenCodeSettingsState().showResponseModelInCompactLayout)
         val settings = OpenCodeSettingsState()
         settings.loadState(
-            OpenCodeSettingsState().apply { showResponseModelInCompactLayout = false }
+            OpenCodeSettingsState().apply { showResponseModelInCompactLayout = false },
         )
         assertFalse(settings.showResponseModelInCompactLayout)
     }
@@ -327,7 +327,7 @@ class OpenCodeSettingsStateTest {
         val settings = OpenCodeSettingsState()
 
         settings.loadState(
-            OpenCodeSettingsState().apply { openCodeLocalStorageSnapshot = "not-json" }
+            OpenCodeSettingsState().apply { openCodeLocalStorageSnapshot = "not-json" },
         )
 
         assertEquals("{}", settings.openCodeLocalStorageSnapshot)
@@ -365,7 +365,7 @@ class OpenCodeSettingsStateTest {
                         "sbx:bad" to "not-json",
                         "sbx:ok" to """{"ok":true}""",
                     )
-            }
+            },
         )
         assertTrue(settings.openCodeLocalStorageSnapshotsByBackend.isEmpty())
         assertEquals("""{"ok":true}""", settings.openCodeLocalStorageSnapshot)
@@ -404,7 +404,7 @@ class OpenCodeSettingsStateTest {
             OpenCodeProjectSettingsState().apply {
                 projectDirectoryMode = OpenCodeProjectDirectoryMode.CUSTOM.name
                 openCodeProjectDirectory = "  /tmp/opencode-project  "
-            }
+            },
         )
 
         assertEquals(OpenCodeProjectDirectoryMode.CUSTOM, settings.projectDirectoryModeValue())
@@ -424,7 +424,7 @@ class OpenCodeSettingsStateTest {
         val settings = OpenCodeProjectSettingsState()
 
         settings.loadState(
-            OpenCodeProjectSettingsState().apply { projectDirectoryMode = "legacy-value" }
+            OpenCodeProjectSettingsState().apply { projectDirectoryMode = "legacy-value" },
         )
 
         assertEquals(OpenCodeProjectDirectoryMode.AUTO, settings.projectDirectoryModeValue())
@@ -440,7 +440,7 @@ class OpenCodeSettingsStateTest {
         val settings = OpenCodeProjectSettingsState().apply { portImportedFromApplication = true }
         assertNull(settings.getState())
         settings.loadState(
-            OpenCodeProjectSettingsState().apply { portImportedFromApplication = true }
+            OpenCodeProjectSettingsState().apply { portImportedFromApplication = true },
         )
         assertNull(settings.getState())
     }
@@ -500,7 +500,7 @@ class OpenCodeSettingsStateTest {
             OpenCodeProjectSettingsState().apply {
                 portMode = "legacy-value"
                 fixedPort = 8181
-            }
+            },
         )
 
         assertEquals(OpenCodePortMode.AUTO, settings.portModeValue())

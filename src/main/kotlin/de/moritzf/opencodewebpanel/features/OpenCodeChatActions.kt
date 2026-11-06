@@ -90,7 +90,7 @@ internal class OpenCodeAddSelectionToChatAction : DumbAwareAction() {
         val startLine = document.getLineNumber(selection.selectionStart) + 1
         val endLine =
             document.getLineNumber(
-                (selection.selectionEnd - 1).coerceAtLeast(selection.selectionStart)
+                (selection.selectionEnd - 1).coerceAtLeast(selection.selectionStart),
             ) + 1
         val projectDirectory = openCodeProjectDirectory(project)
         val localFile = file?.takeIf { it.isInLocalFileSystem }?.let { File(it.path) }
@@ -124,7 +124,7 @@ internal class OpenCodeAddSelectionToChatAction : DumbAwareAction() {
 private fun openCodeProjectDirectory(project: Project): String? {
     return SbxLaunchSpec.hostOpenCodeDirectory(
         OpenCodeProjectSettingsState.getInstance(project)
-            .effectiveProjectDirectory(project.basePath)
+            .effectiveProjectDirectory(project.basePath),
     )
 }
 

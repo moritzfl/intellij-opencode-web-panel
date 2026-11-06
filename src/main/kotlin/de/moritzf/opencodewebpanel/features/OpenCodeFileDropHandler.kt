@@ -165,17 +165,17 @@ internal class OpenCodeFileDropHandler(
                         "stale" ->
                             showFileDropWarning(
                                 listOf(
-                                    "The paste destination changed before the clipboard was ready."
-                                )
+                                    "The paste destination changed before the clipboard was ready.",
+                                ),
                             )
                         "rejected" ->
                             showFileDropWarning(
-                                listOf("The clipboard could not be inserted into this field.")
+                                listOf("The clipboard could not be inserted into this field."),
                             )
                     }
                 } else if (result != "1") {
                     showFileDropWarning(
-                        listOf("Open a conversation and close any dialog before adding files.")
+                        listOf("Open a conversation and close any dialog before adding files."),
                     )
                 }
             }
@@ -445,8 +445,8 @@ internal class OpenCodeFileDropHandler(
                     // it.
                     showFileDropWarning(
                         listOf(
-                            "The paste could not be confirmed. Check the field before trying again."
-                        )
+                            "The paste could not be confirmed. Check the field before trying again.",
+                        ),
                     )
                 }
             }
@@ -475,8 +475,8 @@ internal class OpenCodeFileDropHandler(
                     ) {
                         showFileDropWarning(
                             listOf(
-                                "The clipboard text exceeds the ${OpenCodeClipboardText.MAX_CHARS} character limit."
-                            )
+                                "The clipboard text exceeds the ${OpenCodeClipboardText.MAX_CHARS} character limit.",
+                            ),
                         )
                     }
                 }
@@ -520,8 +520,8 @@ internal class OpenCodeFileDropHandler(
                         if (payload == null)
                             showFileDropWarning(
                                 listOf(
-                                    "${it.name} could not be read or exceeds the file size limit."
-                                )
+                                    "${it.name} could not be read or exceeds the file size limit.",
+                                ),
                             )
                     }
                 } + preparedImages.payloads
@@ -548,7 +548,7 @@ internal class OpenCodeFileDropHandler(
                                 batchId = batchID,
                                 resultCallback =
                                     dropResultQuery.inject(
-                                        "batchId + '\\n' + (accepted ? '1' : '0')"
+                                        "batchId + '\\n' + (accepted ? '1' : '0')",
                                     ),
                                 focusPrompt = isFocusInsideBrowser(),
                             )
@@ -571,7 +571,7 @@ internal class OpenCodeFileDropHandler(
                 } else if (!isDisposed()) {
                     pendingPastes.remove(batchID)?.let { pasteAlarm.cancelRequest(it.timeout) }
                     showFileDropWarning(
-                        listOf("The OpenCode page changed before the files were ready.")
+                        listOf("The OpenCode page changed before the files were ready."),
                     )
                 }
             }
@@ -653,7 +653,7 @@ internal class OpenCodeFileDropHandler(
         if (ideClipboard != null) return listOf(ideClipboard)
         return listOfNotNull(
             runCatching { Toolkit.getDefaultToolkit().systemClipboard.getContents(null) }
-                .getOrNull()
+                .getOrNull(),
         )
     }
 

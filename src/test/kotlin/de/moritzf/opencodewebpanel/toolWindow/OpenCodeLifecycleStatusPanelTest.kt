@@ -40,7 +40,10 @@ class OpenCodeLifecycleStatusPanelTest {
             assertTrue(panel.update(OpenCodeServerLifecycleState.STOPPED))
             assertFalse(panel.component.isVisible)
             assertTrue(
-                panel.update(OpenCodeServerLifecycleState.RESTARTING, stage = "Upgrading OpenCode…")
+                panel.update(
+                    OpenCodeServerLifecycleState.RESTARTING,
+                    stage = "Upgrading OpenCode…",
+                ),
             )
             assertTrue(panel.component.isVisible)
         }

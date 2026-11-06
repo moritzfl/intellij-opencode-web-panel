@@ -34,8 +34,8 @@ internal class OpenCodeServerLogBuffer(
             setCurrentFile(
                 createLogFile(
                     "========== OpenCode server start/restart via OpenCode Web Panel at $startedAt ==========" +
-                        System.lineSeparator()
-                )
+                        System.lineSeparator(),
+                ),
             )
             currentLogFile
         }

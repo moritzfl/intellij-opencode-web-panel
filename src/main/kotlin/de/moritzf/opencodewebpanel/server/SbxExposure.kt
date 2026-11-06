@@ -41,12 +41,12 @@ internal data class SbxExposure(
                 if (isInside(workspace, mount.hostPath)) return@forEach
                 add(
                     if (mount.readOnly) "Host path mounted read-only: ${mount.hostPath}"
-                    else "Host path mounted read-write: ${mount.hostPath}"
+                    else "Host path mounted read-write: ${mount.hostPath}",
                 )
             }
             if (spec.shareHostOpencodeConfig) {
                 add(
-                    "Host OpenCode config shared read-only: ${SbxCli.posixPath(hostConfigDir.toString())}"
+                    "Host OpenCode config shared read-only: ${SbxCli.posixPath(hostConfigDir.toString())}",
                 )
             }
             spec.kits.forEach { ref ->
@@ -86,7 +86,7 @@ internal data class SbxExposure(
                     ProgressManager.checkCanceled()
                     if (++entries > maxEntries)
                         throw IOException(
-                            "Kit $ref exceeds $maxEntries entries; cannot verify consent."
+                            "Kit $ref exceeds $maxEntries entries; cannot verify consent.",
                         )
                     val path = iterator.next()
                     val attributes = Files.readAttributes(path, BasicFileAttributes::class.java)
@@ -113,7 +113,7 @@ internal data class SbxExposure(
                         bytes += count
                         if (bytes > maxBytes)
                             throw IOException(
-                                "Kit $ref exceeds $maxBytes bytes; cannot verify consent."
+                                "Kit $ref exceeds $maxBytes bytes; cannot verify consent.",
                             )
                         content.update(buffer, 0, count)
                     }

@@ -112,7 +112,7 @@ class OpenCodeSoundServiceTest {
                 "session.status",
                 """{"sessionID":"ses_sbx","status":{"type":"busy"}}""",
                 backendId = SBX,
-            )
+            ),
         )
         // A new server generation on one backend must only invalidate that backend's sessions.
         OpenCodeSoundService.handleConnected(SBX, 1)

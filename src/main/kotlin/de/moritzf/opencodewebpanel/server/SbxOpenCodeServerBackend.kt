@@ -302,7 +302,7 @@ internal class SbxOpenCodeServerBackend(
                                     "Project spec",
                                     false,
                                     "Apply valid sandbox settings before checking setup",
-                                )
+                                ),
                             )
                         } else {
                             SbxSetupDiagnostics.check(
@@ -311,7 +311,7 @@ internal class SbxOpenCodeServerBackend(
                                 recordStore().recordFor(canonicalDirectory),
                                 commandRunner,
                             )
-                        }
+                        },
                     )
                 } catch (error: Exception) {
                     result.completeExceptionally(error)
@@ -551,7 +551,7 @@ internal class SbxOpenCodeServerBackend(
                         "List sandbox before upgrade",
                         SbxCli.buildLsCommand(executable),
                         30_000L,
-                    )
+                    ),
                 )
             val record = recordStore().recordFor(canonicalDirectory)
             val owned = record?.let { SbxCli.findOwnedSandbox(listed, it) }
@@ -718,7 +718,7 @@ internal class SbxOpenCodeServerBackend(
                     val callbacks = pendingStarts.toList()
                     pendingStarts.clear()
                     notifyOpenCodeStartCallbacks(callbacks, success = false)
-                }
+                },
             ) {
                 if (!isCurrentStart(startId)) return@runOnLifecycle
                 try {
@@ -912,7 +912,7 @@ internal class SbxOpenCodeServerBackend(
                     SbxOpencodeConfigOverlay.withHostConfigShare(
                         SbxCli.resolveExtraMounts(spec.extraMounts, canonicalDirectory),
                         shareHostConfig,
-                    )
+                    ),
                 )
             val protectMounts =
                 if (spec.protectSandboxFiles) {
@@ -1001,7 +1001,11 @@ internal class SbxOpenCodeServerBackend(
                 )
                 val afterCreate =
                     parseSandboxList(
-                        requiredCommand("List created sandbox", SbxCli.buildLsCommand(sbx), 30_000L)
+                        requiredCommand(
+                            "List created sandbox",
+                            SbxCli.buildLsCommand(sbx),
+                            30_000L,
+                        ),
                     )
                 val createdEntry = afterCreate.firstOrNull {
                     it.name == name &&
@@ -1119,7 +1123,7 @@ internal class SbxOpenCodeServerBackend(
                             spec.hostWorkingDirectory(),
                             extraEnvKeys = extraEnv.keys.toList(),
                             preferGuestV2 = spec.openCodeVersion.prefersGuestV2(),
-                        )
+                        ),
                     )
                     .redirectErrorStream(true)
             processBuilder.environment()["PATH"] = OpenCodeServerProtocol.resolvePath()
@@ -1212,7 +1216,7 @@ internal class SbxOpenCodeServerBackend(
                         // A taken fixed port does not free itself; do not wait out the full
                         // timeout.
                         recordCommandFailure(
-                            SbxCommandFailure("Publish sandbox port", -1, result.error)
+                            SbxCommandFailure("Publish sandbox port", -1, result.error),
                         )
                         fail(startId, SbxFailureKind.COMMAND_FAILED)
                         return
@@ -1226,7 +1230,7 @@ internal class SbxOpenCodeServerBackend(
                 }
                 thisLogger()
                     .info(
-                        "Sandbox serve is not healthy yet on ${known.ifEmpty { listOf("no published port") }}"
+                        "Sandbox serve is not healthy yet on ${known.ifEmpty { listOf("no published port") }}",
                     )
                 Thread.sleep(1_000L)
             }
@@ -1314,7 +1318,7 @@ internal class SbxOpenCodeServerBackend(
             if (result.exitCode != 0) {
                 thisLogger()
                     .warn(
-                        "Could not unpublish sandbox port ${SbxCli.unpublishSpec(mapping)}: ${result.output}"
+                        "Could not unpublish sandbox port ${SbxCli.unpublishSpec(mapping)}: ${result.output}",
                     )
             }
             return result.exitCode == 0
@@ -1417,7 +1421,7 @@ internal class SbxOpenCodeServerBackend(
                         "Verify sandbox after kit addition",
                         SbxCli.buildLsCommand(sbx),
                         30_000L,
-                    )
+                    ),
                 )
             if (SbxCli.findOwnedSandbox(refreshed, current) == null) {
                 throw SbxCommandFailure(
@@ -1445,7 +1449,7 @@ internal class SbxOpenCodeServerBackend(
                 ?: return "The sbx CLI was not found."
         val listed =
             parseSandboxList(
-                requiredCommand("List sandbox for live apply", SbxCli.buildLsCommand(sbx), 30_000L)
+                requiredCommand("List sandbox for live apply", SbxCli.buildLsCommand(sbx), 30_000L),
             )
         val owned = SbxCli.findOwnedSandbox(listed, record) ?: return null
         val desiredKits =
@@ -1608,7 +1612,7 @@ internal class SbxOpenCodeServerBackend(
                     "List sandbox before removal",
                     SbxCli.buildLsCommand(executable),
                     30_000L,
-                )
+                ),
             )
         val owned = SbxCli.findOwnedSandbox(listed, record)
         if (owned != null) {
@@ -1690,7 +1694,7 @@ internal class SbxOpenCodeServerBackend(
             val callbacks = pendingStarts.toList().also { pendingStarts.clear() }
             setLifecycleState(
                 if (success) OpenCodeServerLifecycleState.RUNNING
-                else OpenCodeServerLifecycleState.FAILED
+                else OpenCodeServerLifecycleState.FAILED,
             )
             if (success) startPeriodicCheck() else cancelPeriodicCheck()
             notifyOpenCodeStartCallbacks(callbacks, success)
@@ -1830,7 +1834,7 @@ internal class SbxOpenCodeServerBackend(
                 // pkill returns 1 when serve already exited.
                 if (killed.exitCode !in 0..1) {
                     recordCommandFailure(
-                        SbxCommandFailure("Stop OpenCode serve", killed.exitCode, killed.output)
+                        SbxCommandFailure("Stop OpenCode serve", killed.exitCode, killed.output),
                     )
                     ok = false
                 }
@@ -1900,7 +1904,7 @@ internal class SbxOpenCodeServerBackend(
             } catch (e: Exception) {
                 thisLogger()
                     .warn(
-                        "Could not publish OpenCode sandbox lifecycle state ${state.name}: ${e.message}"
+                        "Could not publish OpenCode sandbox lifecycle state ${state.name}: ${e.message}",
                     )
             }
         }
@@ -1928,7 +1932,7 @@ internal class SbxOpenCodeServerBackend(
 
     private fun sbxExecutable(): String {
         return OpenCodeServerProtocol.resolveExecutableForLaunch(
-            OpenCodeSettingsState.getInstance().sbxExecutablePath()
+            OpenCodeSettingsState.getInstance().sbxExecutablePath(),
         )
     }
 
@@ -1976,7 +1980,7 @@ internal class SbxOpenCodeServerBackend(
 
     private fun failGuestOpenCodeV2(startId: Long, result: SbxCommandResult) {
         recordCommandFailure(
-            SbxCommandFailure("Validate guest OpenCode 2.x", result.exitCode, result.output)
+            SbxCommandFailure("Validate guest OpenCode 2.x", result.exitCode, result.output),
         )
         fail(startId, SbxFailureKind.INVALID_V2_BINARY)
     }

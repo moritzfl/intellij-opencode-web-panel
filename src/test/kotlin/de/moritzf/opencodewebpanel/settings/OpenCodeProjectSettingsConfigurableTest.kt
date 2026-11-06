@@ -175,7 +175,7 @@ class OpenCodeProjectSettingsConfigurableTest {
             assertEquals(49123, SbxLaunchSpec.load(project.basePath)!!.hostPort)
             assertTrue(
                 registry.backendFor(project)
-                    is de.moritzf.opencodewebpanel.server.SbxOpenCodeServerBackend
+                    is de.moritzf.opencodewebpanel.server.SbxOpenCodeServerBackend,
             )
         }
     }
@@ -194,7 +194,7 @@ class OpenCodeProjectSettingsConfigurableTest {
             field<JTextField>("sbxMemoryField").text = "8g"
             val error = assertThrows(ConfigurationException::class.java) { configurable.apply() }
             assertTrue(
-                error.messageHtml.toString().contains("Could not verify sandbox kit contents")
+                error.messageHtml.toString().contains("Could not verify sandbox kit contents"),
             )
             assertEquals(spec.memory, SbxLaunchSpec.load(project.basePath)!!.memory)
             assertTrue(SbxSandboxRecordStore.getInstance().state.acknowledgedExposure.isEmpty())
@@ -412,8 +412,8 @@ class OpenCodeProjectSettingsConfigurableTest {
             assertNotNull(
                 SbxLaunchSpec.persist(
                     SbxLaunchSpec.defaults(oldDirectory, hostPort = appSettings.hostPortOrNull())
-                        .copy(kits = listOf("./old-kit"))
-                )
+                        .copy(kits = listOf("./old-kit")),
+                ),
             )
             projectSettings.projectDirectoryMode = OpenCodeProjectDirectoryMode.CUSTOM.name
             projectSettings.openCodeProjectDirectory = oldDirectory
@@ -451,14 +451,14 @@ class OpenCodeProjectSettingsConfigurableTest {
             assertNotNull(
                 SbxLaunchSpec.persist(
                     SbxLaunchSpec.defaults(oldDirectory, hostPort = appSettings.hostPortOrNull())
-                        .copy(kits = listOf("./old-kit"))
-                )
+                        .copy(kits = listOf("./old-kit")),
+                ),
             )
             assertNotNull(
                 SbxLaunchSpec.persist(
                     SbxLaunchSpec.defaults(newDirectory, hostPort = appSettings.hostPortOrNull())
-                        .copy(kits = listOf("./dest-kit"))
-                )
+                        .copy(kits = listOf("./dest-kit")),
+                ),
             )
             projectSettings.projectDirectoryMode = OpenCodeProjectDirectoryMode.CUSTOM.name
             projectSettings.openCodeProjectDirectory = oldDirectory

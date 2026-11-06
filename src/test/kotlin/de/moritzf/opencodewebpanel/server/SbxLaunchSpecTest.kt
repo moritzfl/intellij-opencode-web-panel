@@ -46,7 +46,7 @@ class SbxLaunchSpecTest {
                 networkAllows:
                   - api.example.com:443
                 """
-                    .trimIndent()
+                    .trimIndent(),
             )
         assertNotNull(ignoredLegacy)
         assertEquals("/tmp/project", ignoredLegacy!!.canonicalDirectory)
@@ -83,21 +83,21 @@ class SbxLaunchSpecTest {
         assertEquals(
             SbxOpenCodeVersion.V2,
             SbxLaunchSpec.parseYaml(
-                    "schemaVersion: 1\ncanonicalDirectory: /tmp/p\ninstallOpenCodeV2: true\n"
+                    "schemaVersion: 1\ncanonicalDirectory: /tmp/p\ninstallOpenCodeV2: true\n",
                 )!!
                 .openCodeVersion,
         )
         assertEquals(
             SbxOpenCodeVersion.V2,
             SbxLaunchSpec.parseYaml(
-                    "schemaVersion: 1\ncanonicalDirectory: /tmp/p\nopenCodeVersion: 2.x\n"
+                    "schemaVersion: 1\ncanonicalDirectory: /tmp/p\nopenCodeVersion: 2.x\n",
                 )!!
                 .openCodeVersion,
         )
         assertEquals(
             SbxOpenCodeVersion.V1,
             SbxLaunchSpec.parseYaml(
-                    "schemaVersion: 1\ncanonicalDirectory: /tmp/p\nopenCodeVersion: 1.x\ninstallOpenCodeV2: true\n"
+                    "schemaVersion: 1\ncanonicalDirectory: /tmp/p\nopenCodeVersion: 1.x\ninstallOpenCodeV2: true\n",
                 )!!
                 .openCodeVersion,
         )
@@ -105,13 +105,13 @@ class SbxLaunchSpecTest {
         assertTrue(spec.persistSandboxSessions)
         assertTrue(
             SbxLaunchSpec.parseYaml("schemaVersion: 1\ncanonicalDirectory: /tmp/p\n")!!
-                .protectSandboxFiles
+                .protectSandboxFiles,
         )
         assertFalse(
             SbxLaunchSpec.parseYaml(
-                    "schemaVersion: 1\ncanonicalDirectory: /tmp/p\nprotectSandboxFiles: false\n"
+                    "schemaVersion: 1\ncanonicalDirectory: /tmp/p\nprotectSandboxFiles: false\n",
                 )!!
-                .protectSandboxFiles
+                .protectSandboxFiles,
         )
     }
 
@@ -175,7 +175,7 @@ class SbxLaunchSpecTest {
             assertEquals(expected, SbxLaunchSpec.load(root.toString()))
             repeat(2) {
                 assertNotNull(
-                    SbxLaunchSpec.persist(root.toString(), hostPort = settings.hostPortOrNull())
+                    SbxLaunchSpec.persist(root.toString(), hostPort = settings.hostPortOrNull()),
                 )
                 assertEquals(expected, SbxLaunchSpec.load(root.toString()))
             }
@@ -201,7 +201,7 @@ class SbxLaunchSpecTest {
             assertEquals(second.toString(), loaded.canonicalDirectory)
             assertEquals(SbxCli.sandboxName(second.toString()), loaded.name)
             assertNotNull(
-                SbxLaunchSpec.persist(second.toString(), hostPort = settings.hostPortOrNull())
+                SbxLaunchSpec.persist(second.toString(), hostPort = settings.hostPortOrNull()),
             )
             assertEquals(loaded, SbxLaunchSpec.load(second.toString()))
         } finally {
@@ -221,7 +221,7 @@ class SbxLaunchSpecTest {
                     SbxLaunchSpec.persist(
                         root.toString(),
                         hostPort = OpenCodeSettingsState().hostPortOrNull(),
-                    )
+                    ),
                 )
                 assertEquals(yaml, Files.readString(path))
                 val inspection = SbxLaunchSpec.inspect(root.toString())
@@ -279,7 +279,7 @@ class SbxLaunchSpecTest {
         }
         val legacy =
             SbxLaunchSpec.parseYaml(
-                "${base}unknownFutureKey: 1\nsetupCommands:\n  - apt-get install -y jq\n"
+                "${base}unknownFutureKey: 1\nsetupCommands:\n  - apt-get install -y jq\n",
             )
         assertNotNull("Unknown scalar keys and legacy lists stay readable", legacy)
         assertEquals(
@@ -300,12 +300,12 @@ class SbxLaunchSpecTest {
                         listOf(
                             SbxExtraMount("/data", "/data", readOnly = true),
                             SbxExtraMount("/rw", "/home/agent/rw"),
-                        )
+                        ),
                 )
         assertEquals(spec, SbxLaunchSpec.parseYaml(spec.toYaml()))
         val suffix =
             SbxLaunchSpec.parseYaml(
-                "canonicalDirectory: ./\nextraMounts:\n  - sandbox: /home/agent/d\n    host: /data:ro\n"
+                "canonicalDirectory: ./\nextraMounts:\n  - sandbox: /home/agent/d\n    host: /data:ro\n",
             )
         assertEquals(
             listOf(SbxExtraMount("/data", "/home/agent/d", readOnly = true)),
@@ -342,8 +342,8 @@ class SbxLaunchSpecTest {
             assertTrue(text, text.contains("cpus: 4\n"))
             assertTrue(
                 text.contains(
-                    "# Kits we rely on:\nkits:\n  - ./opencode-sbx/opencode-network-kit # network allowances\n"
-                )
+                    "# Kits we rely on:\nkits:\n  - ./opencode-sbx/opencode-network-kit # network allowances\n",
+                ),
             )
             assertTrue(text.contains("futureOption: keep-me\n"))
             assertTrue(text.contains("hostPort: 49200\n"))
@@ -453,7 +453,7 @@ class SbxLaunchSpecTest {
             assertEquals(
                 workdir.toString(),
                 SbxLaunchSpec.hostOpenCodeDirectory(
-                    projectSettings.effectiveProjectDirectory(root.toString())
+                    projectSettings.effectiveProjectDirectory(root.toString()),
                 ),
             )
             assertEquals(
@@ -543,7 +543,7 @@ class SbxLaunchSpecTest {
                 ) {
                     Files.writeString(path, "canonicalDirectory: ./\nworkingDirectory: ./escape\n")
                     assertTrue(
-                        SbxLaunchSpec.inspect(root.toString()) is SbxLaunchSpecInspection.Invalid
+                        SbxLaunchSpec.inspect(root.toString()) is SbxLaunchSpecInspection.Invalid,
                     )
                 }
             } finally {
@@ -563,7 +563,7 @@ class SbxLaunchSpecTest {
             SbxLaunchSpec.persist(
                 root.toString(),
                 hostPort = OpenCodeSettingsState().hostPortOrNull(),
-            )
+            ),
         )
         assertFalse(Files.exists(root.resolve(SbxLaunchSpec.PROJECT_SPEC_NAME)))
         assertFalse(Files.exists(root.resolve(SbxLaunchSpec.PROJECT_LAUNCHER_UNIX)))
@@ -581,7 +581,7 @@ class SbxLaunchSpecTest {
                 SbxLaunchSpec.persist(
                     root.toString(),
                     hostPort = OpenCodeSettingsState().hostPortOrNull(),
-                )
+                ),
             )
             assertFalse(Files.exists(control.resolve(SbxLaunchSpec.PROJECT_LAUNCHER_WINDOWS)))
             assertTrue(Files.isRegularFile(control.resolve(SbxLaunchSpec.PROJECT_LAUNCHER_UNIX)))
@@ -619,7 +619,7 @@ class SbxLaunchSpecTest {
                 canonicalDirectory: /tmp/project
                 kits: [./network-kit, "git+https://example.com/kit.git#ref=v1"]
                 """
-                    .trimIndent()
+                    .trimIndent(),
             )
         assertEquals(
             listOf("./network-kit", "git+https://example.com/kit.git#ref=v1"),
@@ -637,7 +637,7 @@ class SbxLaunchSpecTest {
                 kits:
                   - './kit ''quoted'' #1'
                 """
-                    .trimIndent()
+                    .trimIndent(),
             )
         assertEquals(listOf("./kit 'quoted' #1"), parsed!!.kits)
     }
@@ -651,8 +651,8 @@ class SbxLaunchSpecTest {
                 canonicalDirectory: /tmp/project
                 kits: [./network-kit
                 """
-                    .trimIndent()
-            )
+                    .trimIndent(),
+            ),
         )
     }
 

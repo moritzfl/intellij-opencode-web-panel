@@ -11,7 +11,7 @@ class OpenCodePanelRecoveryPolicyTest {
             OpenCodePanelRecoveryPolicy.shouldRecreatePanel(
                 lastAttemptAtMillis = 0L,
                 nowMillis = 5_000L,
-            )
+            ),
         )
     }
 
@@ -21,7 +21,7 @@ class OpenCodePanelRecoveryPolicyTest {
             OpenCodePanelRecoveryPolicy.shouldRecreatePanel(
                 lastAttemptAtMillis = 10_000L,
                 nowMillis = 10_000L + OpenCodePanelRecoveryPolicy.RETRY_THROTTLE_MILLIS - 1,
-            )
+            ),
         )
     }
 
@@ -31,7 +31,7 @@ class OpenCodePanelRecoveryPolicyTest {
             OpenCodePanelRecoveryPolicy.shouldRecreatePanel(
                 lastAttemptAtMillis = 10_000L,
                 nowMillis = 10_000L + OpenCodePanelRecoveryPolicy.RETRY_THROTTLE_MILLIS,
-            )
+            ),
         )
     }
 }

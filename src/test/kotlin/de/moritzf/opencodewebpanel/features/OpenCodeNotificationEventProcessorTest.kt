@@ -34,7 +34,7 @@ class OpenCodeNotificationEventProcessorTest {
     }
 
     private fun notify(
-        outcome: OpenCodeNotificationEventProcessor.Outcome?
+        outcome: OpenCodeNotificationEventProcessor.Outcome?,
     ): OpenCodeServerProtocol.SystemNotificationPayload {
         return (outcome as OpenCodeNotificationEventProcessor.Outcome.Notify).payload
     }
@@ -50,7 +50,7 @@ class OpenCodeNotificationEventProcessorTest {
         }
         assertNull(processor.process(event("permission.replied", "{}")))
         assertNull(
-            processor.process(event("permission.replied", """{"requestID":"per/../evil"}"""))
+            processor.process(event("permission.replied", """{"requestID":"per/../evil"}""")),
         )
     }
 
@@ -58,13 +58,13 @@ class OpenCodeNotificationEventProcessorTest {
     fun busySessionsDismissBySessionKey() {
         val outcome =
             processor.process(
-                event("session.status", """{"sessionID":"ses_1","status":{"type":"busy"}}""")
+                event("session.status", """{"sessionID":"ses_1","status":{"type":"busy"}}"""),
             )
         assertEquals(OpenCodeNotificationEventProcessor.Outcome.Dismiss("session:ses_1"), outcome)
 
         val retry =
             processor.process(
-                event("session.status", """{"sessionID":"ses_1","status":{"type":"retry"}}""")
+                event("session.status", """{"sessionID":"ses_1","status":{"type":"retry"}}"""),
             )
         assertEquals(OpenCodeNotificationEventProcessor.Outcome.Dismiss("session:ses_1"), retry)
     }
@@ -80,8 +80,8 @@ class OpenCodeNotificationEventProcessorTest {
                         "session.status",
                         """{"sessionID":"ses_1","status":{"type":"idle"}}""",
                         recordId = "evt_1",
-                    )
-                )
+                    ),
+                ),
             )
 
         assertEquals("Response ready", payload.title)
@@ -101,20 +101,20 @@ class OpenCodeNotificationEventProcessorTest {
 
         assertTrue(
             processor.process(event("session.idle", """{"sessionID":"ses_1"}"""))
-                is OpenCodeNotificationEventProcessor.Outcome.Notify
+                is OpenCodeNotificationEventProcessor.Outcome.Notify,
         )
         // The paired session.status idle event arrives moments later and must merge.
         now += 100
         assertNull(
             processor.process(
-                event("session.status", """{"sessionID":"ses_1","status":{"type":"idle"}}""")
-            )
+                event("session.status", """{"sessionID":"ses_1","status":{"type":"idle"}}"""),
+            ),
         )
         // A genuine re-idle after the merge window must notify again.
         now += 5_000
         assertTrue(
             processor.process(event("session.idle", """{"sessionID":"ses_1"}"""))
-                is OpenCodeNotificationEventProcessor.Outcome.Notify
+                is OpenCodeNotificationEventProcessor.Outcome.Notify,
         )
     }
 
@@ -123,14 +123,14 @@ class OpenCodeNotificationEventProcessorTest {
         sessions["ses_1"] = OpenCodeSessionInfo("Fix the build", parentID = null)
         assertTrue(
             processor.process(event("session.idle", """{"sessionID":"ses_1"}"""))
-                is OpenCodeNotificationEventProcessor.Outcome.Notify
+                is OpenCodeNotificationEventProcessor.Outcome.Notify,
         )
 
         processor.reset()
 
         assertTrue(
             processor.process(event("session.idle", """{"sessionID":"ses_1"}"""))
-                is OpenCodeNotificationEventProcessor.Outcome.Notify
+                is OpenCodeNotificationEventProcessor.Outcome.Notify,
         )
     }
 
@@ -140,11 +140,11 @@ class OpenCodeNotificationEventProcessorTest {
 
         assertTrue(
             processor.process(event("session.idle", """{"sessionID":"ses_1"}"""), idleScope = "old")
-                is OpenCodeNotificationEventProcessor.Outcome.Notify
+                is OpenCodeNotificationEventProcessor.Outcome.Notify,
         )
         assertTrue(
             processor.process(event("session.idle", """{"sessionID":"ses_1"}"""), idleScope = "new")
-                is OpenCodeNotificationEventProcessor.Outcome.Notify
+                is OpenCodeNotificationEventProcessor.Outcome.Notify,
         )
     }
 
@@ -156,8 +156,8 @@ class OpenCodeNotificationEventProcessorTest {
         sessions["ses_unknown"] = OpenCodeSessionInfo("Recovered", parentID = null)
         assertTrue(
             processor.process(
-                event("session.status", """{"sessionID":"ses_unknown","status":{"type":"idle"}}""")
-            ) is OpenCodeNotificationEventProcessor.Outcome.Notify
+                event("session.status", """{"sessionID":"ses_unknown","status":{"type":"idle"}}"""),
+            ) is OpenCodeNotificationEventProcessor.Outcome.Notify,
         )
 
         now += 10_000
@@ -170,8 +170,8 @@ class OpenCodeNotificationEventProcessorTest {
         val payload =
             notify(
                 processor.process(
-                    event("session.error", """{"sessionID":"ses_x","error":"boom"}""")
-                )
+                    event("session.error", """{"sessionID":"ses_x","error":"boom"}"""),
+                ),
             )
         assertEquals("Session error", payload.title)
         assertEquals("boom", payload.body)
@@ -182,8 +182,8 @@ class OpenCodeNotificationEventProcessorTest {
                     event(
                         "session.error",
                         """{"error":{"name":"APIError","data":{"message":"provider failed"}}}""",
-                    )
-                )
+                    ),
+                ),
             )
         assertEquals("provider failed", objectError.body)
 
@@ -193,8 +193,8 @@ class OpenCodeNotificationEventProcessorTest {
                     event(
                         "session.error",
                         """{"error":{"name":"ContextOverflowError","data":{}}}""",
-                    )
-                )
+                    ),
+                ),
             )
         assertEquals("ContextOverflowError", namedError.body)
 
@@ -205,8 +205,8 @@ class OpenCodeNotificationEventProcessorTest {
                     event(
                         "session.error",
                         """{"sessionID":"ses_known","error":{"name":"APIError","data":{"message":"provider failed"}}}""",
-                    )
-                )
+                    ),
+                ),
             )
         assertEquals("Fix the build: provider failed", titledError.body)
 
@@ -228,8 +228,8 @@ class OpenCodeNotificationEventProcessorTest {
         val permission =
             notify(
                 processor.process(
-                    event("permission.asked", """{"id":"per_1","sessionID":"ses_1"}""")
-                )
+                    event("permission.asked", """{"id":"per_1","sessionID":"ses_1"}"""),
+                ),
             )
         assertEquals("Permission required", permission.title)
         assertEquals("Fix the build in project needs permission", permission.body)
@@ -240,8 +240,8 @@ class OpenCodeNotificationEventProcessorTest {
         val question =
             notify(
                 processor.process(
-                    event("question.asked", """{"id":"que_1","sessionID":"ses_unknown"}""")
-                )
+                    event("question.asked", """{"id":"que_1","sessionID":"ses_unknown"}"""),
+                ),
             )
         assertEquals("Question", question.title)
         assertEquals("New session in project has a question", question.body)

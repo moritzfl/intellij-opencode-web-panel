@@ -64,14 +64,14 @@ class OpenCodeForeignSessionWarningTest {
                 "/c/Users/me/proj",
                 "C:/Users/me/proj",
                 sandboxGuestPath = "/c/Users/me/proj",
-            )
+            ),
         )
         assertTrue(
             OpenCodeForeignSessionPolicy.isForeign(
                 "/c/Users/me/other",
                 "C:/Users/me/proj",
                 sandboxGuestPath = "/c/Users/me/proj",
-            )
+            ),
         )
     }
 
@@ -83,7 +83,7 @@ class OpenCodeForeignSessionWarningTest {
                 "/C/Users/me/proj",
                 "C:/Users/me/proj",
                 guestToHostPrefixes = prefixes,
-            )
+            ),
         )
         assertEquals(
             "C:/Users/me/proj/pkg",
@@ -94,7 +94,7 @@ class OpenCodeForeignSessionWarningTest {
                 "/c/Users/me/proj/pkg",
                 "C:/Users/me/proj",
                 guestToHostPrefixes = prefixes,
-            )
+            ),
         )
     }
 
@@ -106,11 +106,15 @@ class OpenCodeForeignSessionWarningTest {
         val guestRoot = SbxCli.guestBindPath(root.toString())
         val prefixes = listOf(guestRoot to root.toString())
         assertFalse(
-            OpenCodeForeignSessionPolicy.isForeign("$guestRoot/app", workdir.toString(), prefixes)
+            OpenCodeForeignSessionPolicy.isForeign("$guestRoot/app", workdir.toString(), prefixes),
         )
         assertTrue(OpenCodeForeignSessionPolicy.isForeign(guestRoot, workdir.toString(), prefixes))
         assertTrue(
-            OpenCodeForeignSessionPolicy.isForeign("$guestRoot/Other", workdir.toString(), prefixes)
+            OpenCodeForeignSessionPolicy.isForeign(
+                "$guestRoot/Other",
+                workdir.toString(),
+                prefixes,
+            ),
         )
     }
 
@@ -154,14 +158,14 @@ class OpenCodeForeignSessionWarningTest {
                 "$guestRoot/app",
                 root.toString(),
                 listOf(guestRoot to root.toString()),
-            )
+            ),
         )
         assertTrue(
             OpenCodeForeignSessionPolicy.isForeign(
                 "$guestRoot/linked-worktree",
                 root.toString(),
                 listOf(guestRoot to root.toString()),
-            )
+            ),
         )
     }
 

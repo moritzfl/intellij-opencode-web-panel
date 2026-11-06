@@ -304,7 +304,7 @@ class OpenCodeServerProtocolTest {
         val executableDirectory = tempDir("opencode-bin")
         try {
             assertNull(
-                OpenCodeServerProtocol.detectExecutablePath(path = executableDirectory.toString())
+                OpenCodeServerProtocol.detectExecutablePath(path = executableDirectory.toString()),
             )
         } finally {
             executableDirectory.toFile().delete()
@@ -318,7 +318,7 @@ class OpenCodeServerProtocolTest {
             assertEquals(
                 "opencode",
                 OpenCodeServerProtocol.resolveExecutableForLaunch(
-                    path = executableDirectory.toString()
+                    path = executableDirectory.toString(),
                 ),
             )
         } finally {
@@ -338,13 +338,13 @@ class OpenCodeServerProtocolTest {
         assertEquals(
             "http://127.0.0.1:60482",
             OpenCodeServerProtocol.parseServerUrl(
-                "OpenCode server listening on http://127.0.0.1:60482/"
+                "OpenCode server listening on http://127.0.0.1:60482/",
             ),
         )
         assertEquals(
             "http://localhost:4096",
             OpenCodeServerProtocol.parseServerUrl(
-                "opencode server listening on http://localhost:4096"
+                "opencode server listening on http://localhost:4096",
             ),
         )
         assertEquals(
@@ -358,13 +358,13 @@ class OpenCodeServerProtocolTest {
     fun parseServerUrlRejectsNonLoopbackHosts() {
         assertNull(
             OpenCodeServerProtocol.parseServerUrl(
-                "OpenCode server listening on http://192.168.1.10:60482"
-            )
+                "OpenCode server listening on http://192.168.1.10:60482",
+            ),
         )
         assertNull(
             OpenCodeServerProtocol.parseServerUrl(
-                "OpenCode server listening on http://example.com:60482"
-            )
+                "OpenCode server listening on http://example.com:60482",
+            ),
         )
         assertNull(OpenCodeServerProtocol.parseServerUrl("server listening on http://0.0.0.0:4096"))
         assertFalse(OpenCodeServerProtocol.isLoopbackServerUrl("http://10.0.0.1:4096"))
@@ -450,23 +450,23 @@ class OpenCodeServerProtocolTest {
     fun logIndicatesPortConflictMatchesKnownFailurePatterns() {
         assertTrue(
             OpenCodeServerProtocol.logIndicatesPortConflict(
-                listOf("Error: listen EADDRINUSE: address already in use 127.0.0.1:4096")
-            )
+                listOf("Error: listen EADDRINUSE: address already in use 127.0.0.1:4096"),
+            ),
         )
         assertTrue(
             OpenCodeServerProtocol.logIndicatesPortConflict(
-                listOf("error: Failed to start server. Is port 4096 in use?")
-            )
+                listOf("error: Failed to start server. Is port 4096 in use?"),
+            ),
         )
         assertTrue(
             OpenCodeServerProtocol.logIndicatesPortConflict(
-                listOf("Error: Unexpected error", "ServeError")
-            )
+                listOf("Error: Unexpected error", "ServeError"),
+            ),
         )
         assertFalse(
             OpenCodeServerProtocol.logIndicatesPortConflict(
-                listOf("opencode server listening on http://127.0.0.1:4096")
-            )
+                listOf("opencode server listening on http://127.0.0.1:4096"),
+            ),
         )
         assertFalse(OpenCodeServerProtocol.logIndicatesPortConflict(emptyList()))
     }
@@ -559,7 +559,7 @@ class OpenCodeServerProtocolTest {
             Files.writeString(file, "outside")
 
             assertNull(
-                OpenCodeServerProtocol.localFileDropText(file.toFile(), projectRoot.toString())
+                OpenCodeServerProtocol.localFileDropText(file.toFile(), projectRoot.toString()),
             )
         } finally {
             projectRoot.toFile().deleteRecursively()
@@ -571,7 +571,7 @@ class OpenCodeServerProtocolTest {
     fun parseSessionInfoReadsBareAndEnvelopedSessions() {
         val bare =
             OpenCodeServerProtocol.parseSessionInfo(
-                """{"id":"ses_1","title":"Fix the build","directory":"/tmp/project"}"""
+                """{"id":"ses_1","title":"Fix the build","directory":"/tmp/project"}""",
             )!!
         assertEquals("ses_1", bare.id)
         assertEquals("Fix the build", bare.title)
@@ -580,7 +580,7 @@ class OpenCodeServerProtocolTest {
 
         val enveloped =
             OpenCodeServerProtocol.parseSessionInfo(
-                """{"data":{"id":"ses_2","title":"Subtask","parentID":"ses_1","location":{"directory":"/private/tmp/other"},"directory":"/tmp/other"}}"""
+                """{"data":{"id":"ses_2","title":"Subtask","parentID":"ses_1","location":{"directory":"/private/tmp/other"},"directory":"/tmp/other"}}""",
             )!!
         assertEquals("Subtask", enveloped.title)
         assertEquals("ses_1", enveloped.parentID)
@@ -603,14 +603,14 @@ class OpenCodeServerProtocolTest {
     fun parseSessionChildrenReadsBareAndEnvelopedArrays() {
         val bare =
             OpenCodeServerProtocol.parseSessionChildren(
-                """[{"id":"ses_child","title":"Subtask","parentID":"ses_1"}]"""
+                """[{"id":"ses_child","title":"Subtask","parentID":"ses_1"}]""",
             )
         assertEquals(listOf("ses_child"), bare.map { it.id })
         assertEquals(listOf("ses_1"), bare.map { it.parentID })
 
         val enveloped =
             OpenCodeServerProtocol.parseSessionChildren(
-                """{"data":[{"id":"ses_2","parentID":"ses_1"},{"id":"ses_3","parentID":"ses_1"}]}"""
+                """{"data":[{"id":"ses_2","parentID":"ses_1"},{"id":"ses_3","parentID":"ses_1"}]}""",
             )
         assertEquals(listOf("ses_2", "ses_3"), enveloped.map { it.id })
     }
@@ -666,13 +666,13 @@ class OpenCodeServerProtocolTest {
         assertEquals(
             "ses_abc123",
             OpenCodeServerProtocol.sessionIdFromUrl(
-                "http://127.0.0.1:1234/L3RtcC9wcm9qZWN0/session/ses_abc123"
+                "http://127.0.0.1:1234/L3RtcC9wcm9qZWN0/session/ses_abc123",
             ),
         )
         assertEquals(
             "ses_abc123",
             OpenCodeServerProtocol.sessionIdFromUrl(
-                "http://127.0.0.1:1234/server/key/session/ses_abc123?x=1#frag"
+                "http://127.0.0.1:1234/server/key/session/ses_abc123?x=1#frag",
             ),
         )
         assertNull(OpenCodeServerProtocol.sessionIdFromUrl(null))
@@ -680,8 +680,8 @@ class OpenCodeServerProtocolTest {
         assertNull(OpenCodeServerProtocol.sessionIdFromUrl("http://127.0.0.1:1234/new-session"))
         assertNull(
             OpenCodeServerProtocol.sessionIdFromUrl(
-                "http://127.0.0.1:1234/x/session/ses%2F..%2Fevil"
-            )
+                "http://127.0.0.1:1234/x/session/ses%2F..%2Fevil",
+            ),
         )
     }
 
@@ -717,14 +717,14 @@ class OpenCodeServerProtocolTest {
         assertEquals(
             setOf("ses_f547e1692ffelWnvCLl1OK8i4s"),
             OpenCodeServerProtocol.parseBusySessionIds(
-                wireFixture("v2_cli/session-active-running.json")
+                wireFixture("v2_cli/session-active-running.json"),
             ),
         )
         assertTrue(
             OpenCodeServerProtocol.parseBusySessionIds(
-                    wireFixture("v2_cli/session-active-empty.json")
+                    wireFixture("v2_cli/session-active-empty.json"),
                 )
-                .isEmpty()
+                .isEmpty(),
         )
     }
 
@@ -774,7 +774,7 @@ class OpenCodeServerProtocolTest {
                                 {"id":"per_5","sessionID":"not-a-session"}
                             ]
                 """
-                    .trimIndent()
+                    .trimIndent(),
             )
 
         assertEquals(
@@ -787,12 +787,12 @@ class OpenCodeServerProtocolTest {
         assertTrue(OpenCodeServerProtocol.parsePendingRequests("{}").isEmpty())
         assertTrue(
             OpenCodeServerProtocol.parsePendingRequestsResult("""[{"id":"per_1"}]""")
-                is OpenCodeProtocolResult.Failure
+                is OpenCodeProtocolResult.Failure,
         )
         assertEquals(
             OpenCodeProtocolResult.Success(listOf(OpenCodePendingRequestSummary("per_1", "ses_1"))),
             OpenCodeServerProtocol.parsePendingRequestsResult(
-                """[{"id":"per_1","sessionID":"ses_1"}]"""
+                """[{"id":"per_1","sessionID":"ses_1"}]""",
             ),
         )
     }
@@ -801,22 +801,22 @@ class OpenCodeServerProtocolTest {
     fun parsePendingRequestsReadsCliDataEnvelope() {
         val pending =
             OpenCodeServerProtocol.parsePendingRequests(
-                wireFixture("v2_cli/permission-request-pending.json")
+                wireFixture("v2_cli/permission-request-pending.json"),
             )
         assertEquals(
             listOf(
                 OpenCodePendingRequestSummary(
                     "per_0ab82a936001Ab0k4zIgsRFD7a",
                     "ses_f547e1692ffelWnvCLl1OK8i4s",
-                )
+                ),
             ),
             pending,
         )
         assertTrue(
             OpenCodeServerProtocol.parsePendingRequests(
-                    wireFixture("v2_cli/permission-request-empty.json")
+                    wireFixture("v2_cli/permission-request-empty.json"),
                 )
-                .isEmpty()
+                .isEmpty(),
         )
     }
 
@@ -853,7 +853,7 @@ class OpenCodeServerProtocolTest {
         assertFalse(OpenCodeServerProtocol.isPermissionNotification(base.copy(kind = "session")))
         assertFalse(OpenCodeServerProtocol.isPermissionNotification(base.copy(requestID = "")))
         assertFalse(
-            OpenCodeServerProtocol.isPermissionNotification(base.copy(sessionID = "ses/../evil"))
+            OpenCodeServerProtocol.isPermissionNotification(base.copy(sessionID = "ses/../evil")),
         )
     }
 
@@ -877,12 +877,12 @@ class OpenCodeServerProtocolTest {
         assertEquals(
             listOf("request:que_1"),
             OpenCodeServerProtocol.notificationDismissKeys(
-                permission.copy(kind = "question", requestID = "que_1")
+                permission.copy(kind = "question", requestID = "que_1"),
             ),
         )
         assertTrue(
             OpenCodeServerProtocol.notificationDismissKeys(permission.copy(requestID = ""))
-                .isEmpty()
+                .isEmpty(),
         )
     }
 
@@ -904,11 +904,11 @@ class OpenCodeServerProtocolTest {
             OpenCodeServerProtocol.notificationDismissKeys(session),
         )
         assertTrue(
-            OpenCodeServerProtocol.notificationDismissKeys(session.copy(sessionID = "")).isEmpty()
+            OpenCodeServerProtocol.notificationDismissKeys(session.copy(sessionID = "")).isEmpty(),
         )
         assertTrue(
             OpenCodeServerProtocol.notificationDismissKeys(session.copy(sessionID = "ses/../evil"))
-                .isEmpty()
+                .isEmpty(),
         )
     }
 
@@ -947,11 +947,11 @@ class OpenCodeServerProtocolTest {
         // Directoryless 1.18 routes must not invent a project directory from the "server" segment.
         assertNull(
             OpenCodeServerProtocol.routeDirectoryFromUrl(
-                "http://127.0.0.1:57099/server/aHR0cDovLzEyNy4wLjAuMTo1NzA5OQ/session/ses_1"
-            )
+                "http://127.0.0.1:57099/server/aHR0cDovLzEyNy4wLjAuMTo1NzA5OQ/session/ses_1",
+            ),
         )
         assertNull(
-            OpenCodeServerProtocol.routeDirectoryFromUrl("http://127.0.0.1:57099/new-session")
+            OpenCodeServerProtocol.routeDirectoryFromUrl("http://127.0.0.1:57099/new-session"),
         )
 
         val uncDirectory = "\\\\server\\share\\project"
@@ -963,16 +963,19 @@ class OpenCodeServerProtocolTest {
     @Test
     fun isSameFilesystemPathTreatsWindowsSeparatorsAndDriveCaseAsEquivalent() {
         assertTrue(
-            OpenCodeServerProtocol.isSameFilesystemPath("C:\\Source\\Project", "c:/source/project/")
+            OpenCodeServerProtocol.isSameFilesystemPath(
+                "C:\\Source\\Project",
+                "c:/source/project/",
+            ),
         )
         assertTrue(
             OpenCodeServerProtocol.isSameFilesystemPath(
                 "\\\\SERVER\\Share\\Project",
                 "//server/share/project/",
-            )
+            ),
         )
         assertFalse(
-            OpenCodeServerProtocol.isSameFilesystemPath("C:\\Source\\Project", "C:/Source/Other")
+            OpenCodeServerProtocol.isSameFilesystemPath("C:\\Source\\Project", "C:/Source/Other"),
         )
     }
 
@@ -984,7 +987,7 @@ class OpenCodeServerProtocolTest {
             val link = root.resolve("link")
             if (runCatching { Files.createSymbolicLink(link, target) }.isSuccess) {
                 assertTrue(
-                    OpenCodeServerProtocol.isSameFilesystemPath(link.toString(), target.toString())
+                    OpenCodeServerProtocol.isSameFilesystemPath(link.toString(), target.toString()),
                 )
             }
         } finally {
@@ -1107,7 +1110,7 @@ class OpenCodeServerProtocolTest {
                 "src/Main.kt",
                 listOf(guessBase.toString()),
                 guessIncomplete = false,
-            )
+            ),
         )
         assertEquals(
             exact.normalize(),
@@ -1447,7 +1450,7 @@ class OpenCodeServerProtocolTest {
         Files.writeString(base.resolve("src/Main.kt"), "x")
 
         assertNull(
-            OpenCodeServerProtocol.resolveFileLink("/future-spa-page", base.toString(), null)
+            OpenCodeServerProtocol.resolveFileLink("/future-spa-page", base.toString(), null),
         )
         assertEquals(
             base.resolve("src/Main.kt").normalize(),
@@ -1455,7 +1458,7 @@ class OpenCodeServerProtocolTest {
         )
         assertTrue(OpenCodeServerProtocol.lastPathSegmentLooksLikeFile("/src/Main.kt"))
         assertFalse(
-            OpenCodeServerProtocol.lastPathSegmentLooksLikeFile("/server/abc/session/ses_123")
+            OpenCodeServerProtocol.lastPathSegmentLooksLikeFile("/server/abc/session/ses_123"),
         )
     }
 
@@ -1467,11 +1470,13 @@ class OpenCodeServerProtocolTest {
 
         assertTrue(OpenCodeServerProtocol.isOpenCodeSessionRouteHref(projectRoute))
         assertTrue(
-            OpenCodeServerProtocol.isOpenCodeSessionRouteHref("http://127.0.0.1:60482$projectRoute")
+            OpenCodeServerProtocol.isOpenCodeSessionRouteHref(
+                "http://127.0.0.1:60482$projectRoute",
+            ),
         )
         assertTrue(OpenCodeServerProtocol.isOpenCodeSessionRouteHref(serverRoute))
         assertTrue(
-            OpenCodeServerProtocol.isOpenCodeSessionRouteHref("http://127.0.0.1:60482$serverRoute")
+            OpenCodeServerProtocol.isOpenCodeSessionRouteHref("http://127.0.0.1:60482$serverRoute"),
         )
         assertTrue(OpenCodeServerProtocol.isOpenCodeSessionRouteHref("/new-session"))
         assertTrue(OpenCodeServerProtocol.isOpenCodeSessionRouteHref("/new-session?draftId=abc"))
@@ -1479,13 +1484,13 @@ class OpenCodeServerProtocolTest {
         assertTrue(OpenCodeServerProtocol.isOpenCodeSessionRouteHref("/server/abc"))
         assertTrue(
             OpenCodeServerProtocol.isOpenCodeSessionRouteHref(
-                "/${OpenCodeServerProtocol.encodeDirectory("/tmp/project")}"
-            )
+                "/${OpenCodeServerProtocol.encodeDirectory("/tmp/project")}",
+            ),
         )
         assertTrue(
             OpenCodeServerProtocol.isOpenCodeSessionRouteHref(
-                "/${OpenCodeServerProtocol.encodeDirectory("\\\\server\\share\\project")}/session/ses_unc"
-            )
+                "/${OpenCodeServerProtocol.encodeDirectory("\\\\server\\share\\project")}/session/ses_unc",
+            ),
         )
         assertFalse(OpenCodeServerProtocol.isOpenCodeSessionRouteHref("/tmp/session/readme.md"))
         assertFalse(OpenCodeServerProtocol.isOpenCodeSessionRouteHref("license.md"))
@@ -1691,31 +1696,31 @@ class OpenCodeServerProtocolTest {
         val serverUrl = "http://127.0.0.1:60482"
 
         assertTrue(
-            OpenCodeServerProtocol.shouldSendBasicAuthHeader(serverUrl, "http://127.0.0.1:60482/")
+            OpenCodeServerProtocol.shouldSendBasicAuthHeader(serverUrl, "http://127.0.0.1:60482/"),
         )
         assertTrue(
             OpenCodeServerProtocol.shouldSendBasicAuthHeader(
                 serverUrl,
                 "http://127.0.0.1:60482/assets/index.js",
-            )
+            ),
         )
         assertTrue(
             OpenCodeServerProtocol.shouldSendBasicAuthHeader(
                 "http://127.0.0.1",
                 "http://127.0.0.1/global/config",
-            )
+            ),
         )
         assertFalse(
-            OpenCodeServerProtocol.shouldSendBasicAuthHeader(serverUrl, "http://127.0.0.1:60483/")
+            OpenCodeServerProtocol.shouldSendBasicAuthHeader(serverUrl, "http://127.0.0.1:60483/"),
         )
         assertFalse(
-            OpenCodeServerProtocol.shouldSendBasicAuthHeader(serverUrl, "http://localhost:60482/")
+            OpenCodeServerProtocol.shouldSendBasicAuthHeader(serverUrl, "http://localhost:60482/"),
         )
         assertFalse(
-            OpenCodeServerProtocol.shouldSendBasicAuthHeader(serverUrl, "https://127.0.0.1:60482/")
+            OpenCodeServerProtocol.shouldSendBasicAuthHeader(serverUrl, "https://127.0.0.1:60482/"),
         )
         assertFalse(
-            OpenCodeServerProtocol.shouldSendBasicAuthHeader(null, "http://127.0.0.1:60482/")
+            OpenCodeServerProtocol.shouldSendBasicAuthHeader(null, "http://127.0.0.1:60482/"),
         )
         assertFalse(OpenCodeServerProtocol.shouldSendBasicAuthHeader(serverUrl, null))
     }
@@ -1726,22 +1731,22 @@ class OpenCodeServerProtocolTest {
             OpenCodeServerProtocol.isOpenCodeServerPage(
                 "http://127.0.0.1:60482",
                 "http://127.0.0.1:60482/",
-            )
+            ),
         )
         assertTrue(
             OpenCodeServerProtocol.isOpenCodeServerPage(
                 "http://127.0.0.1:60482",
                 "http://127.0.0.1:60482/foo/session",
-            )
+            ),
         )
         assertFalse(
             OpenCodeServerProtocol.isOpenCodeServerPage(
                 "http://127.0.0.1:60482",
                 "http://127.0.0.1:60483/foo/session",
-            )
+            ),
         )
         assertFalse(
-            OpenCodeServerProtocol.isOpenCodeServerPage(null, "http://127.0.0.1:60482/foo/session")
+            OpenCodeServerProtocol.isOpenCodeServerPage(null, "http://127.0.0.1:60482/foo/session"),
         )
         assertFalse(OpenCodeServerProtocol.isOpenCodeServerPage("http://127.0.0.1:60482", null))
     }
@@ -1753,7 +1758,7 @@ class OpenCodeServerProtocolTest {
                 "http://127.0.0.1:60482",
                 "http://127.0.0.1:60482/L3RtcC9wcm9qZWN0/session/ses_123",
                 "/L3RtcC9wcm9qZWN0/session/ses_123",
-            )
+            ),
         )
         // Same session under the 1.18 server route vs a legacy directory route is already open.
         assertTrue(
@@ -1761,14 +1766,14 @@ class OpenCodeServerProtocolTest {
                 "http://127.0.0.1:60482",
                 "http://127.0.0.1:60482/server/abc/session/ses_123",
                 "/L3RtcC9wcm9qZWN0/session/ses_123",
-            )
+            ),
         )
         assertTrue(
             OpenCodeServerProtocol.isOpenCodeRouteAlreadyOpen(
                 "http://127.0.0.1:60482",
                 "http://127.0.0.1:60482/server/abc/session/ses_123",
                 OpenCodeServerProtocol.buildServerSessionUrl("http://127.0.0.1:60482", "ses_123"),
-            )
+            ),
         )
     }
 
@@ -1779,14 +1784,14 @@ class OpenCodeServerProtocolTest {
                 "http://127.0.0.1:60482",
                 "http://127.0.0.1:60482/L3RtcC9wcm9qZWN0/session/ses_123",
                 "/L3RtcC9wcm9qZWN0/session/ses_456",
-            )
+            ),
         )
         assertFalse(
             OpenCodeServerProtocol.isOpenCodeRouteAlreadyOpen(
                 "http://127.0.0.1:60482",
                 "http://127.0.0.1:60483/L3RtcC9wcm9qZWN0/session/ses_123",
                 "/L3RtcC9wcm9qZWN0/session/ses_123",
-            )
+            ),
         )
     }
 
@@ -1797,14 +1802,14 @@ class OpenCodeServerProtocolTest {
                 "http://127.0.0.1:60482",
                 "http://127.0.0.1:60482/server/abc/session/ses_123/?tab=ask",
                 "/server/abc/session/ses_123?tab=ask",
-            )
+            ),
         )
         assertFalse(
             OpenCodeServerProtocol.isOpenCodeRouteAlreadyOpen(
                 "http://127.0.0.1:60482",
                 "http://127.0.0.1:60482/server/abc/session/ses_123?tab=ask",
                 "/server/abc/session/ses_123?tab=review",
-            )
+            ),
         )
         // A trailing slash inside a query value is significant, not path noise.
         assertFalse(
@@ -1812,7 +1817,7 @@ class OpenCodeServerProtocolTest {
                 "http://127.0.0.1:60482",
                 "http://127.0.0.1:60482/server/abc/session/ses_123?tab=ask/",
                 "/server/abc/session/ses_123?tab=ask",
-            )
+            ),
         )
     }
 
@@ -1832,7 +1837,7 @@ class OpenCodeServerProtocolTest {
                 false,
                 "127.0.0.1",
                 60482,
-            )
+            ),
         )
         assertTrue(
             OpenCodeServerProtocol.shouldHandleBasicAuthChallenge(
@@ -1840,13 +1845,13 @@ class OpenCodeServerProtocolTest {
                 false,
                 "localhost",
                 60482,
-            )
+            ),
         )
         assertTrue(
-            OpenCodeServerProtocol.shouldHandleBasicAuthChallenge(serverUrl, false, "::1", 60482)
+            OpenCodeServerProtocol.shouldHandleBasicAuthChallenge(serverUrl, false, "::1", 60482),
         )
         assertTrue(
-            OpenCodeServerProtocol.shouldHandleBasicAuthChallenge(serverUrl, false, "[::1]", 60482)
+            OpenCodeServerProtocol.shouldHandleBasicAuthChallenge(serverUrl, false, "[::1]", 60482),
         )
         assertTrue(
             OpenCodeServerProtocol.shouldHandleBasicAuthChallenge(
@@ -1854,7 +1859,7 @@ class OpenCodeServerProtocolTest {
                 false,
                 "127.0.0.1",
                 60482,
-            )
+            ),
         )
         assertTrue(
             OpenCodeServerProtocol.shouldHandleBasicAuthChallenge(
@@ -1862,7 +1867,7 @@ class OpenCodeServerProtocolTest {
                 false,
                 "127.0.0.1",
                 80,
-            )
+            ),
         )
         assertTrue(
             OpenCodeServerProtocol.shouldHandleBasicAuthChallenge(
@@ -1870,7 +1875,7 @@ class OpenCodeServerProtocolTest {
                 false,
                 "127.0.0.1",
                 443,
-            )
+            ),
         )
         assertFalse(
             OpenCodeServerProtocol.shouldHandleBasicAuthChallenge(
@@ -1878,7 +1883,7 @@ class OpenCodeServerProtocolTest {
                 true,
                 "127.0.0.1",
                 60482,
-            )
+            ),
         )
         assertFalse(
             OpenCodeServerProtocol.shouldHandleBasicAuthChallenge(
@@ -1886,7 +1891,7 @@ class OpenCodeServerProtocolTest {
                 false,
                 "127.0.0.1",
                 60483,
-            )
+            ),
         )
         assertFalse(
             OpenCodeServerProtocol.shouldHandleBasicAuthChallenge(
@@ -1894,7 +1899,7 @@ class OpenCodeServerProtocolTest {
                 false,
                 "example.com",
                 60482,
-            )
+            ),
         )
         assertFalse(
             OpenCodeServerProtocol.shouldHandleBasicAuthChallenge(
@@ -1902,10 +1907,10 @@ class OpenCodeServerProtocolTest {
                 false,
                 "localhost",
                 60482,
-            )
+            ),
         )
         assertFalse(
-            OpenCodeServerProtocol.shouldHandleBasicAuthChallenge(null, false, "127.0.0.1", 60482)
+            OpenCodeServerProtocol.shouldHandleBasicAuthChallenge(null, false, "127.0.0.1", 60482),
         )
     }
 
@@ -1978,7 +1983,7 @@ class OpenCodeServerProtocolTest {
                     basicAuthHeader = "Basic test-token",
                     connectTimeoutMillis = 1000,
                     readTimeoutMillis = 1000,
-                )
+                ),
             )
         }
     }
@@ -1992,7 +1997,7 @@ class OpenCodeServerProtocolTest {
                     basicAuthHeader = "Basic test-token",
                     connectTimeoutMillis = 1000,
                     readTimeoutMillis = 1000,
-                )
+                ),
             )
         }
     }
@@ -2016,7 +2021,7 @@ class OpenCodeServerProtocolTest {
         val v1 = OpenCodeProtocolResult.Success("""{"healthy":true,"version":"1.18.31"}""")
         val cli =
             OpenCodeProtocolResult.Success(
-                """{"version":"2.0.5","pid":47000,"urls":["http://127.0.0.1:18732"]}"""
+                """{"version":"2.0.5","pid":47000,"urls":["http://127.0.0.1:18732"]}""",
             )
         val embeddedV2 = OpenCodeProtocolResult.Success("""{"pid":12}""")
         val html = OpenCodeProtocolResult.Success("<!doctype html><html lang=\"en\"></html>")
@@ -2085,7 +2090,7 @@ class OpenCodeServerProtocolTest {
                     url,
                     connectTimeoutMillis = 1000,
                     readTimeoutMillis = 1000,
-                )
+                ),
             )
         }
     }
@@ -2101,7 +2106,7 @@ class OpenCodeServerProtocolTest {
                     url,
                     connectTimeoutMillis = 1000,
                     readTimeoutMillis = 1000,
-                )
+                ),
             )
         }
     }
@@ -2188,7 +2193,7 @@ class OpenCodeServerProtocolTest {
                 "not-a-url",
                 connectTimeoutMillis = 100,
                 readTimeoutMillis = 100,
-            )
+            ),
         )
     }
 
@@ -2212,7 +2217,7 @@ class OpenCodeServerProtocolTest {
                     basicAuthHeader = "Basic test-token",
                     connectTimeoutMillis = 1000,
                     readTimeoutMillis = 1000,
-                )
+                ),
             )
         }
     }
@@ -2224,7 +2229,7 @@ class OpenCodeServerProtocolTest {
                 "http://127.0.0.1:1",
                 basicAuthHeader = "Basic test-token",
                 wireProtocol = OpenCodeWireProtocol.V2_CLI,
-            )
+            ),
         )
     }
 
@@ -2236,7 +2241,7 @@ class OpenCodeServerProtocolTest {
                 basicAuthHeader = "Basic test-token",
                 connectTimeoutMillis = 100,
                 readTimeoutMillis = 100,
-            )
+            ),
         )
     }
 
@@ -2315,7 +2320,7 @@ class OpenCodeServerProtocolTest {
                         .getOutputStream()
                         .write(
                             "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ${body.length}\r\nConnection: close\r\n\r\n$body"
-                                .toByteArray(Charsets.UTF_8)
+                                .toByteArray(Charsets.UTF_8),
                         )
                     socket.getOutputStream().flush()
                 }
@@ -2427,7 +2432,7 @@ class OpenCodeServerProtocolTest {
         // restart casualty; continuing it would steer a spurious prompt into a live turn.
         val json = """{"type":"user","time":{"created":2000},"text":"hi"}"""
         assertFalse(
-            OpenCodeServerProtocol.isInterruptedLastMessage(json, createdBeforeMillis = 1000L)
+            OpenCodeServerProtocol.isInterruptedLastMessage(json, createdBeforeMillis = 1000L),
         )
     }
 
@@ -2435,7 +2440,7 @@ class OpenCodeServerProtocolTest {
     fun userMessageCreatedBeforeServerStartIsInterruptedWhenBounded() {
         val json = """{"type":"user","time":{"created":500},"text":"hi"}"""
         assertTrue(
-            OpenCodeServerProtocol.isInterruptedLastMessage(json, createdBeforeMillis = 1000L)
+            OpenCodeServerProtocol.isInterruptedLastMessage(json, createdBeforeMillis = 1000L),
         )
     }
 
@@ -2443,7 +2448,7 @@ class OpenCodeServerProtocolTest {
     fun streamingAssistantMessageCreatedOnLiveServerIsNotInterrupted() {
         val json = """{"type":"assistant","time":{"created":2000}}"""
         assertFalse(
-            OpenCodeServerProtocol.isInterruptedLastMessage(json, createdBeforeMillis = 1000L)
+            OpenCodeServerProtocol.isInterruptedLastMessage(json, createdBeforeMillis = 1000L),
         )
     }
 
@@ -2452,7 +2457,7 @@ class OpenCodeServerProtocolTest {
         // Without a timestamp the pre-restart origin cannot be proven; stay conservative.
         val json = """{"type":"user","text":"hi"}"""
         assertFalse(
-            OpenCodeServerProtocol.isInterruptedLastMessage(json, createdBeforeMillis = 1000L)
+            OpenCodeServerProtocol.isInterruptedLastMessage(json, createdBeforeMillis = 1000L),
         )
     }
 
@@ -2490,7 +2495,7 @@ class OpenCodeServerProtocolTest {
         val json =
             """{"id":"msg_1","time":{"created":900000,"completed":950000},"type":"assistant","finish":"error","error":{"type":"unknown","message":"Provider turn interrupted"}}"""
         assertFalse(
-            OpenCodeServerProtocol.isSuspendSeveredLastMessage(json, 1_000_000L, 1_900_000L)
+            OpenCodeServerProtocol.isSuspendSeveredLastMessage(json, 1_000_000L, 1_900_000L),
         )
     }
 
@@ -2499,7 +2504,7 @@ class OpenCodeServerProtocolTest {
         val json =
             """{"id":"msg_1","time":{"created":1950000,"completed":1960000},"type":"assistant","finish":"error","error":{"type":"unknown","message":"whatever"}}"""
         assertFalse(
-            OpenCodeServerProtocol.isSuspendSeveredLastMessage(json, 1_000_000L, 1_900_000L)
+            OpenCodeServerProtocol.isSuspendSeveredLastMessage(json, 1_000_000L, 1_900_000L),
         )
     }
 
@@ -2508,7 +2513,7 @@ class OpenCodeServerProtocolTest {
         val json =
             """{"id":"msg_1","time":{"created":900000,"completed":2000000},"type":"assistant","content":[{"type":"text","id":"text-0","text":"done"}]}"""
         assertFalse(
-            OpenCodeServerProtocol.isSuspendSeveredLastMessage(json, 1_000_000L, 1_900_000L)
+            OpenCodeServerProtocol.isSuspendSeveredLastMessage(json, 1_000_000L, 1_900_000L),
         )
     }
 
@@ -2516,7 +2521,7 @@ class OpenCodeServerProtocolTest {
     fun unsettledTurnIsNotSeveredYet() {
         val json = """{"id":"msg_1","time":{"created":900000},"type":"assistant"}"""
         assertFalse(
-            OpenCodeServerProtocol.isSuspendSeveredLastMessage(json, 1_000_000L, 1_900_000L)
+            OpenCodeServerProtocol.isSuspendSeveredLastMessage(json, 1_000_000L, 1_900_000L),
         )
     }
 
@@ -2524,7 +2529,7 @@ class OpenCodeServerProtocolTest {
     fun userMessageIsNotSevered() {
         val json = """{"id":"msg_1","time":{"created":900000},"type":"user","text":"prompt"}"""
         assertFalse(
-            OpenCodeServerProtocol.isSuspendSeveredLastMessage(json, 1_000_000L, 1_900_000L)
+            OpenCodeServerProtocol.isSuspendSeveredLastMessage(json, 1_000_000L, 1_900_000L),
         )
     }
 
@@ -2647,7 +2652,7 @@ class OpenCodeServerProtocolTest {
         assertEquals(
             "/private/tmp/project",
             OpenCodeServerProtocol.parseSessionDirectory(
-                """{"id":"ses_1","directory":"/tmp/project","location":{"directory":"/private/tmp/project"}}"""
+                """{"id":"ses_1","directory":"/tmp/project","location":{"directory":"/private/tmp/project"}}""",
             ),
         )
     }
@@ -2771,15 +2776,15 @@ class OpenCodeServerProtocolTest {
                 .trimIndent()
         assertTrue(
             OpenCodeServerProtocol.isInterruptedLastMessage(
-                OpenCodeServerProtocol.normalizeLastMessageForClassification(running)!!
-            )
+                OpenCodeServerProtocol.normalizeLastMessageForClassification(running)!!,
+            ),
         )
 
         val user = """{"info":{"role":"user","time":{"created":50}},"parts":[]}"""
         assertTrue(
             OpenCodeServerProtocol.isInterruptedLastMessage(
-                OpenCodeServerProtocol.normalizeLastMessageForClassification(user)!!
-            )
+                OpenCodeServerProtocol.normalizeLastMessageForClassification(user)!!,
+            ),
         )
 
         // v2 shape is already flat and must pass through unchanged.
@@ -2792,13 +2797,13 @@ class OpenCodeServerProtocolTest {
         assertEquals(
             """{"type":"assistant"}""",
             OpenCodeServerProtocol.extractLastMessageRaw(
-                """[{"type":"assistant"},{"type":"user"}]"""
+                """[{"type":"assistant"},{"type":"user"}]""",
             ),
         )
         assertEquals(
             """{"type":"assistant"}""",
             OpenCodeServerProtocol.extractLastMessageRaw(
-                """{"data":[{"type":"assistant"}],"cursor":{}}"""
+                """{"data":[{"type":"assistant"}],"cursor":{}}""",
             ),
         )
         assertNull(OpenCodeServerProtocol.extractLastMessageRaw("""[]"""))
@@ -2990,7 +2995,7 @@ class OpenCodeServerProtocolTest {
                 "invalid",
                 "per_1",
                 OpenCodePermissionResponse.ONCE,
-            )
+            ),
         )
         assertFalse(
             OpenCodeServerProtocol.replyToPermission(
@@ -3000,7 +3005,7 @@ class OpenCodeServerProtocolTest {
                 "ses_1",
                 "not a valid id",
                 OpenCodePermissionResponse.ONCE,
-            )
+            ),
         )
     }
 
@@ -3086,7 +3091,7 @@ class OpenCodeServerProtocolTest {
         assertEquals("src/Foo.kt", diffs[0].file)
         assertTrue(
             OpenCodeServerProtocol.parseSessionDiff(wireFixture("v2_cli/session-diff-empty.json"))
-                .isEmpty()
+                .isEmpty(),
         )
         val live =
             OpenCodeServerProtocol.parseSessionDiff(wireFixture("v2_cli/session-diff-added.json"))

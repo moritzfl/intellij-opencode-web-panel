@@ -30,7 +30,7 @@ internal class OpenCodeEditorFile(private val controller: OpenCodePanelControlle
                 isPopup = true
                 templatePresentation.text = "More"
                 templatePresentation.icon = com.intellij.icons.AllIcons.General.Settings
-            }
+            },
         )
         val toolbar =
             ActionManager.getInstance().createActionToolbar("OpenCode.Editor", actions, true)

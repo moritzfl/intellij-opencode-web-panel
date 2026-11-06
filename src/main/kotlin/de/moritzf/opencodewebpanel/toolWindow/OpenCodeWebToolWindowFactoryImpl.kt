@@ -12,7 +12,7 @@ import kotlin.jvm.JvmDefaultWithoutCompatibility
 internal fun openCodeToolWindowHeading(project: Project?): String {
     val native =
         OpenCodeServerBackend.isNative(
-            OpenCodeServerBackendRegistry.getInstance().backendFor(project).backendId
+            OpenCodeServerBackendRegistry.getInstance().backendFor(project).backendId,
         )
     return if (native) "OpenCode (native CLI)" else "OpenCode (sbx)"
 }

@@ -284,7 +284,7 @@ internal class OpenCodeGlobalEventStream(
         try {
             if (newConnection.responseCode != HttpURLConnection.HTTP_OK) {
                 throw IOException(
-                    "OpenCode event stream returned HTTP ${newConnection.responseCode}"
+                    "OpenCode event stream returned HTTP ${newConnection.responseCode}",
                 )
             }
             val contentType = newConnection.contentType.orEmpty().lowercase()
@@ -311,7 +311,7 @@ internal class OpenCodeGlobalEventStream(
                         block.append(line)
                         if (block.length > MAX_SSE_BLOCK_CHARS) {
                             throw IOException(
-                                "OpenCode event stream block exceeded $MAX_SSE_BLOCK_CHARS characters"
+                                "OpenCode event stream block exceeded $MAX_SSE_BLOCK_CHARS characters",
                             )
                         }
                     }
@@ -392,7 +392,7 @@ internal class BoundedLineReader(private val reader: Reader, private val maxChar
                     line.append(char)
                     if (line.length > maxChars) {
                         throw IOException(
-                            "OpenCode event stream line exceeded $maxChars characters"
+                            "OpenCode event stream line exceeded $maxChars characters",
                         )
                     }
                 }

@@ -25,31 +25,31 @@ class OpenCodeDiffNavigationTest {
                 "packages/app/src/Main.kt",
                 "src/Main.kt",
                 caseSensitive = true,
-            )
+            ),
         )
         assertFalse(
             OpenCodeDiffNavigation.matchesFile(
                 "packages/Src/Main.kt",
                 "src/main.kt",
                 caseSensitive = true,
-            )
+            ),
         )
         assertTrue(
             OpenCodeDiffNavigation.matchesFile(
                 "packages/Src/Main.kt",
                 "src/main.kt",
                 caseSensitive = false,
-            )
+            ),
         )
         assertFalse(
             OpenCodeDiffNavigation.matchesFile(
                 "src/a/Main.kt",
                 "src/b/Main.kt",
                 caseSensitive = true,
-            )
+            ),
         )
         assertFalse(
-            OpenCodeDiffNavigation.matchesFile("src/Other.kt", "Main.kt", caseSensitive = true)
+            OpenCodeDiffNavigation.matchesFile("src/Other.kt", "Main.kt", caseSensitive = true),
         )
     }
 
@@ -108,17 +108,17 @@ class OpenCodeDiffNavigationTest {
                 "working",
                 "src/Main.kt",
                 listOf(diff("src/Main.kt")),
-            )
+            ),
         )
         assertNull(
             OpenCodeDiffNavigation.workspaceFileFallback(
                 "working",
                 "src/Broken.kt",
                 listOf(diff("src/Broken.kt").copy(patch = "not a unified diff")),
-            )
+            ),
         )
         assertNull(
-            OpenCodeDiffNavigation.workspaceFileFallback("branch", "src/New.kt", emptyList())
+            OpenCodeDiffNavigation.workspaceFileFallback("branch", "src/New.kt", emptyList()),
         )
         assertNull(OpenCodeDiffNavigation.workspaceFileFallback(null, "src/New.kt", emptyList()))
         assertNull(OpenCodeDiffNavigation.workspaceFileFallback("working", null, emptyList()))

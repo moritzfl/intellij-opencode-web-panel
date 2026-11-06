@@ -24,7 +24,7 @@ class OpenCodeReleaseUpdatesTest {
         assertEquals(
             "2.0.8",
             OpenCodeReleaseUpdates.parseNpmLatestVersion(
-                """{"name":"@opencode/cli","version":"2.0.8"}"""
+                """{"name":"@opencode/cli","version":"2.0.8"}""",
             ),
         )
         assertNull(OpenCodeReleaseUpdates.parseNpmLatestVersion("""{"name":"x"}"""))

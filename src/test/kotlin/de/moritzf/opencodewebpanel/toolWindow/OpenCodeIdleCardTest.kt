@@ -69,10 +69,10 @@ class OpenCodeIdleCardTest {
             assertTrue(
                 parts.filterIsInstance<JTextArea>().any {
                     it.text.contains("Downloaded image layer")
-                }
+                },
             )
             assertTrue(
-                parts.filterIsInstance<JTextArea>().any { it.text.contains("several minutes") }
+                parts.filterIsInstance<JTextArea>().any { it.text.contains("several minutes") },
             )
             assertTrue(parts.filterIsInstance<JProgressBar>().single().isIndeterminate)
             parts.filterIsInstance<JButton>().single { it.text == "Cancel" }.doClick()
@@ -84,7 +84,7 @@ class OpenCodeIdleCardTest {
             assertFalse(parts.filterIsInstance<JProgressBar>().single().isIndeterminate)
             card.show(OpenCodeServerLifecycleState.STARTING, logAvailable = false)
             assertFalse(
-                parts.filterIsInstance<JButton>().single { it.text == "Open full log" }.isEnabled
+                parts.filterIsInstance<JButton>().single { it.text == "Open full log" }.isEnabled,
             )
             card.show(OpenCodeServerLifecycleState.STOPPED)
             assertFalse(parts.filterIsInstance<JProgressBar>().single().isVisible)

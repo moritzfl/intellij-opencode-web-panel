@@ -10,18 +10,18 @@ class OpenCodeCefFileDialogHandlerTest {
     fun shouldHandleOpenDialogsAndLeaveSaveToCef() {
         assertTrue(
             OpenCodeCefFileDialogHandler.shouldHandle(
-                CefDialogHandler.FileDialogMode.FILE_DIALOG_OPEN
-            )
+                CefDialogHandler.FileDialogMode.FILE_DIALOG_OPEN,
+            ),
         )
         assertTrue(
             OpenCodeCefFileDialogHandler.shouldHandle(
-                CefDialogHandler.FileDialogMode.FILE_DIALOG_OPEN_MULTIPLE
-            )
+                CefDialogHandler.FileDialogMode.FILE_DIALOG_OPEN_MULTIPLE,
+            ),
         )
         assertFalse(
             OpenCodeCefFileDialogHandler.shouldHandle(
-                CefDialogHandler.FileDialogMode.FILE_DIALOG_SAVE
-            )
+                CefDialogHandler.FileDialogMode.FILE_DIALOG_SAVE,
+            ),
         )
         assertFalse(OpenCodeCefFileDialogHandler.shouldHandle(null))
     }

@@ -48,19 +48,19 @@ class OpenCodeServerLifecycleTest {
             shouldApplyPublishedLifecycleState(
                 OpenCodeServerLifecycleState.STOPPED,
                 OpenCodeServerLifecycleState.STOPPED,
-            )
+            ),
         )
         assertFalse(
             shouldApplyPublishedLifecycleState(
                 OpenCodeServerLifecycleState.STOPPED,
                 OpenCodeServerLifecycleState.RUNNING,
-            )
+            ),
         )
         assertFalse(
             shouldApplyPublishedLifecycleState(
                 OpenCodeServerLifecycleState.RUNNING,
                 OpenCodeServerLifecycleState.STOPPED,
-            )
+            ),
         )
     }
 
@@ -88,19 +88,19 @@ class OpenCodeServerLifecycleTest {
             isOpenCodeLifecycleStripVisible(
                 OpenCodeServerLifecycleState.RUNNING,
                 pageOpening = true,
-            )
+            ),
         )
         assertFalse(
             isOpenCodeLifecycleStripVisible(
                 OpenCodeServerLifecycleState.RUNNING,
                 pageOpening = false,
-            )
+            ),
         )
         assertTrue(
             isOpenCodeLifecycleStripVisible(
                 OpenCodeServerLifecycleState.STARTING,
                 pageOpening = true,
-            )
+            ),
         )
         assertFalse(isOpenCodeLifecycleStripVisible(OpenCodeServerLifecycleState.STOPPED))
         assertTrue(isOpenCodeLifecycleStripVisible(OpenCodeServerLifecycleState.RESTARTING))
@@ -110,16 +110,16 @@ class OpenCodeServerLifecycleTest {
     @Test
     fun pageOpeningStripStaysHiddenAfterThePageHasPainted() {
         assertTrue(
-            shouldShowPageOpeningStatus(pageLoadInProgress = true, openCodePagePainted = false)
+            shouldShowPageOpeningStatus(pageLoadInProgress = true, openCodePagePainted = false),
         )
         assertFalse(
-            shouldShowPageOpeningStatus(pageLoadInProgress = true, openCodePagePainted = true)
+            shouldShowPageOpeningStatus(pageLoadInProgress = true, openCodePagePainted = true),
         )
         assertFalse(
-            shouldShowPageOpeningStatus(pageLoadInProgress = false, openCodePagePainted = false)
+            shouldShowPageOpeningStatus(pageLoadInProgress = false, openCodePagePainted = false),
         )
         assertFalse(
-            shouldShowPageOpeningStatus(pageLoadInProgress = false, openCodePagePainted = true)
+            shouldShowPageOpeningStatus(pageLoadInProgress = false, openCodePagePainted = true),
         )
     }
 
@@ -144,14 +144,14 @@ class OpenCodeServerLifecycleTest {
     fun cancelledStripIsNotUnhealthy() {
         val html =
             formatOpenCodeLifecycleStrip(
-                OpenCodeLifecycleStripModel(OpenCodeServerLifecycleState.FAILED, cancelled = true)
+                OpenCodeLifecycleStripModel(OpenCodeServerLifecycleState.FAILED, cancelled = true),
             )
         assertTrue(html.contains("Cancelled"))
         assertFalse(html.contains("Failed"))
         assertTrue(
             isOpenCodeLifecycleStripVisible(
-                OpenCodeLifecycleStripModel(OpenCodeServerLifecycleState.FAILED, cancelled = true)
-            )
+                OpenCodeLifecycleStripModel(OpenCodeServerLifecycleState.FAILED, cancelled = true),
+            ),
         )
     }
 
@@ -182,7 +182,7 @@ class OpenCodeServerLifecycleTest {
         assertTrue(shouldTickLifecycleStrip(model))
         assertTrue(
             formatOpenCodeLifecycleStrip(model, nowMillis = 1)
-                .contains("stalled renderer heartbeat")
+                .contains("stalled renderer heartbeat"),
         )
         assertEquals(
             notice,
@@ -201,7 +201,7 @@ class OpenCodeServerLifecycleTest {
                 pagePainted = true,
                 pageLoadInProgress = false,
                 nowMillis = 1 + RECOVERY_BANNER_MILLIS,
-            )
+            ),
         )
         assertEquals(
             notice,
@@ -223,7 +223,7 @@ class OpenCodeServerLifecycleTest {
                     OpenCodeServerLifecycleState.RESTARTING,
                     stage = "Upgrading OpenCode…",
                     elapsedMillis = 12_000,
-                )
+                ),
             )
         assertTrue(html.contains("Restarting"))
         assertTrue(html.contains("Upgrading OpenCode"))
@@ -233,8 +233,8 @@ class OpenCodeServerLifecycleTest {
                 OpenCodeLifecycleStripModel(
                     OpenCodeServerLifecycleState.RESTARTING,
                     stage = "Downloading 50%",
-                )
-            )
+                ),
+            ),
         )
     }
 

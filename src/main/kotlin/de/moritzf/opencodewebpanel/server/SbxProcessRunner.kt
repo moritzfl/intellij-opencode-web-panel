@@ -92,7 +92,7 @@ internal object SbxProcessRunner : SbxCommandRunner {
                         else pendingStdout
                     synchronized(pending) { splitProcessOutputLines(pending, text, onOutputLine) }
                 }
-            }
+            },
         )
         val timeout = timeoutMillis.coerceIn(1L, Int.MAX_VALUE.toLong()).toInt()
         val indicator = ProgressManager.getGlobalProgressIndicator()
@@ -234,7 +234,7 @@ private val ANSI_SEQUENCE =
         "\u001B\\[[\\d;?=]*[ -/]*[@-~]|" +
             "\u001B][^\\u0007\\u001B]*(?:\\u0007|\u001B\\\\)|" +
             "\u001B[()].|" +
-            "\u001B[@-Z\\\\-_]"
+            "\u001B[@-Z\\\\-_]",
     )
 private val ORPHAN_CSI = Regex("\\[(?:\\?\\d+[lh]|\\d+D|\\d*[JK](?![A-Za-z]))")
 private val SPINNER_ONLY = Regex("""^[|/\\-]+${'$'}""")

@@ -39,7 +39,7 @@ class OpenCodePermissionAutoResponderTest {
                     "ses_a",
                     "per_a",
                     OpenCodePermissionResponse.ONCE,
-                )
+                ),
             ),
             fixture.replies,
         )
@@ -53,7 +53,7 @@ class OpenCodePermissionAutoResponderTest {
                     listOf(
                         OpenCodePendingRequestSummary("per_a", "ses_a"),
                         OpenCodePendingRequestSummary("per_b", "ses_b"),
-                    )
+                    ),
             )
 
         fixture.responder.setSessionEnabled("ses_a", true)
@@ -113,7 +113,7 @@ class OpenCodePermissionAutoResponderTest {
         fixture.responder.setSessionEnabled("ses_a", true)
         fixture.drain()
         fixture.responder.eventReceived(
-            permissionEvent("/tmp/project", "ses_a", "per_foreign").copy(backendId = "foreign")
+            permissionEvent("/tmp/project", "ses_a", "per_foreign").copy(backendId = "foreign"),
         )
         val created =
             OpenCodeGlobalEvent(
@@ -144,7 +144,7 @@ class OpenCodePermissionAutoResponderTest {
                         OpenCodePendingRequestSummary("per_a", "ses_a"),
                         OpenCodePendingRequestSummary("per_b", "ses_b"),
                         OpenCodePendingRequestSummary("per_c", "ses_c"),
-                    )
+                    ),
             )
         fixture.responder.setSessionEnabled("ses_a", true)
         fixture.responder.setSessionEnabled("ses_b", true)
@@ -192,7 +192,7 @@ class OpenCodePermissionAutoResponderTest {
                     mapOf(
                         "ses_child" to "ses_parent",
                         "ses_grand" to "ses_child",
-                    )
+                    ),
             )
         fixture.responder.setSessionEnabled("ses_parent", true)
         fixture.drain()
@@ -212,7 +212,7 @@ class OpenCodePermissionAutoResponderTest {
         fixture.drain()
 
         fixture.responder.eventReceived(
-            sessionCreatedEvent("/tmp/project", "ses_child", "ses_parent")
+            sessionCreatedEvent("/tmp/project", "ses_child", "ses_parent"),
         )
         fixture.responder.eventReceived(permissionEvent("/tmp/project", "ses_child", "per_child"))
         fixture.drain()
@@ -228,10 +228,10 @@ class OpenCodePermissionAutoResponderTest {
         fixture.drain()
 
         fixture.responder.eventReceived(
-            sessionCreatedEvent("/tmp/project", "ses_child", "ses_parent")
+            sessionCreatedEvent("/tmp/project", "ses_child", "ses_parent"),
         )
         fixture.responder.eventReceived(
-            sessionCreatedEvent("/tmp/project", "ses_grand", "ses_child")
+            sessionCreatedEvent("/tmp/project", "ses_grand", "ses_child"),
         )
         fixture.responder.eventReceived(permissionEvent("/tmp/project", "ses_grand", "per_grand"))
         fixture.drain()
@@ -251,7 +251,7 @@ class OpenCodePermissionAutoResponderTest {
         assertTrue(fixture.replies.isEmpty())
 
         fixture.responder.eventReceived(
-            sessionCreatedEvent("/tmp/project", "ses_child", "ses_parent")
+            sessionCreatedEvent("/tmp/project", "ses_child", "ses_parent"),
         )
         fixture.drain()
 
@@ -369,7 +369,7 @@ class OpenCodePermissionAutoResponderTest {
                     mapOf(
                         "ses_child" to "ses_parent",
                         "ses_sibling" to "ses_parent",
-                    )
+                    ),
             )
         fixture.responder.setSessionEnabled("ses_parent", true)
         fixture.drain()
@@ -426,13 +426,13 @@ class OpenCodePermissionAutoResponderTest {
                     mapOf(
                         "ses_child_a" to "ses_parent_a",
                         "ses_child_b" to "ses_parent_b",
-                    )
+                    ),
             )
         fixture.responder.setSessionEnabled("ses_parent_a", true)
         fixture.drain()
 
         fixture.responder.eventReceived(
-            permissionEvent("/tmp/project", "ses_child_b", "per_child_b")
+            permissionEvent("/tmp/project", "ses_child_b", "per_child_b"),
         )
         fixture.drain()
 
@@ -621,7 +621,7 @@ class OpenCodePermissionAutoResponderTest {
             "session.created",
             "evt_created",
             JsonParser.parseString(
-                    """{"sessionID":"$sessionID","info":{"id":"$sessionID","title":"$sessionID","parentID":"$parentID"}}"""
+                    """{"sessionID":"$sessionID","info":{"id":"$sessionID","title":"$sessionID","parentID":"$parentID"}}""",
                 )
                 .asJsonObject,
         )

@@ -9,13 +9,13 @@ class OpenCodeRendererWatchdogPolicyTest {
     @Test
     fun hiddenPagesAreNotMonitored() {
         assertFalse(
-            OpenCodeRendererWatchdogPolicy.shouldMonitor(panelShowing = true, pageVisible = false)
+            OpenCodeRendererWatchdogPolicy.shouldMonitor(panelShowing = true, pageVisible = false),
         )
         assertFalse(
-            OpenCodeRendererWatchdogPolicy.shouldMonitor(panelShowing = false, pageVisible = true)
+            OpenCodeRendererWatchdogPolicy.shouldMonitor(panelShowing = false, pageVisible = true),
         )
         assertTrue(
-            OpenCodeRendererWatchdogPolicy.shouldMonitor(panelShowing = true, pageVisible = true)
+            OpenCodeRendererWatchdogPolicy.shouldMonitor(panelShowing = true, pageVisible = true),
         )
     }
 
@@ -105,7 +105,7 @@ class OpenCodeRendererWatchdogPolicyTest {
                 pagePainted = false,
                 loadSucceeded = false,
                 loadGaveUp = false,
-            )
+            ),
         )
         assertFalse(
             OpenCodeRendererWatchdogPolicy.isPageReadyForRendererWatchdog(
@@ -113,7 +113,7 @@ class OpenCodeRendererWatchdogPolicyTest {
                 pagePainted = false,
                 loadSucceeded = false,
                 loadGaveUp = false,
-            )
+            ),
         )
         assertTrue(
             OpenCodeRendererWatchdogPolicy.isPageReadyForRendererWatchdog(
@@ -121,7 +121,7 @@ class OpenCodeRendererWatchdogPolicyTest {
                 pagePainted = true,
                 loadSucceeded = true,
                 loadGaveUp = false,
-            )
+            ),
         )
         assertTrue(
             OpenCodeRendererWatchdogPolicy.isPageReadyForRendererWatchdog(
@@ -129,7 +129,7 @@ class OpenCodeRendererWatchdogPolicyTest {
                 pagePainted = false,
                 loadSucceeded = false,
                 loadGaveUp = true,
-            )
+            ),
         )
     }
 

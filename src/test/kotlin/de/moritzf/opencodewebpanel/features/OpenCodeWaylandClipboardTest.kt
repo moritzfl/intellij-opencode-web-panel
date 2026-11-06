@@ -23,7 +23,7 @@ class OpenCodeWaylandClipboardTest {
             OpenCodeWaylandClipboard.isWaylandSession(false, "wayland-0"),
         )
         for (display in listOf(null, "", " ")) assertFalse(
-            OpenCodeWaylandClipboard.isWaylandSession(true, display)
+            OpenCodeWaylandClipboard.isWaylandSession(true, display),
         )
     }
 
@@ -34,7 +34,7 @@ class OpenCodeWaylandClipboardTest {
             commands += command
             if (command.last() == "--list-types") {
                 OpenCodeWaylandClipboard.Result.Text(
-                    "text/html\ntext/plain\ntext/plain;charset=utf-8\n"
+                    "text/html\ntext/plain\ntext/plain;charset=utf-8\n",
                 )
             } else {
                 assertEquals(OpenCodeClipboardText.MAX_CHARS, limit)

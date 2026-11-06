@@ -8,7 +8,7 @@ import org.cef.handler.CefLifeSpanHandlerAdapter
 
 /** A constructed JBCefBrowser wrapper does not yet own a remote Chromium browser. */
 internal fun createOpenCodeBrowserBeforeReplacement(
-    browser: JBCefBrowser
+    browser: JBCefBrowser,
 ): CompletableFuture<Unit> {
     val created = CompletableFuture<Unit>()
     val handler =

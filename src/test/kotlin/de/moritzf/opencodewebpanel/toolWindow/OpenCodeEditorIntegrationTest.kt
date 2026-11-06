@@ -160,7 +160,7 @@ class OpenCodeEditorIntegrationTest : FileEditorManagerTestCase() {
                     true,
                     LightVirtualFile("code.txt", "code"),
                     true,
-                )
+                ),
             )
         editorManager.openFile(file, target, FileEditorOpenOptions(requestFocus = true))
         UIUtil.dispatchAllInvocationEvents()
@@ -174,7 +174,7 @@ class OpenCodeEditorIntegrationTest : FileEditorManagerTestCase() {
             UIUtil.isAncestor(
                 editorManager.getEditors(file).single().component,
                 controller.component,
-            )
+            ),
         )
         editorManager.openFile(code, source, FileEditorOpenOptions(requestFocus = true))
         assertTrue(OpenCodeChatInputService.getInstance(project).activatePanel())
@@ -192,7 +192,7 @@ class OpenCodeEditorIntegrationTest : FileEditorManagerTestCase() {
         manager.openFile(file, true)
         assertTrue(controller.isInEditor)
         assertTrue(
-            UIUtil.isAncestor(manager.getEditors(file).single().component, controller.component)
+            UIUtil.isAncestor(manager.getEditors(file).single().component, controller.component),
         )
         controller.moveToToolWindow()
         controller.moveToEditor()

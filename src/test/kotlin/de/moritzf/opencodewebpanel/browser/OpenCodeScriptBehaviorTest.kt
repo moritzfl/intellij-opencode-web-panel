@@ -19,7 +19,7 @@ class OpenCodeScriptBehaviorTest {
                     OpenCodeBrowserSnippets.buildOpenProjectScript(
                         "C:/Work/Repo",
                         "http://127.0.0.1:4096",
-                    )
+                    ),
             ),
             """
             const key = 'opencode.global.dat:server';
@@ -60,11 +60,11 @@ class OpenCodeScriptBehaviorTest {
             mapOf(
                 "restore" to
                     OpenCodeBrowserSnippets.buildRestoreOpenCodeLocalStorageScript(
-                        """{"settings.v3":"old","opencode-theme-id":"dark","opencode.global.dat:server":"foreign","opencode.window.browser.dat:tabs":"foreign"}"""
+                        """{"settings.v3":"old","opencode-theme-id":"dark","opencode.global.dat:server":"foreign","opencode.window.browser.dat:tabs":"foreign"}""",
                     ),
                 "sync" to
                     OpenCodeBrowserSnippets.buildSyncOpenCodeLocalStorageScript(
-                        "reports.push(JSON.parse(payload))"
+                        "reports.push(JSON.parse(payload))",
                     ),
             ),
             """
@@ -130,7 +130,7 @@ class OpenCodeScriptBehaviorTest {
                     OpenCodeBrowserSnippets.buildRendererHeartbeatScript(
                         true,
                         "reports.push(visibility)",
-                    )
+                    ),
             ),
             """
             const reports = [];

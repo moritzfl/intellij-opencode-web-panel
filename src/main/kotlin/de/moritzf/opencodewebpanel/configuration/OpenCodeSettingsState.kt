@@ -202,7 +202,7 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
         }
 
         fun sanitizeLocalStorageSnapshotsByBackend(
-            source: Map<String, String>?
+            source: Map<String, String>?,
         ): MutableMap<String, String> {
             val result = HashMap<String, String>()
             source.orEmpty().forEach { (key, value) ->

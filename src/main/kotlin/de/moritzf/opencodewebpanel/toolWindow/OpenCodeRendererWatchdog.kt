@@ -183,7 +183,7 @@ internal class OpenCodeRendererWatchdog(
                 consecutiveStalls = 0
                 lastHeartbeatAtMillis = now
                 LOG.warn(
-                    "OpenCode page heartbeat stayed stalled after reload; recreating the panel"
+                    "OpenCode page heartbeat stayed stalled after reload; recreating the panel",
                 )
                 onRecreatePanel()
             }

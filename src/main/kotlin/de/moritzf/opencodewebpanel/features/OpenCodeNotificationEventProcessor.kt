@@ -161,7 +161,7 @@ internal class OpenCodeNotificationEventProcessor(
                 kind = kind,
                 sessionID = sessionID,
                 requestID = requestID,
-            )
+            ),
         )
     }
 

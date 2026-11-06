@@ -41,7 +41,7 @@ class OpenCodeUnifiedDiffTest {
         assertNull(OpenCodeUnifiedDiff.firstChangedLineIndex(null))
         assertNull(OpenCodeUnifiedDiff.firstChangedLineIndex(""))
         assertNull(
-            OpenCodeUnifiedDiff.firstChangedLineIndex("diff --git a/x b/x\n--- a/x\n+++ b/x\n")
+            OpenCodeUnifiedDiff.firstChangedLineIndex("diff --git a/x b/x\n--- a/x\n+++ b/x\n"),
         )
     }
 
@@ -155,8 +155,8 @@ class OpenCodeUnifiedDiffTest {
                 --- a/x
                 +++ b/x
                 """
-                    .trimIndent()
-            )
+                    .trimIndent(),
+            ),
         )
     }
 }

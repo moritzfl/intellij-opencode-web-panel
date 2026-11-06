@@ -297,11 +297,11 @@ class OpenCodePathAndMemberMatchingTest {
         )
         assertTrue(
             OpenCodeServerProtocol.codeReferenceFileNames(simple)
-                .contains("OpenCodeIdeNavigation.kt")
+                .contains("OpenCodeIdeNavigation.kt"),
         )
         assertTrue(
             OpenCodeServerProtocol.codeReferenceFileNames(simple)
-                .contains("OpenCodeIdeNavigation.java")
+                .contains("OpenCodeIdeNavigation.java"),
         )
 
         val file = OpenCodeServerProtocol.parseCodeReference("src/Main.kt")!!
@@ -358,7 +358,7 @@ class OpenCodePathAndMemberMatchingTest {
             OpenCodeServerProtocol.pickDistinctPath(
                 listOf("/a/src/Main.kt", "/b/src/Main.kt"),
                 "src/Main.kt",
-            )
+            ),
         )
     }
 
@@ -383,11 +383,11 @@ class OpenCodePathAndMemberMatchingTest {
                 OpenCodeServerProtocol.scoreFilePathSuffix(
                     "/repo/src/other/Foo.kt",
                     "de.moritzf.Foo",
-                )
+                ),
         )
         assertTrue(
             OpenCodeServerProtocol.scoreFilePathSuffix("/repo/src/Foo.kt", "Foo") >
-                OpenCodeServerProtocol.scoreFilePathSuffix("/repo/src/Bar.kt", "Foo")
+                OpenCodeServerProtocol.scoreFilePathSuffix("/repo/src/Bar.kt", "Foo"),
         )
         assertEquals(0, OpenCodeServerProtocol.scoreFilePathSuffix("/repo/src/Bar.kt", "Foo"))
         assertTrue(OpenCodeServerProtocol.scoreFilePathSuffix("/repo/src/Main.kt", "src/Main") > 1)
@@ -460,7 +460,7 @@ class OpenCodePathAndMemberMatchingTest {
 
         val parsed =
             OpenCodeServerProtocol.parseCodeReference(
-                "de.moritzf.OpenCodeIdeNavigation.openFileLinkInIde()"
+                "de.moritzf.OpenCodeIdeNavigation.openFileLinkInIde()",
             )!!
         val names = OpenCodeServerProtocol.codeReferenceFileNames(parsed).toSet()
         val matching = candidates.filter { path -> path.substringAfterLast('/') in names }
@@ -790,7 +790,7 @@ class OpenCodePathAndMemberMatchingTest {
     fun parseCodeReferenceStripsMethodCallToType() {
         val method =
             OpenCodeServerProtocol.parseCodeReference(
-                "PackagingMailingBarcodeDefinition.isWithScanRule()"
+                "PackagingMailingBarcodeDefinition.isWithScanRule()",
             )!!
         assertEquals("PackagingMailingBarcodeDefinition", method.fileName)
         assertEquals("PackagingMailingBarcodeDefinition", method.path)
@@ -801,7 +801,7 @@ class OpenCodePathAndMemberMatchingTest {
 
         val withLine =
             OpenCodeServerProtocol.parseCodeReference(
-                "PackagingMailingBarcodeDefinition.isWithScanRule()(L98)"
+                "PackagingMailingBarcodeDefinition.isWithScanRule()(L98)",
             )!!
         assertEquals("PackagingMailingBarcodeDefinition", withLine.fileName)
         assertEquals(97, withLine.line)
@@ -827,7 +827,7 @@ class OpenCodePathAndMemberMatchingTest {
     fun parseCodeReferenceAllowsSpacesWhenExtensionPresent() {
         val ref =
             OpenCodeServerProtocol.parseCodeReference(
-                "Manuelle Verpackung und PM-Mobile.xml:L1063"
+                "Manuelle Verpackung und PM-Mobile.xml:L1063",
             )!!
         assertEquals("Manuelle Verpackung und PM-Mobile.xml", ref.path)
         assertEquals("xml", ref.extension)
@@ -846,7 +846,7 @@ class OpenCodePathAndMemberMatchingTest {
             OpenCodeServerProtocol.scoreFilePathSuffix(
                 "/repo/packages/app/src/Main.kt",
                 "src/Main.kt",
-            ) > OpenCodeServerProtocol.scoreFilePathSuffix("/repo/other/Main.kt", "src/Main.kt")
+            ) > OpenCodeServerProtocol.scoreFilePathSuffix("/repo/other/Main.kt", "src/Main.kt"),
         )
         assertEquals(
             0,

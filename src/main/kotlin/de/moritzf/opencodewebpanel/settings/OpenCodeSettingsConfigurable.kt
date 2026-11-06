@@ -173,7 +173,7 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
                     OpenCodeSettingsState.MIN_UI_ZOOM_PERCENT,
                     OpenCodeSettingsState.MAX_UI_ZOOM_PERCENT,
                     10,
-                )
+                ),
             )
             .apply {
                 toolTipText = "Scale the embedded OpenCode UI"
@@ -345,7 +345,7 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
             Logger.getInstance(OpenCodeSettingsConfigurable::class.java)
                 .error("Failed to create OpenCode Web Panel settings", error)
             JBLabel(
-                    "<html>Failed to open OpenCode settings.<br>${error.javaClass.simpleName}: ${error.message.orEmpty()}</html>"
+                    "<html>Failed to open OpenCode settings.<br>${error.javaClass.simpleName}: ${error.message.orEmpty()}</html>",
                 )
                 .also { panel = it }
         }
@@ -358,14 +358,14 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
             group("OpenCode Launch") {
                 row {
                     comment(
-                        "Which runtime starts OpenCode. Host CLI runs opencode on this machine; Docker Sandbox runs it inside a Docker Sandbox. Runtime is chosen per project."
+                        "Which runtime starts OpenCode. Host CLI runs opencode on this machine; Docker Sandbox runs it inside a Docker Sandbox. Runtime is chosen per project.",
                     )
                 }
                 buttonsGroup("Host CLI — OpenCode executable:") {
                     row {
                         cell(autoBinaryRadioButton)
                             .comment(
-                                "Find opencode from PATH plus common install locations, including Homebrew, system paths, and npm locations on Windows."
+                                "Find opencode from PATH plus common install locations, including Homebrew, system paths, and npm locations on Windows.",
                             )
                     }
                     row {
@@ -402,13 +402,13 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
                 row {
                     cell(ideProxyRadioButton)
                         .comment(
-                            "Forward the IDE HTTP or SOCKS proxy, including auto-detect and PAC. PAC is resolved for a generic HTTPS target."
+                            "Forward the IDE HTTP or SOCKS proxy, including auto-detect and PAC. PAC is resolved for a generic HTTPS target.",
                         )
                 }
                 row {
                     cell(environmentProxyRadioButton)
                         .comment(
-                            "Use HTTP_PROXY and HTTPS_PROXY from the environment the IDE was started with."
+                            "Use HTTP_PROXY and HTTPS_PROXY from the environment the IDE was started with.",
                         )
                 }
                 row {
@@ -419,7 +419,7 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
                     comment(
                         "Applies to Host CLI only. Docker Sandboxes send provider traffic through the sandbox gateway; " +
                             "do not set HTTP_PROXY inside the VM. If your company requires an HTTP proxy, configure it " +
-                            "in Docker Sandboxes on the host — this setting does not control or bypass that proxy."
+                            "in Docker Sandboxes on the host — this setting does not control or bypass that proxy.",
                     )
                 }
             }
@@ -427,7 +427,7 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
                 row {
                     cell(waitForIntellijMcpServerCheckBox)
                         .comment(
-                            "If IntelliJ's MCP server is enabled, wait briefly for it to report that it is running before launching OpenCode."
+                            "If IntelliJ's MCP server is enabled, wait briefly for it to report that it is running before launching OpenCode.",
                         )
                 }
             }
@@ -435,7 +435,7 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
                 row {
                     cell(enableServerLogsCheckBox)
                         .comment(
-                            "Persist OpenCode server output in the IDE log directory and prune old log files automatically."
+                            "Persist OpenCode server output in the IDE log directory and prune old log files automatically.",
                         )
                 }
             }
@@ -443,7 +443,7 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
                 row {
                     comment(
                         "Prerequisites for Docker Sandbox runtimes (per project on " +
-                            "Tools → OpenCode Web Panel (Project)). Not needed for Host CLI."
+                            "Tools → OpenCode Web Panel (Project)). Not needed for Host CLI.",
                     )
                 }
                 row { cell(sbxLoginHintLabel) }
@@ -471,43 +471,43 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
                 row("Zoom:") {
                     cell(uiZoomSpinner)
                         .comment(
-                            "Scale the embedded OpenCode UI. Default: ${OpenCodeSettingsState.DEFAULT_UI_ZOOM_PERCENT}%."
+                            "Scale the embedded OpenCode UI. Default: ${OpenCodeSettingsState.DEFAULT_UI_ZOOM_PERCENT}%.",
                         )
                 }
                 row {
                     cell(forceCompactLayoutCheckBox)
                         .comment(
-                            "Keep the compact mobile layout even when the panel is wide, with a full-width Home session list in OpenCode 2.x. On: classic review panel. Off: OpenCode's native responsive layout and redesigned desktop review panel."
+                            "Keep the compact mobile layout even when the panel is wide, with a full-width Home session list in OpenCode 2.x. On: classic review panel. Off: OpenCode's native responsive layout and redesigned desktop review panel.",
                         )
                 }
                 row {
                     cell(showResponseModelInCompactLayoutCheckBox)
                         .comment(
-                            "OpenCode 2.x leaves the agent and model out of a response's info line in the compact view. Adds them back, as in the wide layout, so the model that actually answered stays visible, including automatically routed ones. Turn off if an OpenCode update clashes with it."
+                            "OpenCode 2.x leaves the agent and model out of a response's info line in the compact view. Adds them back, as in the wide layout, so the model that actually answered stays visible, including automatically routed ones. Turn off if an OpenCode update clashes with it.",
                         )
                 }
                 row {
                     cell(hideWebsiteButtonCheckBox)
                         .comment(
-                            "Hide OpenCode's floating help button that opens the OpenCode website. It only overlaps the message box in the panel. Turn off if an OpenCode update needs the control visible again."
+                            "Hide OpenCode's floating help button that opens the OpenCode website. It only overlaps the message box in the panel. Turn off if an OpenCode update needs the control visible again.",
                         )
                 }
                 row {
                     cell(fasterPathHoverPreviewCheckBox)
                         .comment(
-                            "Session tabs wait 2s in OpenCode; the panel shows that path preview after 250ms. Home project rows get the same preview so duplicate names stay distinguishable. Turn off if an OpenCode update clashes with the overlay."
+                            "Session tabs wait 2s in OpenCode; the panel shows that path preview after 250ms. Home project rows get the same preview so duplicate names stay distinguishable. Turn off if an OpenCode update clashes with the overlay.",
                         )
                 }
                 row {
                     cell(syncThemeWithIdeCheckBox)
                         .comment(
-                            "Patches the browser's prefers-color-scheme media query to match the IntelliJ theme. Only affects OpenCode when its color scheme is set to System."
+                            "Patches the browser's prefers-color-scheme media query to match the IntelliJ theme. Only affects OpenCode when its color scheme is set to System.",
                         )
                 }
                 row {
                     cell(mirrorBrowserCursorCheckBox)
                         .comment(
-                            "Apply the hovered page element's cursor style to the panel, like a regular browser would. Fixes the embedded browser never showing text or link cursors and resize cursors getting stuck."
+                            "Apply the hovered page element's cursor style to the panel, like a regular browser would. Fixes the embedded browser never showing text or link cursors and resize cursors getting stuck.",
                         )
                 }
             }
@@ -525,7 +525,7 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
                 row {
                     cell(openDiffsInIdeCheckBox)
                         .comment(
-                            "Ctrl+Click (Cmd+Click on macOS) or Alt+Click a diff in chat or in the changes list to open it in the IDE's diff viewer. F4 then jumps to the original file."
+                            "Ctrl+Click (Cmd+Click on macOS) or Alt+Click a diff in chat or in the changes list to open it in the IDE's diff viewer. F4 then jumps to the original file.",
                         )
                 }
             }
@@ -533,7 +533,7 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
                 row {
                     cell(openExternalLinksInBrowserCheckBox)
                         .comment(
-                            "Open external HTTP and HTTPS links in the system browser instead of navigating the embedded panel."
+                            "Open external HTTP and HTTPS links in the system browser instead of navigating the embedded panel.",
                         )
                 }
             }
@@ -541,7 +541,7 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
                 row {
                     cell(enableChatFileDropCheckBox)
                         .comment(
-                            "Use OpenCode's native handling for project file references and file attachments."
+                            "Use OpenCode's native handling for project file references and file attachments.",
                         )
                 }
             }
@@ -549,63 +549,63 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
                 row {
                     cell(notifyOpenCodeUpdatesCheckBox)
                         .comment(
-                            "Shows a lightning bolt on the OpenCode tool-window title bar. Hover for the version; click to upgrade a sandbox or copy the Host CLI command. 1.x checks npm opencode-ai; 2.x checks @opencode/cli. Does not suggest switching major versions."
+                            "Shows a lightning bolt on the OpenCode tool-window title bar. Hover for the version; click to upgrade a sandbox or copy the Host CLI command. 1.x checks npm opencode-ai; 2.x checks @opencode/cli. Does not suggest switching major versions.",
                         )
                 }
                 row {
                     cell(enableSystemNotificationsCheckBox)
                         .comment(
-                            "Show OpenCode browser notifications as IntelliJ notifications and route notification clicks back to OpenCode."
+                            "Show OpenCode browser notifications as IntelliJ notifications and route notification clicks back to OpenCode.",
                         )
                 }
                 indent {
                     row {
                         cell(enablePermissionNotificationActionsCheckBox)
                             .comment(
-                                "Answer agent permission requests directly from the IDE notification without switching to the panel."
+                                "Answer agent permission requests directly from the IDE notification without switching to the panel.",
                             )
                     }
                 }
                 row {
                     cell(suppressProjectSwitchPromptsCheckBox)
                         .comment(
-                            "Hide OpenCode in-app prompts that ask this panel to switch to another session or project for approval."
+                            "Hide OpenCode in-app prompts that ask this panel to switch to another session or project for approval.",
                         )
                 }
                 row {
                     cell(showAgentStatusBadgeCheckBox)
                         .comment(
-                            "Overlay the tool window icon with a live indicator while the agent works and a warning while it awaits your input."
+                            "Overlay the tool window icon with a live indicator while the agent works and a warning while it awaits your input.",
                         )
                 }
                 row {
                     cell(warnForeignSessionCheckBox)
                         .comment(
-                            "Off by default. Show an IDE warning and a bright red border around the panel when the conversation's directory is not this project's OpenCode directory, including a session OpenCode restores on startup. Does not block opening it. Symlink spellings and sandbox guest paths count as the same folder."
+                            "Off by default. Show an IDE warning and a bright red border around the panel when the conversation's directory is not this project's OpenCode directory, including a session OpenCode restores on startup. Does not block opening it. Symlink spellings and sandbox guest paths count as the same folder.",
                         )
                 }
                 row {
                     cell(autoContinueInterruptedSessionsCheckBox)
                         .comment(
-                            "Send a continuation prompt to recently active sessions after the server restarts or recovers, if their last assistant turn was interrupted."
+                            "Send a continuation prompt to recently active sessions after the server restarts or recovers, if their last assistant turn was interrupted.",
                         )
                 }
                 row {
                     cell(recoverStalledEventStreamCheckBox)
                         .comment(
-                            "On OpenCode 1.18, reconnect when sleep or a network change leaves the panel's connection silent. This prevents answered permission prompts and new messages from getting stuck. OpenCode 2 handles this natively; no connection patch is injected there."
+                            "On OpenCode 1.18, reconnect when sleep or a network change leaves the panel's connection silent. This prevents answered permission prompts and new messages from getting stuck. OpenCode 2 handles this natively; no connection patch is injected there.",
                         )
                 }
                 row {
                     cell(recoverFailedChunkLoadsCheckBox)
                         .comment(
-                            "Reload the page once when a lazy-loaded OpenCode chunk fails (\"Failed to fetch dynamically imported module\"), which leaves the page stuck behind OpenCode's error boundary until reloaded. CEF only reports main-frame failures to the IDE; without this the boundary sits there until you restart the panel manually."
+                            "Reload the page once when a lazy-loaded OpenCode chunk fails (\"Failed to fetch dynamically imported module\"), which leaves the page stuck behind OpenCode's error boundary until reloaded. CEF only reports main-frame failures to the IDE; without this the boundary sits there until you restart the panel manually.",
                         )
                 }
                 row {
                     cell(recoverStalledRendererCheckBox)
                         .comment(
-                            "Watch the page's heartbeat and reload it when the embedded browser goes silent without an error (a stuck or dead JCEF renderer, as happens with out-of-process browser mode). Persistent stalls recreate the panel; a failure card with Retry is the fallback."
+                            "Watch the page's heartbeat and reload it when the embedded browser goes silent without an error (a stuck or dead JCEF renderer, as happens with out-of-process browser mode). Persistent stalls recreate the panel; a failure card with Retry is the fallback.",
                         )
                 }
             }
@@ -765,7 +765,7 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
     }
 
     private fun resolveAndSavePasswordOffEdt(
-        editedPassword: String?
+        editedPassword: String?,
     ): OpenCodePasswordStore.PasswordUpdate {
         val store = OpenCodePasswordStore.getInstance()
         val operation =
@@ -862,7 +862,7 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
     private fun uiZoomPercent(): Int {
         return OpenCodeSettingsState.sanitizeUiZoomPercent(
             (uiZoomSpinner.value as? Number)?.toInt()
-                ?: OpenCodeSettingsState.DEFAULT_UI_ZOOM_PERCENT
+                ?: OpenCodeSettingsState.DEFAULT_UI_ZOOM_PERCENT,
         )
     }
 
@@ -978,7 +978,7 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
         val settings = OpenCodeSettingsState.getInstance()
         val executable =
             OpenCodeServerProtocol.resolveExecutableForLaunch(
-                if (customSbxRadioButton.isSelected) sbxPath() else settings.sbxExecutablePath()
+                if (customSbxRadioButton.isSelected) sbxPath() else settings.sbxExecutablePath(),
             )
         // Captured on the EDT: a pooled thread's invokeLater would otherwise wait for Settings to
         // close.
@@ -1108,7 +1108,7 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
                         de.moritzf.opencodewebpanel.server.SbxSetupChecklist.appSteps(
                             sbxFound,
                             consented,
-                        )
+                        ),
                     )
                     .replace("\n", "<br>") +
                 "</html>"

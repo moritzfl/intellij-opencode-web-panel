@@ -15,7 +15,7 @@ class OpenCodeAppearanceScriptsTest {
                 compact = false,
                 theme = false,
                 dark = true,
-            )
+            ),
         )
     }
 
@@ -174,7 +174,7 @@ class OpenCodeAppearanceScriptsTest {
     @Test
     fun buildProjectSwitchPromptSuppressionScriptIsMissingWhenDisabled() {
         assertNull(
-            OpenCodeBrowserSnippets.buildProjectSwitchPromptSuppressionScript(enabled = false)
+            OpenCodeBrowserSnippets.buildProjectSwitchPromptSuppressionScript(enabled = false),
         )
     }
 
@@ -184,7 +184,7 @@ class OpenCodeAppearanceScriptsTest {
             OpenCodeBrowserSnippets.buildProjectSwitchPromptSuppressionScript(enabled = true)!!
 
         assertTrue(
-            script.contains("window.__opencodeIntellijProjectSwitchPromptSuppressionInstalled")
+            script.contains("window.__opencodeIntellijProjectSwitchPromptSuppressionInstalled"),
         )
         assertTrue(script.contains("[data-component=\"toast\"], [data-component=\"toast-v2\"]"))
         // Locale-independent structural match: sprite icon names, not translated labels.
@@ -198,8 +198,8 @@ class OpenCodeAppearanceScriptsTest {
         assertFalse(script.contains("Go to session"))
         assertTrue(
             script.contains(
-                "[data-slot=\"toast-close-button\"], [data-slot=\"toast-v2-close-button\"]"
-            )
+                "[data-slot=\"toast-close-button\"], [data-slot=\"toast-v2-close-button\"]",
+            ),
         )
         assertTrue(script.contains("new MutationObserver"))
         // Bounded blast radius: auto-dismissals are capped per page load, and hitting the cap
@@ -216,10 +216,10 @@ class OpenCodeAppearanceScriptsTest {
             OpenCodeBrowserSnippets.buildCursorMirrorScript(
                 enabled = false,
                 cursorCallback = "cb(payload)",
-            )
+            ),
         )
         assertNull(
-            OpenCodeBrowserSnippets.buildCursorMirrorScript(enabled = true, cursorCallback = null)
+            OpenCodeBrowserSnippets.buildCursorMirrorScript(enabled = true, cursorCallback = null),
         )
     }
 

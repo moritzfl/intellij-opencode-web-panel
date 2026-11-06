@@ -9,7 +9,7 @@ class SbxSetupChecklistTest {
     fun appChecklistMarksMissingPolicy() {
         val text =
             SbxSetupChecklist.format(
-                SbxSetupChecklist.appSteps(sbxFound = true, policyReady = false)
+                SbxSetupChecklist.appSteps(sbxFound = true, policyReady = false),
             )
         assertTrue(text.contains("✓ Detect sbx"))
         assertTrue(text.contains("[ ] Network policy"))
@@ -20,14 +20,14 @@ class SbxSetupChecklistTest {
     fun projectChecklistRequiresOwnedRunningSandbox() {
         val incomplete =
             SbxSetupChecklist.format(
-                SbxSetupChecklist.projectSteps(useSandbox = true, owned = false, running = false)
+                SbxSetupChecklist.projectSteps(useSandbox = true, owned = false, running = false),
             )
         assertTrue(incomplete.contains("✓ Sandbox runtime"))
         assertTrue(incomplete.contains("[ ] Owned VM"))
         assertFalse(incomplete.contains("✓ OpenCode serve"))
         val ready =
             SbxSetupChecklist.format(
-                SbxSetupChecklist.projectSteps(useSandbox = true, owned = true, running = true)
+                SbxSetupChecklist.projectSteps(useSandbox = true, owned = true, running = true),
             )
         assertTrue(ready.contains("✓ Owned VM"))
         assertTrue(ready.contains("✓ OpenCode serve"))

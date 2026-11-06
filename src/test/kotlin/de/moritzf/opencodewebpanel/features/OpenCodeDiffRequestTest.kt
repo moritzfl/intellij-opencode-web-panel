@@ -159,7 +159,7 @@ class OpenCodeDiffRequestTest : FileEditorManagerTestCase() {
             OpenInEditorAction.openEditor(
                 requireNotNull(platformContent.getNavigatable(LineCol(1, 3))),
                 null,
-            )
+            ),
         )
         assertTrue(editorManager.getSelectedEditor(file) is PreviewEditor)
         for (content in contents(file)) {
@@ -255,7 +255,7 @@ class OpenCodeDiffRequestTest : FileEditorManagerTestCase() {
                                 // Installed Ultimate startup activities are unrelated to
                                 // diff/editor navigation.
                                 it.putUserData(ProjectImpl.RUN_START_UP_ACTIVITIES, false)
-                            }
+                            },
                         )
             }
     }

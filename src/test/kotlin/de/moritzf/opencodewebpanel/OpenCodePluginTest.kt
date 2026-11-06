@@ -35,7 +35,7 @@ class OpenCodePluginTest : BasePlatformTestCase() {
 
     fun testToolWindowFactoryIsAvailableDuringIndexing() {
         assertTrue(
-            DumbAware::class.java.isAssignableFrom(OpenCodeWebToolWindowFactoryImpl::class.java)
+            DumbAware::class.java.isAssignableFrom(OpenCodeWebToolWindowFactoryImpl::class.java),
         )
     }
 
@@ -102,38 +102,38 @@ class OpenCodePluginTest : BasePlatformTestCase() {
         assertTrue(pluginXml.contains("icon=\"/icons/opencode.svg\""))
         assertTrue(
             pluginXml.contains(
-                "factoryClass=\"de.moritzf.opencodewebpanel.toolWindow.OpenCodeWebToolWindowFactoryImpl\""
-            )
+                "factoryClass=\"de.moritzf.opencodewebpanel.toolWindow.OpenCodeWebToolWindowFactoryImpl\"",
+            ),
         )
         assertTrue(pluginXml.contains("applicationService"))
         assertFalse(
             pluginXml.contains(
-                "serviceImplementation=\"de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager\""
-            )
+                "serviceImplementation=\"de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager\"",
+            ),
         )
         assertTrue(
             pluginXml.contains(
-                "serviceImplementation=\"de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry\""
-            )
+                "serviceImplementation=\"de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry\"",
+            ),
         )
         assertTrue(pluginXml.contains("applicationConfigurable"))
         assertTrue(
             pluginXml.contains(
-                "instance=\"de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable\""
-            )
+                "instance=\"de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable\"",
+            ),
         )
         assertTrue(pluginXml.contains("projectConfigurable"))
         assertTrue(
             pluginXml.contains(
-                "instance=\"de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsConfigurable\""
-            )
+                "instance=\"de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsConfigurable\"",
+            ),
         )
         assertTrue(pluginXml.contains("notificationGroup"))
         assertTrue(pluginXml.contains("displayType=\"BALLOON\""))
         assertTrue(
             pluginXml.contains(
-                "errorHandler implementation=\"com.intellij.diagnostic.JetBrainsMarketplaceErrorReportSubmitter\""
-            )
+                "errorHandler implementation=\"com.intellij.diagnostic.JetBrainsMarketplaceErrorReportSubmitter\"",
+            ),
         )
         assertFalse(pluginXml.contains("postStartupActivity"))
     }
@@ -186,13 +186,13 @@ class OpenCodePluginTest : BasePlatformTestCase() {
             newSessionShortcuts.any {
                 it.firstKeyStroke.keyCode == KeyEvent.VK_T &&
                     it.firstKeyStroke.modifiers and expectedModifier != 0
-            }
+            },
         )
         assertTrue(
             newSessionShortcuts.any {
                 it.firstKeyStroke.keyCode == KeyEvent.VK_N &&
                     it.firstKeyStroke.modifiers and expectedModifier != 0
-            }
+            },
         )
         val chooseModelShortcuts =
             ActionManager.getInstance()
@@ -204,14 +204,14 @@ class OpenCodePluginTest : BasePlatformTestCase() {
             chooseModelShortcuts.any {
                 it.firstKeyStroke.keyCode == KeyEvent.VK_QUOTE &&
                     it.firstKeyStroke.modifiers and expectedModifier != 0
-            }
+            },
         )
         assertTrue(
             chooseModelShortcuts.any {
                 it.firstKeyStroke.keyCode == KeyEvent.VK_NUMBER_SIGN &&
                     it.firstKeyStroke.modifiers and expectedModifier != 0 &&
                     it.firstKeyStroke.modifiers and InputEvent.SHIFT_DOWN_MASK != 0
-            }
+            },
         )
         val cycleAgentReverseShortcuts =
             ActionManager.getInstance()
@@ -224,7 +224,7 @@ class OpenCodePluginTest : BasePlatformTestCase() {
                 it.firstKeyStroke.keyCode == KeyEvent.VK_PERIOD &&
                     it.firstKeyStroke.modifiers and expectedModifier != 0 &&
                     it.firstKeyStroke.modifiers and InputEvent.SHIFT_DOWN_MASK != 0
-            }
+            },
         )
         val zoomInShortcuts =
             ActionManager.getInstance()
@@ -236,7 +236,7 @@ class OpenCodePluginTest : BasePlatformTestCase() {
             zoomInShortcuts.any {
                 it.firstKeyStroke.keyCode == KeyEvent.VK_PLUS &&
                     it.firstKeyStroke.modifiers and expectedModifier != 0
-            }
+            },
         )
     }
 

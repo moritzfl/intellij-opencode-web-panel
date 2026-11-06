@@ -44,7 +44,7 @@ internal class SbxSandboxRecordStore : PersistentStateComponent<SbxSandboxRecord
                 HashMap(
                     state.acknowledgedExposure.filter { (key, value) ->
                         key.isNotBlank() && value.isNotBlank()
-                    }
+                    },
                 )
         }
     }

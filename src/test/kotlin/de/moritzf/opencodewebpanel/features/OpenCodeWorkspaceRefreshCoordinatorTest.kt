@@ -23,18 +23,18 @@ class OpenCodeWorkspaceRefreshCoordinatorTest {
     fun workingTreeAndBranchEventsTriggerRefresh() {
         assertTrue(
             OpenCodeWorkspaceRefreshCoordinator.triggersRefresh(
-                event("file.edited", """{"file":"a.kt"}""")
-            )
+                event("file.edited", """{"file":"a.kt"}"""),
+            ),
         )
         assertTrue(
             OpenCodeWorkspaceRefreshCoordinator.triggersRefresh(
-                event("file.watcher.updated", """{"file":"a.kt","event":"change"}""")
-            )
+                event("file.watcher.updated", """{"file":"a.kt","event":"change"}"""),
+            ),
         )
         assertTrue(
             OpenCodeWorkspaceRefreshCoordinator.triggersRefresh(
-                event("vcs.branch.updated", """{"branch":"main"}""")
-            )
+                event("vcs.branch.updated", """{"branch":"main"}"""),
+            ),
         )
     }
 
@@ -44,13 +44,13 @@ class OpenCodeWorkspaceRefreshCoordinatorTest {
         // idle after its `git commit` shell call is the reliable signal.
         assertTrue(
             OpenCodeWorkspaceRefreshCoordinator.triggersRefresh(
-                event("session.idle", """{"sessionID":"ses_1"}""")
-            )
+                event("session.idle", """{"sessionID":"ses_1"}"""),
+            ),
         )
         assertTrue(
             OpenCodeWorkspaceRefreshCoordinator.triggersRefresh(
-                event("session.status", """{"sessionID":"ses_1","status":{"type":"idle"}}""")
-            )
+                event("session.status", """{"sessionID":"ses_1","status":{"type":"idle"}}"""),
+            ),
         )
     }
 
@@ -58,29 +58,29 @@ class OpenCodeWorkspaceRefreshCoordinatorTest {
     fun busyAndUnrelatedEventsDoNotTriggerRefresh() {
         assertFalse(
             OpenCodeWorkspaceRefreshCoordinator.triggersRefresh(
-                event("session.status", """{"sessionID":"ses_1","status":{"type":"busy"}}""")
-            )
+                event("session.status", """{"sessionID":"ses_1","status":{"type":"busy"}}"""),
+            ),
         )
         assertFalse(
             OpenCodeWorkspaceRefreshCoordinator.triggersRefresh(
-                event("session.status", """{"sessionID":"ses_1","status":{"type":"retry"}}""")
-            )
+                event("session.status", """{"sessionID":"ses_1","status":{"type":"retry"}}"""),
+            ),
         )
         // Malformed session.status without a status object must not trigger.
         assertFalse(
             OpenCodeWorkspaceRefreshCoordinator.triggersRefresh(
-                event("session.status", """{"sessionID":"ses_1"}""")
-            )
+                event("session.status", """{"sessionID":"ses_1"}"""),
+            ),
         )
         assertFalse(
             OpenCodeWorkspaceRefreshCoordinator.triggersRefresh(
-                event("message.updated", """{"sessionID":"ses_1"}""")
-            )
+                event("message.updated", """{"sessionID":"ses_1"}"""),
+            ),
         )
         assertFalse(
             OpenCodeWorkspaceRefreshCoordinator.triggersRefresh(
-                event("permission.asked", """{"id":"per_1"}""")
-            )
+                event("permission.asked", """{"id":"per_1"}"""),
+            ),
         )
     }
 }

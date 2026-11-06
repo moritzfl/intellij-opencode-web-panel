@@ -185,7 +185,7 @@ internal class OpenCodeDocumentStartInjector(
                     .exceptionally { error ->
                         thisLogger()
                             .info(
-                                "Could not register OpenCode document-start script via DevTools: ${error.message}"
+                                "Could not register OpenCode document-start script via DevTools: ${error.message}",
                             )
                         false
                     }
@@ -210,7 +210,7 @@ internal class OpenCodeDocumentStartInjector(
                 if (error != null) {
                     thisLogger()
                         .info(
-                            "Could not replace OpenCode document-start script via DevTools: ${error.message}"
+                            "Could not replace OpenCode document-start script via DevTools: ${error.message}",
                         )
                     false
                 } else {

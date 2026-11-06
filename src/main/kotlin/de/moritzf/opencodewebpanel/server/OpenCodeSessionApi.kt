@@ -174,13 +174,13 @@ internal object OpenCodeSessionApi {
         }
         if (!isSessionId(sessionID)) {
             return OpenCodeProtocolResult.Failure(
-                OpenCodeProtocolResult.Failure.Kind.INVALID_IDENTIFIER
+                OpenCodeProtocolResult.Failure.Kind.INVALID_IDENTIFIER,
             )
         }
         val normalizedMessageID = messageID?.takeIf { it.isNotBlank() }
         if (normalizedMessageID != null && !isMessageId(normalizedMessageID)) {
             return OpenCodeProtocolResult.Failure(
-                OpenCodeProtocolResult.Failure.Kind.INVALID_IDENTIFIER
+                OpenCodeProtocolResult.Failure.Kind.INVALID_IDENTIFIER,
             )
         }
         val encodedDirectory = java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
@@ -219,7 +219,7 @@ internal object OpenCodeSessionApi {
                 val array =
                     sessionDiffArray(response.value)
                         ?: return OpenCodeProtocolResult.Failure(
-                            OpenCodeProtocolResult.Failure.Kind.INVALID_BODY
+                            OpenCodeProtocolResult.Failure.Kind.INVALID_BODY,
                         )
                 OpenCodeProtocolResult.Success(parseSessionDiffArray(array))
             }
@@ -244,12 +244,12 @@ internal object OpenCodeSessionApi {
                 "branch" -> mode
                 else ->
                     return OpenCodeProtocolResult.Failure(
-                        OpenCodeProtocolResult.Failure.Kind.INVALID_IDENTIFIER
+                        OpenCodeProtocolResult.Failure.Kind.INVALID_IDENTIFIER,
                     )
             }
         if (directory.isBlank()) {
             return OpenCodeProtocolResult.Failure(
-                OpenCodeProtocolResult.Failure.Kind.INVALID_IDENTIFIER
+                OpenCodeProtocolResult.Failure.Kind.INVALID_IDENTIFIER,
             )
         }
         val encodedDirectory = java.net.URLEncoder.encode(directory, StandardCharsets.UTF_8)
@@ -268,7 +268,7 @@ internal object OpenCodeSessionApi {
                 val array =
                     sessionDiffArray(response.value)
                         ?: return OpenCodeProtocolResult.Failure(
-                            OpenCodeProtocolResult.Failure.Kind.INVALID_BODY
+                            OpenCodeProtocolResult.Failure.Kind.INVALID_BODY,
                         )
                 OpenCodeProtocolResult.Success(parseSessionDiffArray(array))
             }
@@ -301,7 +301,7 @@ internal object OpenCodeSessionApi {
                     additions = entry.longMember("additions") ?: 0L,
                     deletions = entry.longMember("deletions") ?: 0L,
                     status = entry.stringMember("status"),
-                )
+                ),
             )
         }
         return results
@@ -323,7 +323,7 @@ internal object OpenCodeSessionApi {
         val validPart = if (usesCliHttpApi(wireProtocol)) partID.isNotBlank() else isPartId(partID)
         if (!isSessionId(sessionID) || !validPart || directory.isBlank()) {
             return OpenCodeProtocolResult.Failure(
-                OpenCodeProtocolResult.Failure.Kind.INVALID_IDENTIFIER
+                OpenCodeProtocolResult.Failure.Kind.INVALID_IDENTIFIER,
             )
         }
         val root = buildServerRootUrl(serverUrl)
@@ -349,12 +349,12 @@ internal object OpenCodeSessionApi {
                         val parsed =
                             parseJsonObject(page.value)
                                 ?: return OpenCodeProtocolResult.Failure(
-                                    OpenCodeProtocolResult.Failure.Kind.INVALID_BODY
+                                    OpenCodeProtocolResult.Failure.Kind.INVALID_BODY,
                                 )
                         val array =
                             parsed.get("data")?.takeIf { it.isJsonArray }?.asJsonArray
                                 ?: return OpenCodeProtocolResult.Failure(
-                                    OpenCodeProtocolResult.Failure.Kind.INVALID_BODY
+                                    OpenCodeProtocolResult.Failure.Kind.INVALID_BODY,
                                 )
                         val part = toolPartFromMessages(array, partID)
                         if (part != null)
@@ -365,7 +365,7 @@ internal object OpenCodeSessionApi {
                             }
                         if (cursor == null) {
                             return OpenCodeProtocolResult.Success(
-                                OpenCodeToolPartChange(emptyList())
+                                OpenCodeToolPartChange(emptyList()),
                             )
                         }
                     }
@@ -395,7 +395,7 @@ internal object OpenCodeSessionApi {
                     val array =
                         parseJsonArray(page.value.first)
                             ?: return OpenCodeProtocolResult.Failure(
-                                OpenCodeProtocolResult.Failure.Kind.INVALID_BODY
+                                OpenCodeProtocolResult.Failure.Kind.INVALID_BODY,
                             )
                     val part = toolPartFromMessages(array, partID)
                     if (part != null)
@@ -461,8 +461,8 @@ internal object OpenCodeSessionApi {
                         additions = filediff.longMember("additions") ?: 0L,
                         deletions = filediff.longMember("deletions") ?: 0L,
                         status = filediff.stringMember("status") ?: "modified",
-                    )
-                )
+                    ),
+                ),
             )
         }
         val writePath =
@@ -610,12 +610,12 @@ internal object OpenCodeSessionApi {
         parsePendingRequestsBody(json)?.requests.orEmpty()
 
     fun parsePendingRequestsResult(
-        json: String
+        json: String,
     ): OpenCodeProtocolResult<List<OpenCodePendingRequestSummary>> {
         val parsed =
             parsePendingRequestsBody(json)
                 ?: return OpenCodeProtocolResult.Failure(
-                    OpenCodeProtocolResult.Failure.Kind.INVALID_BODY
+                    OpenCodeProtocolResult.Failure.Kind.INVALID_BODY,
                 )
         if (parsed.malformedEntry) {
             return OpenCodeProtocolResult.Failure(OpenCodeProtocolResult.Failure.Kind.INVALID_BODY)
@@ -676,7 +676,7 @@ internal object OpenCodeSessionApi {
             val page =
                 parseSessionPage(body, maxAgeMillis, nowMillis)
                     ?: return OpenCodeProtocolResult.Failure(
-                        OpenCodeProtocolResult.Failure.Kind.INVALID_BODY
+                        OpenCodeProtocolResult.Failure.Kind.INVALID_BODY,
                     )
             page.sessions.forEach { session -> sessions.putIfAbsent(session.id, session) }
             val cursor =
@@ -684,7 +684,7 @@ internal object OpenCodeSessionApi {
                     ?: return OpenCodeProtocolResult.Success(sessions.values.toList())
             if (!seenCursors.add(cursor)) {
                 return OpenCodeProtocolResult.Failure(
-                    OpenCodeProtocolResult.Failure.Kind.INVALID_BODY
+                    OpenCodeProtocolResult.Failure.Kind.INVALID_BODY,
                 )
             }
             // Cursor pages still need directory (+ order). OpenCode scopes lists per project;
@@ -737,7 +737,7 @@ internal object OpenCodeSessionApi {
                         updated,
                         session.stringMember("parentID")?.takeIf { it.isNotBlank() },
                         sessionDirectory(session),
-                    )
+                    ),
                 )
             }
         }
@@ -759,7 +759,7 @@ internal object OpenCodeSessionApi {
         }
         if (!isSessionId(sessionID) || directory.isBlank()) {
             return OpenCodeProtocolResult.Failure(
-                OpenCodeProtocolResult.Failure.Kind.INVALID_IDENTIFIER
+                OpenCodeProtocolResult.Failure.Kind.INVALID_IDENTIFIER,
             )
         }
         val root = buildServerRootUrl(serverUrl)
@@ -834,7 +834,7 @@ internal object OpenCodeSessionApi {
         }
         if (!isSessionId(sessionID)) {
             return OpenCodeProtocolResult.Failure(
-                OpenCodeProtocolResult.Failure.Kind.INVALID_IDENTIFIER
+                OpenCodeProtocolResult.Failure.Kind.INVALID_IDENTIFIER,
             )
         }
         val url = buildServerRootUrl(serverUrl) + "/api/session/$sessionID/prompt"
