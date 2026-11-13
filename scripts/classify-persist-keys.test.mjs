@@ -54,6 +54,12 @@ test('classifies 2.2.5 plugin, voice, icon and inbox state', () => {
     { status: 0, output: '', count: '5 0' });
 });
 
+test('classifies 2.3.0 session, sidebar, tip and free-limit state', () => {
+  const keys = ['home.servers', 'session.preferences', 'sidebar.organize', 'sidebar.view', 'sidebar.recent', 'tips.queue', 'free-limit'];
+  assert.deepEqual(classify(keys.map(key => `p.global(${JSON.stringify(key)})`).join(';')),
+    { status: 0, output: '', count: '7 0' });
+});
+
 test('handles large embedded data without quadratic identifier retries', () => {
   assert.deepEqual(classify(`const asset="${'a'.repeat(2 * 1024 * 1024)}";p.global("home.servers")`),
     { status: 0, output: '', count: '1 0' });
