@@ -1143,6 +1143,18 @@ class SbxCliTest {
     }
 
     @Test
+    fun kitAddPermissionPromptIsRecognized() {
+        assertTrue(
+            SbxCli.kitAddNeedsTerminalApproval(
+                "warning: this change requests permissions beyond what this sandbox was granted\n" +
+                    "  + network.runtime.allow: api.mistral.ai\n" +
+                    "error: stdin is not a terminal; run this command in a terminal to answer the prompt",
+            ),
+        )
+        assertFalse(SbxCli.kitAddNeedsTerminalApproval("error: kit not found"))
+    }
+
+    @Test
     fun sbxVersionGateOnlyStopsAReportedOlderRelease() {
         assertEquals(listOf("sbx", "version"), SbxCli.buildVersionCommand())
         assertEquals(listOf(0, 53, 0), SbxCli.parseSbxVersion("sbx version v0.53.0 2c62838074"))

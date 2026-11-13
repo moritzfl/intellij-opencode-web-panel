@@ -35,6 +35,12 @@ internal class SbxCommandFailure(
     val fromSbx: Boolean = true,
 ) : Exception("$stage failed (exit $exitCode).")
 
+/** A kit that widens the sandbox's permissions; only a new sandbox can grant it without a TTY. */
+internal class SbxKitNeedsRecreate(ref: String) :
+    Exception(
+        "kit $ref requests new permissions, which sbx approves for an existing sandbox only in a terminal",
+    )
+
 internal fun checkSbxServeAlive(process: Process, output: () -> String) {
     if (!process.isAlive) {
         throw SbxCommandFailure(
@@ -908,7 +914,14 @@ internal class SbxOpenCodeServerBackend(
                 }
                 if (appendsKits(record, desiredKits) && !gateSandboxProvisioning(startId, spec))
                     return
-                record = appendUniqueKits(sbx, name, record, desiredKits, startId)
+                record =
+                    try {
+                        appendUniqueKits(sbx, name, record, desiredKits, startId)
+                    } catch (e: SbxKitNeedsRecreate) {
+                        synchronized(lock) { pendingRecreateReasons = listOfNotNull(e.message) }
+                        fail(startId, SbxFailureKind.RECREATE_REQUIRED)
+                        return
+                    }
             }
             if ((record == null || owned == null) && !gateSandboxProvisioning(startId, spec)) return
             var createdNow = false
@@ -1335,16 +1348,20 @@ internal class SbxOpenCodeServerBackend(
         var current = record
         for (index in previousKits.size until desiredKits.size) {
             if (startId != null && !isCurrentStart(startId)) return current
-            requiredCommand(
-                "Add sandbox kit",
-                SbxCli.buildAddKitCommand(
-                    sbx,
-                    name,
-                    SbxCli.parseKitRefs(desiredKits[index]).single(),
-                ),
-                FIRST_START_TIMEOUT_MILLIS,
-                Path.of(canonicalDirectory),
-            )
+            val ref = SbxCli.parseKitRefs(desiredKits[index]).single()
+            val added =
+                runStartupCommand(
+                    "Add sandbox kit",
+                    SbxCli.buildAddKitCommand(sbx, name, ref),
+                    FIRST_START_TIMEOUT_MILLIS,
+                    Path.of(canonicalDirectory),
+                )
+            if (added.exitCode != 0) {
+                if (SbxCli.kitAddNeedsTerminalApproval(added.output)) {
+                    throw SbxKitNeedsRecreate(desiredKits[index])
+                }
+                throw SbxCommandFailure("Add sandbox kit", added.exitCode, added.output)
+            }
             current = current.copy(kits = desiredKits.take(index + 1).joinToString("\n"))
             recordStore().save(canonicalDirectory, current)
             val refreshed =
@@ -1386,7 +1403,13 @@ internal class SbxOpenCodeServerBackend(
         val owned = SbxCli.findOwnedSandbox(listed, record) ?: return null
         val desiredKits =
             SbxCli.parseLineList(SbxCli.normalizeLineList(spec.kits.joinToString("\n")))
-        record = appendUniqueKits(sbx, owned.name, record, desiredKits)
+        record =
+            try {
+                appendUniqueKits(sbx, owned.name, record, desiredKits)
+            } catch (e: SbxKitNeedsRecreate) {
+                return "The ${e.message}. The sandbox keeps running without it; " +
+                    "restart OpenCode and choose Recreate Sandbox to apply it."
+            }
         if (owned.status != "running") {
             // The next start publishes the spec's port.
             if (record.hostPort != spec.hostPort)

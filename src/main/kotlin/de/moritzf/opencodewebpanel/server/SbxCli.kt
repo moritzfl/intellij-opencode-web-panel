@@ -1038,6 +1038,16 @@ internal object SbxCli {
         }
     }
 
+    /**
+     * sbx 0.53 asks in a terminal before `kit add` widens an existing sandbox's permissions and has
+     * no flag to approve it; creating the sandbox with the kit grants the same without a prompt.
+     */
+    fun kitAddNeedsTerminalApproval(output: String): Boolean =
+        output.contains(
+            "requests permissions beyond what this sandbox was granted",
+            ignoreCase = true,
+        )
+
     /** sbx refuses Docker's v3 OpenCode kit together with older v1/v2 mixins. */
     fun reportsLegacyKitFormat(output: String): Boolean =
         output.contains("cannot mix v3 kits with v1/v2 kits", ignoreCase = true)

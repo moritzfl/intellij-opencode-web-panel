@@ -380,7 +380,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                         "YAML applied when the sandbox is created (tools, files, env, network). " +
                             "Mixin kits only — do not use a kit that replaces the OpenCode agent. " +
                             "Docker's OpenCode kit uses schemaVersion \"3\"; sbx refuses v1/v2 kits next to it. " +
-                            "Appending a new, uniquely named kit uses sbx kit add and preserves sessions. Removing or reordering kits needs a new VM; Apply asks before recreating it. " +
+                            "Appending a new, uniquely named kit uses sbx kit add and preserves sessions, unless the kit requests new permissions such as network access: sbx approves those for an existing sandbox only in a terminal, so OpenCode offers Recreate Sandbox. Removing or reordering kits needs a new VM; Apply asks before recreating it. " +
                             "Use + to add a row; double-click a cell to edit it. " +
                             "<a href=\"$SBX_KIT_DOCS_URL\">Docker kit docs</a>",
                         action =
@@ -985,7 +985,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         addNetworkKitRefIfMissing()
         Messages.showInfoMessage(
             panel ?: createNetworkKitButton,
-            "Wrote ${SbxCli.posixPath(specPath.toString())}. Configure it before Apply. A new kit is appended without deleting sessions. Editing an installed kit requires Reset Sandbox, which deletes VM-only data; Restart alone does not reload it.",
+            "Wrote ${SbxCli.posixPath(specPath.toString())}. Configure it before Apply: a sandbox that already exists needs Recreate Sandbox to add network access, because sbx approves new permissions for an existing sandbox only in a terminal. Editing an installed kit also requires Reset Sandbox, which deletes VM-only data; Restart alone does not reload it.",
             "Extra-Network Kit Template",
         )
     }

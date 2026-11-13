@@ -23,6 +23,9 @@
 - **Create extra-network kit template** writes a kit with `schemaVersion: "3"`.
   `sbx` refuses to combine Docker's v3 OpenCode kits with v1/v2 kits; regenerate
   a template created by an earlier release.
+- A newly added kit that requests new permissions, such as network hosts, offers
+  **Recreate Sandbox** instead of failing on an approval prompt that `sbx` only
+  shows in a terminal.
 - The OpenCode update indicator covers the Host CLI and 1.x sandboxes; a 2.x
   sandbox follows Docker's kit.
 

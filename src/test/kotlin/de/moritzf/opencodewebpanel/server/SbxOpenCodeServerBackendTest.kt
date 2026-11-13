@@ -399,6 +399,37 @@ class SbxOpenCodeServerBackendTest {
     }
 
     @Test
+    fun kitNeedingNewPermissionsOffersRecreateInsteadOfAnUnansweredPrompt() {
+        val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
+        val spec =
+            SbxLaunchSpec.defaults(directory, hostPort = settings.hostPortOrNull())
+                .copy(useSandbox = true, kits = listOf("./network-kit"), enableIntellijMcp = false)
+        assertNotNull(SbxLaunchSpec.persist(spec))
+        acknowledge(spec)
+        behavior = { command ->
+            when (command[1]) {
+                "ls" -> listed("running")
+                "kit" ->
+                    SbxCommandResult(
+                        1,
+                        "warning: this change requests permissions beyond what this sandbox was granted\n" +
+                            "  + network.runtime.allow: api.mistral.ai\n" +
+                            "error: stdin is not a terminal; run this command in a terminal to answer the prompt",
+                    )
+                "exec" -> error("Start must stop before serve")
+                else -> SbxCommandResult(0, "")
+            }
+        }
+        backend.ensureStarted(project, directory, { false }, {}, {})
+        drain()
+        assertEquals(SbxFailureKind.RECREATE_REQUIRED, backend.lastFailure())
+        assertTrue(backend.pendingRecreateReasons().single().contains("./network-kit"))
+        assertEquals("Not recorded as installed", "", store.recordFor(directory)?.kits)
+        assertFalse(calls.contains("rm"))
+        assertFalse(calls.contains("create"))
+    }
+
+    @Test
     fun appendedKitsPreserveSandboxAndCheckpointSuccessfulAdditions() {
         val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
         val spec =
