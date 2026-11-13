@@ -194,29 +194,17 @@ class SbxApplyPreviewTest {
     }
 
     @Test
-    fun changingOpenCodeVersionRestartsInBothDirections() {
-        val on =
-            SbxApplyPreview.build(
-                "/tmp/p",
-                base,
-                base.copy(openCodeVersion = SbxOpenCodeVersion.V2),
-                false,
-                false,
-                "",
-            )
-        assertEquals(SbxApplyEffect.RESTART, on.effect)
-        assertTrue(on.message().contains("OpenCode version 2.x"))
-        val off =
-            SbxApplyPreview.build(
-                "/tmp/p",
-                base.copy(openCodeVersion = SbxOpenCodeVersion.V2),
-                base,
-                false,
-                false,
-                "",
-            )
-        assertEquals(SbxApplyEffect.RESTART, off.effect)
-        assertTrue(off.message().contains("OpenCode version 1.x"))
+    fun changingOpenCodeVersionNeedsANewVmFromTheOtherKit() {
+        val v2 = base.copy(openCodeVersion = SbxOpenCodeVersion.V2)
+        val on = SbxApplyPreview.build("/tmp/p", base, v2, false, false, "")
+        assertEquals(SbxApplyEffect.RECREATE, on.effect)
+        assertTrue(on.message().contains("OpenCode 2.x (Docker's latest OpenCode 2 kit)"))
+        val off = SbxApplyPreview.build("/tmp/p", v2, base, false, false, "")
+        assertEquals(SbxApplyEffect.RECREATE, off.effect)
+        assertTrue(off.message().contains("OpenCode 1.x (Docker's OpenCode 1.x kit)"))
+        val noVm = SbxApplyPreview.build("/tmp/p", base, v2, false, false, "", hasVm = false)
+        assertEquals(SbxApplyEffect.NONE, noVm.effect)
+        assertTrue(noVm.message().contains("applies when the sandbox is created"))
     }
 
     @Test

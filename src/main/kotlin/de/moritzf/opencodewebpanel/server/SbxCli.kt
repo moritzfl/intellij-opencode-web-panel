@@ -27,20 +27,6 @@ internal data class SbxPortMapping(
     val protocol: String,
 )
 
-internal data class SbxTemplateImage(
-    val id: String,
-    val repository: String,
-    val tag: String,
-    val flavor: String,
-) {
-    fun ref(): String {
-        val repo = repository.trim()
-        val tagged = tag.trim()
-        if (repo.isNotBlank() && tagged.isNotBlank()) return "$repo:$tagged"
-        return id.trim()
-    }
-}
-
 internal data class SbxSandboxListEntry(
     val name: String,
     val id: String,
@@ -72,38 +58,50 @@ internal data class SbxSandboxRecord(
  */
 internal object SbxCli {
     const val DEFAULT_EXECUTABLE = SbxSettingsValues.DEFAULT_EXECUTABLE
+
+    /**
+     * Built-in agent name. sbx resolves it to Docker's latest published `docker.io/sbx/opencode`
+     * kit (OpenCode 2); `sbx ls` reports it for both kits below.
+     */
     const val AGENT = "opencode"
+
+    /**
+     * Docker's published OpenCode 1.x kit. The tag is fixed; Upgrade OpenCode updates the binary
+     * inside the VM (npm), as with the earlier 1.x template.
+     */
+    const val V1_KIT = "docker.io/sbx/opencode:1.18.31"
+
+    /** First release with Docker's v3 OpenCode kits; older ones only know the retired template. */
+    const val MINIMUM_SBX_VERSION = "0.51.0"
+
+    /** The `sbx create` agent argument for [version]. */
+    fun agentFor(version: SbxOpenCodeVersion): String =
+        if (version == SbxOpenCodeVersion.V2) AGENT else V1_KIT
+
     const val DEFAULT_MEMORY = SbxSettingsValues.DEFAULT_MEMORY
     const val DEFAULT_CPUS = SbxSettingsValues.DEFAULT_CPUS
     const val NAME_PREFIX = "ide-ocwp-"
     const val OPENCODE_SERVER_PASSWORD_ENV = "OPENCODE_SERVER_PASSWORD"
     const val OPENCODE_CONFIG_CONTENT_ENV = "OPENCODE_CONFIG_CONTENT"
     const val OPENCODE_AUTH_CONTENT_ENV = "OPENCODE_AUTH_CONTENT"
+
+    /** Plugin config overlay; merged over the kit's own [OPENCODE_CONFIG_CONTENT_ENV] in the VM. */
+    const val CONFIG_OVERLAY_ENV = "OCWP_CONFIG_OVERLAY"
     const val DATA_DIR_ENV = "OCWP_DATA_DIR"
     const val SANDBOX_HOME = "/home/agent"
-    const val DEFAULT_OPENCODE_TEMPLATE = "docker.io/docker/sandbox-templates:opencode-docker"
 
     const val PROJECT_CONTROL_DIR = "opencode-sbx"
     const val NETWORK_KIT_DIR = "opencode-network-kit"
 
+    /** Common provider hosts that Docker's OpenCode kits (1.x and 2.x) do not already allow. */
     val NETWORK_KIT_HOST_PRESETS =
         listOf(
-            "OpenAI" to "api.openai.com",
-            "Anthropic" to "api.anthropic.com",
-            "Google Gemini" to "generativelanguage.googleapis.com",
-            "xAI" to "api.x.ai",
-            "Groq" to "api.groq.com",
             "Mistral" to "api.mistral.ai",
-            "OpenRouter" to "openrouter.ai",
-            "OpenCode Zen" to "opencode.ai",
-            "OpenCode models" to "models.opencode.ai",
-            "GitHub" to "api.github.com",
             "GitHub Models" to "models.github.ai",
             "DeepSeek" to "api.deepseek.com",
             "Together" to "api.together.xyz",
             "Fireworks" to "api.fireworks.ai",
             "Ollama Cloud" to "ollama.com",
-            "npm registry" to "registry.npmjs.org",
         )
     private val SERVE_FLAGS =
         listOf(
@@ -114,36 +112,24 @@ internal object SbxCli {
             OpenCodeServerProtocol.SANDBOX_SERVE_PORT.toString(),
             "--print-logs",
         )
+
     /**
-     * Kit PATH still has 1.x `opencode`. When [SbxOpenCodeVersion.V2] is selected, require the
-     * validated 2.x at `$HOME/.opencode/bin`. `$0` is dummy; remaining argv are forwarded after
-     * `exec`. 1.x launches kit `opencode` even if that 2.x binary exists.
+     * Docker's OpenCode kit sets its own inline config (tool permissions). Merge the plugin overlay
+     * over it instead of replacing it; without jq or with invalid kit JSON, the overlay alone
+     * applies. Values are read from the environment, never argv.
      */
-    const val GUEST_OPENCODE_DISPATCH = $$"""exec "$HOME/.opencode/bin/opencode" "$@""""
-    const val V2_INSTALL_URL = "https://opencode.ai/v2/install"
-    // Read the same quoted heredocs the standalone launcher passes to guest sh -c.
-    private val launcherScript: String by lazy {
-        guestResource("opencode-sbx.sh").replace("\r\n", "\n")
-    }
-    val V2_INSTALL_SCRIPT: String by lazy { guestScript("OCWP_V2_INSTALL") }
-    val GUEST_V2_VERSION_SCRIPT: String by lazy { guestScript("OCWP_V2_VERSION") }
-
-    private fun guestScript(delimiter: String): String {
-        val script =
-            launcherScript
-                .substringAfter("<<'$delimiter'\n", "")
-                .substringBefore("\n$delimiter\n", "")
-                .trimEnd()
-        check(script.isNotBlank()) { "Missing sandbox script block: $delimiter" }
-        return script
-    }
-
-    private fun guestResource(resource: String): String =
-        checkNotNull(SbxCli::class.java.getResourceAsStream(resource)) {
-                "Missing sandbox resource: $resource"
-            }
-            .bufferedReader(StandardCharsets.UTF_8)
-            .use { it.readText().trimEnd() }
+    private val GUEST_SERVE_WITH_OVERLAY =
+        $$"""
+        if merged=$(jq -cn '(env.OPENCODE_CONFIG_CONTENT // "{}" | fromjson) * (env.OCWP_CONFIG_OVERLAY | fromjson)' 2>/dev/null); then
+          OPENCODE_CONFIG_CONTENT=$merged
+        else
+          OPENCODE_CONFIG_CONTENT=$OCWP_CONFIG_OVERLAY
+        fi
+        export OPENCODE_CONFIG_CONTENT
+        unset OCWP_CONFIG_OVERLAY
+        exec opencode "$@"
+        """
+            .trimIndent()
 
     private const val SERVE_PKILL_PATTERN =
         $$"[o]pencode serve --hostname $${OpenCodeServerProtocol.SANDBOX_SERVE_HOST} " +
@@ -217,6 +203,7 @@ internal object SbxCli {
         hostPort: Int? = null,
         extraWorkspaces: List<String> = emptyList(),
         kits: List<String> = emptyList(),
+        agent: String = AGENT,
     ): List<String> {
         val command =
             mutableListOf(
@@ -232,7 +219,7 @@ internal object SbxCli {
                 publishSpec(hostPort, inVmPort),
             )
         kits.filter { it.isNotBlank() }.forEach { ref -> command += listOf("--kit", ref) }
-        command += listOf(AGENT, workspace)
+        command += listOf(agent, workspace)
         command += extraWorkspaces.filter { it.isNotBlank() && it != workspace }
         return command
     }
@@ -309,7 +296,9 @@ internal object SbxCli {
      * acts on them by itself: a pulled spec must not silently delete VM-only data.
      *
      * [desiredMounts] are the spec's extra mounts plus the shared config mount; [pluginMounts] are
-     * the plugin's own workspaces (protect overlays, persist store, 2.x binary copy).
+     * the plugin's own workspaces (protect overlays, persist store). [legacyGuestOpenCodePath]
+     * marks a VM that older releases gave a plugin-installed OpenCode 2; with [openCodeVersion] 2.x
+     * it must move to Docker's kit, while 1.x never launched that copy.
      */
     fun recreateReasons(
         record: SbxSandboxRecord,
@@ -320,9 +309,24 @@ internal object SbxCli {
         desiredMounts: List<SbxExtraMount>,
         pluginMounts: List<SbxExtraMount>,
         sharedConfigPath: String?,
+        legacyGuestOpenCodePath: String? = null,
+        openCodeVersion: SbxOpenCodeVersion = SbxOpenCodeVersion.V2,
     ): List<String> {
         if (record.adopted) return emptyList()
         val reasons = ArrayList<String>()
+        val legacyGuestOpenCode =
+            openCodeVersion == SbxOpenCodeVersion.V2 &&
+                legacyGuestOpenCodePath != null &&
+                listedWorkspaces.any {
+                    OpenCodeServerProtocol.isSameFilesystemPath(
+                        workspaceHostPath(it),
+                        legacyGuestOpenCodePath,
+                    )
+                }
+        if (legacyGuestOpenCode) {
+            reasons +=
+                "OpenCode 2 now comes from Docker's sandbox kit; this VM still runs the plugin-installed copy"
+        }
         val installedKits = parseLineList(record.kits)
         val desiredKits = parseLineList(kitsText)
         if (
@@ -355,7 +359,10 @@ internal object SbxCli {
                     else "mount ${mount.hostPath} should be writable"
             }
         }
-        val known = (desiredMounts + pluginMounts).map { it.hostPath } + workspace
+        val known =
+            (desiredMounts + pluginMounts).map { it.hostPath } +
+                workspace +
+                listOfNotNull(legacyGuestOpenCodePath)
         for (attached in listedWorkspaces) {
             if (workspaceIsReadOnly(attached)) continue
             val host = workspaceHostPath(attached)
@@ -366,48 +373,54 @@ internal object SbxCli {
         return reasons
     }
 
+    /** Kit v3 mixin: Docker's OpenCode kits are v3, and sbx refuses to mix them with v1/v2 kits. */
     fun networkKitTemplateYaml(): String {
         val out = StringBuilder()
-        out.append("schemaVersion: \"2\"\n")
+        out.append("schemaVersion: \"3\"\n")
         out.append("kind: mixin\n")
-        out.append("name: opencode-network\n")
         out.append("displayName: OpenCode extra network\n")
         out.append(
             "description: Uncomment hosts this sandbox should reach, then recreate the sandbox.\n",
         )
-        out.append("permissions:\n")
-        out.append("  network:\n")
-        out.append("    allow:\n")
-        out.append("      # Uncomment what this sandbox should reach, then recreate it.\n")
+        out.append("capabilities:\n")
+        out.append("  - type: com.docker.sandbox/network-policy@1\n")
+        out.append("    config:\n")
+        out.append("      runtime:\n")
+        out.append("        allow:\n")
+        val comment = "          #"
+        out.append("$comment Uncomment what this sandbox should reach, then recreate it.\n")
         out.append(
-            "      # Balanced does not include every provider (for example xAI is not included).\n",
+            "$comment Docker's OpenCode kits already allow OpenAI, Anthropic, Google, xAI, Groq,\n",
         )
-        out.append("      #\n")
+        out.append("$comment OpenRouter, GitHub Copilot, opencode.ai and registry.npmjs.org.\n")
+        out.append("$comment\n")
         out.append(
-            "      # All outbound TCP: uncomment ALL THREE lines (hostnames, IPv4 and IPv6).\n",
+            "$comment All outbound TCP: uncomment ALL THREE lines (hostnames, IPv4 and IPv6).\n",
         )
         out.append(
-            "      # This also permits local-network TCP access. UDP and ICMP remain blocked.\n",
+            "$comment This also permits local-network TCP access. UDP and ICMP remain blocked.\n",
         )
-        out.append("      # CIDRs alone do not allow hostname requests such as api.x.ai:443.\n")
-        out.append("      # - \"*\"\n")
-        out.append("      # - 0.0.0.0/0\n")
-        out.append("      # - \"::/0\"\n")
-        out.append("      #\n")
         out.append(
-            "      # Local-network additions (loopback + RFC1918), NOT a local-only restriction.\n",
+            "$comment CIDRs alone do not allow hostname requests such as api.mistral.ai:443.\n",
         )
-        out.append("      # Existing global/agent-kit internet allows still apply.\n")
-        out.append("      # - localhost\n")
-        out.append("      # - 127.0.0.1\n")
-        out.append("      # - ::1\n")
-        out.append("      # - 10.0.0.0/8\n")
-        out.append("      # - 172.16.0.0/12\n")
-        out.append("      # - 192.168.0.0/16\n")
-        out.append("      #\n")
-        out.append("      # Individual hosts:\n")
+        out.append("$comment - \"*\"\n")
+        out.append("$comment - 0.0.0.0/0\n")
+        out.append("$comment - \"::/0\"\n")
+        out.append("$comment\n")
+        out.append(
+            "$comment Local-network additions (loopback + RFC1918), NOT a local-only restriction.\n",
+        )
+        out.append("$comment Existing global/agent-kit internet allows still apply.\n")
+        out.append("$comment - localhost\n")
+        out.append("$comment - 127.0.0.1\n")
+        out.append("$comment - ::1\n")
+        out.append("$comment - 10.0.0.0/8\n")
+        out.append("$comment - 172.16.0.0/12\n")
+        out.append("$comment - 192.168.0.0/16\n")
+        out.append("$comment\n")
+        out.append("$comment Individual hosts:\n")
         NETWORK_KIT_HOST_PRESETS.forEach { (label, host) ->
-            out.append("      # - ").append(host).append("  # ").append(label).append('\n')
+            out.append("$comment - ").append(host).append("  # ").append(label).append('\n')
         }
         return out.toString()
     }
@@ -522,10 +535,13 @@ internal object SbxCli {
     }
 
     /**
-     * Plugin-owned host copy of guest `$HOME/.opencode`. Not host `~/.opencode`. Survives
-     * stop/start; Reset deletes it.
+     * Host copy of the OpenCode 2 binary that older releases installed into the sandbox. Docker's
+     * kit replaced it; a VM still mounting it must be recreated, and removing the VM drops it.
      */
-    fun guestOpenCodeDataHome(sandboxName: String, dataRoot: Path = persistDataDir()): String {
+    fun legacyGuestOpenCodeDataHome(
+        sandboxName: String,
+        dataRoot: Path = persistDataDir(),
+    ): String {
         return posixPath(
             dataRoot
                 .resolve("sbx-opencode")
@@ -534,20 +550,8 @@ internal object SbxCli {
         )
     }
 
-    fun guestOpenCodeGuestPath(): String = posixPath("$SANDBOX_HOME/.opencode")
-
-    fun guestOpenCodeMount(
-        sandboxName: String,
-        createDirectories: (Path) -> Unit = { Files.createDirectories(it) },
-    ): SbxExtraMount {
-        val path = Path.of(guestOpenCodeDataHome(sandboxName))
-        createDirectories(path)
-        val host = posixPath(path.toString())
-        return SbxExtraMount(host, guestOpenCodeGuestPath())
-    }
-
-    fun deleteGuestOpenCode(sandboxName: String, dataRoot: Path = persistDataDir()) {
-        val path = Path.of(guestOpenCodeDataHome(sandboxName, dataRoot))
+    fun deleteLegacyGuestOpenCode(sandboxName: String, dataRoot: Path = persistDataDir()) {
+        val path = Path.of(legacyGuestOpenCodeDataHome(sandboxName, dataRoot))
         if (Files.exists(path)) path.toFile().deleteRecursively()
     }
 
@@ -669,7 +673,7 @@ internal object SbxCli {
     /** Same guest scripts as `link_mount` in `opencode-sbx.sh`. */
     fun extraMountLinkScript(replaceExistingDirectory: Boolean): String {
         return if (replaceExistingDirectory) {
-            // Persist / 2.x stores: host data wins; guest data is only copied into an empty store.
+            // Persist store: host data wins; guest data is only copied into an empty store.
             $$"""
             mkdir -p -- "$(dirname -- "$2")"
             if [ -d "$2" ] && [ ! -L "$2" ]; then
@@ -785,46 +789,56 @@ internal object SbxCli {
     private val HOST_MOUNT_VARIABLE =
         Regex("""^\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^{}]*))?}(.*)$""")
 
+    /**
+     * Runs the kit's `opencode` from PATH. With [CONFIG_OVERLAY_ENV] among [extraEnvKeys], a guest
+     * script merges that overlay into the kit's inline config before `exec`.
+     */
     fun buildExecServeCommand(
         executable: String = DEFAULT_EXECUTABLE,
         name: String,
         workspace: String,
         extraEnvKeys: List<String> = emptyList(),
-        preferGuestV2: Boolean = false,
     ): List<String> {
         val command = mutableListOf(executable, "exec", "-e", OPENCODE_SERVER_PASSWORD_ENV)
-        extraEnvKeys
-            .distinct()
-            .filter { it.isNotBlank() && it != OPENCODE_SERVER_PASSWORD_ENV }
-            .forEach { key -> command += listOf("-e", key) }
+        val envKeys =
+            extraEnvKeys.distinct().filter { it.isNotBlank() && it != OPENCODE_SERVER_PASSWORD_ENV }
+        envKeys.forEach { key -> command += listOf("-e", key) }
         command += listOf("-w", guestBindPath(workspace), name)
-        appendGuestOpenCode(command, SERVE_FLAGS, preferGuestV2)
+        if (CONFIG_OVERLAY_ENV in envKeys) {
+            command += guestScriptCommand(GUEST_SERVE_WITH_OVERLAY, SERVE_FLAGS)
+        } else {
+            command += "opencode"
+            command += SERVE_FLAGS
+        }
         return command
     }
 
+    /** In-VM upgrade of Docker's 1.x kit binary (npm). The 2.x kit is upgraded by recreating. */
     fun buildExecUpgradeCommand(
         executable: String = DEFAULT_EXECUTABLE,
         name: String,
-        preferGuestV2: Boolean = false,
-    ): List<String> {
-        val command = mutableListOf(executable, "exec", "-w", "/", name)
-        val args = mutableListOf("upgrade", "--print-logs")
-        if (preferGuestV2) {
-            // CLI 2.x curl-detect is path.resolve(execPath) == $HOME/.opencode/bin/opencode.
-            // Persist extra-mounts that dir and symlink ~/.opencode onto it, so execPath is
-            // the host sbx-opencode realpath and detection fails without --method.
-            args += listOf("--method", "curl")
-        }
-        appendGuestOpenCode(command, args, preferGuestV2)
-        return command
+    ): List<String> =
+        listOf(executable, "exec", "-w", "/", name, "opencode", "upgrade", "--print-logs")
+
+    /**
+     * Why a sandbox serving [serverVersion] cannot run [wanted]: switching versions selects another
+     * Docker kit, which only a new VM gets. Null when they match or the version is unknown.
+     */
+    fun openCodeVersionMismatch(wanted: SbxOpenCodeVersion, serverVersion: String?): String? {
+        val match = OPENCODE_VERSION_LINE.find(serverVersion?.trim().orEmpty()) ?: return null
+        val major = match.groupValues[2].toIntOrNull() ?: return null
+        val runs = if (major >= 2) SbxOpenCodeVersion.V2 else SbxOpenCodeVersion.V1
+        if (runs == wanted) return null
+        return "this sandbox runs OpenCode ${match.groupValues[1]}, " +
+            "but opencode-sbx.yaml selects ${wanted.yamlValue()} (${kitLabel(wanted)})"
     }
 
-    fun buildExecInstallV2Command(
-        executable: String = DEFAULT_EXECUTABLE,
-        name: String,
-    ): List<String> {
-        return listOf(executable, "exec", "-w", "/", name) + guestScriptCommand(V2_INSTALL_SCRIPT)
-    }
+    /** `1.18.31` (1.x CLI and API) or `opencode v2.3.0` (2.x CLI); group 1 is the version. */
+    private val OPENCODE_VERSION_LINE = Regex("""^(?:opencode\s+)?v?((\d+)\.\d+\.\d+[^\s,"]*)""")
+
+    fun kitLabel(version: SbxOpenCodeVersion): String =
+        if (version == SbxOpenCodeVersion.V2) "Docker's latest OpenCode 2 kit"
+        else "Docker's OpenCode 1.x kit"
 
     fun buildNetworkProbeCommand(executable: String, name: String, url: String): List<String> =
         listOf(
@@ -852,29 +866,6 @@ internal object SbxCli {
 
     fun networkProbeStatus(stdout: String): Int? =
         Regex("${NETWORK_PROBE_MARKER}(\\d{3})").find(stdout)?.groupValues?.get(1)?.toIntOrNull()
-
-    const val GUEST_V2_MISSING_EXIT_CODE = 44
-
-    fun buildExecGuestV2VersionCommand(
-        executable: String = DEFAULT_EXECUTABLE,
-        name: String,
-    ): List<String> {
-        return listOf(executable, "exec", "-w", "/", name) +
-            guestScriptCommand(GUEST_V2_VERSION_SCRIPT)
-    }
-
-    private fun appendGuestOpenCode(
-        command: MutableList<String>,
-        args: List<String>,
-        preferGuestV2: Boolean,
-    ) {
-        if (preferGuestV2) {
-            command += guestScriptCommand(GUEST_OPENCODE_DISPATCH, args)
-        } else {
-            command += "opencode"
-            command += args
-        }
-    }
 
     fun buildAddKitCommand(
         executable: String = DEFAULT_EXECUTABLE,
@@ -929,19 +920,25 @@ internal object SbxCli {
         return listOf(executable, "ls", "--json")
     }
 
-    fun buildTemplateLsCommand(executable: String = DEFAULT_EXECUTABLE): List<String> {
-        return listOf(executable, "template", "ls", "--json")
+    fun buildVersionCommand(executable: String = DEFAULT_EXECUTABLE): List<String> =
+        listOf(executable, "version")
+
+    /** `sbx version v0.53.0 <commit>` → `[0, 53, 0]`; null when no version is printed. */
+    fun parseSbxVersion(output: String): List<Int>? {
+        val match = SBX_VERSION.find(output) ?: return null
+        return match.groupValues.drop(1).map { it.toIntOrNull() ?: return null }
     }
 
-    fun buildTemplateRmCommand(
-        executable: String = DEFAULT_EXECUTABLE,
-        ref: String,
-        force: Boolean = true,
-    ): List<String> {
-        return listOf(executable, "template", "rm") +
-            (if (force) listOf("--force") else emptyList()) +
-            ref
+    /** Null when the CLI is new enough or its version cannot be read; else the reported version. */
+    fun unsupportedSbxVersion(output: String): String? {
+        val found = parseSbxVersion(output) ?: return null
+        val minimum = checkNotNull(parseSbxVersion(MINIMUM_SBX_VERSION))
+        val comparison =
+            found.zip(minimum).map { (a, b) -> a.compareTo(b) }.firstOrNull { it != 0 } ?: 0
+        return if (comparison < 0) found.joinToString(".") else null
     }
+
+    private val SBX_VERSION = Regex("""(?<![\w.])v?(\d+)\.(\d+)\.(\d+)""")
 
     fun buildStopCommand(
         executable: String = DEFAULT_EXECUTABLE,
@@ -1036,36 +1033,14 @@ internal object SbxCli {
         return command.any { token ->
             token.startsWith("$OPENCODE_SERVER_PASSWORD_ENV=") ||
                 token.startsWith("$OPENCODE_CONFIG_CONTENT_ENV=") ||
+                token.startsWith("$CONFIG_OVERLAY_ENV=") ||
                 token.startsWith("$OPENCODE_AUTH_CONTENT_ENV=")
         }
     }
 
-    fun parseTemplateLsJson(json: String): List<SbxTemplateImage> {
-        val images = parseListArray(json, "images") ?: return emptyList()
-        return images.mapNotNull { element ->
-            val obj = element.takeIf { it.isJsonObject }?.asJsonObject ?: return@mapNotNull null
-            val id = obj.stringMember("id")?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
-            SbxTemplateImage(
-                id = id,
-                repository = obj.stringMember("repository").orEmpty(),
-                tag = obj.stringMember("tag").orEmpty(),
-                flavor = obj.stringMember("flavor").orEmpty(),
-            )
-        }
-    }
-
-    fun isOfficialOpencodeTemplate(image: SbxTemplateImage): Boolean {
-        val repo = image.repository.lowercase()
-        val tag = image.tag.lowercase()
-        val flavor = image.flavor.lowercase()
-        if (image.ref() == DEFAULT_OPENCODE_TEMPLATE) return true
-        if (!repo.contains("docker/sandbox-templates")) return false
-        return tag.contains("opencode") || flavor.contains("opencode")
-    }
-
-    fun officialOpencodeTemplateRefs(images: List<SbxTemplateImage>): List<String> {
-        return images.filter(::isOfficialOpencodeTemplate).map { it.ref() }.distinct()
-    }
+    /** sbx refuses Docker's v3 OpenCode kit together with older v1/v2 mixins. */
+    fun reportsLegacyKitFormat(output: String): Boolean =
+        output.contains("cannot mix v3 kits with v1/v2 kits", ignoreCase = true)
 
     fun parseLsJson(json: String): List<SbxSandboxListEntry> = parseLsJsonOrNull(json).orEmpty()
 
@@ -1078,7 +1053,7 @@ internal object SbxCli {
         }
     }
 
-    /** sbx 0.48 removed the envelopes from sandbox and template lists. */
+    /** sbx 0.48 removed the envelope from the sandbox list. */
     private fun parseListArray(json: String, legacyKey: String): JsonArray? {
         val root = runCatching { JsonParser.parseString(json) }.getOrNull() ?: return null
         return when {

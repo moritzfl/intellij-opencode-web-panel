@@ -93,13 +93,6 @@ internal data class SbxApplyPreview(
             if (oldSpec.enableIntellijMcp != newSpec.enableIntellijMcp) {
                 changes += SbxApplyChange("IntelliJ MCP overlay", SbxApplyEffect.RESTART)
             }
-            if (oldSpec.openCodeVersion != newSpec.openCodeVersion) {
-                changes +=
-                    SbxApplyChange(
-                        "OpenCode version ${newSpec.openCodeVersion.yamlValue()}",
-                        SbxApplyEffect.RESTART,
-                    )
-            }
             if (oldSpec.workingDirectory != newSpec.workingDirectory) {
                 changes += SbxApplyChange("OpenCode working directory", SbxApplyEffect.RESTART)
             }
@@ -107,6 +100,15 @@ internal data class SbxApplyPreview(
             val atCreate = if (hasVm) "" else " (applies when the sandbox is created)"
             if (oldSpec.shareHostOpencodeConfig != newSpec.shareHostOpencodeConfig) {
                 changes += SbxApplyChange("Host OpenCode config sharing$atCreate", recreate)
+            }
+            // Each version is its own Docker kit image.
+            if (oldSpec.openCodeVersion != newSpec.openCodeVersion) {
+                changes +=
+                    SbxApplyChange(
+                        "OpenCode ${newSpec.openCodeVersion.yamlValue()} " +
+                            "(${SbxCli.kitLabel(newSpec.openCodeVersion)})$atCreate",
+                        recreate,
+                    )
             }
             if (
                 newSpec.kits.size < oldSpec.kits.size ||

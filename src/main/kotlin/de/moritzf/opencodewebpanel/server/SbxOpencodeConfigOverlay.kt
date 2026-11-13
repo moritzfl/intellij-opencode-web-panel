@@ -48,7 +48,6 @@ internal object SbxOpencodeConfigOverlay {
     }
 
     fun buildContent(
-        version: SbxOpenCodeVersion,
         shareHostConfig: Boolean,
         ideaMcpPort: Int?,
         hostConfigJson: String? = if (shareHostConfig) readHostConfig() else null,
@@ -61,8 +60,9 @@ internal object SbxOpencodeConfigOverlay {
         val nested = hostMcp?.get("servers")?.takeIf { it.isJsonObject }?.asJsonObject
         // Preserve the source schema, including enabled/disabled, timeout and OAuth fields.
         // OpenCode 2 migrates legacy documents itself; wrapping legacy entries in mcp.servers
-        // creates an invalid hybrid that it silently discards.
-        val nativeV2 = if (hostMcp != null) nested != null else version == SbxOpenCodeVersion.V2
+        // creates an invalid hybrid that it silently discards. Without shared MCP entries the
+        // legacy schema is used, which OpenCode 2 migrates as well.
+        val nativeV2 = nested != null
         (nested ?: hostMcp)?.entrySet()?.forEach { (name, value) ->
             val server = value.takeIf { it.isJsonObject }?.asJsonObject ?: return@forEach
             val rewritten = server.stringMember("url")?.let(::rewriteLoopbackUrl) ?: return@forEach

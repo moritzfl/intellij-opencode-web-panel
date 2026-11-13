@@ -11,7 +11,8 @@ import java.net.URI
 
 /**
  * Optional same-major OpenCode upgrade action on the tool-window title bar. 1.x → npm
- * `opencode-ai`; 2.x → npm `@opencode/cli`. Never suggests crossing a major version.
+ * `opencode-ai`; 2.x → npm `@opencode/cli`. Never suggests crossing a major version. A 2.x Docker
+ * Sandbox runs Docker's published kit, so the caller skips npm for it.
  */
 internal object OpenCodeReleaseUpdates {
     const val NPM_V1_LATEST_URL = "https://registry.npmjs.org/opencode-ai/latest"

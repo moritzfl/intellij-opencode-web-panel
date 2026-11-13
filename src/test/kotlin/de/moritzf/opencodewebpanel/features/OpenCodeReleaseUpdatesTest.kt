@@ -87,10 +87,6 @@ class OpenCodeReleaseUpdatesTest {
             "OpenCode 2.0.9 is available. Consider upgrading. Installed: 2.0.8. Click for Host CLI upgrade steps.",
             OpenCodeReleaseUpdates.tooltip(notice),
         )
-        assertEquals(
-            "OpenCode 2.0.9 is available. Consider upgrading. Installed: 2.0.8. Click to upgrade this sandbox.",
-            OpenCodeReleaseUpdates.tooltip(notice, sandbox = true),
-        )
         assertEquals("opencode upgrade", OpenCodeReleaseUpdates.HOST_UPGRADE_COMMAND)
         assertTrue(OpenCodeReleaseUpdates.hostUpgradeIntro(notice).contains("2.0.9"))
     }

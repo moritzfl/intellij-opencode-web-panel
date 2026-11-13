@@ -37,51 +37,12 @@ esac
 CONTROL_DIR="opencode-sbx"
 SPEC_NAME="opencode-sbx.yaml"
 IN_VM_PORT=4096
-AGENT="opencode"
-
-# Guest scripts are also read from these delimited blocks by SbxCli.
-# Keep heredocs outside $(...): macOS Bash 3.2 misparses nested case patterns.
-v2_install_script() {
-  cat <<'OCWP_V2_INSTALL'
-#!/bin/sh
-# opencode.ai latest can precede this architecture's tarball; retry, then pin npm latest.
-curl -fsSL --connect-timeout 15 --max-time 120 https://opencode.ai/v2/install -o /tmp/opencode-v2-install.sh || exit 1
-if bash /tmp/opencode-v2-install.sh --no-modify-path && test -x "$HOME/.opencode/bin/opencode"; then exit 0; fi
-sleep 2
-if bash /tmp/opencode-v2-install.sh --no-modify-path && test -x "$HOME/.opencode/bin/opencode"; then exit 0; fi
-os=$(uname -s | tr A-Z a-z)
-case "$os" in darwin) ;; *) os=linux ;; esac
-arch=$(uname -m)
-case "$arch" in aarch64) arch=arm64 ;; x86_64) arch=x64 ;; esac
-ver=$(curl -fsSL --connect-timeout 15 --max-time 60 "https://registry.npmjs.org/@opencode%2fcli-${os}-${arch}/latest" | sed -n "s/.*\"version\":\"\\([^\"]*\\)\".*/\\1/p" | head -1)
-test -n "$ver" || exit 1
-bash /tmp/opencode-v2-install.sh --no-modify-path --version "$ver" || exit $?
-test -x "$HOME/.opencode/bin/opencode"
-OCWP_V2_INSTALL
-}
-
-v2_version_script() {
-  cat <<'OCWP_V2_VERSION'
-#!/bin/sh
-# Exit 44 means absent; all invalid installed binaries fail with 45.
-binary="$HOME/.opencode/bin/opencode"
-if [ ! -e "$binary" ] && [ ! -L "$binary" ]; then exit 44; fi
-if [ ! -x "$binary" ]; then
-  printf 'OpenCode 2.x binary is not executable: %s\n' "$binary" >&2
-  exit 45
-fi
-if version=$(timeout -k 2 10 "$binary" --version 2>&1); then :; else
-  status=$?
-  printf 'OpenCode 2.x version check failed (exit %s): %s\n%s\n' "$status" "$binary" "$version" >&2
-  exit 45
-fi
-if ! printf '%s\n' "$version" | grep -Eq '^(opencode[[:space:]]+)?v?2\.[0-9]+\.[0-9]+([-+][[:alnum:].-]+)?[[:space:]]*$'; then
-  printf 'Expected OpenCode 2.x at %s; got:\n%s\n' "$binary" "$version" >&2
-  exit 45
-fi
-printf '%s\n' "$version"
-OCWP_V2_VERSION
-}
+# Docker's published OpenCode kits, as in SbxCli.agentFor: the built-in `opencode` agent is
+# the latest 2.x kit; 1.x uses the fixed 1.x kit and is upgraded inside the VM.
+V2_AGENT="opencode"
+V1_KIT="docker.io/sbx/opencode:1.18.31"
+# First sbx with Docker's v3 OpenCode kits.
+MINIMUM_SBX_VERSION="0.51.0"
 
 print_usage() {
   cat <<'USAGE'
@@ -92,7 +53,7 @@ Usage: opencode-sbx.sh [launcher-options] [project|opencode-command] [opencode-a
   --acp            Start ACP over stdin/stdout (sbx exec -i, no TTY).
   --sbx-directory DIR  Select another project's sandbox (not an OpenCode project argument).
   --init           Write opencode-sbx/opencode-sbx.yaml if missing, then start.
-  --recreate       Delete and recreate the sandbox, then start.
+  --recreate       Delete and recreate the sandbox from Docker's selected OpenCode kit, then start.
   --rm             Delete the sandbox and exit.
   --sbx-help       Show launcher help without starting a sandbox.
   -- or --oc-args  Pass remaining arguments directly to OpenCode.
@@ -284,6 +245,20 @@ if ! command -v "$SBX" >/dev/null 2>&1; then
 fi
 if [[ "$SBX" == */* ]] && ! is_absolute "$SBX"; then
   SBX="$(pwd)/$SBX"
+fi
+# Same check as SbxCli.unsupportedSbxVersion: an unreadable version is not proof of an old CLI.
+sbx_version_pattern='(^|[^0-9A-Za-z_.])v?([0-9]+)\.([0-9]+)\.([0-9]+)'
+if [[ "$("$SBX" version 2>/dev/null || true)" =~ $sbx_version_pattern ]]; then
+  sbx_major=$((10#${BASH_REMATCH[2]}))
+  sbx_minor=$((10#${BASH_REMATCH[3]}))
+  sbx_patch=$((10#${BASH_REMATCH[4]}))
+  IFS=. read -r min_major min_minor min_patch <<< "$MINIMUM_SBX_VERSION"
+  if (( sbx_major < min_major ||
+        (sbx_major == min_major && sbx_minor < min_minor) ||
+        (sbx_major == min_major && sbx_minor == min_minor && sbx_patch < min_patch) )); then
+    echo "opencode-sbx: Docker Sandboxes $sbx_major.$sbx_minor.$sbx_patch is too old; Docker's OpenCode kit needs sbx $MINIMUM_SBX_VERSION or later." >&2
+    exit 1
+  fi
 fi
 
 yaml_unquote() {
@@ -583,6 +558,11 @@ if [[ -z "$SPEC" || ! -f "$SPEC" ]]; then
 fi
 parse_spec "$SPEC"
 OPENCODE_VERSION="${OPENCODE_VERSION:-1.x}"
+if [[ "$OPENCODE_VERSION" == "2.x" ]]; then
+  AGENT="$V2_AGENT"
+else
+  AGENT="$V1_KIT"
+fi
 
 spec_dir="$(cd "$(dirname "$SPEC")" && pwd -P)"
 if [[ "$(basename "$spec_dir")" == "$CONTROL_DIR" && "$(basename "$SPEC")" == "$SPEC_NAME" ]]; then
@@ -630,7 +610,7 @@ if [[ "$MODE" == cli && "$PROJECT_INDEX" -ge 0 ]]; then
     OPENCODE_ARGS[$PROJECT_INDEX]="$(guest_bind_path "$(identity_path "$(cd "$project_arg" && pwd -P)")")"
   fi
 fi
-# NAME is joined into host paths below (persist, 2.x binary, --recreate cleanup).
+# NAME is joined into host paths below (persist store, --recreate cleanup).
 # Same rule as SbxCli.isValidSandboxName.
 case "$NAME" in
   [Dd][Ee][Ff][Aa][Uu][Ll][Tt]) valid_name=0 ;;
@@ -799,8 +779,8 @@ if [[ "$REMOVE" -eq 1 ]]; then
 fi
 
 if [[ "$RECREATE" -eq 1 ]]; then
-  # Inventory errors are not proof that the VM is absent. Only drop its persisted
-  # binary after an owned VM was removed successfully, or verified absent.
+  # Inventory errors are not proof that the VM is absent. Only drop its legacy
+  # OpenCode copy after an owned VM was removed successfully, or verified absent.
   recreate_inventory="$(sandbox_json)" || exit 1
   if recreate_entry="$(sandbox_entry_for_name "$NAME" "$recreate_inventory")"; then
     if ! entry_has_workspace "$recreate_entry" "$CANONICAL"; then
@@ -808,7 +788,7 @@ if [[ "$RECREATE" -eq 1 ]]; then
       exit 1
     fi
     if ! "$SBX" rm --force "$NAME"; then
-      echo "opencode-sbx: could not remove sandbox $NAME; persisted OpenCode kept." >&2
+      echo "opencode-sbx: could not remove sandbox $NAME." >&2
       exit 1
     fi
   fi
@@ -827,7 +807,6 @@ fi
 HOST_CONFIG_DIR="${HOST_CONFIG_DIR//\\//}"
 HOST_CONFIG_DIR="$(identity_path "$HOST_CONFIG_DIR")"
 PERSIST_GUEST="/home/agent/.local/share/opencode"
-GUEST_OPENCODE_GUEST="/home/agent/.opencode"
 uname_s="$(uname -s 2>/dev/null || true)"
 if [[ -n "${OCWP_DATA_DIR:-}" ]]; then
   PERSIST_ROOT="${OCWP_DATA_DIR//\\//}"
@@ -838,15 +817,13 @@ else
   PERSIST_ROOT="${XDG_DATA_HOME:-${HOME}/.local/share}/opencode-web-panel"
 fi
 PERSIST_HOME="$PERSIST_ROOT/sbx/$NAME"
-GUEST_OPENCODE_HOME="$PERSIST_ROOT/sbx-opencode/$NAME"
+# Older releases installed OpenCode 2 here instead of using Docker's kit (SbxCli.legacyGuestOpenCodeDataHome).
+LEGACY_GUEST_OPENCODE_HOME="$PERSIST_ROOT/sbx-opencode/$NAME"
 if [[ "$RECREATE" -eq 1 ]]; then
-  rm -rf -- "$GUEST_OPENCODE_HOME"
+  rm -rf -- "$LEGACY_GUEST_OPENCODE_HOME"
 fi
 if [[ "$PERSIST_SESSIONS" == "true" ]]; then
   mkdir -p -- "$PERSIST_HOME"
-fi
-if [[ "$OPENCODE_VERSION" == "2.x" ]]; then
-  mkdir -p -- "$GUEST_OPENCODE_HOME"
 fi
 
 resolve_host_path() {
@@ -893,7 +870,7 @@ expand_host_mount_path() {
   printf '%s' "$raw"
 }
 
-# Same guest scripts as SbxCli.extraMountLinkScript. The persist/2.x replace variant copies
+# Same guest scripts as SbxCli.extraMountLinkScript. The persist replace variant copies
 # guest data onto the host only when the host store is still empty.
 link_mount() {
   local host sandbox replace script
@@ -948,6 +925,10 @@ if EXISTING_ENTRY="$(sandbox_entry_for_name "$NAME")"; then
     echo "opencode-sbx: sandbox $NAME exists for another workspace; refusing to use it." >&2
     exit 1
   fi
+  if [[ "$OPENCODE_VERSION" == "2.x" ]] && entry_has_workspace "$EXISTING_ENTRY" "$LEGACY_GUEST_OPENCODE_HOME"; then
+    echo "opencode-sbx: sandbox $NAME still runs the OpenCode 2 copy that older plugin releases installed. Run with --recreate to switch to Docker's OpenCode kit." >&2
+    exit 1
+  fi
 else
   inventory_status=$?
   if [[ "$inventory_status" -ne 1 ]]; then
@@ -992,9 +973,6 @@ if [[ -z "$EXISTING_ENTRY" ]]; then
   fi
   if [[ "$PERSIST_SESSIONS" == "true" && -n "${PERSIST_HOME:-}" && -d "$PERSIST_HOME" && "$PERSIST_HOME" != "$CANONICAL" ]]; then
     create+=( "$PERSIST_HOME" )
-  fi
-  if [[ "$OPENCODE_VERSION" == "2.x" && -n "${GUEST_OPENCODE_HOME:-}" && -d "$GUEST_OPENCODE_HOME" && "$GUEST_OPENCODE_HOME" != "$CANONICAL" ]]; then
-    create+=( "$GUEST_OPENCODE_HOME" )
   fi
   seen_mounts=$'\n'
   for ((i = 0; i < ${#MOUNT_HOSTS[@]}; i++)); do
@@ -1044,11 +1022,6 @@ done
 if [[ "$PERSIST_SESSIONS" == "true" && -n "${PERSIST_HOME:-}" && -d "$PERSIST_HOME" ]]; then
   if [[ "$CREATED" -eq 1 ]] || workspace_has "$PERSIST_HOME"; then
     link_mount "$PERSIST_HOME" "$PERSIST_GUEST" replace
-  fi
-fi
-if [[ "$OPENCODE_VERSION" == "2.x" && -n "${GUEST_OPENCODE_HOME:-}" && -d "$GUEST_OPENCODE_HOME" ]]; then
-  if [[ "$CREATED" -eq 1 ]] || workspace_has "$GUEST_OPENCODE_HOME"; then
-    link_mount "$GUEST_OPENCODE_HOME" "$GUEST_OPENCODE_GUEST" replace
   fi
 fi
 
@@ -1119,33 +1092,24 @@ print_url() {
   echo "opencode-sbx: serve started but health did not respond in time. Check: sbx ports $NAME --json" >&2
 }
 
-if [[ "$OPENCODE_VERSION" == "2.x" ]]; then
-  guest_v2_version_script="$(v2_version_script)"
-  if "$SBX" exec -w / "$NAME" sh -c "$guest_v2_version_script" >/dev/null; then
-    :
-  else
-    version_status=$?
-    if [[ "$version_status" -ne 44 ]]; then
-      echo "opencode-sbx: guest OpenCode 2.x validation failed. Reinstall OpenCode 2.x in the sandbox, then retry." >&2
+# Each version is a separate Docker kit (SbxCli.openCodeVersionMismatch). An existing VM keeps the
+# kit it was created from; an unreadable version is not proof of a mismatch.
+if [[ "$CREATED" -eq 0 ]]; then
+  guest_version="$("$SBX" exec -w / "$NAME" opencode --version </dev/null 2>/dev/null || true)"
+  # `opencode --version` prints `1.18.31` (1.x) or `opencode v2.3.0` (2.x) on its first line.
+  guest_version="${guest_version%%$'\n'*}"
+  guest_version="${guest_version%$'\r'}"
+  guest_version_pattern='^[[:space:]]*(opencode[[:space:]]+)?v?([0-9]+)\.[0-9]+\.[0-9]+([^0-9]|$)'
+  if [[ "$guest_version" =~ $guest_version_pattern ]]; then
+    guest_major=$((10#${BASH_REMATCH[2]}))
+    if [[ ( "$OPENCODE_VERSION" == "2.x" && "$guest_major" -lt 2 ) ||
+          ( "$OPENCODE_VERSION" == "1.x" && "$guest_major" -ge 2 ) ]]; then
+      echo "opencode-sbx: sandbox $NAME runs OpenCode $guest_major.x, but $SPEC selects $OPENCODE_VERSION. Run with --recreate to create it from Docker's $OPENCODE_VERSION kit." >&2
       exit 1
     fi
-    echo "opencode-sbx: installing OpenCode 2.x…" >&2
-    guest_v2_install_script="$(v2_install_script)"
-    "$SBX" exec -w / "$NAME" sh -c "$guest_v2_install_script"
-    "$SBX" exec -w / "$NAME" sh -c "$guest_v2_version_script" >/dev/null || {
-      echo "opencode-sbx: installer did not produce a runnable OpenCode 2.x binary." >&2
-      exit 1
-    }
   fi
 fi
 
-# 2.x requires the validated $HOME/.opencode/bin; 1.x always uses kit `opencode`.
-# $HOME / $@ are evaluated in the guest by sh -c, not on the host.
-guest_opencode=(opencode)
-if [[ "$OPENCODE_VERSION" == "2.x" ]]; then
-  guest_opencode_dispatch='exec "$HOME/.opencode/bin/opencode" "$@"'
-  guest_opencode=(sh -c "$guest_opencode_dispatch" opencode)
-fi
 opencode_cmd=()
 if [[ "$MODE" == web ]]; then
   opencode_cmd+=( serve --hostname 0.0.0.0 --port "$IN_VM_PORT" --print-logs )
@@ -1177,6 +1141,6 @@ fi
 if [[ ${#serve_env[@]} -gt 0 ]]; then
   launch+=( "${serve_env[@]}" )
 fi
-launch+=( -w "$(guest_bind_path "$WORKDIR")" "$NAME" "${guest_opencode[@]}" ${opencode_cmd[@]+"${opencode_cmd[@]}"} )
+launch+=( -w "$(guest_bind_path "$WORKDIR")" "$NAME" opencode ${opencode_cmd[@]+"${opencode_cmd[@]}"} )
 exec 0<&3 1>&4 3<&- 4>&-
 exec "${launch[@]}"

@@ -35,7 +35,12 @@ object SbxContractCheck {
             return Files.readString(stdout)
         }
 
-        println(run(listOf(executable, "version")).trim())
+        val version = run(SbxCli.buildVersionCommand(executable))
+        println(version.trim())
+        checkNotNull(SbxCli.parseSbxVersion(version)) { "Unrecognized sbx version output" }
+        check(SbxCli.unsupportedSbxVersion(version) == null) {
+            "Docker's OpenCode kit needs sbx ${SbxCli.MINIMUM_SBX_VERSION} or later"
+        }
         val name = "ocwp-contract"
         val workspace = output.toAbsolutePath().toString()
         val help = mutableMapOf<List<String>, String>()
@@ -70,15 +75,6 @@ object SbxContractCheck {
         surface(
             listOf("ports"),
             SbxCli.buildPortsUnpublishCommand(executable, name, "127.0.0.1:4096:4096/tcp4"),
-        )
-        surface(listOf("template", "ls"), SbxCli.buildTemplateLsCommand(executable))
-        surface(
-            listOf("template", "rm"),
-            SbxCli.buildTemplateRmCommand(
-                executable,
-                "unused",
-                force = "--force" in helpFor(listOf("template", "rm")),
-            ),
         )
         surface(listOf("stop"), SbxCli.buildStopCommand(executable, name))
         surface(listOf("rm"), SbxCli.buildRmForceCommand(executable, name))
@@ -136,10 +132,6 @@ object SbxContractCheck {
                 "Port mappings were lost"
             }
         }
-        val templates = run(SbxCli.buildTemplateLsCommand(executable))
-        check(SbxCli.parseTemplateLsJson(templates).size == listArray(templates, "images").size()) {
-            "Template identities were lost"
-        }
         val policy = run(SbxCli.buildPolicyLsCommand(executable))
         val rules = JsonParser.parseString(policy).asJsonObject.getAsJsonArray("rules")
         checkNotNull(rules) { "Unrecognized policy JSON" }
@@ -163,7 +155,7 @@ object SbxContractCheck {
             "Unrecognized diagnose JSON"
         }
         println(
-            "PASS: live ls (${entries.size} rows), ports (${entries.size} sandboxes), template ls, policy ls, diagnose JSON",
+            "PASS: live ls (${entries.size} rows), ports (${entries.size} sandboxes), policy ls, diagnose JSON",
         )
         println("Reports: ${output.toAbsolutePath()}")
     }

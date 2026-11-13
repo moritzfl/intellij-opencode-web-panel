@@ -8,11 +8,10 @@ import org.junit.Test
 
 class SbxOpencodeConfigOverlayTest {
     @Test
-    fun v1OverlayUsesFlatMcpWithoutProviderOverrides() {
+    fun legacyOverlayUsesFlatMcpWithoutProviderOverrides() {
         val overlay =
             com.google.gson.JsonParser.parseString(
                     SbxOpencodeConfigOverlay.buildContent(
-                        version = SbxOpenCodeVersion.V1,
                         shareHostConfig = true,
                         ideaMcpPort = 64342,
                         hostConfigJson =
@@ -34,7 +33,6 @@ class SbxOpencodeConfigOverlayTest {
         assertFalse(overlay.has("provider"))
         assertNull(
             SbxOpencodeConfigOverlay.buildContent(
-                SbxOpenCodeVersion.V1,
                 shareHostConfig = false,
                 ideaMcpPort = null,
             ),
@@ -45,7 +43,6 @@ class SbxOpencodeConfigOverlayTest {
     fun overlayMergesIdeaMcpAndRewritesLoopbackUrls() {
         val overlay =
             SbxOpencodeConfigOverlay.buildContent(
-                version = SbxOpenCodeVersion.V2,
                 shareHostConfig = true,
                 ideaMcpPort = 64342,
                 hostConfigJson =
@@ -72,11 +69,10 @@ class SbxOpencodeConfigOverlayTest {
     }
 
     @Test
-    fun v2KeepsLegacyTimeoutEnabledAndOAuthTogether() {
+    fun legacyMcpKeepsTimeoutEnabledAndOAuthTogether() {
         val overlay =
             com.google.gson.JsonParser.parseString(
                     SbxOpencodeConfigOverlay.buildContent(
-                        version = SbxOpenCodeVersion.V2,
                         shareHostConfig = true,
                         ideaMcpPort = 64342,
                         hostConfigJson =
@@ -94,11 +90,10 @@ class SbxOpencodeConfigOverlayTest {
     }
 
     @Test
-    fun v2KeepsNativeMcpFieldsAndGeneratesNativeIdeaEntry() {
+    fun nativeMcpKeepsFieldsAndGeneratesNativeIdeaEntry() {
         val overlay =
             com.google.gson.JsonParser.parseString(
                     SbxOpencodeConfigOverlay.buildContent(
-                        version = SbxOpenCodeVersion.V2,
                         shareHostConfig = true,
                         ideaMcpPort = 64342,
                         hostConfigJson =
@@ -118,29 +113,29 @@ class SbxOpencodeConfigOverlayTest {
     }
 
     @Test
-    fun v2IdeaOnlyUsesNativeSchema() {
+    fun ideaOnlyOverlayUsesTheLegacySchemaThatOpenCode2Migrates() {
+        // Verified with Docker's OpenCode kit (2.2.7): migrated to mcp.servers.idea,
+        // disabled=false.
         val overlay =
             com.google.gson.JsonParser.parseString(
                     SbxOpencodeConfigOverlay.buildContent(
-                        version = SbxOpenCodeVersion.V2,
                         shareHostConfig = false,
                         ideaMcpPort = 64342,
                     ),
                 )
                 .asJsonObject
                 .getAsJsonObject("mcp")
-                .getAsJsonObject("servers")
-                .getAsJsonObject("idea")
-        assertEquals("remote", overlay.get("type").asString)
-        assertFalse(overlay.has("enabled"))
-        assertFalse(overlay.get("disabled").asBoolean)
+        assertFalse(overlay.has("servers"))
+        val idea = overlay.getAsJsonObject("idea")
+        assertEquals("remote", idea.get("type").asString)
+        assertTrue(idea.get("enabled").asBoolean)
+        assertFalse(idea.has("disabled"))
     }
 
     @Test
-    fun v2WithoutMcpNeedsNoOverlay() {
+    fun withoutMcpNeedsNoOverlay() {
         assertNull(
             SbxOpencodeConfigOverlay.buildContent(
-                SbxOpenCodeVersion.V2,
                 shareHostConfig = false,
                 ideaMcpPort = null,
             ),
@@ -194,7 +189,6 @@ class SbxOpencodeConfigOverlayTest {
                 .trimIndent()
         val overlay =
             SbxOpencodeConfigOverlay.buildContent(
-                version = SbxOpenCodeVersion.V2,
                 shareHostConfig = true,
                 ideaMcpPort = null,
                 hostConfigJson = SbxOpencodeConfigOverlay.stripJsonc(jsonc),
@@ -238,7 +232,6 @@ class SbxOpencodeConfigOverlayTest {
             )
             val overlay =
                 SbxOpencodeConfigOverlay.buildContent(
-                    version = SbxOpenCodeVersion.V2,
                     shareHostConfig = true,
                     ideaMcpPort = null,
                     hostConfigJson =
@@ -259,7 +252,6 @@ class SbxOpencodeConfigOverlayTest {
             // OpenCode merges config.json, opencode.json, opencode.jsonc; later files win.
             val merged =
                 SbxOpencodeConfigOverlay.buildContent(
-                    version = SbxOpenCodeVersion.V2,
                     shareHostConfig = true,
                     ideaMcpPort = null,
                     hostConfigJson =
@@ -281,7 +273,6 @@ class SbxOpencodeConfigOverlayTest {
     fun fileBasedConfigIsNotReplayedAsInlineOverrides() {
         val overlay =
             SbxOpencodeConfigOverlay.buildContent(
-                version = SbxOpenCodeVersion.V2,
                 shareHostConfig = true,
                 ideaMcpPort = null,
                 hostConfigJson =
@@ -299,7 +290,6 @@ class SbxOpencodeConfigOverlayTest {
     fun providerSettingsDoNotGenerateAnOverlay() {
         val overlay =
             SbxOpencodeConfigOverlay.buildContent(
-                version = SbxOpenCodeVersion.V2,
                 shareHostConfig = true,
                 ideaMcpPort = null,
                 hostConfigJson =

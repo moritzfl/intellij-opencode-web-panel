@@ -549,7 +549,7 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
                 row {
                     cell(notifyOpenCodeUpdatesCheckBox)
                         .comment(
-                            "Shows a lightning bolt on the OpenCode tool-window title bar. Hover for the version; click to upgrade a sandbox or copy the Host CLI command. 1.x checks npm opencode-ai; 2.x checks @opencode/cli. Does not suggest switching major versions.",
+                            "Shows a lightning bolt on the OpenCode tool-window title bar. Hover for the version; click to upgrade a 1.x sandbox or copy the Host CLI command. 1.x checks npm opencode-ai; 2.x checks @opencode/cli. Does not suggest switching major versions. A 2.x Docker Sandbox follows Docker's OpenCode kit; Reset Sandbox picks up its latest release.",
                         )
                 }
                 row {

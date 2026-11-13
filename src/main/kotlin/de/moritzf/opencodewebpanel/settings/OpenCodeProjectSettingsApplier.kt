@@ -101,12 +101,7 @@ internal class OpenCodeProjectSettingsApplier(private val project: Project) {
             leavingSharedBackend = shared,
             stop = oldBackend::stopServer,
             restart = { onUi { OpenCodeProjectRuntime.getInstance(project).restart() } },
-            resetSandbox = {
-                onUi {
-                    OpenCodeProjectRuntime.getInstance(project)
-                        .resetSandbox(dropGuestOpenCode = false)
-                }
-            },
+            resetSandbox = { onUi { OpenCodeProjectRuntime.getInstance(project).resetSandbox() } },
             applyLive = {
                 val sandbox = oldBackend as? SbxOpenCodeServerBackend
                 if (sandbox != null) {

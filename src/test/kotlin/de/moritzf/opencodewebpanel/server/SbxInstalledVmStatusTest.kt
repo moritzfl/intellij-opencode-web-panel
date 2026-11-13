@@ -12,11 +12,7 @@ class SbxInstalledVmStatusTest {
     fun pendingWhenCreateSnapshotDiffers() {
         val spec =
             SbxLaunchSpec.defaults("/tmp/p", hostPort = OpenCodeSettingsState().hostPortOrNull())
-                .copy(
-                    memory = "8g",
-                    useSandbox = true,
-                    openCodeVersion = SbxOpenCodeVersion.V1,
-                )
+                .copy(memory = "8g", useSandbox = true)
         val record =
             SbxSandboxRecord(
                 "id",

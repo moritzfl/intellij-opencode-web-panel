@@ -6,7 +6,6 @@ package de.moritzf.opencodewebpanel.server
 internal object SbxSetupDiagnostics {
     fun check(
         executable: String,
-        spec: SbxLaunchSpec,
         record: SbxSandboxRecord?,
         runner: SbxCommandRunner = SbxProcessRunner,
     ): List<SbxSetupStep> {
@@ -43,7 +42,7 @@ internal object SbxSetupDiagnostics {
                     false,
                     "Start this sandbox before checking guest access",
                 )
-        for ((host, url) in networkTargets(spec.openCodeVersion)) {
+        for ((host, url) in NETWORK_TARGETS) {
             val result =
                 runner.run(
                     SbxCli.buildNetworkProbeCommand(executable, owned.name, url),
@@ -67,11 +66,5 @@ internal object SbxSetupDiagnostics {
         return steps
     }
 
-    fun networkTargets(version: SbxOpenCodeVersion): List<Pair<String, String>> = buildList {
-        if (version == SbxOpenCodeVersion.V2) {
-            add("opencode.ai" to SbxCli.V2_INSTALL_URL)
-            add("registry.npmjs.org" to "https://registry.npmjs.org/@opencode%2fcli/latest")
-        }
-        add("models.opencode.ai" to "https://models.opencode.ai/api.json")
-    }
+    val NETWORK_TARGETS = listOf("models.opencode.ai" to "https://models.opencode.ai/api.json")
 }

@@ -23,7 +23,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        version: [v0.39.0, latest]
+        # v0.51.0 is the first release whose `opencode` agent is Docker's OpenCode 2 kit.
+        version: [v0.51.0, latest]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-java@v5

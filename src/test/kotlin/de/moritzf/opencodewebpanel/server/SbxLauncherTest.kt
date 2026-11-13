@@ -83,7 +83,7 @@ class SbxLauncherTest {
                 "./kit/path",
                 "--kit",
                 "./team's-kit",
-                "opencode",
+                SbxCli.V1_KIT,
                 project.toString(),
             ) +
                 protectCreateArgs(
@@ -218,7 +218,7 @@ class SbxLauncherTest {
                 "2",
                 "--publish",
                 "4096/tcp4",
-                "opencode",
+                SbxCli.V1_KIT,
                 project.toString(),
             ) + persistCreateArgs(project),
             args,
@@ -324,7 +324,7 @@ class SbxLauncherTest {
         )
         Files.writeString(
             project.resolve("opencode-sbx.yaml"),
-            "canonicalDirectory: ./\nshareHostOpencodeConfig: true\nopenCodeVersion: 2.x\n",
+            "canonicalDirectory: ./\nshareHostOpencodeConfig: true\n",
         )
         runLauncher(launcher(project), project, serve = true)
         val forwarded = Files.readString(temp.root.toPath().resolve("log/auth-content"))
@@ -534,10 +534,9 @@ class SbxLauncherTest {
     @Test
     fun acpKeepsFirstRequestAndReservesStdoutDuringSetup() {
         val project = directory("project")
-        Files.writeString(
-            project.resolve("opencode-sbx.yaml"),
-            "canonicalDirectory: ./\nopenCodeVersion: 2.x\n",
-        )
+        Files.writeString(project.resolve("opencode-sbx.yaml"), "canonicalDirectory: ./\n")
+        val name = SbxCli.sandboxName(project.toString())
+        val persist = persistCreateArgs(project, name).single()
         val request = """{"jsonrpc":"2.0","id":1,"method":"initialize"}""" + "\n"
         runLauncher(
             launcher(project),
@@ -546,7 +545,8 @@ class SbxLauncherTest {
             serve = true,
             mergeErrorStream = false,
             acpInput = request,
-            versionExit = 44,
+            // The persist relink is a setup exec that writes to stdout.
+            lsJson = """{"sandboxes":[{"name":"$name","workspaces":["$project","$persist"]}]}""",
         )
         val log = temp.root.toPath().resolve("log")
         assertEquals("", Files.readString(log.resolve("setup-input")))
@@ -581,13 +581,20 @@ class SbxLauncherTest {
     }
 
     @Test
-    fun openCodeVersionTwoRequiresGuestBin() {
+    fun openCodeTwoServesDockersKitBinaryFromPath() {
         val project = directory("project")
         Files.writeString(
             project.resolve("opencode-sbx.yaml"),
             "canonicalDirectory: ./\nopenCodeVersion: 2.x\n",
         )
-        val args = runLauncher(launcher(project), project, "--web", serve = true)
+        val args =
+            runLauncher(
+                launcher(project),
+                project,
+                "--web",
+                serve = true,
+                guestVersion = "opencode v2.3.0",
+            )
         assertEquals(
             listOf(
                 "exec",
@@ -596,9 +603,6 @@ class SbxLauncherTest {
                 "-w",
                 project.toString(),
                 SbxCli.sandboxName(project.toString()),
-                "sh",
-                "-c",
-                SbxCli.GUEST_OPENCODE_DISPATCH,
                 "opencode",
                 "serve",
                 "--hostname",
@@ -610,15 +614,67 @@ class SbxLauncherTest {
             args,
         )
         assertEquals("", Files.readString(temp.root.toPath().resolve("log/config-content")))
+        assertEquals(
+            listOf("probe"),
+            Files.readAllLines(temp.root.toPath().resolve("log/version-probes")),
+        )
     }
 
     @Test
-    fun v2AuthCommandDoesNotInjectProviderConfiguration() {
+    fun eachVersionCreatesFromItsOwnDockerKit() {
+        val project = directory("project")
+        Files.writeString(project.resolve("opencode-sbx.yaml"), "canonicalDirectory: ./\n")
+        assertTrue(runLauncher(launcher(project), project).contains(SbxCli.V1_KIT))
+        temp.root.toPath().resolve("log").toFile().deleteRecursively()
+        Files.writeString(
+            project.resolve("opencode-sbx.yaml"),
+            "canonicalDirectory: ./\ninstallOpenCodeV2: true\n",
+        )
+        val v2 = runLauncher(launcher(project), project)
+        assertEquals(
+            listOf("opencode", project.toString()),
+            v2.drop(v2.indexOf("opencode")).take(2),
+        )
+        assertFalse(v2.contains(SbxCli.V1_KIT))
+        assertFalse(
+            "A new VM needs no version probe",
+            Files.exists(temp.root.toPath().resolve("log/version-probes")),
+        )
+    }
+
+    @Test
+    fun existingSandboxOfTheOtherVersionMustBeRecreated() {
         val project = directory("project")
         Files.writeString(
             project.resolve("opencode-sbx.yaml"),
             "canonicalDirectory: ./\nopenCodeVersion: 2.x\n",
         )
+        runLauncher(
+            launcher(project),
+            project,
+            serve = true,
+            expectedExit = 1,
+            guestVersion = "1.19.5",
+        )
+        assertTrue(launcherOutput().contains("runs OpenCode 1.x, but"))
+        assertTrue(launcherOutput().contains("--recreate"))
+        assertFalse(Files.exists(temp.root.toPath().resolve("log/exec.args")))
+
+        Files.writeString(project.resolve("opencode-sbx.yaml"), "canonicalDirectory: ./\n")
+        runLauncher(
+            launcher(project),
+            project,
+            serve = true,
+            expectedExit = 1,
+            guestVersion = "opencode v2.3.0",
+        )
+        assertTrue(launcherOutput().contains("runs OpenCode 2.x, but"))
+    }
+
+    @Test
+    fun authCommandDoesNotInjectProviderConfiguration() {
+        val project = directory("project")
+        Files.writeString(project.resolve("opencode-sbx.yaml"), "canonicalDirectory: ./\n")
         val args =
             runLauncher(
                 launcher(project),
@@ -631,100 +687,69 @@ class SbxLauncherTest {
                 serve = true,
             )
         assertFalse(args.contains("OPENCODE_CONFIG_CONTENT"))
-        assertEquals(listOf("auth", "login", "openai"), args.takeLast(3))
+        assertEquals(listOf("opencode", "auth", "login", "openai"), args.takeLast(4))
         assertEquals("", Files.readString(temp.root.toPath().resolve("log/config-content")))
     }
 
     @Test
-    fun invalidGuestBinaryStopsLauncherWithoutInstallingOrServing() {
+    fun sandboxWithThePluginInstalledOpenCodeMustBeRecreatedFor2x() {
         val project = directory("project")
         Files.writeString(
             project.resolve("opencode-sbx.yaml"),
             "canonicalDirectory: ./\nopenCodeVersion: 2.x\n",
         )
-        runLauncher(launcher(project), project, serve = true, versionExit = 45, expectedExit = 1)
-        assertTrue(launcherOutput().contains("validation failed"))
-        assertFalse(Files.exists(temp.root.toPath().resolve("log/installed")))
-        assertFalse(Files.exists(temp.root.toPath().resolve("log/health-checked")))
-    }
-
-    @Test
-    fun missingGuestBinaryIsInstalledAndRecheckedBeforeServe() {
-        val project = directory("project")
-        Files.writeString(
-            project.resolve("opencode-sbx.yaml"),
-            "canonicalDirectory: ./\nopenCodeVersion: 2.x\n",
-        )
-        val args = runLauncher(launcher(project), project, "--web", serve = true, versionExit = 44)
-        assertTrue(args.contains("serve"))
-        assertEquals(
-            listOf("probe", "install", "probe"),
-            Files.readAllLines(temp.root.toPath().resolve("log/binary-checks")),
-        )
-        assertEquals(
-            SbxCli.V2_INSTALL_SCRIPT,
-            Files.readString(temp.root.toPath().resolve("log/install-script")),
-        )
-        assertEquals(
-            SbxCli.GUEST_V2_VERSION_SCRIPT,
-            Files.readString(temp.root.toPath().resolve("log/version-script")),
-        )
-    }
-
-    @Test
-    fun invalidInstalledBinaryStopsLauncherBeforeServe() {
-        val project = directory("project")
-        Files.writeString(
-            project.resolve("opencode-sbx.yaml"),
-            "canonicalDirectory: ./\nopenCodeVersion: 2.x\n",
-        )
+        val name = SbxCli.sandboxName(project.toString())
+        val legacy = legacyOpenCodeFixture(project).parent.parent.toRealPath()
         runLauncher(
             launcher(project),
             project,
             serve = true,
-            versionExit = 44,
-            installedVersionExit = 45,
             expectedExit = 1,
+            lsJson = """{"sandboxes":[{"name":"$name","workspaces":["$project","$legacy"]}]}""",
         )
-        assertTrue(
-            launcherOutput().contains("installer did not produce a runnable OpenCode 2.x binary"),
-        )
+        assertTrue(launcherOutput().contains("--recreate"))
+        assertTrue(Files.exists(legacy))
+        assertFalse(Files.exists(temp.root.toPath().resolve("log/exec.args")))
+
+        Files.writeString(project.resolve("opencode-sbx.yaml"), "canonicalDirectory: ./\n")
+        val args =
+            runLauncher(
+                launcher(project),
+                project,
+                "--version",
+                serve = true,
+                lsJson = """{"sandboxes":[{"name":"$name","workspaces":["$project","$legacy"]}]}""",
+            )
         assertEquals(
-            listOf("probe", "install", "probe"),
-            Files.readAllLines(temp.root.toPath().resolve("log/binary-checks")),
+            "1.x never launched that copy",
+            listOf("opencode", "--version"),
+            args.takeLast(2),
         )
-        assertFalse(Files.exists(temp.root.toPath().resolve("log/health-checked")))
     }
 
     @Test
-    fun bundledV2ScriptsWorkWithExplicitProjectAndUnrelatedCwd() {
+    fun sbxWithoutDockersOpenCodeKitIsRefusedBeforeProvisioning() {
         val project = directory("project")
-        val caller = directory("caller")
-        Files.writeString(
-            project.resolve("opencode-sbx.yaml"),
-            "canonicalDirectory: ./\nopenCodeVersion: 2.x\n",
+        Files.writeString(project.resolve("opencode-sbx.yaml"), "canonicalDirectory: ./\n")
+        runLauncher(
+            launcher(project),
+            project,
+            expectedExit = 1,
+            sbxVersion = "sbx version v0.49.1 c5b19951af",
         )
-        val args =
-            runLauncher(
-                launcher(directory("machine bin")),
-                caller,
-                "--web",
-                "--sbx-directory",
-                project.toString(),
-                serve = true,
-                versionExit = 44,
-                lsJson =
-                    """{"sandboxes":[{"name":"${SbxCli.sandboxName(project.toString())}","workspaces":["$project"]}]}""",
-            )
-        assertTrue(args.contains("serve"))
+        assertTrue(launcherOutput().contains("0.49.1 is too old"))
+        assertTrue(launcherOutput().contains(SbxCli.MINIMUM_SBX_VERSION))
         assertEquals(
-            SbxCli.V2_INSTALL_SCRIPT,
-            Files.readString(temp.root.toPath().resolve("log/install-script")),
+            listOf("version"),
+            Files.readAllLines(temp.root.toPath().resolve("log/calls")),
         )
-        assertEquals(
-            SbxCli.GUEST_V2_VERSION_SCRIPT,
-            Files.readString(temp.root.toPath().resolve("log/version-script")),
-        )
+    }
+
+    @Test
+    fun unreadableSbxVersionDoesNotBlockTheLauncher() {
+        val project = directory("project")
+        Files.writeString(project.resolve("opencode-sbx.yaml"), "canonicalDirectory: ./\n")
+        assertEquals(createArgs(project), runLauncher(launcher(project), project, sbxVersion = ""))
     }
 
     @Test
@@ -908,7 +933,7 @@ class SbxLauncherTest {
         Files.writeString(project.resolve("opencode-sbx.yaml"), "canonicalDirectory: ./\n")
         val name = SbxCli.sandboxName(project.toString())
         val lsJson = """{"sandboxes":[{"name":"$name","workspaces":["/other/project"]}]}"""
-        val binary = guestBinaryFixture(project)
+        val binary = legacyOpenCodeFixture(project)
         runLauncher(
             launcher(project),
             project,
@@ -923,13 +948,10 @@ class SbxLauncherTest {
     }
 
     @Test
-    fun failedRecreateKeepsPersistedGuestBinaryAndDoesNotLaunch() {
+    fun failedRecreateKeepsLegacyOpenCodeAndDoesNotLaunch() {
         val project = directory("project")
-        Files.writeString(
-            project.resolve("opencode-sbx.yaml"),
-            "canonicalDirectory: ./\nopenCodeVersion: 2.x\n",
-        )
-        val binary = guestBinaryFixture(project)
+        Files.writeString(project.resolve("opencode-sbx.yaml"), "canonicalDirectory: ./\n")
+        val binary = legacyOpenCodeFixture(project)
         runLauncher(
             launcher(project),
             project,
@@ -944,10 +966,10 @@ class SbxLauncherTest {
     }
 
     @Test
-    fun recreateWithUnknownInventoryKeepsPersistedGuestBinary() {
+    fun recreateWithUnknownInventoryKeepsLegacyOpenCode() {
         val project = directory("project")
         Files.writeString(project.resolve("opencode-sbx.yaml"), "canonicalDirectory: ./\n")
-        val binary = guestBinaryFixture(project)
+        val binary = legacyOpenCodeFixture(project)
         runLauncher(
             launcher(project),
             project,
@@ -960,10 +982,10 @@ class SbxLauncherTest {
     }
 
     @Test
-    fun recreateVerifiedMissingVmDropsOldGuestBinaryBeforeCreate() {
+    fun recreateVerifiedMissingVmDropsLegacyOpenCodeBeforeCreate() {
         val project = directory("project")
         Files.writeString(project.resolve("opencode-sbx.yaml"), "canonicalDirectory: ./\n")
-        val binary = guestBinaryFixture(project)
+        val binary = legacyOpenCodeFixture(project)
         runLauncher(
             launcher(project),
             project,
@@ -976,7 +998,8 @@ class SbxLauncherTest {
         assertTrue(Files.exists(temp.root.toPath().resolve("log/create.args")))
     }
 
-    private fun guestBinaryFixture(project: Path): Path {
+    /** Binary that releases before Docker's OpenCode kit installed for a sandbox. */
+    private fun legacyOpenCodeFixture(project: Path): Path {
         val binary =
             temp.root
                 .toPath()
@@ -1217,6 +1240,7 @@ class SbxLauncherTest {
                         ) +
                             persistCreateArgs(project) +
                             SbxCli.extraMountCreateArgs(resolved, project.toString()),
+                    agent = SbxCli.agentFor(spec.openCodeVersion),
                 )
                 .drop(1)
         assertEquals(expected, runLauncher(launcher(project), project))
@@ -1242,7 +1266,7 @@ class SbxLauncherTest {
             )
         Files.writeString(
             project.resolve("opencode-sbx.yaml"),
-            "canonicalDirectory: '$project'\nname: ../../../../sentinel\nopenCodeVersion: 2.x\n",
+            "canonicalDirectory: '$project'\nname: ../../../../sentinel\n",
         )
         runLauncher(
             launcher(project),
@@ -1279,23 +1303,14 @@ class SbxLauncherTest {
             "Persist relink must require an attached workspace",
             script.contains("workspace_has"),
         )
-        assertTrue(
-            "2.x serve must prefer a user-installed binary",
-            script.contains("guest_opencode_dispatch"),
-        )
-        assertTrue(
-            "Guest 2.x lives at \$HOME/.opencode/bin",
-            script.contains("\$HOME/.opencode/bin/opencode"),
-        )
-        assertTrue("2.x binary persists on the host until Reset", script.contains("sbx-opencode"))
-        assertTrue(
-            "2.x host copy maps to /home/agent/.opencode",
+        assertFalse(
+            "Docker's OpenCode kit supplies the binary",
             script.contains("/home/agent/.opencode"),
         )
-        assertTrue("YAML openCodeVersion selects 1.x or 2.x", script.contains("openCodeVersion"))
+        assertTrue("--recreate drops the legacy OpenCode copy", script.contains("sbx-opencode"))
         assertTrue(
-            "Legacy installOpenCodeV2 still maps to 2.x",
-            script.contains("installOpenCodeV2"),
+            "Same minimum as the plugin",
+            script.contains("MINIMUM_SBX_VERSION=\"${SbxCli.MINIMUM_SBX_VERSION}\""),
         )
         assertFalse("Provisioning must not start the detached agent TUI", script.contains("run -d"))
         assertFalse("TUI must use sbx exec, not sbx run", script.contains(" \"\$SBX\" run"))
@@ -1316,7 +1331,7 @@ class SbxLauncherTest {
             "2",
             "--publish",
             "4096/tcp4",
-            "opencode",
+            SbxCli.V1_KIT,
             project.toString(),
         ) + protectCreateArgs(project) + persistCreateArgs(project, name)
 
@@ -1361,8 +1376,8 @@ class SbxLauncherTest {
         mergeErrorStream: Boolean = true,
         createExit: Int = 37,
         removeExit: Int = 0,
-        versionExit: Int = 0,
-        installedVersionExit: Int = 0,
+        sbxVersion: String = "sbx version v0.53.0 2c62838074",
+        guestVersion: String = "",
         acpInput: String? = null,
         cliHealth: Boolean = false,
     ): List<String> {
@@ -1375,12 +1390,17 @@ class SbxLauncherTest {
                 #!/bin/bash
                 set -euo pipefail
                 printf '%s\n' "${'$'}1" >> "${'$'}OCWP_TEST_LOG/calls"
+                if [[ "${'$'}1" == exec && "${'$'}2" == -w && "${'$'}3" == / && "${'$'}5" == opencode && "${'$'}6" == --version && ${'$'}# -eq 6 ]]; then
+                  echo probe >> "${'$'}OCWP_TEST_LOG/version-probes"
+                  printf '%s\n' "${'$'}OCWP_TEST_GUEST_VERSION"
+                  exit 0
+                fi
                 case "${'$'}1" in
                   daemon|ls|create|exec|rm)
                     printf '%s' "${'$'}(pwd -P)" > "${'$'}OCWP_TEST_LOG/${'$'}1.cwd"
                     printf '%s\0' "${'$'}@" > "${'$'}OCWP_TEST_LOG/${'$'}1.args"
                     ;;
-                  ports) ;;
+                  ports|version) ;;
                   *) exit 97 ;;
                 esac
                 case "${'$'}1" in
@@ -1404,17 +1424,8 @@ class SbxLauncherTest {
                     printf '%s' "${'$'}{OPENCODE_AUTH_CONTENT:-}" > "${'$'}OCWP_TEST_LOG/auth-content"
                     printf '%s' "${'$'}{OPENCODE_CONFIG_CONTENT:-}" > "${'$'}OCWP_TEST_LOG/config-content"
                     for a in "${'$'}@"; do
-                      if [[ "${'$'}a" == *'version=$(timeout -k 2 10'* ]]; then
-                        printf '%s' "${'$'}a" > "${'$'}OCWP_TEST_LOG/version-script"
-                        echo probe >> "${'$'}OCWP_TEST_LOG/binary-checks"
-                        if [[ -e "${'$'}OCWP_TEST_LOG/installed" ]]; then exit "${'$'}OCWP_TEST_INSTALLED_VERSION_EXIT"; fi
-                        exit "${'$'}OCWP_TEST_VERSION_EXIT"
-                      fi
-                      if [[ "${'$'}a" == *'https://opencode.ai/v2/install'* ]]; then
-                        if [[ "${'$'}OCWP_TEST_ACP" == true ]]; then echo "Preparing sandbox"; fi
-                        printf '%s' "${'$'}a" > "${'$'}OCWP_TEST_LOG/install-script"
-                        echo install >> "${'$'}OCWP_TEST_LOG/binary-checks"
-                        touch "${'$'}OCWP_TEST_LOG/installed"
+                      if [[ "${'$'}a" == opencode-link && "${'$'}OCWP_TEST_ACP" == true ]]; then
+                        echo "Preparing sandbox"
                         exit 0
                       fi
                     done
@@ -1434,6 +1445,7 @@ class SbxLauncherTest {
                     fi
                     exit 37 ;;
                   ports) printf '[{"host_port":49123}]\n' ;;
+                  version) printf '%s\n' "${'$'}OCWP_TEST_SBX_VERSION" ;;
                 esac
                 """
                     .trimIndent() + "\n",
@@ -1494,9 +1506,8 @@ class SbxLauncherTest {
                                 "OCWP_TEST_WORKSPACE" to script.parent.toString(),
                                 "OCWP_TEST_CREATE_EXIT" to createExit.toString(),
                                 "OCWP_TEST_REMOVE_EXIT" to removeExit.toString(),
-                                "OCWP_TEST_VERSION_EXIT" to versionExit.toString(),
-                                "OCWP_TEST_INSTALLED_VERSION_EXIT" to
-                                    installedVersionExit.toString(),
+                                "OCWP_TEST_SBX_VERSION" to sbxVersion,
+                                "OCWP_TEST_GUEST_VERSION" to guestVersion,
                                 "OCWP_TEST_ACP" to (acpInput != null).toString(),
                                 "OCWP_TEST_CLI_HEALTH" to cliHealth.toString(),
                                 "OCWP_TEST_LS" to
@@ -1528,7 +1539,10 @@ class SbxLauncherTest {
         }
         if (expectedExit != 37 && resultCommand == null) return emptyList()
         if (!serve && expectedExit == 37 && createExit != 0) {
-            assertEquals(listOf("daemon", "ls", "create"), Files.readAllLines(log.resolve("calls")))
+            assertEquals(
+                listOf("version", "daemon", "ls", "create"),
+                Files.readAllLines(log.resolve("calls")),
+            )
         }
         val command = resultCommand ?: if (serve) "exec" else "create"
         return Files.readString(log.resolve("$command.args")).removeSuffix("\u0000").split('\u0000')

@@ -97,10 +97,8 @@ internal fun startupStageExplanation(stage: String): String =
             "Docker may download images and install your kits. First-time setup can take several minutes."
         stage.contains("kit", true) ->
             "Docker is applying the configured tools and environment. Image preparation and package downloads can take several minutes."
-        stage.contains("Installing", true) ||
-            stage.contains("Upgrading", true) ||
-            stage.contains("Downloading", true) ->
-            "Downloading and installing OpenCode in the sandbox. Download speed and package setup determine how long this takes."
+        stage.contains("Upgrading", true) ->
+            "Upgrading OpenCode inside the sandbox. Download speed and package setup determine how long this takes."
         stage.contains("mount", true) ->
             "Preparing workspace and session folders. Docker may need to start the virtual machine first."
         stage.contains("MCP", true) ->
@@ -111,8 +109,6 @@ internal fun startupStageExplanation(stage: String): String =
             "Reading sandbox state and verifying this project's sandbox."
         stage.contains("Waiting for OpenCode", true) || stage.contains("port", true) ->
             "Waiting for OpenCode to answer on its local port. The page opens automatically when it is ready."
-        stage.contains("Checking OpenCode", true) ->
-            "Checking that the configured OpenCode binary is available and can run."
         stage.contains("Stop", true) || stage.contains("Remove", true) ->
             "Finishing the previous process before starting again."
         else ->

@@ -9,7 +9,6 @@ import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.actionSystem.PlatformDataKeys
 import com.intellij.openapi.actionSystem.ToggleAction
 import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.ide.CopyPasteManager
@@ -36,7 +35,9 @@ import de.moritzf.opencodewebpanel.server.OpenCodeProjectRuntime
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState
+import de.moritzf.opencodewebpanel.server.SbxLaunchSpec
 import de.moritzf.opencodewebpanel.server.SbxOpenCodeServerBackend
+import de.moritzf.opencodewebpanel.server.SbxOpenCodeVersion
 import de.moritzf.opencodewebpanel.server.SbxSandboxRecord
 import de.moritzf.opencodewebpanel.server.SbxSandboxRecordStore
 import de.moritzf.opencodewebpanel.server.isOpenCodePageReloadEnabled
@@ -44,7 +45,6 @@ import de.moritzf.opencodewebpanel.server.isOpenCodeServerStopEnabled
 import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsConfigurable
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable
 import de.moritzf.opencodewebpanel.ui.confirmOpenCodeSandboxBinaryUpgrade
-import de.moritzf.opencodewebpanel.ui.confirmOpenCodeSandboxImageUpdate
 import de.moritzf.opencodewebpanel.ui.confirmOpenCodeSandboxReset
 import de.moritzf.opencodewebpanel.ui.confirmOpenCodeServerRestart
 import de.moritzf.opencodewebpanel.ui.confirmOpenCodeServerStop
@@ -92,7 +92,6 @@ internal fun openCodeGearActions() =
         add(OpenCodeResetWebStateAction())
         add(OpenCodeResetSandboxAction())
         add(OpenCodeUpgradeSandboxBinaryAction())
-        add(OpenCodeUpdateSandboxImageAction())
         add(OpenCodeOpenDevToolsAction())
         add(OpenCodeViewServerLogAction())
         addSeparator()
@@ -133,7 +132,8 @@ internal class OpenCodeMovePanelAction :
 
 /**
  * Lightning on the tool-window title when a same-major OpenCode release is newer. Hover shows the
- * version. Click upgrades the sandbox (confirm) or shows Host CLI steps.
+ * version. Click upgrades a 1.x sandbox (confirm) or shows Host CLI steps. A 2.x sandbox follows
+ * Docker's kit and gets no notice.
  */
 internal class OpenCodeUpdateAvailableAction :
     DumbAwareAction(
@@ -556,7 +556,7 @@ private fun openCodePanelContent(e: AnActionEvent): OpenCodeWebToolWindowContent
 internal class OpenCodeResetSandboxAction :
     DumbAwareAction(
         "Reset Sandbox",
-        "Delete this project's Docker Sandbox and create a new one. Sessions in it are dropped.",
+        "Delete this project's Docker Sandbox and create a new one from Docker's OpenCode kit.",
         AllIcons.Actions.GC,
     ) {
     override fun actionPerformed(e: AnActionEvent) {
@@ -571,7 +571,8 @@ internal class OpenCodeResetSandboxAction :
             e.project != null &&
                 !OpenCodeServerBackend.isNative(openCodeBackend(e.project).backendId)
         e.presentation.isEnabledAndVisible = sandbox
-        e.presentation.description = "Delete this project's Docker Sandbox and create a new one."
+        e.presentation.description =
+            "Delete this project's Docker Sandbox and create a new one from Docker's OpenCode kit."
     }
 
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
@@ -580,7 +581,7 @@ internal class OpenCodeResetSandboxAction :
 internal class OpenCodeUpgradeSandboxBinaryAction :
     DumbAwareAction(
         "Upgrade OpenCode in Sandbox",
-        "Run opencode upgrade inside this sandbox. The VM and sessions stay.",
+        "Run opencode upgrade inside this 1.x sandbox. The VM and sessions stay.",
         AllIcons.Actions.Lightning,
     ) {
     override fun actionPerformed(e: AnActionEvent) {
@@ -595,57 +596,16 @@ internal class OpenCodeUpgradeSandboxBinaryAction :
         val sandbox =
             project != null && !OpenCodeServerBackend.isNative(openCodeBackend(project).backendId)
         val state = project?.let { openCodeBackend(it).getLifecycleState() }
-        e.presentation.isVisible = sandbox
+        // Docker's 2.x kit is upgraded by Reset Sandbox, not inside the VM.
+        val upgradable = sandbox && sandboxOpenCodeVersion(project) == SbxOpenCodeVersion.V1
+        e.presentation.isVisible = upgradable
         e.presentation.isEnabled =
-            sandbox &&
+            upgradable &&
                 ownedSandboxRecord(project) != null &&
                 state != OpenCodeServerLifecycleState.STARTING &&
                 state != OpenCodeServerLifecycleState.RESTARTING
         e.presentation.description =
-            "Upgrade the OpenCode binary inside this sandbox without recreating it."
-    }
-
-    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
-}
-
-internal class OpenCodeUpdateSandboxImageAction :
-    DumbAwareAction(
-        "Update OpenCode Sandbox Image",
-        "Drop the cached official OpenCode template and recreate this sandbox so it pulls the latest image.",
-        AllIcons.Actions.Download,
-    ) {
-    override fun actionPerformed(e: AnActionEvent) {
-        val project = e.project ?: return
-        val backend = openCodeBackend(project) as? SbxOpenCodeServerBackend ?: return
-        if (!confirmOpenCodeSandboxImageUpdate(project)) return
-        backend.dropCachedOfficialOpencodeTemplates().whenComplete { ok, _ ->
-            ApplicationManager.getApplication()
-                .invokeLater(
-                    {
-                        if (project.isDisposed) return@invokeLater
-                        if (ok == true) {
-                            OpenCodeProjectRuntime.getInstance(project).resetSandbox()
-                        } else {
-                            Messages.showErrorDialog(
-                                project,
-                                backend.startFailureMessage()
-                                    ?: "Could not drop the cached OpenCode sandbox image.",
-                                "Update OpenCode Sandbox Image",
-                            )
-                        }
-                    },
-                    ModalityState.nonModal(),
-                )
-        }
-    }
-
-    override fun update(e: AnActionEvent) {
-        val sandbox =
-            e.project != null &&
-                !OpenCodeServerBackend.isNative(openCodeBackend(e.project).backendId)
-        e.presentation.isEnabledAndVisible = sandbox
-        e.presentation.description =
-            "Drop the cached official OpenCode template and recreate this sandbox."
+            "Upgrade the OpenCode binary inside this 1.x sandbox without recreating it."
     }
 
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
@@ -762,6 +722,15 @@ internal fun ownedSandboxRecord(project: Project?): SbxSandboxRecord? {
             OpenCodeProjectSettingsState.getInstance(it).effectiveProjectDirectory(it.basePath)
         } ?: return null
     return SbxSandboxRecordStore.getInstance().recordFor(directory)
+}
+
+/** The OpenCode version the project's sandbox spec selects, or null without a valid spec. */
+internal fun sandboxOpenCodeVersion(project: Project?): SbxOpenCodeVersion? {
+    val directory =
+        project?.let {
+            OpenCodeProjectSettingsState.getInstance(it).effectiveProjectDirectory(it.basePath)
+        } ?: return null
+    return SbxLaunchSpec.load(directory)?.openCodeVersion
 }
 
 internal fun openOpenCodeServerLogInEditor(project: Project) {

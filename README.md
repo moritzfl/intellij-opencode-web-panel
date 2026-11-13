@@ -29,7 +29,7 @@
 
 <!-- Plugin description -->
 
-OpenCode Web Panel brings the official OpenCode web UI into JetBrains IDEs. Use it in a right-side tool window or move the live panel into an editor tab. It stays focused on the project you are working on and adds small IDE conveniences on top of the normal OpenCode experience. Host CLI and Docker Sandbox work with **OpenCode 1.x (1.18+)** and **CLI 2.x**.
+OpenCode Web Panel brings the official OpenCode web UI into JetBrains IDEs. Use it in a right-side tool window or move the live panel into an editor tab. It stays focused on the project you are working on and adds small IDE conveniences on top of the normal OpenCode experience. Host CLI and Docker Sandbox work with **OpenCode 1.x (1.18+)** and **CLI 2.x**; sandboxes use Docker's published OpenCode kits.
 
 > **Note:** This is an unofficial community plugin for OpenCode and is not affiliated with OpenCode.
 
@@ -57,7 +57,7 @@ OpenCode Web Panel brings the official OpenCode web UI into JetBrains IDEs. Use 
 - A JetBrains IDE compatible with this plugin.
 - The OpenCode CLI installed on your machine (Host runtime, the default): **1.x (1.18+)** or **CLI 2.x**.
 - The `opencode` command available on `PATH`, or configured manually in the plugin settings.
-- Optional: Docker Sandboxes (`sbx`) and a Docker account when **Runtime** is set to Docker Sandbox.
+- Optional: Docker Sandboxes (`sbx` 0.51.0 or later) and a Docker account when **Runtime** is set to Docker Sandbox.
 
 ## Installation
 
@@ -121,10 +121,15 @@ Open <kbd>Settings/Preferences</kbd> > <kbd>Tools</kbd> > <kbd>OpenCode Web Pane
 - Application settings: Host CLI binary, password, HTTP proxy, `sbx` path, and network-policy consent.
 - **Share host OpenCode config (read-only)** mounts the host config directory, including JSON/JSONC, skills, agents, commands, and plugins. The sandbox can read any credentials embedded in those files, but cannot change them. Host `auth.json` and the host credential database are not shared. Sandbox sessions and browser preferences remain separate.
 - Provider authentication is independent of IntelliJ: use Docker's `sbx secret` for API keys or sign in separately through OpenCode inside the sandbox. The plugin and standalone launcher never copy host OpenCode credentials or run an OAuth proxy. See [Sandbox credentials and standalone use](#sandbox-credentials-and-standalone-use).
-- **Check sandbox setup** on the project settings page checks guest access to `opencode.ai`, `registry.npmjs.org` (2.x installation), and `models.opencode.ai` (model catalog). It uses saved settings and an owned, running VM. A healthy local server does not prove provider authentication or these outbound connections work.
-- Selecting **OpenCode 2.x** validates the guest binary's actual version before launch and after installation or upgrade. A missing binary is installed; an existing wrong-major, corrupt, or hung binary reports a validation failure. Reinstall OpenCode 2.x inside the sandbox, then retry. The launcher follows the same validation rules.
-- **OpenCode version** is stored per project as `openCodeVersion: 1.x` or `2.x` (default `1.x`). Switching restarts OpenCode and keeps the VM. 1.x uses the kit binary even when 2.x is installed. New 2.x sandboxes keep their binary in a separate plugin-owned host directory until Reset Sandbox. Existing 1.x VMs switched to 2.x keep it inside the VM; Reset applies the host mount. Select 2.x before the first start when sharing a V2 host configuration.
-- Apply/start writes one shell launcher, `opencode-sbx.sh`, with installation and version validation built in. The IDE and launcher share those checks and leave provider/model configuration to OpenCode. Apply/start removes the older helper scripts and provider-compatibility JSON.
+- **Check sandbox setup** on the project settings page checks guest access to `models.opencode.ai` (model catalog). It uses saved settings and an owned, running VM. A healthy local server does not prove provider authentication or other outbound connections work.
+- **OpenCode version** is stored per project as `openCodeVersion: 1.x` or `2.x` (default `1.x`). Both come from Docker's published [`docker.io/sbx/opencode`](https://hub.docker.com/r/sbx/opencode) kits and need **sbx 0.51.0** or later; an older `sbx` stops with an update message.
+  - **1.x** uses the `sbx/opencode:1.18.31` kit. **Upgrade OpenCode** (project settings, gear menu, or the update indicator) runs `opencode upgrade` inside the VM and keeps it.
+  - **2.x** uses the `opencode` agent, Docker's latest OpenCode 2 kit. The plugin does not upgrade it inside the VM: **Reset Sandbox** (or the launcher's `--recreate`) creates the VM from the kit's latest release.
+  - Each version is a separate image, so switching versions needs a new VM; Apply asks before recreating. A start or launcher run that finds the other version stops with **Recreate Sandbox** (launcher: `--recreate`). Select 2.x before the first start when sharing an OpenCode 2 host configuration.
+- 2.x sandboxes that still run the OpenCode 2 copy installed by earlier plugin releases stop with a **Recreate Sandbox** action; recreating also deletes that copy. 1.x sandboxes never launched it and keep running.
+- Docker's 2.x kit configures OpenCode to run tools without approval prompts, because the sandbox is the isolation boundary. The plugin keeps each kit's configuration and only merges its MCP entries over it.
+- Apply/start writes one shell launcher, `opencode-sbx.sh`. The IDE and launcher leave provider/model configuration to OpenCode. Apply/start removes the older helper scripts and provider-compatibility JSON.
+- Kits must use `schemaVersion: "3"`: both of Docker's OpenCode kits are v3, and `sbx` refuses to combine them with v1/v2 kits. **Create extra-network kit template** writes a v3 mixin; regenerate a template created by an earlier release.
 - **Protect sandbox files** overlays the `opencode-sbx/` folder (spec, launchers, extra-network kit) and other local kit directories read-only on top of the writable project mount (on by default). Reset the sandbox to apply to an existing VM.
 - **Persist sandbox sessions across Reset** keeps this sandbox's OpenCode data, including conversations and sandbox-owned logins, on the host in a plugin data directory (not Host CLI's `opencode.db`). Reset recreates the VM and remounts the same store.
 - A project without `opencode-sbx/opencode-sbx.yaml` runs the Host CLI. Creating a sandbox from a spec requires a trusted project; a spec that mounts host paths outside the project, shares the host config, or adds kits asks once per distinct set of grants (settings Apply counts as consent).
@@ -139,7 +144,7 @@ Open <kbd>Settings/Preferences</kbd> > <kbd>Tools</kbd> > <kbd>OpenCode Web Pane
 - Restart this project's OpenCode server from the tool window or **OpenCode Web Panel (Project)**.
 - During startup/restart, the waiting view explains the current step and streams recent command output. Image downloads and kit installation can take several minutes. Elapsed time belongs to the current attempt, and a quiet step offers log/cancel guidance rather than an estimated countdown. Recent activity is available even with file logging disabled.
 - View recent OpenCode server output from **OpenCode Web Panel (Project)**.
-- An optional lightning-bolt action indicates a newer same-major OpenCode release. Click it to upgrade this project's sandbox or view a copyable Host CLI upgrade command. Disable it in application settings.
+- An optional lightning-bolt action indicates a newer same-major OpenCode release. Click it to upgrade a 1.x sandbox or view a copyable Host CLI upgrade command. Disable it in application settings. A 2.x sandbox follows Docker's kit instead.
 
 ### Sandbox credentials and standalone use
 
@@ -203,16 +208,17 @@ Launcher regression smoke checks: `bash scripts/check-sbx-launcher.sh`. They use
 a fake `sbx`, including pipe and argument checks, plus PTY checks when util-linux
 `script` is available; no sandbox or provider call is made.
 
-Network permission is separate from credentials. OpenCode 2 installation needs
-`opencode.ai` and `registry.npmjs.org`; the model catalog needs
-`models.opencode.ai`. Subscription login additionally needs `auth.openai.com`
-and `chatgpt.com` (ChatGPT), or `auth.x.ai` and `api.x.ai` (SuperGrok).
-Allow required hosts using an extra-network kit or an explicit
-`sbx policy allow network --sandbox <name> <host>`. Docker's balanced policy does
-not include xAI. The browser opens the provider's own authorization page.
+Network permission is separate from credentials. Docker's OpenCode kits already
+allow their providers' hosts (OpenAI including `auth.openai.com` and `chatgpt.com`,
+Anthropic, Google, Groq, OpenRouter, `api.x.ai`, GitHub Copilot) plus `opencode.ai`,
+`*.opencode.ai` and `registry.npmjs.org`. Other hosts, such as `auth.x.ai` for
+SuperGrok login or Mistral, need an extra-network kit or an explicit
+`sbx policy allow network --sandbox <name> <host>`. The browser opens the
+provider's own authorization page.
 
-Docker documents `sbx secret set openai --oauth` for Codex; this plugin does not
-assume it also authenticates OpenCode.
+Docker's 2.x kit also accepts `sbx secret set openai --oauth` (ChatGPT
+subscription) and seeds OpenCode's GitHub Copilot provider from a `github` secret;
+the real tokens stay with Docker's proxy.
 
 Existing installations that relied on automatic host authentication need to set
 up sandbox credentials once. Previously copied accounts can remain in persisted
@@ -329,9 +335,10 @@ and a pinned 1.18 baseline. Ordinary
 `check` stays headless; run `./gradlew test -Pjcef` locally with a display and OpenCode installed.
 Use `-PlocalIdePath="/path/to/IntelliJ IDEA"` to test an installed IDE/JCEF version.
 
-The **Docker Sandboxes compatibility** workflow checks sbx 0.39.0 and the latest
-stable Docker release on pushes, pull requests, Mondays, and manual runs. It verifies
-14 consumed CLI command surfaces against the plugin's actual command builders,
+The **Docker Sandboxes compatibility** workflow checks sbx 0.51.0 (the minimum, the
+first release with Docker's v3 OpenCode kits) and the latest stable Docker release on
+pushes, pull requests, Mondays, and manual runs. It verifies the version gate and
+12 consumed CLI command surfaces against the plugin's actual command builders,
 runs JSON-parser regressions (legacy envelopes and current arrays), and tests the
 standalone launcher. Release versions and CLI output are retained in the run artifacts.
 
@@ -343,12 +350,12 @@ bash scripts/check-sbx-launcher.sh
 ```
 
 The live gate needs an existing Docker sign-in. It reads sandbox inventory, each
-sandbox's ports, templates, policy, and diagnostics; sbx may start its daemon, but
+sandbox's ports, policy, and diagnostics; sbx may start its daemon, but
 the gate does not create/start/remove VMs or change policy. Reports go to
 `build/sbx-contract`. Hosted CI checks CLI surface and recorded JSON fixtures, not
 authenticated runtime behavior. Empty inventories cannot verify populated row
 fields; repeat the live check with existing sandboxes after sbx updates. Last live
-JSON validation: **sbx 0.49.1**, macOS, 2026-10-20.
+JSON validation: **sbx 0.53.0** with Docker's OpenCode kits (1.18.31 and 2.3.0), macOS, 2026-11-13.
 
 Repository: https://github.com/moritzfl/intellij-opencode-web-panel
 

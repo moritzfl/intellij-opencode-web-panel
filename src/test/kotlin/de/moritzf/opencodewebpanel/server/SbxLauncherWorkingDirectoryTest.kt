@@ -221,6 +221,7 @@ class SbxLauncherWorkingDirectoryTest {
                         name = SbxCli.sandboxName(workspace),
                         workspace = workspace,
                         extraWorkspaces = SbxCli.extraMountCreateArgs(resolved, workspace),
+                        agent = SbxCli.V1_KIT,
                     )
                     .drop(1),
                 argv,
@@ -267,6 +268,8 @@ class SbxLauncherWorkingDirectoryTest {
                      fi ;;
                   create) printf '<%s>\n' "${'$'}@"; exit 23 ;;
                   exec)
+                    # Existing-VM version probe (`exec -w / NAME opencode --version`).
+                    if [[ "${'$'}3" == / && "${'$'}{5:-}" == opencode && "${'$'}{6:-}" == --version ]]; then exit 0; fi
                     if [[ "${'$'}{OCWP_TEST_ACP:-false}" == true ]]; then
                       printf '%s\0' "${'$'}@" > "${'$'}OCWP_TEST_DIR/acp-args"
                       cat > "${'$'}OCWP_TEST_DIR/acp-input"

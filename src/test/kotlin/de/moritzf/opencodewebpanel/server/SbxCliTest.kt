@@ -4,6 +4,7 @@ import java.nio.charset.StandardCharsets
 import java.util.Base64
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -504,11 +505,6 @@ class SbxCliTest {
         )
         assertFalse(SbxCli.persistMountIsAttached(emptyList(), mount))
         assertTrue(SbxCli.persistMountIsAttached(listOf(mount.hostPath), mount))
-        val v2 = SbxCli.guestOpenCodeMount("ide-ocwp-abc") {}
-        assertEquals("/home/agent/.opencode", v2.sandboxPath)
-        assertTrue(v2.hostPath.contains("opencode-web-panel/sbx-opencode/ide-ocwp-abc"))
-        assertFalse(v2.hostPath.contains("/.opencode/"))
-        assertTrue(SbxCli.needsSandboxLink(v2))
         val data =
             SbxCli.persistDataDir(
                 userHome = root.toString(),
@@ -516,11 +512,15 @@ class SbxCliTest {
                 osName = "Linux",
                 override = null,
             )
-        val cached = java.nio.file.Path.of(SbxCli.guestOpenCodeDataHome("ide-ocwp-abc", data))
-        java.nio.file.Files.createDirectories(cached.resolve("bin"))
-        java.nio.file.Files.writeString(cached.resolve("bin/opencode"), "x")
-        SbxCli.deleteGuestOpenCode("ide-ocwp-abc", data)
-        assertFalse(java.nio.file.Files.exists(cached))
+        val legacy = java.nio.file.Path.of(SbxCli.legacyGuestOpenCodeDataHome("ide-ocwp-abc", data))
+        assertTrue(
+            SbxCli.posixPath(legacy.toString())
+                .endsWith("opencode-web-panel/sbx-opencode/ide-ocwp-abc"),
+        )
+        java.nio.file.Files.createDirectories(legacy.resolve("bin"))
+        java.nio.file.Files.writeString(legacy.resolve("bin/opencode"), "x")
+        SbxCli.deleteLegacyGuestOpenCode("ide-ocwp-abc", data)
+        assertFalse(java.nio.file.Files.exists(legacy))
     }
 
     @Test
@@ -681,8 +681,7 @@ class SbxCliTest {
             SbxCli.buildExecServeCommand(
                 name = "ide-ocwp-abc",
                 workspace = "/tmp/project",
-                extraEnvKeys = listOf("OPENCODE_CONFIG_CONTENT", "OPENCODE_AUTH_CONTENT"),
-                preferGuestV2 = true,
+                extraEnvKeys = listOf(SbxCli.CONFIG_OVERLAY_ENV, "XDG_CONFIG_HOME"),
             )
         assertEquals(
             listOf(
@@ -691,9 +690,9 @@ class SbxCliTest {
                 "-e",
                 "OPENCODE_SERVER_PASSWORD",
                 "-e",
-                "OPENCODE_CONFIG_CONTENT",
+                "OCWP_CONFIG_OVERLAY",
                 "-e",
-                "OPENCODE_AUTH_CONTENT",
+                "XDG_CONFIG_HOME",
                 "-w",
                 "/tmp/project",
                 "ide-ocwp-abc",
@@ -702,11 +701,20 @@ class SbxCliTest {
             ),
             command.take(13),
         )
-        assertEquals(
-            "set -- 'serve' '--hostname' '0.0.0.0' '--port' '4096' '--print-logs'\n${SbxCli.GUEST_OPENCODE_DISPATCH}",
-            decodedGuestScript(command),
+        val script = decodedGuestScript(command)!!
+        assertTrue(
+            script.startsWith(
+                "set -- 'serve' '--hostname' '0.0.0.0' '--port' '4096' '--print-logs'\n",
+            ),
         )
+        assertTrue("Docker's kit binary on PATH", script.endsWith("exec opencode \"\$@\""))
+        assertFalse(script.contains(".opencode/bin"))
         assertFalse(SbxCli.commandContainsBoundEnvAssignment(command))
+        assertTrue(
+            SbxCli.commandContainsBoundEnvAssignment(
+                command + "${SbxCli.CONFIG_OVERLAY_ENV}={}",
+            ),
+        )
         assertEquals(
             listOf(
                 "sbx",
@@ -736,93 +744,99 @@ class SbxCliTest {
     }
 
     @Test
-    fun networkKitTemplateCommentsCommonHosts() {
-        val yaml = SbxCli.networkKitTemplateYaml()
-        assertTrue(yaml.contains("kind: mixin"))
-        assertTrue(yaml.contains("name: opencode-network"))
-        assertTrue(yaml.contains("uncomment ALL THREE lines"))
-        assertTrue(yaml.contains("# - \"*\""))
-        assertTrue(yaml.contains("CIDRs alone do not allow hostname requests"))
-        assertTrue(yaml.contains("# - 0.0.0.0/0"))
-        assertTrue(yaml.contains("NOT a local-only restriction"))
-        assertTrue(yaml.contains("# - localhost"))
-        assertTrue(yaml.contains("# - api.openai.com  # OpenAI"))
-        assertTrue(yaml.contains("# - registry.npmjs.org  # npm registry"))
-        assertFalse(yaml.contains("\n      - api.openai.com"))
-        assertFalse(yaml.contains("\n      - \"*\""))
-        assertEquals("./opencode-sbx/opencode-network-kit", SbxCli.networkKitRef())
-    }
-
-    @Test
-    fun execUpgradePrefersGuestOpenCodeBin() {
-        val v2 = SbxCli.buildExecUpgradeCommand(name = "ide-ocwp-abc", preferGuestV2 = true)
-        assertEquals(listOf("sbx", "exec", "-w", "/", "ide-ocwp-abc", "sh", "-c"), v2.take(7))
-        assertEquals(
-            "set -- 'upgrade' '--print-logs' '--method' 'curl'\n${SbxCli.GUEST_OPENCODE_DISPATCH}",
-            decodedGuestScript(v2),
-        )
-        assertEquals(
-            listOf("sbx", "exec", "-w", "/", "ide-ocwp-abc", "opencode", "upgrade", "--print-logs"),
-            SbxCli.buildExecUpgradeCommand(name = "ide-ocwp-abc"),
-        )
-    }
-
-    @Test
-    fun execInstallV2DownloadsOfficialInstaller() {
-        val command = SbxCli.buildExecInstallV2Command(name = "ide-ocwp-abc")
-        assertEquals(listOf("sbx", "exec", "-w", "/", "ide-ocwp-abc", "sh", "-c"), command.take(7))
-        assertEquals(SbxCli.V2_INSTALL_SCRIPT, decodedGuestScript(command))
-        assertTrue(SbxCli.V2_INSTALL_SCRIPT.contains(SbxCli.V2_INSTALL_URL))
-        assertTrue(SbxCli.V2_INSTALL_SCRIPT.contains("--no-modify-path"))
-        assertTrue(SbxCli.V2_INSTALL_SCRIPT.contains("--version"))
-        assertTrue(SbxCli.V2_INSTALL_SCRIPT.contains("registry.npmjs.org"))
-        assertTrue(SbxCli.GUEST_OPENCODE_DISPATCH.contains("\$HOME/.opencode/bin/opencode"))
-        assertFalse(SbxCli.commandContainsBoundEnvAssignment(command))
-        assertEquals(
-            SbxCli.GUEST_V2_VERSION_SCRIPT,
-            decodedGuestScript(SbxCli.buildExecGuestV2VersionCommand(name = "ide-ocwp-abc")),
-        )
-    }
-
-    @Test
-    fun failedPinnedInstallCannotReportSuccessFromAnOldBinary() {
+    fun serveOverlayKeepsTheKitsInlineConfig() {
         org.junit.Assume.assumeTrue(
             java.nio.file.Files.isExecutable(java.nio.file.Path.of("/bin/sh")),
         )
-        val root = java.nio.file.Files.createTempDirectory("ocwp-install-failure")
+        val root = java.nio.file.Files.createTempDirectory("ocwp-serve-overlay")
         try {
             val bin = java.nio.file.Files.createDirectories(root.resolve("bin"))
-            fun executable(path: java.nio.file.Path, script: String) {
-                java.nio.file.Files.writeString(path, "#!/bin/sh\n$script\n")
-                assertTrue(path.toFile().setExecutable(true))
-            }
-            executable(bin.resolve("bash"), "exit 23")
-            executable(bin.resolve("sleep"), "exit 0")
-            executable(
-                bin.resolve("curl"),
-                """case "$*" in *registry.npmjs.org*) printf '%s' '{"version":"2.0.11"}' ;; esac""",
+            val opencode = bin.resolve("opencode")
+            java.nio.file.Files.writeString(
+                opencode,
+                "#!/bin/sh\nprintf '%s|%s|%s' \"\$OPENCODE_CONFIG_CONTENT\" \"\${OCWP_CONFIG_OVERLAY-unset}\" \"\$*\"\n",
             )
-            val installed =
-                java.nio.file.Files.createDirectories(root.resolve(".opencode/bin"))
-                    .resolve("opencode")
-            executable(installed, "exit 0")
-            val process =
-                ProcessBuilder("/bin/sh", "-c", SbxCli.V2_INSTALL_SCRIPT)
-                    .apply {
-                        environment().clear()
-                        environment()["HOME"] = root.toString()
-                        environment()["PATH"] = "$bin:/usr/bin:/bin"
-                    }
-                    .start()
-            assertTrue(process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS))
+            assertTrue(opencode.toFile().setExecutable(true))
+            val script =
+                decodedGuestScript(
+                    SbxCli.buildExecServeCommand(
+                        name = "ide-ocwp-abc",
+                        workspace = "/tmp/project",
+                        extraEnvKeys = listOf(SbxCli.CONFIG_OVERLAY_ENV),
+                    ),
+                )!!
+            fun serve(path: String, kitConfig: String): String {
+                val process =
+                    ProcessBuilder("/bin/sh", "-c", script)
+                        .apply {
+                            environment().clear()
+                            environment()["PATH"] = path
+                            environment()["OPENCODE_CONFIG_CONTENT"] = kitConfig
+                            environment()[SbxCli.CONFIG_OVERLAY_ENV] =
+                                """{"mcp":{"idea":{"type":"remote","enabled":true}}}"""
+                        }
+                        .redirectErrorStream(true)
+                        .start()
+                val output = process.inputStream.bufferedReader().readText()
+                assertTrue(process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS))
+                return output
+            }
+            val args = "|unset|serve --hostname 0.0.0.0 --port 4096 --print-logs"
             assertEquals(
-                "Failed installer must not be masked by an existing executable",
-                23,
-                process.exitValue(),
+                "Without jq the overlay alone applies",
+                """{"mcp":{"idea":{"type":"remote","enabled":true}}}$args""",
+                serve(bin.toString(), """{"permission":{"*":"allow"}}"""),
+            )
+            val jq =
+                System.getenv("PATH")
+                    .orEmpty()
+                    .split(java.io.File.pathSeparator)
+                    .map { java.nio.file.Path.of(it, "jq") }
+                    .firstOrNull { java.nio.file.Files.isExecutable(it) }
+            org.junit.Assume.assumeNotNull(jq)
+            val withJq = "$bin${java.io.File.pathSeparator}${jq!!.parent}"
+            assertEquals(
+                """{"permission":{"*":"allow"},"mcp":{"idea":{"type":"remote","enabled":true}}}$args""",
+                serve(withJq, """{"permission":{"*":"allow"}}"""),
+            )
+            assertEquals(
+                "Invalid kit JSON falls back to the overlay",
+                """{"mcp":{"idea":{"type":"remote","enabled":true}}}$args""",
+                serve(withJq, "not json"),
             )
         } finally {
             root.toFile().deleteRecursively()
         }
+    }
+
+    @Test
+    fun networkKitTemplateIsAV3MixinWithCommonHostsCommented() {
+        val yaml = SbxCli.networkKitTemplateYaml()
+        assertTrue(yaml.startsWith("schemaVersion: \"3\"\nkind: mixin\n"))
+        assertFalse("v3 descriptors have no top-level name", yaml.contains("\nname:"))
+        assertTrue(yaml.contains("  - type: com.docker.sandbox/network-policy@1\n"))
+        assertTrue(yaml.contains("\n      runtime:\n        allow:\n"))
+        assertTrue(yaml.contains("Docker's OpenCode kits already allow"))
+        assertTrue(yaml.contains("uncomment ALL THREE lines"))
+        assertTrue(yaml.contains("          # - \"*\"\n"))
+        assertTrue(yaml.contains("CIDRs alone do not allow hostname requests"))
+        assertTrue(yaml.contains("          # - 0.0.0.0/0\n"))
+        assertTrue(yaml.contains("NOT a local-only restriction"))
+        assertTrue(yaml.contains("          # - localhost\n"))
+        assertTrue(yaml.contains("          # - api.mistral.ai  # Mistral\n"))
+        assertFalse("Covered by Docker's kit", yaml.contains("api.openai.com"))
+        assertFalse(Regex("(?m)^\\s+- ").containsMatchIn(yaml.substringAfter("allow:\n")))
+        assertEquals("./opencode-sbx/opencode-network-kit", SbxCli.networkKitRef())
+    }
+
+    @Test
+    fun legacyKitFormatRejectionIsRecognized() {
+        assertTrue(
+            SbxCli.reportsLegacyKitFormat(
+                "error: resolve kits: cannot mix v3 kits with v1/v2 kits in one sandbox; compositions are single-format",
+            ),
+        )
+        assertFalse(SbxCli.reportsLegacyKitFormat("error: kit not found"))
     }
 
     @Test
@@ -849,24 +863,6 @@ class SbxCliTest {
         assertTrue(script.contains("pkill -0 -f"))
         assertFalse(script.contains("^opencode serve"))
         assertFalse(SbxCli.commandContainsBoundEnvAssignment(command))
-    }
-
-    @Test
-    fun parseTemplateLsKeepsOfficialOpencodeRefs() {
-        val images = SbxCli.parseTemplateLsJson(resource("sbx-template-ls.json"))
-        assertEquals(2, images.size)
-        assertEquals(
-            listOf("docker.io/docker/sandbox-templates:opencode-docker"),
-            SbxCli.officialOpencodeTemplateRefs(images),
-        )
-        assertEquals(
-            listOf("sbx", "template", "ls", "--json"),
-            SbxCli.buildTemplateLsCommand(),
-        )
-        assertEquals(
-            listOf("sbx", "template", "rm", "--force", SbxCli.DEFAULT_OPENCODE_TEMPLATE),
-            SbxCli.buildTemplateRmCommand(ref = SbxCli.DEFAULT_OPENCODE_TEMPLATE),
-        )
     }
 
     @Test
@@ -902,16 +898,23 @@ class SbxCliTest {
             sandbox.workspaces,
         )
         assertTrue(sandbox.ports.isEmpty())
+        // Captured on macOS with sbx 0.53.0 from Docker's OpenCode kit, 2026-11-13; anonymized.
+        val kit = SbxCli.parseLsJsonOrNull(resource("sbx-ls-0.53.0.json"))!!.single()
+        assertEquals(SbxCli.AGENT, kit.agent)
+        assertEquals("running", kit.status)
         assertEquals(
-            listOf("docker.io/docker/sandbox-templates:opencode-docker"),
-            SbxCli.officialOpencodeTemplateRefs(
-                SbxCli.parseTemplateLsJson(resource("sbx-template-ls-0.49.1.json")),
+            listOf(
+                "/workspace/project",
+                "/workspace/project/opencode-sbx:ro",
+                "/home/user/.local/share/opencode-web-panel/sbx/ide-ocwp-0123456789ab",
             ),
+            kit.workspaces,
         )
+        assertEquals(listOf(49154), SbxCli.publishedHostPorts(kit.ports))
     }
 
     @Test
-    fun sandboxAndTemplateListsAcceptBothEnvelopesAndIgnoreAdditionalFields() {
+    fun sandboxListsAcceptBothEnvelopesAndIgnoreAdditionalFields() {
         val legacy = resource("sbx-ls-running.json")
         val array =
             com.google.gson.JsonParser.parseString(legacy).asJsonObject.getAsJsonArray("sandboxes")
@@ -923,15 +926,6 @@ class SbxCliTest {
             SbxCli.parseLsJsonOrNull("""{"future":true,"sandboxes":$array}"""),
         )
         assertEquals(emptyList<SbxSandboxListEntry>(), SbxCli.parseLsJsonOrNull(" \n [] \n"))
-
-        val templates = resource("sbx-template-ls.json")
-        val images =
-            com.google.gson.JsonParser.parseString(templates).asJsonObject.getAsJsonArray("images")
-        images[0].asJsonObject.addProperty("future", "ignored")
-        assertEquals(
-            SbxCli.parseTemplateLsJson(templates),
-            SbxCli.parseTemplateLsJson(images.toString()),
-        )
     }
 
     @Test
@@ -1058,6 +1052,107 @@ class SbxCliTest {
                 null,
             ),
         )
+    }
+
+    @Test
+    fun aVmWithThePluginInstalledOpenCodeMustMoveToDockersKit() {
+        val record = SbxSandboxRecord("id", "ide-ocwp-x", "opencode", "/p")
+        val legacy = "/data/opencode-web-panel/sbx-opencode/ide-ocwp-x"
+        fun reasons(listed: List<String>) =
+            SbxCli.recreateReasons(
+                record,
+                listed,
+                "/p",
+                "",
+                false,
+                emptyList(),
+                emptyList(),
+                null,
+                legacy,
+            )
+        assertEquals(
+            listOf(
+                "OpenCode 2 now comes from Docker's sandbox kit; this VM still runs the plugin-installed copy",
+            ),
+            reasons(listOf("/p", legacy)),
+        )
+        assertEquals(emptyList<String>(), reasons(listOf("/p")))
+        assertEquals(
+            "1.x never launched the plugin-installed copy; the mount is still known",
+            emptyList<String>(),
+            SbxCli.recreateReasons(
+                record,
+                listOf("/p", legacy),
+                "/p",
+                "",
+                false,
+                emptyList(),
+                emptyList(),
+                null,
+                legacy,
+                SbxOpenCodeVersion.V1,
+            ),
+        )
+    }
+
+    @Test
+    fun eachOpenCodeVersionUsesItsOwnDockerKit() {
+        assertEquals("opencode", SbxCli.agentFor(SbxOpenCodeVersion.V2))
+        assertEquals("docker.io/sbx/opencode:1.18.31", SbxCli.agentFor(SbxOpenCodeVersion.V1))
+        val v1 =
+            SbxCli.buildCreateCommand(
+                name = "ide-ocwp-abc",
+                workspace = "/tmp/project",
+                kits = listOf("./kit"),
+                agent = SbxCli.agentFor(SbxOpenCodeVersion.V1),
+            )
+        assertEquals(
+            listOf("--kit", "./kit", SbxCli.V1_KIT, "/tmp/project"),
+            v1.takeLast(4),
+        )
+        assertEquals(
+            listOf("sbx", "exec", "-w", "/", "ide-ocwp-abc", "opencode", "upgrade", "--print-logs"),
+            SbxCli.buildExecUpgradeCommand(name = "ide-ocwp-abc"),
+        )
+    }
+
+    @Test
+    fun runningVersionMustMatchTheSelectedKit() {
+        assertNull(SbxCli.openCodeVersionMismatch(SbxOpenCodeVersion.V1, "1.18.31"))
+        assertNull(SbxCli.openCodeVersionMismatch(SbxOpenCodeVersion.V1, "1.19.5"))
+        assertNull(SbxCli.openCodeVersionMismatch(SbxOpenCodeVersion.V2, "2.3.0"))
+        assertNull(SbxCli.openCodeVersionMismatch(SbxOpenCodeVersion.V2, "v2.3.0"))
+        assertNull(
+            "Unknown is not a mismatch",
+            SbxCli.openCodeVersionMismatch(SbxOpenCodeVersion.V2, null),
+        )
+        assertNull(SbxCli.openCodeVersionMismatch(SbxOpenCodeVersion.V2, "unknown"))
+        assertNull(
+            "Only a version line counts",
+            SbxCli.openCodeVersionMismatch(SbxOpenCodeVersion.V1, """{"jsonrpc":"2.0"}"""),
+        )
+        assertNotNull(SbxCli.openCodeVersionMismatch(SbxOpenCodeVersion.V1, "opencode v2.3.0"))
+        assertEquals(
+            "this sandbox runs OpenCode 1.18.31, but opencode-sbx.yaml selects 2.x (Docker's latest OpenCode 2 kit)",
+            SbxCli.openCodeVersionMismatch(SbxOpenCodeVersion.V2, "1.18.31"),
+        )
+        assertEquals(
+            "this sandbox runs OpenCode 2.3.0, but opencode-sbx.yaml selects 1.x (Docker's OpenCode 1.x kit)",
+            SbxCli.openCodeVersionMismatch(SbxOpenCodeVersion.V1, "v2.3.0"),
+        )
+    }
+
+    @Test
+    fun sbxVersionGateOnlyStopsAReportedOlderRelease() {
+        assertEquals(listOf("sbx", "version"), SbxCli.buildVersionCommand())
+        assertEquals(listOf(0, 53, 0), SbxCli.parseSbxVersion("sbx version v0.53.0 2c62838074"))
+        assertNull(SbxCli.unsupportedSbxVersion("sbx version v0.53.0 2c62838074"))
+        assertNull(SbxCli.unsupportedSbxVersion("sbx version v${SbxCli.MINIMUM_SBX_VERSION}"))
+        assertNull(SbxCli.unsupportedSbxVersion("sbx version v1.0.0-rc.1"))
+        assertEquals("0.49.1", SbxCli.unsupportedSbxVersion("sbx version v0.49.1 c5b19951af"))
+        assertEquals("0.50.1", SbxCli.unsupportedSbxVersion("0.50.1"))
+        assertNull("Unreadable output is not an old CLI", SbxCli.unsupportedSbxVersion(""))
+        assertNull(SbxCli.unsupportedSbxVersion("error: daemon unavailable"))
     }
 
     @Test

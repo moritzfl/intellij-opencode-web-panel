@@ -144,8 +144,12 @@ class SbxLaunchSpecTest {
         }
         obsolete.forEach { assertFalse(Files.exists(control.resolve(it))) }
         val launcher = Files.readString(control.resolve(SbxLaunchSpec.PROJECT_LAUNCHER_UNIX))
-        assertTrue(launcher.contains(SbxCli.V2_INSTALL_SCRIPT))
-        assertTrue(launcher.contains(SbxCli.GUEST_V2_VERSION_SCRIPT))
+        assertFalse("Docker's kits supply OpenCode", launcher.contains("opencode.ai/v2/install"))
+        assertTrue(launcher.contains("V1_KIT=\"${SbxCli.V1_KIT}\""))
+        assertTrue(launcher.contains("V2_AGENT=\"${SbxCli.AGENT}\""))
+        assertTrue(
+            launcher.contains("MINIMUM_SBX_VERSION=\"${SbxCli.MINIMUM_SBX_VERSION}\""),
+        )
         assertTrue(launcher.contains("--cli"))
         assertTrue(launcher.contains("--web"))
         assertTrue(launcher.contains("--acp"))
@@ -248,7 +252,9 @@ class SbxLaunchSpecTest {
         )
         assertThrows(IllegalArgumentException::class.java) { SbxLaunchSpec.specPath("../x") }
         assertThrows(IllegalArgumentException::class.java) { SbxCli.sandboxPersistDataHome("../x") }
-        assertThrows(IllegalArgumentException::class.java) { SbxCli.guestOpenCodeDataHome("../x") }
+        assertThrows(IllegalArgumentException::class.java) {
+            SbxCli.legacyGuestOpenCodeDataHome("../x")
+        }
     }
 
     @Test
@@ -331,12 +337,15 @@ class SbxLaunchSpecTest {
                 kits:
                   - ./opencode-sbx/opencode-network-kit # network allowances
                 futureOption: keep-me
+                openCodeVersion: 2.x
                 """
                     .trimIndent() + "\n",
             )
             val loaded = SbxLaunchSpec.load(root.toString())!!
             assertNotNull(SbxLaunchSpec.persist(loaded.copy(cpus = "4", hostPort = 49200)))
             val text = Files.readString(path)
+            assertTrue(text.contains("openCodeVersion: 2.x\n"))
+            assertFalse(text.contains("openCodeVersion: 1.x"))
             assertTrue(text.startsWith("# Team sandbox. Ask #infra before adding mounts.\n"))
             assertTrue(text.contains("memory: '8g' # builds need it\n"))
             assertTrue(text, text.contains("cpus: 4\n"))

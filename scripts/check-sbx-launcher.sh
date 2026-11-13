@@ -48,11 +48,20 @@ YAML
   export HOME="$CASE/home" OCWP_CONFIG_DIR="$CASE/config" OCWP_DATA_DIR="$CASE/data"
   export OCWP_SBX="$CASE/bin/sbx"
   unset BASH_ENV ENV XDG_CONFIG_HOME XDG_DATA_HOME OPENCODE_SERVER_PASSWORD SMOKE_LS_FAIL SMOKE_TTY SMOKE_WEB
+  export SMOKE_SBX_VERSION='sbx version v0.53.0 2c62838074'
+  export SMOKE_GUEST_VERSION=''
   cat > "$OCWP_SBX" <<'SBX'
 #!/usr/bin/env bash
 set -eu
+# Existing-VM version probe: `exec -w / NAME opencode --version`.
+if [[ "$1" == exec && "$3" == / && "${5:-}" == opencode && "${6:-}" == --version && $# -eq 6 ]]; then
+  printf '%s\n' probe >> "$SMOKE_LOG/probes"
+  printf '%s\n' "$SMOKE_GUEST_VERSION"
+  exit 0
+fi
 printf '%s\n' "$1" >> "$SMOKE_LOG/calls"
 case "$1" in
+  version) printf '%s\n' "$SMOKE_SBX_VERSION" ;;
   daemon)
     if [[ "${SMOKE_TTY:-0}" != 1 ]]; then cat > "$SMOKE_LOG/setup-input"; fi
     echo 'daemon setup noise'
@@ -64,13 +73,6 @@ case "$1" in
   create) printf '%s\0' "$@" > "$SMOKE_LOG/create-argv"; echo 'create failed' >&2; exit 23 ;;
   exec)
     printf '%s\0' "$@" > "$SMOKE_LOG/argv"
-    for arg in "$@"; do
-      if [[ "$arg" == *'version=$(timeout -k 2 10'* ]]; then
-        printf '%s\n' probe >> "$SMOKE_LOG/probes"
-        exit 0
-      fi
-    done
-    # V2's sh -c dispatch contains a separate "opencode" argv marker as well.
     while [[ $# -gt 0 && "$1" != opencode ]]; do shift; done
     shift
     if [[ $# -gt 0 ]]; then printf '%s\0' "$@" > "$SMOKE_LOG/native-args"; else : > "$SMOKE_LOG/native-args"; fi
@@ -110,7 +112,7 @@ expect_args() {
     cmp -s "$CASE/input" "$SMOKE_LOG/input" &&
     [[ ! -s "$SMOKE_LOG/setup-input" ]] &&
     [[ "$(cat "$CASE/stdout")" == '{"ok":true}' ]] &&
-    [[ "$(cat "$SMOKE_LOG/calls")" == $'daemon\nls\nexec' ]]
+    [[ "$(cat "$SMOKE_LOG/calls")" == $'version\ndaemon\nls\nexec' ]]
 }
 
 result() {
@@ -184,12 +186,62 @@ fixture native-version
 invoke --version
 result native-version expect_args --version
 
+# Each version is a Docker kit; the launcher runs its `opencode` from PATH.
 fixture version-two
 printf 'openCodeVersion: 2.x\n' >> "$PROJECT/opencode-sbx/opencode-sbx.yaml"
+export SMOKE_GUEST_VERSION='opencode v2.3.0'
 invoke --version
-result version-two-exit test "$STATUS" -eq 19
-result version-two-dispatch grep -aq 'HOME/.opencode/bin/opencode' "$SMOKE_LOG/argv"
+result version-two expect_args --version
+result version-two-no-guest-binary sh -c '! grep -aq ".opencode/bin" "$1"' _ "$SMOKE_LOG/argv"
 result version-two-probe test "$(cat "$SMOKE_LOG/probes")" = probe
+
+fixture version-mismatch
+printf 'openCodeVersion: 2.x\n' >> "$PROJECT/opencode-sbx/opencode-sbx.yaml"
+export SMOKE_GUEST_VERSION='1.19.5'
+invoke --version
+result version-mismatch-refused test "$STATUS" -eq 1
+result version-mismatch-hint grep -q -- '--recreate' "$CASE/stderr"
+result version-mismatch-no-exec test ! -e "$SMOKE_LOG/argv"
+
+for kit_case in one two; do
+  fixture "create-kit-$kit_case"
+  export SMOKE_INVENTORY='{"sandboxes":[]}'
+  if [[ "$kit_case" == two ]]; then
+    printf 'openCodeVersion: 2.x\n' >> "$PROJECT/opencode-sbx/opencode-sbx.yaml"
+    expected_agent=opencode
+  else
+    expected_agent=docker.io/sbx/opencode:1.18.31
+  fi
+  invoke --version
+  result "create-kit-$kit_case-create" test "$STATUS" -eq 23
+  # The agent/kit argument directly precedes the workspace.
+  result "create-kit-$kit_case-agent" test "$(tr '\0' '\n' < "$SMOKE_LOG/create-argv" | grep -B1 -xF -- "$(host_path "$PROJECT")" | head -1)" = "$expected_agent"
+  result "create-kit-$kit_case-no-probe" test ! -e "$SMOKE_LOG/probes"
+done
+
+fixture legacy-guest-opencode-vm
+printf 'openCodeVersion: 2.x\n' >> "$PROJECT/opencode-sbx/opencode-sbx.yaml"
+name="${SMOKE_INVENTORY#*\"name\":\"}"
+name="${name%%\"*}"
+# Same spelling as the launcher's OCWP_DATA_DIR-based path.
+legacy="$OCWP_DATA_DIR/sbx-opencode/$name"
+export SMOKE_INVENTORY="${SMOKE_INVENTORY%\"]\}]\}}\",\"$legacy\"]}]}"
+invoke --version
+result legacy-guest-opencode-refused test "$STATUS" -eq 1
+result legacy-guest-opencode-hint grep -q -- '--recreate' "$CASE/stderr"
+result legacy-guest-opencode-no-exec test ! -e "$SMOKE_LOG/argv"
+
+fixture old-sbx
+export SMOKE_SBX_VERSION='sbx version v0.49.1 c5b19951af'
+invoke --version
+result old-sbx-refused test "$STATUS" -eq 1
+result old-sbx-message grep -q '0.49.1 is too old' "$CASE/stderr"
+result old-sbx-no-provisioning test "$(cat "$SMOKE_LOG/calls")" = version
+
+fixture unreadable-sbx-version
+export SMOKE_SBX_VERSION='version unavailable'
+invoke --version
+result unreadable-sbx-version expect_args --version
 
 fixture web-help
 invoke --web --help
@@ -216,7 +268,7 @@ fixture malformed-inventory
 export SMOKE_INVENTORY='unavailable'
 invoke
 result malformed-inventory test "$STATUS" -eq 1
-result malformed-inventory-no-create test "$(cat "$SMOKE_LOG/calls")" = $'daemon\nls'
+result malformed-inventory-no-create test "$(cat "$SMOKE_LOG/calls")" = $'version\ndaemon\nls'
 
 # v0.48+ removes the envelope. Reuse, ownership checks and recreate must agree.
 fixture array-inventory
@@ -244,7 +296,7 @@ export SMOKE_INVENTORY="${SMOKE_INVENTORY%\}}"
 export SMOKE_INVENTORY="${SMOKE_INVENTORY/$(host_path "$PROJECT")/unmounted-project}"
 invoke --recreate
 result array-foreign-recreate test "$STATUS" -eq 1
-result array-foreign-no-remove test "$(cat "$SMOKE_LOG/calls")" = $'daemon\nls'
+result array-foreign-no-remove test "$(cat "$SMOKE_LOG/calls")" = $'version\ndaemon\nls'
 
 inventory_case=0
 for inventory in '[]' '{"sandboxes":[]}' $'\n [\n ]\n'; do
@@ -253,7 +305,7 @@ for inventory in '[]' '{"sandboxes":[]}' $'\n [\n ]\n'; do
   export SMOKE_INVENTORY="$inventory"
   invoke --recreate
   result empty-recreate-reaches-create test "$STATUS" -eq 23
-  result empty-recreate-no-remove test "$(cat "$SMOKE_LOG/calls")" = $'daemon\nls\nls\ncreate'
+  result empty-recreate-no-remove test "$(cat "$SMOKE_LOG/calls")" = $'version\ndaemon\nls\nls\ncreate'
 done
 
 for inventory in '[' '{"sandboxes":[' '{}' 'null' '[] noise' '[garbage]' '[{"name":"broken"}' '[{},]' '[{}]' '{"other":{"sandboxes":[]}}' '{"sandboxes":[],"sandboxes":[]}' ; do
@@ -262,7 +314,7 @@ for inventory in '[' '{"sandboxes":[' '{}' 'null' '[] noise' '[garbage]' '[{"nam
   export SMOKE_INVENTORY="$inventory"
   invoke --recreate
   result invalid-recreate test "$STATUS" -eq 1
-  result invalid-recreate-no-remove test "$(cat "$SMOKE_LOG/calls")" = $'daemon\nls'
+  result invalid-recreate-no-remove test "$(cat "$SMOKE_LOG/calls")" = $'version\ndaemon\nls'
 done
 
 fixture foreign-vm
@@ -284,7 +336,7 @@ fixture failed-inventory
 export SMOKE_LS_FAIL=1
 invoke
 result failed-inventory test "$STATUS" -ne 0
-result inventory-no-create test "$(cat "$SMOKE_LOG/calls")" = $'daemon\nls'
+result inventory-no-create test "$(cat "$SMOKE_LOG/calls")" = $'version\ndaemon\nls'
 
 # Host mount interpolation is literal, portable and read-only for configuration.
 for mount_case in unset empty custom literal; do

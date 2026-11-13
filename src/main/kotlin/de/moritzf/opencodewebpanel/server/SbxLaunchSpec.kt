@@ -14,13 +14,12 @@ internal sealed class SbxLaunchSpecInspection {
     data class Invalid(val path: Path, val reason: String) : SbxLaunchSpecInspection()
 }
 
+/** Which of Docker's published OpenCode kits a sandbox is created from. */
 internal enum class SbxOpenCodeVersion {
     V1,
     V2;
 
     fun yamlValue(): String = if (this == V2) "2.x" else "1.x"
-
-    fun prefersGuestV2(): Boolean = this == V2
 
     companion object {
         fun parse(value: String?): SbxOpenCodeVersion? =
@@ -275,8 +274,7 @@ internal data class SbxLaunchSpec(
             if (schema != SCHEMA_VERSION)
                 return ParseResult(null, "unsupported schemaVersion ${values["schemaVersion"]}")
             val name = values["name"]?.trim()?.ifBlank { null } ?: SbxCli.sandboxName(directory)
-            // The name is joined into host paths (machine spec, persist, 2.x binary). Never trust
-            // it.
+            // The name is joined into host paths (machine spec, persist store). Never trust it.
             if (!SbxCli.isValidSandboxName(name))
                 return ParseResult(null, "invalid sandbox name $name")
             fun flag(key: String, default: Boolean): Boolean? {

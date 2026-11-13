@@ -4,6 +4,42 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Docker Sandboxes create OpenCode from Docker's published kits
+  ([`docker.io/sbx/opencode`](https://hub.docker.com/r/sbx/opencode)) for both
+  versions. **OpenCode 2.x** uses Docker's latest OpenCode 2 kit instead of a
+  binary installed by this plugin; **Reset Sandbox** (or the launcher's
+  `--recreate`) picks up its latest release. **OpenCode 1.x** uses Docker's
+  1.18.31 kit, and **Upgrade OpenCode in Sandbox** still updates it inside the
+  VM. Both need **sbx 0.51.0 or later**; an older `sbx` stops with an update
+  message.
+- Switching the sandbox **OpenCode version** now recreates the VM, because each
+  version is a separate image. A start that finds the other version stops with
+  **Recreate Sandbox**; the launcher asks for `--recreate`.
+- The plugin keeps each kit's own OpenCode configuration and merges its MCP
+  entries over it. Docker's 2.x kit runs tools without approval prompts, because
+  the sandbox is the isolation boundary.
+- **Create extra-network kit template** writes a kit with `schemaVersion: "3"`.
+  `sbx` refuses to combine Docker's v3 OpenCode kits with v1/v2 kits; regenerate
+  a template created by an earlier release.
+- The OpenCode update indicator covers the Host CLI and 1.x sandboxes; a 2.x
+  sandbox follows Docker's kit.
+
+### Removed
+
+- The in-sandbox OpenCode 2 installer and the **Update OpenCode Sandbox Image**
+  action.
+
+### Migration
+
+- A 2.x sandbox that still runs the plugin-installed OpenCode 2 stops with a
+  **Recreate Sandbox** action (the launcher asks for `--recreate`). Recreating
+  deletes that copy; with **Persist sandbox sessions across Reset** enabled,
+  conversations and sandbox logins are kept.
+- Existing 1.x sandboxes keep running their current OpenCode until Reset
+  Sandbox.
+
 ## [2.8.3] - 2026-11-02
 
 ### Fixed

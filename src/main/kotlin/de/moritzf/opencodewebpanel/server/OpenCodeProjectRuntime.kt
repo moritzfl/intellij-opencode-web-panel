@@ -45,7 +45,7 @@ internal constructor(
             )
     }
 
-    fun resetSandbox(dropGuestOpenCode: Boolean = true) {
+    fun resetSandbox() {
         if (project.isDisposed) return
         val sandbox = backend() as? SbxOpenCodeServerBackend ?: return
         sandbox.resetSandbox(
@@ -53,7 +53,6 @@ internal constructor(
             callbackActive = { !project.isDisposed },
             onStarted = {},
             onFailed = {},
-            dropGuestOpenCode = dropGuestOpenCode,
         )
         restart()
     }

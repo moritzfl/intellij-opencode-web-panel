@@ -65,6 +65,7 @@ internal fun healthyPublishedSandboxUrl(
 internal enum class SbxFailureKind {
     NONE,
     SBX_NOT_FOUND,
+    SBX_TOO_OLD,
     NOT_AUTHENTICATED,
     UNSUPPORTED_OS,
     POLICY_UNINITIALIZED,
@@ -72,8 +73,6 @@ internal enum class SbxFailureKind {
     SERVE_UNHEALTHY,
     COMMAND_FAILED,
     UPGRADE_FAILED,
-    INSTALL_V2_FAILED,
-    INVALID_V2_BINARY,
     CANCELLED,
     UNTRUSTED_PROJECT,
     EXPOSURE_UNCONFIRMED,
@@ -102,11 +101,7 @@ internal class SbxOpenCodeServerBackend(
     override val backendId: String = "sbx:${SbxCli.sandboxName(canonicalDirectory)}"
     override val offersHostPortControls: Boolean = true
 
-    private data class PendingBinaryUpgrade(
-        val startId: Long,
-        val sandboxName: String,
-        val installV2: Boolean = false,
-    )
+    private data class PendingBinaryUpgrade(val startId: Long, val sandboxName: String)
 
     private val lock = Any()
     private val pendingStarts = mutableListOf<OpenCodeStartCallback>()
@@ -128,6 +123,7 @@ internal class SbxOpenCodeServerBackend(
     private var lastFailure = SbxFailureKind.NONE
     private var lastFailureDetails: String? = null
     private var startupStage: String? = null
+    private var unsupportedSbxVersion: String? = null
     private var pendingBinaryUpgrade: PendingBinaryUpgrade? = null
     private var lastRecovery: OpenCodeRecoveryNotice? = null
     private var lastForeignSandbox: SbxSandboxListEntry? = null
@@ -213,6 +209,12 @@ internal class SbxOpenCodeServerBackend(
             SbxFailureKind.NONE -> null
             SbxFailureKind.SBX_NOT_FOUND ->
                 "The sbx CLI was not found. Install Docker Sandboxes (brew install docker/tap/sbx or winget install Docker.sbx) and Detect its path."
+            SbxFailureKind.SBX_TOO_OLD ->
+                "Docker Sandboxes ${synchronized(lock) { unsupportedSbxVersion }} is too old. " +
+                    "OpenCode comes from Docker's OpenCode sandbox kits, which need sbx ${SbxCli.MINIMUM_SBX_VERSION} or later. " +
+                    "Update sbx (brew upgrade docker/tap/sbx or winget upgrade Docker.sbx), then Retry."
+            SbxFailureKind.UPGRADE_FAILED ->
+                "opencode upgrade failed inside the sandbox. Check the server log. Sessions were kept."
             SbxFailureKind.NOT_AUTHENTICATED ->
                 "Docker Sandboxes is not signed in. Run sbx login in a terminal, then Retry."
             SbxFailureKind.UNSUPPORTED_OS ->
@@ -226,15 +228,6 @@ internal class SbxOpenCodeServerBackend(
             SbxFailureKind.COMMAND_FAILED ->
                 synchronized(lock) { lastFailureDetails }
                     ?: "A Docker Sandboxes command failed. Check the server log."
-            SbxFailureKind.UPGRADE_FAILED ->
-                "opencode upgrade failed inside the sandbox. Check the server log. Sessions were kept."
-            SbxFailureKind.INSTALL_V2_FAILED ->
-                "Installing OpenCode 2.x inside the sandbox failed. Check the server log " +
-                    "(needs network to opencode.ai and registry.npmjs.org). Sessions were kept."
-            SbxFailureKind.INVALID_V2_BINARY ->
-                "The guest OpenCode 2.x binary is missing, cannot run, or has the wrong version. " +
-                    "Reinstall OpenCode 2.x in the sandbox, then Retry.\n" +
-                    synchronized(lock) { lastFailureDetails.orEmpty() }
             SbxFailureKind.CANCELLED -> "Start was cancelled."
             SbxFailureKind.UNTRUSTED_PROJECT ->
                 "This project is not trusted, so its opencode-sbx.yaml is not used to create a Docker Sandbox. " +
@@ -307,7 +300,6 @@ internal class SbxOpenCodeServerBackend(
                         } else {
                             SbxSetupDiagnostics.check(
                                 sbxExecutable(),
-                                spec,
                                 recordStore().recordFor(canonicalDirectory),
                                 commandRunner,
                             )
@@ -511,30 +503,15 @@ internal class SbxOpenCodeServerBackend(
         }
     }
 
+    /**
+     * Runs `opencode upgrade` inside the owned VM, then restarts serve. Only Docker's 1.x kit is
+     * upgraded in place; the 2.x kit gets a newer release from Reset Sandbox.
+     */
     fun upgradeOpenCodeBinary(
         project: Project,
         callbackActive: () -> Boolean = { true },
         onStarted: () -> Unit = {},
         onFailed: () -> Unit = {},
-    ) {
-        requestBinaryChange(project, callbackActive, onStarted, onFailed, installV2 = false)
-    }
-
-    fun installOpenCodeV2(
-        project: Project,
-        callbackActive: () -> Boolean = { true },
-        onStarted: () -> Unit = {},
-        onFailed: () -> Unit = {},
-    ) {
-        requestBinaryChange(project, callbackActive, onStarted, onFailed, installV2 = true)
-    }
-
-    private fun requestBinaryChange(
-        project: Project,
-        callbackActive: () -> Boolean,
-        onStarted: () -> Unit,
-        onFailed: () -> Unit,
-        installV2: Boolean,
     ) {
         enqueueStart(
             project,
@@ -556,76 +533,27 @@ internal class SbxOpenCodeServerBackend(
             val record = recordStore().recordFor(canonicalDirectory)
             val owned = record?.let { SbxCli.findOwnedSandbox(listed, it) }
             if (owned == null) {
-                val missing =
-                    if (installV2) SbxFailureKind.INSTALL_V2_FAILED
-                    else SbxFailureKind.UPGRADE_FAILED
-                fail(startId, if (record == null) missing else SbxFailureKind.FOREIGN_SANDBOX)
+                fail(
+                    startId,
+                    if (record == null) SbxFailureKind.UPGRADE_FAILED
+                    else SbxFailureKind.FOREIGN_SANDBOX,
+                )
                 return@enqueueStart false
             }
-            synchronized(lock) {
-                pendingBinaryUpgrade = PendingBinaryUpgrade(startId, owned.name, installV2)
-            }
+            synchronized(lock) { pendingBinaryUpgrade = PendingBinaryUpgrade(startId, owned.name) }
             true
         }
     }
 
-    fun dropCachedOfficialOpencodeTemplates(): CompletableFuture<Boolean> {
-        val result = CompletableFuture<Boolean>()
-        synchronized(lock) {
-            if (disposed) {
-                result.complete(false)
-                return result
-            }
-            runOnLifecycle(onReject = { result.complete(false) }) {
-                try {
-                    val executable = sbxExecutable()
-                    val listed =
-                        requiredCommand(
-                            "List templates",
-                            SbxCli.buildTemplateLsCommand(executable),
-                            30_000L,
-                        )
-                    SbxCli.officialOpencodeTemplateRefs(SbxCli.parseTemplateLsJson(listed.stdout))
-                        .forEach { ref ->
-                            try {
-                                requiredCommand(
-                                    "Remove template",
-                                    SbxCli.buildTemplateRmCommand(executable, ref),
-                                    60_000L,
-                                )
-                            } catch (e: SbxCommandFailure) {
-                                if (!SbxCli.optionUnsupported(e.output, "--force")) throw e
-                                requiredCommand(
-                                    "Remove template (legacy CLI)",
-                                    SbxCli.buildTemplateRmCommand(executable, ref, force = false),
-                                    60_000L,
-                                )
-                            }
-                        }
-                    result.complete(true)
-                } catch (e: SbxCommandFailure) {
-                    recordCommandFailure(e)
-                    result.complete(false)
-                } catch (e: Exception) {
-                    thisLogger()
-                        .warn("Could not drop cached OpenCode sandbox templates: ${e.message}")
-                    result.complete(false)
-                }
-            }
-        }
-        return result
-    }
-
     /**
-     * Removes the owned VM and starts a fresh one from the current spec. Reset also drops the 2.x
-     * binary copy; a settings-driven recreate keeps it.
+     * Removes the owned VM and starts a fresh one from the current spec. Creation resolves Docker's
+     * selected OpenCode kit again, so a 2.x sandbox gets the kit's latest release.
      */
     fun resetSandbox(
         project: Project,
         callbackActive: () -> Boolean = { true },
         onStarted: () -> Unit,
         onFailed: () -> Unit,
-        dropGuestOpenCode: Boolean = true,
     ) {
         synchronized(lock) {
             cancelPendingStarts()
@@ -638,7 +566,7 @@ internal class SbxOpenCodeServerBackend(
                 stopOwnedServe(stopVm = false)
                 removeOwnedSandbox()
                 synchronized(lock) { pendingRecreateReasons = emptyList() }
-                if (name != null && dropGuestOpenCode) SbxCli.deleteGuestOpenCode(name)
+                if (name != null) SbxCli.deleteLegacyGuestOpenCode(name)
                 true
             }
         }
@@ -709,6 +637,7 @@ internal class SbxOpenCodeServerBackend(
             starting = true
             allowHealthRestart = true
             lastFailureDetails = null
+            pendingRecreateReasons = emptyList()
             val startId = ++startSequence
             startupProgress.begin(startId)
             startupStage = null
@@ -814,6 +743,19 @@ internal class SbxOpenCodeServerBackend(
             val sbx = OpenCodeServerProtocol.detectExecutablePath(sbxExecutable())
             if (sbx == null) {
                 fail(startId, SbxFailureKind.SBX_NOT_FOUND)
+                return
+            }
+            // Older CLIs still create the retired OpenCode 1.x template for the `opencode` agent.
+            val version =
+                runStartupCommand(
+                    "Checking Docker Sandboxes",
+                    SbxCli.buildVersionCommand(sbx),
+                    15_000L,
+                )
+            val tooOld = SbxCli.unsupportedSbxVersion(version.stdout)
+            if (tooOld != null) {
+                synchronized(lock) { unsupportedSbxVersion = tooOld }
+                fail(startId, SbxFailureKind.SBX_TOO_OLD)
                 return
             }
             var diagnose =
@@ -926,15 +868,9 @@ internal class SbxOpenCodeServerBackend(
                 } else {
                     emptyList()
                 }
-            val guestOpenCodeMounts =
-                if (spec.openCodeVersion.prefersGuestV2()) {
-                    listOf(SbxCli.guestOpenCodeMount(name))
-                } else {
-                    emptyList()
-                }
             val extraCreateArgs =
                 SbxCli.extraMountCreateArgs(
-                    protectMounts + persistMounts + guestOpenCodeMounts + extraMounts,
+                    protectMounts + persistMounts + extraMounts,
                     canonicalDirectory,
                 )
             val kitRefs = SbxCli.parseKitRefs(spec.kits.joinToString("\n"))
@@ -948,15 +884,9 @@ internal class SbxOpenCodeServerBackend(
                 // Plugin-owned stores count as known even when their option is off now.
                 val pluginMounts =
                     protectMounts +
-                        listOf(
-                            SbxExtraMount(
-                                SbxCli.sandboxPersistDataHome(name),
-                                SbxCli.persistSandboxGuestPath(),
-                            ),
-                            SbxExtraMount(
-                                SbxCli.guestOpenCodeDataHome(name),
-                                SbxCli.guestOpenCodeGuestPath(),
-                            ),
+                        SbxExtraMount(
+                            SbxCli.sandboxPersistDataHome(name),
+                            SbxCli.persistSandboxGuestPath(),
                         )
                 val reasons =
                     SbxCli.recreateReasons(
@@ -968,6 +898,8 @@ internal class SbxOpenCodeServerBackend(
                         extraMounts,
                         pluginMounts,
                         sharedConfigMount?.hostPath,
+                        SbxCli.legacyGuestOpenCodeDataHome(name),
+                        spec.openCodeVersion,
                     )
                 if (reasons.isNotEmpty()) {
                     synchronized(lock) { pendingRecreateReasons = reasons }
@@ -995,6 +927,7 @@ internal class SbxOpenCodeServerBackend(
                         hostPort = desiredHostPort,
                         extraWorkspaces = extraCreateArgs,
                         kits = kitRefs,
+                        agent = SbxCli.agentFor(spec.openCodeVersion),
                     ),
                     FIRST_START_TIMEOUT_MILLIS,
                     Path.of(canonicalDirectory),
@@ -1058,15 +991,11 @@ internal class SbxOpenCodeServerBackend(
                 failStartIfCurrent(startId)
                 return
             }
-            for (mount in extraMounts + persistMounts + guestOpenCodeMounts) {
+            for (mount in extraMounts + persistMounts) {
                 if (!SbxCli.needsSandboxLink(mount)) continue
-                val replace =
-                    persistMounts.any {
-                        OpenCodeServerProtocol.isSameFilesystemPath(it.hostPath, mount.hostPath)
-                    } ||
-                        guestOpenCodeMounts.any {
-                            OpenCodeServerProtocol.isSameFilesystemPath(it.hostPath, mount.hostPath)
-                        }
+                val replace = persistMounts.any {
+                    OpenCodeServerProtocol.isSameFilesystemPath(it.hostPath, mount.hostPath)
+                }
                 if (replace && !SbxCli.persistMountIsAttached(listedWorkspaces, mount)) continue
                 if (!isCurrentStart(startId)) return
                 requiredCommand(
@@ -1093,20 +1022,14 @@ internal class SbxOpenCodeServerBackend(
                     15_000L,
                 )
             }
-            if (
-                spec.openCodeVersion.prefersGuestV2() &&
-                    !ensureGuestOpenCodeV2(startId, name, indicator)
-            )
-                return
             val overlay =
                 SbxOpencodeConfigOverlay.buildContent(
-                    version = spec.openCodeVersion,
                     shareHostConfig = shareHostConfig,
                     ideaMcpPort = mcpPort,
                 )
             val extraEnv = linkedMapOf<String, String>()
             if (overlay != null) {
-                extraEnv[SbxCli.OPENCODE_CONFIG_CONTENT_ENV] = overlay
+                extraEnv[SbxCli.CONFIG_OVERLAY_ENV] = overlay
             }
             // Only when the config directory is actually mounted; otherwise OpenCode would read an
             // empty path instead of the sandbox agent's own config.
@@ -1122,7 +1045,6 @@ internal class SbxOpenCodeServerBackend(
                             name,
                             spec.hostWorkingDirectory(),
                             extraEnvKeys = extraEnv.keys.toList(),
-                            preferGuestV2 = spec.openCodeVersion.prefersGuestV2(),
                         ),
                     )
                     .redirectErrorStream(true)
@@ -1254,6 +1176,16 @@ internal class SbxOpenCodeServerBackend(
                 rememberBrowserAuth(url = healthyUrl)
             }
             refreshServerVersion()
+            // Each version is a different Docker kit; switching an existing VM needs a new one.
+            // Adopted VMs keep whatever their owner provisioned.
+            val mismatch =
+                if (record?.adopted == true) null
+                else SbxCli.openCodeVersionMismatch(spec.openCodeVersion, getServerVersion())
+            if (mismatch != null) {
+                synchronized(lock) { pendingRecreateReasons = listOf(mismatch) }
+                fail(startId, SbxFailureKind.RECREATE_REQUIRED)
+                return
+            }
             finishStart(startId, success = true)
         } catch (e: InterruptedException) {
             if (isCurrentStart(startId)) fail(startId, SbxFailureKind.CANCELLED)
@@ -1579,7 +1511,11 @@ internal class SbxOpenCodeServerBackend(
                 if (password.isNullOrBlank()) it else it.replace(password, "[redacted]")
             }
         val hint =
-            if (error.stage == "Link extra mount") {
+            if (SbxCli.reportsLegacyKitFormat(output)) {
+                "Docker's OpenCode sandbox kit uses kit schemaVersion \"3\", and sbx cannot combine it with " +
+                    "v1/v2 kits. Convert those kits to v3 (Project Settings → Create extra-network kit " +
+                    "template writes one), then Retry."
+            } else if (error.stage == "Link extra mount") {
                 when {
                     output.contains("failed to start runtime", ignoreCase = true) ||
                         output.contains("start sandbox: start runtime", ignoreCase = true) ->
@@ -1949,109 +1885,45 @@ internal class SbxOpenCodeServerBackend(
             pending
         }
 
-    private fun ensureGuestOpenCodeV2(
-        startId: Long,
-        sandboxName: String,
-        indicator: ProgressIndicator?,
-    ): Boolean {
-        if (!isCurrentStart(startId)) return false
-        noteStartupStage("Checking OpenCode 2.x…")
-        indicator?.text = "Checking OpenCode 2.x…"
-        val present = probeGuestOpenCodeV2(sandboxName)
-        if (!isCurrentStart(startId)) return false
-        if (present.exitCode == 0) return true
-        if (present.exitCode != SbxCli.GUEST_V2_MISSING_EXIT_CODE) {
-            failGuestOpenCodeV2(startId, present)
-            return false
-        }
-        return runOpenCodeBinaryUpgrade(
-            startId,
-            PendingBinaryUpgrade(startId, sandboxName, installV2 = true),
-            indicator,
-        )
-    }
-
-    private fun probeGuestOpenCodeV2(sandboxName: String): SbxCommandResult =
-        commandRunner.run(
-            SbxCli.buildExecGuestV2VersionCommand(sbxExecutable(), sandboxName),
-            emptyMap(),
-            GUEST_V2_VERSION_TIMEOUT_MILLIS,
-        )
-
-    private fun failGuestOpenCodeV2(startId: Long, result: SbxCommandResult) {
-        recordCommandFailure(
-            SbxCommandFailure("Validate guest OpenCode 2.x", result.exitCode, result.output),
-        )
-        fail(startId, SbxFailureKind.INVALID_V2_BINARY)
-    }
-
     private fun runOpenCodeBinaryUpgrade(
         startId: Long,
         pending: PendingBinaryUpgrade,
         indicator: ProgressIndicator?,
     ): Boolean {
         if (!isCurrentStart(startId)) return false
-        val installingV2 = pending.installV2
-        val headline = if (installingV2) "Installing OpenCode 2.x…" else "Upgrading OpenCode…"
-        noteStartupStage(
-            headline,
-            if (installingV2) INSTALL_V2_TIMEOUT_MILLIS else UPGRADE_TIMEOUT_MILLIS,
-        )
+        if (SbxLaunchSpec.load(canonicalDirectory)?.openCodeVersion == SbxOpenCodeVersion.V2) {
+            recordCommandFailure(
+                SbxCommandFailure(
+                    "Upgrade OpenCode",
+                    -1,
+                    "Docker's OpenCode 2 kit is not upgraded inside the VM. Reset Sandbox creates " +
+                        "it from the kit's latest release.",
+                ),
+            )
+            fail(startId, SbxFailureKind.COMMAND_FAILED)
+            return false
+        }
+        val headline = "Upgrading OpenCode…"
+        noteStartupStage(headline, UPGRADE_TIMEOUT_MILLIS)
         indicator?.text = headline
-        val command =
-            if (installingV2) {
-                SbxCli.buildExecInstallV2Command(sbxExecutable(), pending.sandboxName)
-            } else {
-                val version =
-                    SbxLaunchSpec.load(canonicalDirectory)?.openCodeVersion ?: SbxOpenCodeVersion.V1
-                SbxCli.buildExecUpgradeCommand(
-                    sbxExecutable(),
-                    pending.sandboxName,
-                    preferGuestV2 = version.prefersGuestV2(),
-                )
-            }
-        val timeout = if (installingV2) INSTALL_V2_TIMEOUT_MILLIS else UPGRADE_TIMEOUT_MILLIS
         val upgraded =
             commandRunner.run(
-                command,
+                SbxCli.buildExecUpgradeCommand(sbxExecutable(), pending.sandboxName),
                 emptyMap(),
-                timeout,
+                UPGRADE_TIMEOUT_MILLIS,
                 null,
             ) { line ->
                 recordStartupOutput(startId, line)
-                val parsed = parseCliProgress(line)
-                val stage =
-                    nextCliProgressStage(synchronized(lock) { startupStage } ?: headline, parsed)
-                        .take(STAGE_MAX_CHARS)
+                val stage = line.take(STAGE_MAX_CHARS)
                 synchronized(lock) { if (startId == startSequence) startupStage = stage }
                 indicator?.text = stage
-                val fraction = parsed.fraction
-                if (indicator != null && fraction != null) {
-                    indicator.isIndeterminate = false
-                    indicator.fraction = fraction
-                }
             }
         if (!isCurrentStart(startId)) return false
         if (upgraded.exitCode != 0) {
-            val kind = if (installingV2) "OpenCode 2.x install" else "opencode upgrade"
-            thisLogger().warn("$kind failed (exit ${upgraded.exitCode}): ${upgraded.output}")
-            fail(
-                startId,
-                if (installingV2) SbxFailureKind.INSTALL_V2_FAILED
-                else SbxFailureKind.UPGRADE_FAILED,
-            )
+            thisLogger()
+                .warn("opencode upgrade failed (exit ${upgraded.exitCode}): ${upgraded.output}")
+            fail(startId, SbxFailureKind.UPGRADE_FAILED)
             return false
-        }
-        if (
-            installingV2 ||
-                SbxLaunchSpec.load(canonicalDirectory)?.openCodeVersion == SbxOpenCodeVersion.V2
-        ) {
-            val verified = probeGuestOpenCodeV2(pending.sandboxName)
-            if (!isCurrentStart(startId)) return false
-            if (verified.exitCode != 0) {
-                failGuestOpenCodeV2(startId, verified)
-                return false
-            }
         }
         return true
     }
@@ -2090,8 +1962,6 @@ internal class SbxOpenCodeServerBackend(
         private const val FIRST_START_TIMEOUT_MILLIS = 10 * 60 * 1000L
         private const val RECONNECT_TIMEOUT_MILLIS = 60_000L
         private const val UPGRADE_TIMEOUT_MILLIS = 180_000L
-        private const val INSTALL_V2_TIMEOUT_MILLIS = 5 * 60 * 1000L
-        private const val GUEST_V2_VERSION_TIMEOUT_MILLIS = 60_000L
         private const val STAGE_MAX_CHARS = 120
         private const val REPUBLISH_GRACE_MILLIS = 10_000L
     }

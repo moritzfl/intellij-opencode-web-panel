@@ -64,6 +64,7 @@ import de.moritzf.opencodewebpanel.server.SbxCli
 import de.moritzf.opencodewebpanel.server.SbxFailureKind
 import de.moritzf.opencodewebpanel.server.SbxLaunchSpec
 import de.moritzf.opencodewebpanel.server.SbxOpenCodeServerBackend
+import de.moritzf.opencodewebpanel.server.SbxOpenCodeVersion
 import de.moritzf.opencodewebpanel.server.isSuccessfulOpenCodeDocumentLoad
 import de.moritzf.opencodewebpanel.server.parkedEmbeddedCenterCard
 import de.moritzf.opencodewebpanel.server.shouldApplyPublishedLifecycleState
@@ -1157,7 +1158,12 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
 
     private fun warnIfOpenCodeVersionIsUnsupported() {
         if (project.isDisposed) return
-        OpenCodeReleaseUpdates.checkAndIndicate(project, serverManager.getServerVersion()) {
+        // Docker publishes a 2.x sandbox's OpenCode; npm releases do not apply to it.
+        val dockerKit =
+            !OpenCodeServerBackend.isNative(serverManager.backendId) &&
+                sandboxOpenCodeVersion(project) == SbxOpenCodeVersion.V2
+        val checkedVersion = serverManager.getServerVersion().takeUnless { dockerKit }
+        OpenCodeReleaseUpdates.checkAndIndicate(project, checkedVersion) {
             if (!isContentDisposed()) host.updateHeading()
         }
         warnIfSandboxCreateIsStale()
@@ -2021,8 +2027,7 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
                         "Remove this sandbox and create a new one from opencode-sbx.yaml",
                     ) {
                         if (confirmOpenCodeSandboxRecreate(project, sbx.pendingRecreateReasons())) {
-                            OpenCodeProjectRuntime.getInstance(project)
-                                .resetSandbox(dropGuestOpenCode = false)
+                            OpenCodeProjectRuntime.getInstance(project).resetSandbox()
                         }
                     }
                 else -> null

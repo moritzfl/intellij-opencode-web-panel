@@ -98,7 +98,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
     private val upgradeOpenCodeButton =
         JButton("Upgrade OpenCode", AllIcons.Actions.Lightning).apply {
             toolTipText =
-                "Run opencode upgrade inside this sandbox. The VM and sessions stay. Only available once the sandbox runtime is selected and the sandbox is set up."
+                "Run opencode upgrade inside this 1.x sandbox. The VM and sessions stay. A 2.x sandbox gets a newer release from Reset Sandbox."
             accessibleContext.accessibleName = "Upgrade OpenCode in sandbox"
             isVisible = false
         }
@@ -331,14 +331,19 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                 row {
                     cell(sbxOpenCodeV1RadioButton)
                         .comment(
-                            "Kit OpenCode 1.x. A leftover 2.x binary at ~/.opencode/bin is not launched.",
+                            "Docker's OpenCode 1.x kit (${SbxCli.V1_KIT}). Upgrade OpenCode updates it inside the VM.",
                         )
                 }
                 row {
                     cell(sbxOpenCodeV2RadioButton)
                         .comment(
-                            "Installs OpenCode 2.x to ~/.opencode/bin when missing, then launches it. New sandboxes keep the binary on the host until Reset Sandbox; existing VMs get that mount at Reset. Select this before the first start if sharing OpenCode 2 config. Needs network to opencode.ai and registry.npmjs.org.",
+                            "Docker's OpenCode 2 kit (docker.io/sbx/opencode, latest). Reset Sandbox picks up its latest release. Select this before the first start when sharing an OpenCode 2 host config.",
                         )
+                }
+                row {
+                    comment(
+                        "Each version is a separate Docker kit image: switching needs a new VM, and Apply asks before recreating it.",
+                    )
                 }
             }
             row {
@@ -374,6 +379,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                     .comment(
                         "YAML applied when the sandbox is created (tools, files, env, network). " +
                             "Mixin kits only — do not use a kit that replaces the OpenCode agent. " +
+                            "Docker's OpenCode kit uses schemaVersion \"3\"; sbx refuses v1/v2 kits next to it. " +
                             "Appending a new, uniquely named kit uses sbx kit add and preserves sessions. Removing or reordering kits needs a new VM; Apply asks before recreating it. " +
                             "Use + to add a row; double-click a cell to edit it. " +
                             "<a href=\"$SBX_KIT_DOCS_URL\">Docker kit docs</a>",
@@ -450,7 +456,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                     row {
                         cell(sbxRuntimeRadioButton)
                             .comment(
-                                "OpenCode inside a Docker Sandbox. Requires sbx and a Docker account. Apple silicon macOS, Windows 11 with WHP, or KVM Linux.",
+                                "OpenCode inside a Docker Sandbox, from Docker's published OpenCode kits. Requires sbx ${SbxCli.MINIMUM_SBX_VERSION} or later and a Docker account. Apple silicon macOS, Windows 11 with WHP, or KVM Linux.",
                             )
                     }
                 }
@@ -690,6 +696,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         restartServerButton.addActionListener { restartThisProjectServer() }
         viewServerLogButton.addActionListener { showThisProjectServerLog() }
         upgradeOpenCodeButton.addActionListener { upgradeOpenCodeInSandbox() }
+        sbxOpenCodeV1RadioButton.addItemListener { updateSandboxControls() }
         createNetworkKitButton.addActionListener { createNetworkKitTemplate() }
         checkSetupButton.addActionListener { checkSandboxSetup() }
     }
@@ -1044,18 +1051,18 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         val directory =
             OpenCodeProjectSettingsState.getInstance(project)
                 .effectiveProjectDirectory(project.basePath)
+        val state = projectBackend().getLifecycleState()
         val owned =
             directory != null &&
                 de.moritzf.opencodewebpanel.server.SbxSandboxRecordStore.getInstance()
                     .recordFor(directory) != null
-        val state = projectBackend().getLifecycleState()
-        upgradeOpenCodeButton.isVisible = sandbox
-        val binaryActionsEnabled =
+        // Docker's 2.x kit is upgraded by Reset Sandbox, not inside the VM.
+        upgradeOpenCodeButton.isVisible = sandbox && sbxOpenCodeV1RadioButton.isSelected
+        upgradeOpenCodeButton.isEnabled =
             sandboxBackend &&
                 owned &&
                 state != OpenCodeServerLifecycleState.STARTING &&
                 state != OpenCodeServerLifecycleState.RESTARTING
-        upgradeOpenCodeButton.isEnabled = binaryActionsEnabled
         checkSetupButton.isEnabled =
             sandboxBackend &&
                 !setupCheckRunning &&
@@ -1081,7 +1088,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                 de.moritzf.opencodewebpanel.server.SbxSetupChecklist.format(
                         de.moritzf.opencodewebpanel.server.SbxSetupChecklist.projectSteps(
                             useSandbox = sandbox,
-                            owned = owned,
+                            owned = record != null,
                             running = state == OpenCodeServerLifecycleState.RUNNING,
                         ),
                     )

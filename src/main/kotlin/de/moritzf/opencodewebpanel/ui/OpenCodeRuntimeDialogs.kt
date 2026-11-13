@@ -60,26 +60,6 @@ internal fun confirmOpenCodeSandboxBinaryUpgrade(project: Project?): Boolean {
         .ask(project)
 }
 
-internal fun confirmOpenCodeSandboxImageUpdate(project: Project?): Boolean {
-    val retention =
-        project?.let {
-            OpenCodeProjectSettingsState.getInstance(it)
-                .effectiveProjectDirectory(it.basePath)
-                ?.let(::sandboxSessionRetentionSummary)
-        } ?: "Conversation history retention is unknown until the VM is inspected."
-    return MessageDialogBuilder.yesNo(
-            "Update OpenCode Sandbox Image",
-            "This removes the cached official OpenCode Docker Sandbox image and recreates this project's sandbox " +
-                "so the next start pulls the latest template. $retention " +
-                "Host OpenCode history is not affected. Other sandboxes that still use the old image are unchanged " +
-                "until they are recreated.",
-        )
-        .yesText("Update and Recreate")
-        .noText("Cancel")
-        .icon(Messages.getWarningIcon())
-        .ask(project)
-}
-
 internal fun confirmOpenCodeSandboxExposure(project: Project?, exposure: SbxExposure?): Boolean {
     val items = exposure?.items.orEmpty()
     if (items.isEmpty()) return true
@@ -137,9 +117,9 @@ internal fun confirmOpenCodeSandboxReset(project: Project?): Boolean {
         } ?: "Conversation history retention is unknown until the VM is inspected."
     return MessageDialogBuilder.yesNo(
             "Reset Sandbox",
-            "This force-removes the plugin-owned Docker Sandbox VM and creates a new one, then starts OpenCode. " +
-                "Packages and other VM-only state are dropped. $retention " +
-                "An OpenCode 2.x binary kept for this sandbox is deleted and reinstalled on the next start (needs network). " +
+            "This force-removes the plugin-owned Docker Sandbox VM and creates a new one from Docker's " +
+                "selected OpenCode sandbox kit (2.x: its latest release), then starts OpenCode. " +
+                "Packages, in-VM OpenCode upgrades and other VM-only state are dropped. $retention " +
                 "Host OpenCode history is not affected.",
         )
         .yesText("Reset Sandbox")

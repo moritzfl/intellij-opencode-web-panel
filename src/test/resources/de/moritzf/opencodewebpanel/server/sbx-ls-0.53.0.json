@@ -1,0 +1,32 @@
+[
+  {
+    "name": "ide-ocwp-0123456789ab",
+    "id": "bea4db41-e75a-45f1-b045-288cd59fe02e",
+    "agent": "opencode",
+    "status": "running",
+    "last_used_at": "2026-11-13T15:28:41.702664Z",
+    "ports": [
+      {
+        "host_ip": "127.0.0.1",
+        "host_port": 49154,
+        "sandbox_port": 4096,
+        "protocol": "tcp4"
+      }
+    ],
+    "mounts": [
+      "/workspace/project:/workspace/project",
+      "/workspace/project/opencode-sbx:/workspace/project/opencode-sbx:ro",
+      "/home/user/.local/share/opencode-web-panel/sbx/ide-ocwp-0123456789ab:/home/user/.local/share/opencode-web-panel/sbx/ide-ocwp-0123456789ab",
+      "/home/user/Library/Application Support/com.docker.sandboxes/sandboxes/agent-skills:/home/agent/.config/opencode/skills:ro"
+    ],
+    "workspaces": [
+      "/workspace/project",
+      "/workspace/project/opencode-sbx:ro",
+      "/home/user/.local/share/opencode-web-panel/sbx/ide-ocwp-0123456789ab"
+    ],
+    "cpus": 2,
+    "memory": "4g",
+    "memory_mib": 4096,
+    "created_at": "2026-11-13T15:28:38Z"
+  }
+]
