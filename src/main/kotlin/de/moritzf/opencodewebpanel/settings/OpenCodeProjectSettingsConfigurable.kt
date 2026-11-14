@@ -15,6 +15,7 @@ import com.intellij.openapi.ui.ComboBox
 import com.intellij.openapi.ui.MessageDialogBuilder
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.ui.TextFieldWithBrowseButton
+import com.intellij.openapi.util.text.StringUtil
 import com.intellij.ui.CollectionComboBoxModel
 import com.intellij.ui.ColorUtil
 import com.intellij.ui.DocumentAdapter
@@ -62,6 +63,7 @@ import de.moritzf.opencodewebpanel.server.SbxProcessRunner
 import de.moritzf.opencodewebpanel.server.SbxSandboxRecordStore
 import de.moritzf.opencodewebpanel.server.formatOpenCodeServerLifecycleStatusText
 import de.moritzf.opencodewebpanel.server.formatOpenCodeServerStatusDetail
+import de.moritzf.opencodewebpanel.ui.OpenCodeServerLogDialog
 import de.moritzf.opencodewebpanel.ui.confirmOpenCodeSandboxBinaryUpgrade
 import de.moritzf.opencodewebpanel.ui.confirmOpenCodeSandboxReset
 import de.moritzf.opencodewebpanel.ui.confirmOpenCodeServerRestart
@@ -92,8 +94,12 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
     private var prefilledDirectory: String? = null
     private val serverStatusLabel =
         JBLabel().apply { toolTipText = "OpenCode server status for this project" }
+    // Copyable: the server URL and the conversation store path are worth pasting elsewhere.
     private val diagnosticsLabel =
-        JBLabel().apply { foreground = JBUI.CurrentTheme.ContextHelp.FOREGROUND }
+        JBLabel().apply {
+            foreground = JBUI.CurrentTheme.ContextHelp.FOREGROUND
+            setCopyable(true)
+        }
     private val installedHintLabel =
         JBLabel().apply { foreground = JBUI.CurrentTheme.ContextHelp.FOREGROUND }
     private val setupChecklistLabel =
@@ -903,11 +909,31 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
             )
         serverStatusLabel.text = formatOpenCodeServerLifecycleStatusText(state, detail)
         val sbx = backend as? SbxOpenCodeServerBackend
-        diagnosticsLabel.text = sbx?.diagnostics()?.format().orEmpty()
+        diagnosticsLabel.text =
+            sbx?.diagnostics()
+                ?.rows()
+                ?.let { rows ->
+                    "<html><table cellpadding=\"0\" cellspacing=\"0\">" +
+                        rows.joinToString("") { (label, value) ->
+                            "<tr><td>${StringUtil.escapeXmlEntities(label)}:&nbsp;&nbsp;</td>" +
+                                "<td>${StringUtil.escapeXmlEntities(value)}</td></tr>"
+                        } +
+                        "</table></html>"
+                }
+                .orEmpty()
         diagnosticsLabel.isVisible = sbx != null
         restartServerButton.isEnabled =
             state != OpenCodeServerLifecycleState.STARTING &&
                 state != OpenCodeServerLifecycleState.RESTARTING
+        val logAvailable = OpenCodeServerLogDialog.hasOutput(backend)
+        viewServerLogButton.isEnabled = logAvailable
+        viewServerLogButton.toolTipText =
+            when {
+                logAvailable -> "Show the end of this project's OpenCode server output"
+                !OpenCodeSettingsState.getInstance().enableServerLogs ->
+                    "Nothing to show. Server logs are off (OpenCode Settings | Server); output appears here while OpenCode starts."
+                else -> "Nothing to show yet: OpenCode has not written any output."
+            }
         val start =
             state == OpenCodeServerLifecycleState.STOPPED ||
                 state == OpenCodeServerLifecycleState.FAILED
@@ -1046,24 +1072,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
     }
 
     private fun showThisProjectServerLog() {
-        val logFile = projectBackend().getServerLogFile()
-        if (logFile == null) {
-            Messages.showErrorDialog(
-                panel ?: viewServerLogButton,
-                "No server log available yet.",
-                "Open Server Log",
-            )
-            return
-        }
-        try {
-            java.awt.Desktop.getDesktop().open(logFile.toFile())
-        } catch (e: Exception) {
-            Messages.showErrorDialog(
-                panel ?: viewServerLogButton,
-                "Could not open server log: ${e.message ?: e::class.java.simpleName}",
-                "Open Server Log",
-            )
-        }
+        if (!OpenCodeServerLogDialog.show(project, projectBackend())) updateServerStatus()
     }
 
     private fun projectDirectory(): String {

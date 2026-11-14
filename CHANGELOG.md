@@ -59,6 +59,11 @@
   narrow tool window, and lists first the settings page that can fix the
   failure: **OpenCode Settings** for a missing executable, `sbx`, Docker
   sign-in or network policy, **Project Settings** otherwise.
+- **View Server Log** on the project page shows the end of the log inside
+  Settings, or the output of the current start when logs are off, instead of
+  opening another application. It is disabled, with the reason, while there is
+  nothing to show. The sandbox details under the server status show one item
+  per line and can be copied.
 
 ### Fixed
 

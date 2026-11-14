@@ -16,27 +16,32 @@ internal data class SbxDiagnosticsSnapshot(
     val persistPath: String?,
     val persistActive: Boolean,
 ) {
-    fun format(): String {
+    /** Label and value per line, for a key/value block the user can read and copy. */
+    fun rows(): List<Pair<String, String>> {
         val id = shortId?.takeIf { it.isNotBlank() }?.let { " (${it.take(8)})" }.orEmpty()
         val own =
             when (ownership) {
-                SbxOwnership.NONE -> "no VM"
-                SbxOwnership.OWNED -> "owned"
+                SbxOwnership.NONE -> "not created yet"
+                SbxOwnership.OWNED -> "created by the plugin"
                 SbxOwnership.ADOPTED -> "adopted"
-                SbxOwnership.FOREIGN -> "foreign"
+                SbxOwnership.FOREIGN -> "another sandbox uses this name or folder"
             }
-        val persist =
+        val conversations =
             when {
-                persistActive && !persistPath.isNullOrBlank() -> "sessions: $persistPath"
-                persistPath != null -> "sessions: VM-local (persist store is mounted at Reset)"
-                else -> "sessions: VM-local"
+                persistActive && !persistPath.isNullOrBlank() ->
+                    "kept on this computer: $persistPath"
+                persistPath != null -> "inside the VM; kept on this computer after Reset Sandbox"
+                else -> "inside the VM only"
             }
-        val url = serverUrl?.takeIf { it.isNotBlank() }?.let { "url: $it" } ?: "url: —"
-        val ver =
-            version?.takeIf { it.isNotBlank() }?.let { "OpenCode $it" }
-                ?: "OpenCode version unknown"
-        return "Sandbox $name$id · $own · $url · $ver · $persist"
+        return listOf(
+            "Sandbox" to "$name$id, $own",
+            "Server" to (serverUrl?.takeIf { it.isNotBlank() } ?: "—"),
+            "OpenCode" to (version?.takeIf { it.isNotBlank() } ?: "version unknown"),
+            "Conversations" to conversations,
+        )
     }
+
+    fun format(): String = rows().joinToString("\n") { (label, value) -> "$label: $value" }
 
     companion object {
         fun from(

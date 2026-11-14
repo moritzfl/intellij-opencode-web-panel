@@ -25,9 +25,13 @@ class SbxDiagnosticsTest {
             )
         assertEquals(SbxOwnership.OWNED, owned.ownership)
         assertTrue(owned.persistActive)
-        assertTrue(owned.format().contains("owned"))
-        assertTrue(owned.format().contains("abc12345"))
-        assertTrue(owned.format().contains("http://127.0.0.1:4096"))
+        assertEquals(
+            "Sandbox: ide-ocwp-x (abc12345), created by the plugin\n" +
+                "Server: http://127.0.0.1:4096\n" +
+                "OpenCode: 1.18.25\n" +
+                "Conversations: kept on this computer: $persistHost",
+            owned.format(),
+        )
 
         val adopted =
             SbxDiagnosticsSnapshot.from(
@@ -39,7 +43,7 @@ class SbxDiagnosticsTest {
             )
         assertEquals(SbxOwnership.ADOPTED, adopted.ownership)
         assertFalse(adopted.persistActive)
-        assertTrue(adopted.format().contains("VM-local"))
+        assertTrue(adopted.format().contains("Conversations: inside the VM"))
 
         val foreign = SbxDiagnosticsSnapshot.from("ide-ocwp-x", null, true, null, null)
         assertEquals(SbxOwnership.FOREIGN, foreign.ownership)
@@ -54,6 +58,6 @@ class SbxDiagnosticsTest {
                 null,
                 persistEnabled = false,
             )
-        assertTrue(persistOff.format().endsWith("sessions: VM-local"))
+        assertTrue(persistOff.format().endsWith("Conversations: inside the VM only"))
     }
 }
