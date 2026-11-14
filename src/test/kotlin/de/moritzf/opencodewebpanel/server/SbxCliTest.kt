@@ -999,6 +999,16 @@ class SbxCliTest {
     }
 
     @Test
+    fun policyStateIsUnknownUnlessSbxAnsweredWithARuleList() {
+        assertEquals(false, SbxCli.policyState("""{"rules":[]}"""))
+        assertEquals(false, SbxCli.policyState("""{"rules":[{"scope":"sandbox"}]}"""))
+        assertEquals(true, SbxCli.policyState("""{"rules":[{"scope":"global"}]}"""))
+        for (unreadable in listOf("", "not json", "[]", "{}", """{"rules":null}""")) {
+            assertNull(unreadable, SbxCli.policyState(unreadable))
+        }
+    }
+
+    @Test
     fun conflictingSandboxMatchesNameOrWorkspace() {
         val entries = SbxCli.parseLsJson(resource("sbx-ls-running.json"))
         val workspace = entries.single().workspaces.single()

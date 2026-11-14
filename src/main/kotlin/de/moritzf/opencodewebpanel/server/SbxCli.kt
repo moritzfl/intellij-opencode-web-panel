@@ -1099,13 +1099,19 @@ internal object SbxCli {
      * True once a global network policy exists (`sbx policy init`, a terminal setup, or org
      * governance). Kit and per-sandbox rules alone do not count.
      */
-    fun policyIsInitialized(json: String): Boolean {
+    fun policyIsInitialized(json: String): Boolean = policyState(json) == true
+
+    /**
+     * True with a global rule, false for a readable rule list without one, null when [json] is not
+     * the expected `{"rules": [...]}` answer. Only a definite false may clear stored consent.
+     */
+    fun policyState(json: String): Boolean? {
         val root =
             runCatching { JsonParser.parseString(json) }
                 .getOrNull()
                 ?.takeIf { it.isJsonObject }
-                ?.asJsonObject ?: return false
-        val rules = root.get("rules")?.takeIf { it.isJsonArray }?.asJsonArray ?: return false
+                ?.asJsonObject ?: return null
+        val rules = root.get("rules")?.takeIf { it.isJsonArray }?.asJsonArray ?: return null
         return rules.any { element ->
             val rule = element.takeIf { it.isJsonObject }?.asJsonObject ?: return@any false
             rule.stringMember("scope") == "global" || rule.stringMember("applies_to") == "all"

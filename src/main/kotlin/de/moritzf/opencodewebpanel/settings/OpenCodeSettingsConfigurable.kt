@@ -194,14 +194,8 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
     private val policyCheckGeneration = AtomicLong(0)
     private var policyStatus = SbxPolicyStatus.UNKNOWN
     private var policyCheckDetail: String? = null
+    private var policyCheckedExecutable: String? = null
     private var resetting = false
-
-    private enum class SbxPolicyStatus {
-        CHECKING,
-        PRESENT,
-        ABSENT,
-        UNKNOWN,
-    }
 
     private data class CheckBoxSettingBinding(
         val checkBox: JBCheckBox,
@@ -796,9 +790,11 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
      */
     private fun checkSbxPolicy() {
         val app = ApplicationManager.getApplication()
-        if (app.isUnitTestMode) return
+        // Building searchable options creates this page headless; never run sbx there.
+        if (app.isUnitTestMode || app.isHeadlessEnvironment) return
         val generation = policyCheckGeneration.incrementAndGet()
         val executable = sbxExecutableForChecks()
+        policyCheckedExecutable = executable
         // Label-only update: run even while the settings dialog is modal, before it is showing.
         val modality = ModalityState.any()
         policyStatus = SbxPolicyStatus.CHECKING
@@ -816,35 +812,17 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
                 }
                     .getOrNull()
             }
-            val status =
-                when {
-                    resolved == null || result == null || result.exitCode != 0 ->
-                        SbxPolicyStatus.UNKNOWN
-                    SbxCli.policyIsInitialized(result.stdout) -> SbxPolicyStatus.PRESENT
-                    else -> SbxPolicyStatus.ABSENT
-                }
-            val detail =
-                when {
-                    resolved == null -> "sbx was not found"
-                    result == null -> "sbx could not be run"
-                    result.exitCode != 0 ->
-                        result.output
-                            .lineSequence()
-                            .map { it.trim() }
-                            .firstOrNull { it.isNotEmpty() }
-                            ?.take(160) ?: "sbx exited with ${result.exitCode}"
-                    else -> null
-                }
+            val check = sbxPolicyCheckOf(resolved != null, result)
             app.invokeLater(
                 {
                     if (generation != policyCheckGeneration.get() || panel == null) {
                         return@invokeLater
                     }
-                    policyStatus = status
-                    policyCheckDetail = detail
+                    policyStatus = check.status
+                    policyCheckDetail = check.detail
                     // Match the start-time check: an existing policy counts as consent, and a
                     // removed one must be noticed before the next sandbox start.
-                    when (status) {
+                    when (check.status) {
                         SbxPolicyStatus.PRESENT ->
                             OpenCodeSettingsState.getInstance().sbxNetworkPolicyConsent = true
                         SbxPolicyStatus.ABSENT ->
@@ -858,9 +836,10 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
         }
     }
 
-    /** The sbx the form selects, applied or not. */
+    /** The sbx the form selects, applied or not; a blank custom path falls back like a start. */
     private fun sbxExecutableForChecks(): String =
-        if (customSbxRadioButton.isSelected) sbxPath() else SbxCli.DEFAULT_EXECUTABLE
+        if (customSbxRadioButton.isSelected) sbxPath().ifBlank { SbxCli.DEFAULT_EXECUTABLE }
+        else SbxCli.DEFAULT_EXECUTABLE
 
     /** Runs before anything is saved, so declining leaves every setting and server unchanged. */
     private fun confirmRestartOfRunningServers(settings: OpenCodeSettingsState) {
@@ -1090,7 +1069,8 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
     }
 
     private fun scheduleExecutableProbe() {
-        if (panel == null || ApplicationManager.getApplication().isUnitTestMode) return
+        val app = ApplicationManager.getApplication()
+        if (panel == null || app.isUnitTestMode || app.isHeadlessEnvironment) return
         probeTimer.restart()
     }
 
@@ -1137,6 +1117,7 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
                         openCodeExecutableStatus(openCode, customOpenCode, openCodeEntered),
                     )
                     showStatus(sbxStatusLabel, sbxExecutableStatus(sbx, customSbx, sbxEntered))
+                    if (sbxExecutableForChecks() != policyCheckedExecutable) checkSbxPolicy()
                     updateRuntimeControls()
                 },
                 modality,
@@ -1202,7 +1183,7 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
                             policyCheckDetail = null
                             Messages.showInfoMessage(
                                 panel ?: initSbxPolicyButton,
-                                "This computer already has a sandbox network policy. The plugin uses it and does not change it.",
+                                "This computer already has a sandbox network policy. The plugin uses it and does not change the global policy.",
                                 "Sandbox Network Policy",
                             )
                             if (panel != null) updateRuntimeControls()
@@ -1303,7 +1284,7 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
             when (policyStatus) {
                 SbxPolicyStatus.CHECKING -> "Checking the sandbox network policy…"
                 SbxPolicyStatus.PRESENT ->
-                    "This computer has a sandbox network policy. The plugin uses it and never changes it."
+                    "This computer has a sandbox network policy. The plugin uses it and never changes the global policy."
                 SbxPolicyStatus.ABSENT ->
                     "No sandbox network policy yet. Sandboxes cannot reach the internet until you set one up."
                 SbxPolicyStatus.UNKNOWN ->
