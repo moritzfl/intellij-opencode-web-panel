@@ -29,10 +29,12 @@ import de.moritzf.opencodewebpanel.configuration.OpenCodeRestartScope
 import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsListener
 import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsState
 import de.moritzf.opencodewebpanel.configuration.OpenCodeUiSetting
+import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.server.SbxCli
 import de.moritzf.opencodewebpanel.server.SbxProcessRunner
+import de.moritzf.opencodewebpanel.ui.confirmOpenCodeServersRestart
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 import java.util.concurrent.atomic.AtomicLong
@@ -643,10 +645,11 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
     }
 
     override fun apply() {
+        val settings = OpenCodeSettingsState.getInstance()
+        confirmRestartOfRunningServers(settings)
         passwordLoadGeneration.incrementAndGet()
         passwordLoading = false
         val editedPassword = password().takeIf { it != savedPassword }
-        val settings = OpenCodeSettingsState.getInstance()
         val oldBinaryMode = settings.binaryModeValue()
         val oldBinaryPath = settings.binaryPath.trim()
         val oldSbxBinaryMode = settings.sbxBinaryModeValue()
@@ -762,6 +765,30 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
     override fun disposeUIResources() {
         panel = null
         passwordLoadGeneration.incrementAndGet()
+    }
+
+    /** Runs before anything is saved, so declining leaves every setting and server unchanged. */
+    private fun confirmRestartOfRunningServers(settings: OpenCodeSettingsState) {
+        val app = ApplicationManager.getApplication()
+        if (app.isUnitTestMode) return
+        val passwordChanging = password() != savedPassword
+        val hostChanging =
+            passwordChanging ||
+                selectedBinaryMode() != settings.binaryModeValue() ||
+                binaryPath() != settings.binaryPath.trim() ||
+                selectedProxyMode() != settings.proxyModeValue()
+        val sandboxChanging =
+            passwordChanging ||
+                selectedSbxBinaryMode() != settings.sbxBinaryModeValue() ||
+                sbxPath() != settings.sbxBinaryPath.trim()
+        if (!hostChanging && !sandboxChanging) return
+        val running = OpenCodeServerBackendRegistry.getInstance().runningBackends()
+        val host =
+            if (hostChanging) running.count { OpenCodeServerBackend.isNative(it.backendId) } else 0
+        val sandbox =
+            if (sandboxChanging) running.count { !OpenCodeServerBackend.isNative(it.backendId) }
+            else 0
+        if (!confirmOpenCodeServersRestart(panel, host, sandbox)) throw applyCancelled()
     }
 
     private fun resolveAndSavePasswordOffEdt(
@@ -1069,7 +1096,8 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
                 }
                 currentPassword == null && savedPassword == null ->
                     "No password yet; apply settings to generate and store one."
-                currentPassword != savedPassword -> "Apply settings to save the updated password."
+                currentPassword != savedPassword ->
+                    "Apply to save the new password. Running OpenCode servers restart with it."
                 else -> null
             }
         hintLabel.foreground =

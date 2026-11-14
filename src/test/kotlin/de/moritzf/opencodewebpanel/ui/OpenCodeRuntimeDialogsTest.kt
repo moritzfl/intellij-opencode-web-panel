@@ -1,6 +1,7 @@
 package de.moritzf.opencodewebpanel.ui
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -36,6 +37,21 @@ class OpenCodeRuntimeDialogsTest {
                 .endsWith(
                     "This project pins Docker's OpenCode image to 2.2.7, so Reset Sandbox would not update OpenCode.",
                 ),
+        )
+    }
+
+    @Test
+    fun serversRestartMessageCountsOnlyAffectedRunningServers() {
+        assertNull("Nothing running: no prompt", openCodeServersRestartMessage(0, 0))
+        assertEquals(
+            "Applying restarts the running OpenCode server (1 Host CLI) in all open projects. " +
+                "Agent work in progress is interrupted; conversations are kept.",
+            openCodeServersRestartMessage(1, 0),
+        )
+        assertTrue(
+            openCodeServersRestartMessage(2, 1)!!.startsWith(
+                "Applying restarts 3 running OpenCode servers (2 Host CLI, 1 Docker Sandbox)",
+            ),
         )
     }
 }

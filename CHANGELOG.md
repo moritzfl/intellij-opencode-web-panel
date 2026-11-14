@@ -4,6 +4,17 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Applying the application settings asks before it restarts running OpenCode
+  servers, which happens when the password, the OpenCode or `sbx` executable,
+  or the HTTP proxy changes. Declining leaves every setting unchanged.
+
+### Fixed
+
+- Declining a settings confirmation reports "Apply cancelled" rather than an
+  error.
+
 ## [2.9.1] - 2026-11-14
 
 ### Added

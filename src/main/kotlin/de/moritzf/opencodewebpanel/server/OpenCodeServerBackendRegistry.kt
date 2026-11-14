@@ -66,6 +66,12 @@ class OpenCodeServerBackendRegistry : Disposable {
         }
     }
 
+    /** Backends serving OpenCode right now; restarting one interrupts its agent work. */
+    fun runningBackends(): List<OpenCodeServerBackend> {
+        val backends = synchronized(lock) { nativeBackends.values + sbxBackends.values }
+        return backends.filter { it.getLifecycleState() == OpenCodeServerLifecycleState.RUNNING }
+    }
+
     fun stopAllNativeBackends() {
         val backends = synchronized(lock) { nativeBackends.values.toList() }
         backends.forEach { it.stopServer() }

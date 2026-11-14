@@ -9,6 +9,7 @@ import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState
 import de.moritzf.opencodewebpanel.server.SbxCli
 import de.moritzf.opencodewebpanel.server.SbxExposure
 import de.moritzf.opencodewebpanel.server.isOpenCodeServerStopEnabled
+import java.awt.Component
 
 /**
  * Restarting interrupts work on this project's server, so a running server requires explicit
@@ -25,6 +26,38 @@ internal fun confirmOpenCodeServerRestart(project: Project?): Boolean {
         .noText("Cancel")
         .icon(Messages.getWarningIcon())
         .ask(project)
+}
+
+/**
+ * Application settings change how every server of a runtime starts, so Apply restarts the running
+ * ones in all open projects. Nothing is running: no prompt.
+ */
+internal fun confirmOpenCodeServersRestart(
+    parent: Component?,
+    hostServers: Int,
+    sandboxServers: Int,
+): Boolean {
+    val message = openCodeServersRestartMessage(hostServers, sandboxServers) ?: return true
+    return MessageDialogBuilder.yesNo("Restart OpenCode Servers", message)
+        .yesText("Apply and Restart")
+        .noText("Cancel")
+        .icon(Messages.getWarningIcon())
+        .ask(parent)
+}
+
+internal fun openCodeServersRestartMessage(hostServers: Int, sandboxServers: Int): String? {
+    val total = hostServers + sandboxServers
+    if (total <= 0) return null
+    val runtimes =
+        listOfNotNull(
+                hostServers.takeIf { it > 0 }?.let { "$it Host CLI" },
+                sandboxServers.takeIf { it > 0 }?.let { "$it Docker Sandbox" },
+            )
+            .joinToString(", ")
+    val servers =
+        if (total == 1) "the running OpenCode server" else "$total running OpenCode servers"
+    return "Applying restarts $servers ($runtimes) in all open projects. " +
+        "Agent work in progress is interrupted; conversations are kept."
 }
 
 internal fun confirmOpenCodeServerStop(project: Project?): Boolean {
