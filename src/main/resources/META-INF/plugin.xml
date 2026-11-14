@@ -25,7 +25,7 @@
         <!-- Opt in to the JetBrains Marketplace error handler so uncaught exceptions and IDE
              freezes attributed to this plugin are reported to the plugin page. -->
         <errorHandler implementation="com.intellij.diagnostic.JetBrainsMarketplaceErrorReportSubmitter"/>
-        <toolWindow factoryClass="de.moritzf.opencodewebpanel.toolWindow.OpenCodeWebToolWindowFactoryImpl" id="OpenCode" anchor="right" icon="/icons/opencode.svg"/>
+        <toolWindow factoryClass="de.moritzf.opencodewebpanel.toolWindow.OpenCodeWebToolWindowFactoryImpl" id="OpenCodeWebPanel" anchor="right" icon="/icons/opencode.svg"/>
     </extensions>
 
     <actions>

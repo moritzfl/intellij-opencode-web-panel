@@ -77,7 +77,7 @@ OpenCode Web Panel brings the official OpenCode web UI into JetBrains IDEs. Use 
 
 1. Install the OpenCode CLI.
 2. Open a project in your JetBrains IDE.
-3. Click the **OpenCode Web Panel** tool window on the right sidebar.
+3. Click the **OpenCode** tool window on the right sidebar.
 4. Start using OpenCode in the embedded panel.
 
 The plugin starts a local OpenCode server when needed, authenticates the embedded web UI automatically, and opens the configured project directory.

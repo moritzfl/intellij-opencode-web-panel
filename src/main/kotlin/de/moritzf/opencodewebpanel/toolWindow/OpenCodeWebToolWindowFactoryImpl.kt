@@ -5,6 +5,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.ui.content.ContentFactory
+import de.moritzf.opencodewebpanel.features.OPEN_CODE_TOOL_WINDOW_TITLE
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
 import kotlin.jvm.JvmDefaultWithoutCompatibility
@@ -24,6 +25,12 @@ internal fun updateOpenCodeToolWindowHeading(toolWindow: ToolWindow) {
 
 @JvmDefaultWithoutCompatibility
 class OpenCodeWebToolWindowFactoryImpl : ToolWindowFactory, DumbAware {
+    // Runs at registration, before the content exists: the stripe and Activate action would
+    // otherwise show the internal id.
+    override fun init(toolWindow: ToolWindow) {
+        toolWindow.stripeTitle = OPEN_CODE_TOOL_WINDOW_TITLE
+    }
+
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
         val controller = OpenCodePanelController.getInstance(project)
         val content =

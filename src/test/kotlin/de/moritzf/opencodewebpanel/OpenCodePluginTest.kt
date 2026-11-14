@@ -5,9 +5,11 @@ import com.intellij.openapi.actionSystem.KeyboardShortcut
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.util.SystemInfo
+import com.intellij.openapi.wm.ToolWindow
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import de.moritzf.opencodewebpanel.configuration.OpenCodeRuntimeMode
 import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsState
+import de.moritzf.opencodewebpanel.features.OPEN_CODE_TOOL_WINDOW_ID
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleListener
@@ -26,6 +28,7 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.io.OutputStream
+import java.lang.reflect.Proxy
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledFuture
@@ -37,6 +40,29 @@ class OpenCodePluginTest : BasePlatformTestCase() {
         assertTrue(
             DumbAware::class.java.isAssignableFrom(OpenCodeWebToolWindowFactoryImpl::class.java),
         )
+    }
+
+    fun testToolWindowIdIsUniqueButTheStripeSaysOpenCode() {
+        val pluginXml = javaClass.classLoader.getResource("META-INF/plugin.xml")!!.readText()
+        val toolWindow = Regex("<toolWindow\\b[^>]*>").find(pluginXml)!!.value
+        // Other OpenCode plugins register `OpenCode`; a duplicate id fails tool window setup.
+        assertEquals(
+            OPEN_CODE_TOOL_WINDOW_ID,
+            Regex("""\bid="([^"]+)"""").find(toolWindow)!!.groupValues[1],
+        )
+        assertFalse(OPEN_CODE_TOOL_WINDOW_ID == "OpenCode")
+
+        var stripeTitle: String? = null
+        val stub =
+            Proxy.newProxyInstance(
+                ToolWindow::class.java.classLoader,
+                arrayOf(ToolWindow::class.java),
+            ) { _, method, args ->
+                if (method.name == "setStripeTitle") stripeTitle = args!![0] as String
+                null
+            } as ToolWindow
+        OpenCodeWebToolWindowFactoryImpl().init(stub)
+        assertEquals("OpenCode", stripeTitle)
     }
 
     fun testNativeBackendIdIsPrefixedAndDistinct() {

@@ -29,6 +29,14 @@
 - The OpenCode update indicator covers the Host CLI and 1.x sandboxes; a 2.x
   sandbox follows Docker's kit.
 
+### Fixed
+
+- The OpenCode tool window no longer fails to open with `window with id="OpenCode"
+  is already registered` when another OpenCode plugin is installed. The tool
+  window now uses its own id and still shows as **OpenCode**. Its saved position
+  resets to the right sidebar once, and a keyboard shortcut assigned to the old
+  **OpenCode** tool window action needs to be assigned again.
+
 ### Removed
 
 - The in-sandbox OpenCode 2 installer and the **Update OpenCode Sandbox Image**

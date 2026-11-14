@@ -15,8 +15,14 @@ import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.server.SbxLaunchSpec
 import java.io.File
 
-/** Must match the `toolWindow id` declared in plugin.xml. */
-internal const val OPEN_CODE_TOOL_WINDOW_ID = "OpenCode"
+/**
+ * Must match the `toolWindow id` declared in plugin.xml. Other OpenCode plugins register the id
+ * `OpenCode`, and the IDE rejects a second tool window with the same id, so ours stays unique.
+ */
+internal const val OPEN_CODE_TOOL_WINDOW_ID = "OpenCodeWebPanel"
+
+/** Stripe title until the panel names its runtime; the id is not shown to users. */
+internal const val OPEN_CODE_TOOL_WINDOW_TITLE = "OpenCode"
 
 /**
  * Adds the selected project files to the OpenCode chat as `@path` references, using the same

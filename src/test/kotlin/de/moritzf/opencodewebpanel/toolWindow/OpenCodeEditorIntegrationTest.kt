@@ -10,6 +10,7 @@ import com.intellij.openapi.wm.ex.ToolWindowManagerListener
 import com.intellij.testFramework.FileEditorManagerTestCase
 import com.intellij.testFramework.LightVirtualFile
 import com.intellij.util.ui.UIUtil
+import de.moritzf.opencodewebpanel.features.OPEN_CODE_TOOL_WINDOW_ID
 import de.moritzf.opencodewebpanel.features.OpenCodeChatInputService
 import java.awt.Container
 import java.awt.Dimension
@@ -237,7 +238,7 @@ class OpenCodeEditorIntegrationTest : FileEditorManagerTestCase() {
                 "isVisible",
                 "isActive" -> true
                 "getProject" -> project
-                "getId" -> "OpenCode"
+                "getId" -> OPEN_CODE_TOOL_WINDOW_ID
                 "toString" -> "OpenCode tool window stub"
                 "hashCode" -> System.identityHashCode(proxy)
                 "equals" -> proxy === args?.firstOrNull()
