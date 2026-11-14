@@ -25,6 +25,7 @@ import de.moritzf.opencodewebpanel.server.SbxSandboxRecordStore
 import de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager
 import java.nio.file.Files
 import javax.swing.AbstractButton
+import javax.swing.JComponent
 import javax.swing.JTextField
 import javax.swing.SwingUtilities
 import org.junit.After
@@ -540,6 +541,31 @@ class OpenCodeProjectSettingsConfigurableTest {
             assertEquals("The old form must not leak into the destination", "4g", written.memory)
             assertEquals(newDirectory, projectSettings.openCodeProjectDirectory)
             assertFalse(configurable.isModified())
+        }
+    }
+
+    @Test
+    fun resetSandboxWaitsForApplyAndSaysWhy() {
+        assertNotNull(
+            SbxLaunchSpec.persist(
+                SbxLaunchSpec.defaults(project.basePath!!, hostPort = appSettings.hostPortOrNull())
+                    .copy(useSandbox = true),
+            ),
+        )
+        SwingUtilities.invokeAndWait {
+            configurable.disposeUIResources()
+            configurable = OpenCodeProjectSettingsConfigurable(project)
+            configurable.createComponent()
+            val reset = field<AbstractButton>("resetSandboxButton")
+            val hint = field<JComponent>("actionsHintLabel")
+            assertFalse(configurable.isModified())
+            assertTrue("Like the gear action: any sandbox backend", reset.isEnabled)
+            assertFalse(hint.isVisible)
+            field<JTextField>("sbxMemoryField").text = "8g"
+            assertTrue(configurable.isModified())
+            assertFalse("Reset must not run on unsaved settings", reset.isEnabled)
+            assertTrue(reset.toolTipText, reset.toolTipText.startsWith("Apply first"))
+            assertTrue(hint.isVisible)
         }
     }
 

@@ -39,6 +39,7 @@ import de.moritzf.opencodewebpanel.configuration.OpenCodePortMode
 import de.moritzf.opencodewebpanel.configuration.OpenCodeProjectDirectoryMode
 import de.moritzf.opencodewebpanel.configuration.OpenCodeProjectSettingsState
 import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsState
+import de.moritzf.opencodewebpanel.server.OpenCodeExecutableProbe
 import de.moritzf.opencodewebpanel.server.OpenCodeExecutableProbes
 import de.moritzf.opencodewebpanel.server.OpenCodeProjectRuntime
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
@@ -54,6 +55,7 @@ import de.moritzf.opencodewebpanel.server.SbxLaunchSpecInspection
 import de.moritzf.opencodewebpanel.server.SbxOpenCodeImages
 import de.moritzf.opencodewebpanel.server.SbxOpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.SbxOpenCodeVersion
+import de.moritzf.opencodewebpanel.server.SbxProcessRunner
 import de.moritzf.opencodewebpanel.server.SbxSandboxRecordStore
 import de.moritzf.opencodewebpanel.server.formatOpenCodeServerLifecycleStatusText
 import de.moritzf.opencodewebpanel.server.formatOpenCodeServerStatusDetail
@@ -62,6 +64,7 @@ import de.moritzf.opencodewebpanel.ui.confirmOpenCodeSandboxReset
 import de.moritzf.opencodewebpanel.ui.confirmOpenCodeServerRestart
 import de.moritzf.opencodewebpanel.ui.sandboxSessionRetentionSummary
 import java.awt.Component
+import java.awt.event.HierarchyEvent
 import java.io.File
 import javax.swing.AbstractCellEditor
 import javax.swing.ButtonGroup
@@ -132,6 +135,8 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         ActionLink("Docker Sandbox settings") { openApplicationSettings() }
     private var prerequisitesGeneration = 0L
     private var prerequisitesRequested = false
+    /** Last [isModified] answer; Reset Sandbox must not run on settings that are not saved. */
+    private var formModified = false
     private val autoPortRadioButton = JBRadioButton("Auto select")
     private val fixedPortRadioButton = JBRadioButton("Fixed port")
     private val fixedPortField =
@@ -528,6 +533,14 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
             }
             row { cell(sandboxOnlyPanel).align(AlignX.FILL) }
         }
+        // Coming back from the Docker Sandbox settings link must not show the old prerequisites.
+        panel!!.addHierarchyListener { event ->
+            val showing = panel?.isShowing == true
+            if (event.changeFlags and HierarchyEvent.SHOWING_CHANGED.toLong() != 0L && showing) {
+                prerequisitesRequested = false
+                if (sbxRuntimeRadioButton.isSelected) loadSandboxPrerequisites()
+            }
+        }
         reset()
         subscribeToLifecycleChanges()
         updateServerStatus()
@@ -537,7 +550,11 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
     /** Settings polls this after every edit, which keeps the "Apply first" hint current. */
     override fun isModified(): Boolean =
         formDiffersFromSavedSettings().also { modified ->
-            if (panel != null) actionsHintLabel.isVisible = modified
+            if (panel != null && modified != formModified) {
+                formModified = modified
+                actionsHintLabel.isVisible = modified
+                updateSandboxControls()
+            }
         }
 
     private fun formDiffersFromSavedSettings(): Boolean {
@@ -762,6 +779,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         openCodeImageTagsRequested = false
         prerequisitesRequested = false
         prerequisitesGeneration++
+        formModified = false
         panel = null
         lifecycleConnection?.disconnect()
         lifecycleConnection = null
@@ -911,11 +929,14 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
     }
 
     /**
-     * What a sandbox start needs from this computer, read off the EDT once per page: an sbx that is
-     * new enough, and a network policy. Shown under the runtime choice before anything is applied.
+     * What a sandbox start needs from this computer, read off the EDT each time the page is shown:
+     * an sbx that is new enough, and a network policy. Shown under the runtime choice before
+     * anything is applied. The policy is read live like the start does; the stored flag only
+     * answers when sbx cannot.
      */
     private fun loadSandboxPrerequisites() {
-        if (prerequisitesRequested || ApplicationManager.getApplication().isUnitTestMode) return
+        val app = ApplicationManager.getApplication()
+        if (prerequisitesRequested || app.isUnitTestMode || app.isHeadlessEnvironment) return
         prerequisitesRequested = true
         val generation = ++prerequisitesGeneration
         val settings = OpenCodeSettingsState.getInstance()
@@ -923,23 +944,45 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         // Label-only update: run even while the settings dialog is modal, before it is showing.
         val modality = ModalityState.any()
         sbxPrerequisitesLabel.text = "Checking sbx…"
-        ApplicationManager.getApplication().executeOnPooledThread {
-            val probe = OpenCodeExecutableProbes.sbx(executable)
-            ApplicationManager.getApplication()
-                .invokeLater(
-                    {
-                        if (panel == null || generation != prerequisitesGeneration) {
-                            return@invokeLater
+        app.executeOnPooledThread {
+            val probe = runCatching {
+                OpenCodeExecutableProbes.sbx(executable)
+            }
+                .getOrDefault(OpenCodeExecutableProbe(null, null))
+            val usable = probe.path != null && !probe.failed && !probe.tooOld
+            val policy =
+                if (!usable) {
+                    null
+                } else {
+                    val result = runCatching {
+                        SbxProcessRunner.run(
+                            SbxCli.buildPolicyLsCommand(probe.path!!),
+                            emptyMap(),
+                            15_000L,
+                        )
+                    }
+                        .getOrNull()
+                    sbxPolicyCheckOf(true, result).status
+                }
+            app.invokeLater(
+                {
+                    if (panel == null || generation != prerequisitesGeneration) {
+                        return@invokeLater
+                    }
+                    val policyReady =
+                        when (policy) {
+                            SbxPolicyStatus.PRESENT -> true
+                            SbxPolicyStatus.ABSENT -> false
+                            else -> settings.sbxNetworkPolicyConsent
                         }
-                        val (text, problem) =
-                            sandboxPrerequisitesText(probe, settings.sbxNetworkPolicyConsent)
-                        sbxPrerequisitesLabel.text = text
-                        sbxPrerequisitesLabel.foreground =
-                            if (problem) UIUtil.getErrorForeground()
-                            else JBUI.CurrentTheme.ContextHelp.FOREGROUND
-                    },
-                    modality,
-                )
+                    val (text, problem) = sandboxPrerequisitesText(probe, policyReady)
+                    sbxPrerequisitesLabel.text = text
+                    sbxPrerequisitesLabel.foreground =
+                        if (problem) UIUtil.getErrorForeground()
+                        else JBUI.CurrentTheme.ContextHelp.FOREGROUND
+                },
+                modality,
+            )
         }
     }
 
@@ -1310,9 +1353,17 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         upgradeOpenCodeButton.toolTipText =
             vmBlocker
                 ?: "Install the latest OpenCode release inside this sandbox. The VM and sessions stay; Reset Sandbox returns to Docker's image."
-        resetSandboxButton.isEnabled = vmBlocker == null
+        // Same rule as the gear action (any sandbox backend; Reset cancels a pending start), plus
+        // saved settings only: Reset recreates the VM from the saved YAML, never from this form.
+        val resetBlocker =
+            when {
+                !sandboxBackend -> "Apply first: this project still runs the Host CLI."
+                formModified -> "Apply first: Reset Sandbox uses the saved settings."
+                else -> null
+            }
+        resetSandboxButton.isEnabled = resetBlocker == null
         resetSandboxButton.toolTipText =
-            vmBlocker
+            resetBlocker
                 ?: "Delete this project's sandbox and create a new one from Docker's OpenCode kit. Applies create-time settings such as memory and CPUs."
         val checkBlocker =
             when {
@@ -1325,7 +1376,8 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         checkSetupButton.toolTipText =
             checkBlocker
                 ?: "Check sandbox setup and guest network access using saved project settings"
-        val spec = currentSpec()
+        // What the next Reset would apply: the saved spec, not unapplied edits in this form.
+        val spec = directory?.let(SbxLaunchSpec::load)
         val record = directory?.let {
             de.moritzf.opencodewebpanel.server.SbxSandboxRecordStore.getInstance().recordFor(it)
         }
