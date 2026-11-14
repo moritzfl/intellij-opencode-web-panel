@@ -108,43 +108,67 @@ While the panel is in an editor, clicking the OpenCode tool window icon returns 
 - **Add to OpenCode Chat** (project view, editor tabs) - Insert `@path` references for the selected project files into the chat.
 - **Add Selection to OpenCode Chat** (editor) - Insert the file reference plus the selected lines as a code snippet.
 
-Both actions activate the panel wherever it is currently placed and deliver the input once OpenCode has finished loading. They follow the **Enable file drop and paste into chat** setting.
+Both actions activate the panel wherever it is currently placed and deliver the input once OpenCode has finished loading. They follow the **Drop and paste files into chat** setting.
 
 ## Settings
 
-Open <kbd>Settings/Preferences</kbd> > <kbd>Tools</kbd> > <kbd>OpenCode Web Panel</kbd>.
+Open <kbd>Settings/Preferences</kbd> > <kbd>Tools</kbd> > <kbd>OpenCode Web Panel</kbd>. It has three tabs; the settings of the open project are one level below, under **This Project**.
 
-### OpenCode Server Setup
+### Server
 
-- Per project (**OpenCode Web Panel | This Project**): **Runtime** Host or Docker Sandbox, this project's server status/restart/log/port, plus mounts and kits. Stored in `opencode-sbx/opencode-sbx.yaml` (source of truth; the panel hydrates from it). Apply also writes `opencode-sbx/opencode-sbx.sh`: run it with no arguments for the TUI, `--web` for the published browser server, or `acp` for ACP stdio, without the plugin. On Windows, run the `.sh` from Git Bash.
-- For monorepos, keep the project directory on the repository root and set **OpenCode working directory** to a relative subdirectory, for example `workingDirectory: ./app` in the project YAML. The whole repository stays mounted; OpenCode starts in that subdirectory. Changing it restarts OpenCode without recreating the sandbox or deleting its conversations. The foreign-session warning maps Windows sandbox paths back to the host and treats folders in one Git worktree as the same project; a separate linked worktree stays distinct.
-- Application settings: Host CLI binary, password, HTTP proxy, `sbx` path, and network-policy consent.
-- **Share host OpenCode config (read-only)** mounts the host config directory, including JSON/JSONC, skills, agents, commands, and plugins. The sandbox can read any credentials embedded in those files, but cannot change them. Host `auth.json` and the host credential database are not shared. Sandbox sessions and browser preferences remain separate.
+- **OpenCode Executable**: **Auto detect** or a **Custom path**. The setting shows the executable a start would use and its version, or what is wrong.
+- **Authentication**: edit, generate, show, or copy the local server password stored in IntelliJ Password Safe.
+- **HTTP Proxy**: how the Host CLI reaches the network: the IDE HTTP Proxy, environment variables, or no proxy.
+- **Startup and Logs**: wait briefly for the IntelliJ MCP server before starting OpenCode; write server logs to disk.
+- **Updates**: an optional lightning-bolt action indicates a newer same-major OpenCode release. Click it to upgrade a sandbox or view a copyable Host CLI upgrade command. For a 2.x sandbox it also checks Docker's OpenCode image and offers **Reset Sandbox** when that image is newer.
+- Changing the password, an executable, or the proxy restarts the OpenCode servers that are running or starting; Apply asks first. A stopped server uses the new settings at its next start.
+
+### Panel
+
+These options add to OpenCode's page in the panel. If one clashes with an OpenCode update, turn it off: the page reloads without it. **Restore defaults** resets this tab.
+
+- **Appearance**: zoom; keep the compact (mobile) layout at any panel width, with a full-width Home session list in OpenCode 2.x; show agent and model on responses in the compact layout, which OpenCode 2 otherwise omits; hide OpenCode's floating website button; show path previews faster; match OpenCode's color scheme to the IDE theme; show the page's mouse cursors.
+- **Navigation and Input**: open file links in the IDE, optionally also file, class, and code references in chat; open diffs in the IDE with Ctrl/Cmd+Click or Alt+Click; open web links in the system browser; drop and paste files into chat, using `@relative/path` for project files.
+- **Notifications and Status**: show OpenCode notifications in the IDE, optionally with Allow and Deny buttons on permission requests; show agent status on the tool window icon; hide prompts to switch to another session or project; warn when a conversation belongs to another folder or workspace (off by default).
+- **Recovery**: continue interrupted conversations after a restart; reconnect after sleep or a network change (OpenCode 1.x); reload the page when part of it fails to load; reload the panel when the embedded browser stops responding.
+
+### Docker Sandboxes
+
+- **sbx Executable**: **Auto detect** or a **Custom path**, with the version found. Docker Sandboxes need **sbx 0.51.0** or later.
+- **Sign-In**: sign in once with `sbx login` in a terminal.
+- **Network Policy**: shows whether this computer has a sandbox network policy, checked live, and sets up Docker's balanced default when asked. The plugin never changes an existing policy.
+
+### This Project
+
+Settings for the open project, stored with it. Apply asks before it recreates the sandbox, restarts or starts OpenCode, or gives the sandbox new access; other changes apply without a prompt.
+
+- **OpenCode directory**: **Auto detect** opens the IDE project root; **Custom directory** points OpenCode at another directory, such as a monorepo root or a subproject.
+- **Runtime**: Host CLI or Docker Sandbox, stored in `opencode-sbx/opencode-sbx.yaml` (source of truth; the panel hydrates from it). Choosing Docker Sandbox shows whether this computer has a recent enough `sbx` and a network policy. Apply also writes `opencode-sbx/opencode-sbx.sh`: run it with no arguments for the TUI, `--web` for the published browser server, or `acp` for ACP stdio, without the plugin. On Windows, run the `.sh` from Git Bash.
+- **Server**: this project's status, **Start Server** / **Restart Server**, **View Server Log**, and for sandboxes **Upgrade OpenCode** and **Reset Sandbox…**. Let OpenCode select a port automatically, or set a fixed port. Host CLI binds that loopback port; Docker Sandbox republishes VM 4096 to it without recreating the sandbox.
+- During startup/restart, the waiting view explains the current step and streams recent command output. Image downloads and kit installation can take several minutes. Elapsed time belongs to the current attempt, and a quiet step offers log/cancel guidance rather than an estimated countdown. Recent activity is available even with file logging disabled.
+
+#### Docker Sandbox
+
+- For monorepos, keep the project directory on the repository root and set **Working directory** to a relative subdirectory, for example `workingDirectory: ./app` in the project YAML. The whole repository stays mounted; OpenCode starts in that subdirectory. Changing it restarts OpenCode without recreating the sandbox or deleting its conversations. The foreign-session warning maps Windows sandbox paths back to the host and treats folders in one Git worktree as the same project; a separate linked worktree stays distinct.
+- **Share your OpenCode config with the sandbox (read-only)** mounts the host config directory, including JSON/JSONC, skills, agents, commands, and plugins. The sandbox can read any credentials embedded in those files, but cannot change them. Host `auth.json` and the host credential database are not shared. Sandbox sessions and browser preferences remain separate.
 - Provider authentication is independent of IntelliJ: use Docker's `sbx secret` for API keys or sign in separately through OpenCode inside the sandbox. The plugin and standalone launcher never copy host OpenCode credentials or run an OAuth proxy. See [Sandbox credentials and standalone use](#sandbox-credentials-and-standalone-use).
-- **Check sandbox setup** on the project settings page checks guest access to `models.opencode.ai` (model catalog). It uses saved settings and an owned, running VM. A healthy local server does not prove provider authentication or other outbound connections work.
+- **Check sandbox setup** checks guest access to `models.opencode.ai` (model catalog). It uses saved settings and an owned, running VM. A healthy local server does not prove provider authentication or other outbound connections work.
 - **OpenCode version** is stored per project as `openCodeVersion: 1.x` or `2.x` (default `1.x`). Both come from Docker's published [`docker.io/sbx/opencode`](https://hub.docker.com/r/sbx/opencode) kits and need **sbx 0.51.0** or later; an older `sbx` stops with an update message.
   - **1.x** uses the `sbx/opencode:1.18.31` kit. **Upgrade OpenCode** (project settings, gear menu, or the update indicator) runs `opencode upgrade` inside the VM and keeps it.
-  - **2.x** uses the `opencode` agent, Docker's latest OpenCode 2 kit. Docker's image can trail OpenCode's releases. **Upgrade OpenCode** installs the newest release inside the VM with OpenCode's own installer and keeps it across Stop/Start; the TUI, ACP, and `--web` of the standalone launcher use it too. **Reset Sandbox** (or the launcher's `--recreate`) returns to Docker's latest image. If a new Docker image breaks the sandbox, pin an earlier one under **OpenCode version → Docker image** in project settings (`openCodeImage: 2.2.7` or a `sha256:` digest in `opencode-sbx.yaml`); Docker keeps only recent tags, so switch back to `latest` once it is fixed.
+  - **2.x** uses the `opencode` agent, Docker's latest OpenCode 2 kit. Docker's image can trail OpenCode's releases. **Upgrade OpenCode** installs the newest release inside the VM with OpenCode's own installer and keeps it across Stop/Start; the TUI, ACP, and `--web` of the standalone launcher use it too. **Reset Sandbox** (or the launcher's `--recreate`) returns to Docker's latest image. If a new Docker image breaks the sandbox, pin an earlier one under **OpenCode version → Docker image** (`openCodeImage: 2.2.7` or a `sha256:` digest in `opencode-sbx.yaml`); Docker keeps only recent tags, so switch back to `latest` once it is fixed.
   - Each version is a separate image, so switching versions needs a new VM; Apply asks before recreating. A start or launcher run that finds the other version stops with **Recreate Sandbox** (launcher: `--recreate`). Select 2.x before the first start when sharing an OpenCode 2 host configuration.
 - 2.x sandboxes that still run the OpenCode 2 copy installed by earlier plugin releases stop with a **Recreate Sandbox** action; recreating also deletes that copy. 1.x sandboxes never launched it and keep running.
 - Docker's 2.x kit configures OpenCode to run tools without approval prompts, because the sandbox is the isolation boundary. The plugin keeps each kit's configuration and only merges its MCP entries over it.
 - Apply/start writes one shell launcher, `opencode-sbx.sh`. The IDE and launcher leave provider/model configuration to OpenCode. Apply/start removes the older helper scripts and provider-compatibility JSON.
-- Kits must use `schemaVersion: "3"`: both of Docker's OpenCode kits are v3, and `sbx` refuses to combine them with v1/v2 kits. **Create extra-network kit template** writes a v3 mixin; regenerate a template created by an earlier release. A kit that requests new permissions, such as network hosts, cannot be added to an existing sandbox without a terminal prompt, so OpenCode offers **Recreate Sandbox** instead.
 - **Protect sandbox files** overlays the `opencode-sbx/` folder (spec, launchers, extra-network kit) and other local kit directories read-only on top of the writable project mount (on by default). Reset the sandbox to apply to an existing VM.
-- **Persist sandbox sessions across Reset** keeps this sandbox's OpenCode data, including conversations and sandbox-owned logins, on the host in a plugin data directory (not Host CLI's `opencode.db`). Reset recreates the VM and remounts the same store.
+- **Persist sandbox sessions and sign-ins across Reset Sandbox** keeps this sandbox's OpenCode data, including conversations and sandbox-owned logins, on the host in a plugin data directory (not Host CLI's `opencode.db`). Reset recreates the VM and remounts the same store.
+- **Resources, Mounts and Kits** (collapsed while all are defaults): memory and CPUs apply at the next Reset Sandbox.
+  - Kits must use `schemaVersion: "3"`: both of Docker's OpenCode kits are v3, and `sbx` refuses to combine them with v1/v2 kits. **Create Extra-Network Kit Template** writes a v3 mixin; regenerate a template created by an earlier release. A kit that requests new permissions, such as network hosts, cannot be added to an existing sandbox without a terminal prompt, so OpenCode offers **Recreate Sandbox** instead.
+  - Mounts can be marked **Read-only** (`readOnly: true`, or sbx's `host:ro`). Mount paths that do not exist on this machine are skipped.
+  - Extra-mount host paths support a leading `${NAME}` or `${NAME:-fallback}`, resolved from the host environment. For example, `host: '${GRADLE_USER_HOME:-~/.gradle}'` with `readOnly: true` shares each developer's existing Gradle configuration without copying it. The fallback applies when the variable is unset or empty; `~` expands to the host home. Expansion is literal (no shell evaluation) and applies only to host mount paths, not guest environment variables. The entire directory is mounted, so its credentials and other contents are readable in the sandbox. Keep writable guest caches separate. An existing VM needs Recreate Sandbox to apply changed mounts.
 - A project without `opencode-sbx/opencode-sbx.yaml` runs the Host CLI. Creating a sandbox from a spec requires a trusted project; a spec that mounts host paths outside the project, shares the host config, or adds kits asks once per distinct set of grants (settings Apply counts as consent).
-- Starting never deletes the VM. When the spec asks for kits removed or reordered, config sharing toggled, or mounts added, removed, or switched to read-only, OpenCode stops with the differences and a **Recreate Sandbox** action; Apply asks before recreating. Mount paths that do not exist on this machine are skipped. Mounts can be marked **Read-only** (`readOnly: true`, or sbx's `host:ro`).
+- Starting never deletes the VM. When the spec asks for kits removed or reordered, config sharing toggled, or mounts added, removed, or switched to read-only, OpenCode stops with the differences and a **Recreate Sandbox** action; Apply asks before recreating.
 - The spec is parsed strictly by the plugin and the launcher alike: unknown structure, `yes`/`no` flags or values such as `8GB` make it invalid instead of being ignored. Apply keeps comments and unknown keys.
-- Extra-mount host paths support a leading `${NAME}` or `${NAME:-fallback}`, resolved from the host environment. For example, `host: '${GRADLE_USER_HOME:-~/.gradle}'` with `readOnly: true` shares each developer's existing Gradle configuration without copying it. The fallback applies when the variable is unset or empty; `~` expands to the host home. Expansion is literal (no shell evaluation) and applies only to host mount paths, not guest environment variables. The entire directory is mounted, so its credentials and other contents are readable in the sandbox. Keep writable guest caches separate. An existing VM needs Recreate Sandbox to apply changed mounts.
-- Choose whether the plugin should auto-detect `opencode` or use a custom executable path. The setting shows the executable a start would use and its version.
-- Per project, let OpenCode select a port automatically, or set a fixed port. Host CLI binds that loopback port; Docker Sandbox republishes VM 4096 to it without recreating the sandbox.
-- Edit, generate, show, or copy the local server password stored in IntelliJ Password Safe.
-- Choose how the OpenCode server reaches the network: the IDE HTTP Proxy, environment
-  variables, or no proxy.
-- Restart this project's OpenCode server from the tool window or **OpenCode Web Panel | This Project**.
-- During startup/restart, the waiting view explains the current step and streams recent command output. Image downloads and kit installation can take several minutes. Elapsed time belongs to the current attempt, and a quiet step offers log/cancel guidance rather than an estimated countdown. Recent activity is available even with file logging disabled.
-- View recent OpenCode server output from **OpenCode Web Panel | This Project**.
-- An optional lightning-bolt action indicates a newer same-major OpenCode release. Click it to upgrade a sandbox or view a copyable Host CLI upgrade command. For a 2.x sandbox it also checks Docker's OpenCode image and offers **Reset Sandbox** when that image is newer. Disable it in application settings.
 
 ### Sandbox credentials and standalone use
 
@@ -230,30 +254,6 @@ remain available only while the IDE is running.
 See [Docker credentials](https://docs.docker.com/ai/sandboxes/security/credentials/)
 and [OpenCode provider accounts](https://opencode.ai/v2/docs/cli/providers).
 
-### OpenCode UI Settings
-
-- Open local file links in the IDE.
-- Open external HTTP links in the system browser.
-- Enable click-to-navigate for code references in chat.
-- Enable file drop and paste into chat, using `@relative/path` for project file references.
-- Lock OpenCode to compact layout for panel-friendly use, with a full-width Home session list in OpenCode 2.x.
-- Show each response's agent and model in the compact view, which OpenCode 2.x otherwise omits.
-- Hide OpenCode's floating website/help button in the panel.
-- Sync OpenCode's system color scheme with the IDE theme.
-- Suppress project-switch prompts that are not useful inside the embedded panel.
-- Warn when a selected conversation belongs to another workspace (off by default).
-- Forward OpenCode browser notifications to the IDE, optionally with Allow/Deny actions for permission requests.
-- Show agent status on the tool window icon.
-- Wait briefly for IntelliJ MCP server readiness before launching OpenCode.
-
-### Project Settings
-
-Project-specific settings are stored with the IDE project.
-
-- Use **Auto detect** to open the IDE project root in OpenCode.
-- Use **Custom Directory** to point OpenCode at another directory, such as a monorepo root or a subproject.
-- Use **Detect** to fill the custom directory with the auto-detected project root.
-
 ## Troubleshooting
 
 **OpenCode does not start**
@@ -288,7 +288,7 @@ Project-specific settings are stored with the IDE project.
 
 **The embedded UI behaves unexpectedly after an OpenCode update**
 
-- Disable the affected convenience feature under **OpenCode UI Settings**.
+- Turn off the affected option on the **Panel** tab of the settings.
 - Reload or reopen the tool window.
 - Report the issue with the OpenCode version and plugin version.
 
