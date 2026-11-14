@@ -10,10 +10,9 @@ internal object SbxSetupChecklist {
     fun appSteps(sbxFound: Boolean, policyReady: Boolean): List<SbxSetupStep> =
         listOf(
             SbxSetupStep(
-                "Detect sbx",
+                "sbx",
                 sbxFound,
-                if (sbxFound) "sbx is available"
-                else "Install Docker Sandboxes and Detect its path",
+                if (sbxFound) "found" else "install Docker Sandboxes, or choose its Custom path",
             ),
             SbxSetupStep(
                 "Network policy",

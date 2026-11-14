@@ -214,7 +214,7 @@ internal class SbxOpenCodeServerBackend(
         return when (lastFailure()) {
             SbxFailureKind.NONE -> null
             SbxFailureKind.SBX_NOT_FOUND ->
-                "The sbx CLI was not found. Install Docker Sandboxes (brew install docker/tap/sbx or winget install Docker.sbx) and Detect its path."
+                "The sbx CLI was not found. Install Docker Sandboxes (brew install docker/tap/sbx or winget install Docker.sbx), or choose its path under Settings | Tools | OpenCode Web Panel."
             SbxFailureKind.SBX_TOO_OLD ->
                 "Docker Sandboxes ${synchronized(lock) { unsupportedSbxVersion }} is too old. " +
                     "OpenCode comes from Docker's OpenCode sandbox kits, which need sbx ${SbxCli.MINIMUM_SBX_VERSION} or later. " +

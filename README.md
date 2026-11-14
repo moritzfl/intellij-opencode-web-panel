@@ -136,7 +136,7 @@ Open <kbd>Settings/Preferences</kbd> > <kbd>Tools</kbd> > <kbd>OpenCode Web Pane
 - Starting never deletes the VM. When the spec asks for kits removed or reordered, config sharing toggled, or mounts added, removed, or switched to read-only, OpenCode stops with the differences and a **Recreate Sandbox** action; Apply asks before recreating. Mount paths that do not exist on this machine are skipped. Mounts can be marked **Read-only** (`readOnly: true`, or sbx's `host:ro`).
 - The spec is parsed strictly by the plugin and the launcher alike: unknown structure, `yes`/`no` flags or values such as `8GB` make it invalid instead of being ignored. Apply keeps comments and unknown keys.
 - Extra-mount host paths support a leading `${NAME}` or `${NAME:-fallback}`, resolved from the host environment. For example, `host: '${GRADLE_USER_HOME:-~/.gradle}'` with `readOnly: true` shares each developer's existing Gradle configuration without copying it. The fallback applies when the variable is unset or empty; `~` expands to the host home. Expansion is literal (no shell evaluation) and applies only to host mount paths, not guest environment variables. The entire directory is mounted, so its credentials and other contents are readable in the sandbox. Keep writable guest caches separate. An existing VM needs Recreate Sandbox to apply changed mounts.
-- Choose whether the plugin should auto-detect `opencode` or use a custom executable path.
+- Choose whether the plugin should auto-detect `opencode` or use a custom executable path. The setting shows the executable a start would use and its version.
 - Per project, let OpenCode select a port automatically, or set a fixed port. Host CLI binds that loopback port; Docker Sandbox republishes VM 4096 to it without recreating the sandbox.
 - Edit, generate, show, or copy the local server password stored in IntelliJ Password Safe.
 - Choose how the OpenCode server reaches the network: the IDE HTTP Proxy, environment
@@ -261,7 +261,7 @@ Project-specific settings are stored with the IDE project.
 - Check that the OpenCode CLI is installed.
 - Run `opencode --version` in a terminal.
 - The panel shows an error view with recent server output plus **Retry**, **Open Settings**, and **View Full Log** actions.
-- Open the plugin settings and use **Detect** or set the OpenCode executable path manually.
+- Open the plugin settings: the OpenCode executable setting shows which executable a start uses and its version, or what is wrong. Choose **Custom path** to set it manually.
 
 **The panel shows a failed server state**
 

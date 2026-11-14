@@ -24,7 +24,7 @@
 - The OpenCode and `sbx` executable settings show which executable a start
   would use and its version, or what is wrong, while you edit them. **Detect**
   is gone: choosing **Custom path** starts from the detected executable, and
-  Apply rejects a new custom path that cannot run.
+  Apply rejects a new custom path that is not an executable file.
 - The project page offers **Reset Sandbox…** next to the other server actions,
   with the create-time settings that wait for it right below.
 - The project page says when its server actions need Apply first, and why a

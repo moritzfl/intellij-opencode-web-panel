@@ -11,7 +11,7 @@ class SbxSetupChecklistTest {
             SbxSetupChecklist.format(
                 SbxSetupChecklist.appSteps(sbxFound = true, policyReady = false),
             )
-        assertTrue(text.contains("✓ Detect sbx"))
+        assertTrue(text.contains("✓ sbx: found"))
         assertTrue(text.contains("[ ] Network policy"))
         assertTrue(text.contains("Set up default network policy below"))
         assertFalse(
