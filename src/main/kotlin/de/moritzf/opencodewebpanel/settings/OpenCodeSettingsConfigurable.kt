@@ -100,6 +100,8 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
     private val probeGeneration = AtomicLong(0)
     private var detectedOpenCodePath: String? = null
     private var detectedSbxPath: String? = null
+    private var prefilledOpenCodePath: String? = null
+    private var prefilledSbxPath: String? = null
     private val sbxPathField =
         TextFieldWithBrowseButton().apply {
             textField.columns = 40
@@ -756,6 +758,8 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
                 OpenCodeBinaryMode.CUSTOM -> customSbxRadioButton.isSelected = true
             }
             sbxPathField.text = settings.sbxBinaryPath.trim()
+            prefilledOpenCodePath = null
+            prefilledSbxPath = null
         } finally {
             resetting = false
         }
@@ -843,14 +847,23 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
     /** A cleared field keeps the stored password, so only a non-blank new value counts. */
     private fun passwordEdited(): Boolean = password().let { it != null && it != savedPassword }
 
+    /**
+     * Compares what a start would launch, not the raw fields: a path left in the disabled field
+     * under Auto detect changes nothing a server uses.
+     */
     private fun hostLaunchChanged(settings: OpenCodeSettingsState): Boolean =
-        selectedBinaryMode() != settings.binaryModeValue() ||
-            binaryPath() != settings.binaryPath.trim() ||
+        openCodeExecutableForLaunch() != settings.executablePath() ||
             selectedProxyMode() != settings.proxyModeValue()
 
     private fun sandboxLaunchChanged(settings: OpenCodeSettingsState): Boolean =
-        selectedSbxBinaryMode() != settings.sbxBinaryModeValue() ||
-            sbxPath() != settings.sbxBinaryPath.trim()
+        sbxExecutableForChecks() != settings.sbxExecutablePath()
+
+    private fun openCodeExecutableForLaunch(): String =
+        if (customBinaryRadioButton.isSelected) {
+            binaryPath().ifBlank { OpenCodeSettingsState.DEFAULT_EXECUTABLE }
+        } else {
+            OpenCodeSettingsState.DEFAULT_EXECUTABLE
+        }
 
     private fun confirmServerRestart(scope: OpenCodeRestartScope?) {
         if (scope == null || ApplicationManager.getApplication().isUnitTestMode) return
@@ -914,25 +927,44 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
             add(environmentProxyRadioButton)
             add(noProxyRadioButton)
         }
-        autoBinaryRadioButton.addItemListener {
+        autoBinaryRadioButton.addItemListener { event ->
+            // Back to Auto detect: drop an untouched prefill so the form is unmodified again.
+            if (event.stateChange == ItemEvent.SELECTED && !resetting) {
+                if (prefilledOpenCodePath != null && binaryPath() == prefilledOpenCodePath) {
+                    binaryPathField.text = OpenCodeSettingsState.getInstance().binaryPath.trim()
+                }
+                prefilledOpenCodePath = null
+            }
             updateBinaryControls()
             scheduleExecutableProbe()
         }
         customBinaryRadioButton.addItemListener { event ->
             // Choosing a custom path starts from what auto detection found.
             if (event.stateChange == ItemEvent.SELECTED && !resetting && binaryPath().isEmpty()) {
-                detectedOpenCodePath?.let { binaryPathField.text = it }
+                detectedOpenCodePath?.let {
+                    binaryPathField.text = it
+                    prefilledOpenCodePath = it
+                }
             }
             updateBinaryControls()
             scheduleExecutableProbe()
         }
-        autoSbxRadioButton.addItemListener {
+        autoSbxRadioButton.addItemListener { event ->
+            if (event.stateChange == ItemEvent.SELECTED && !resetting) {
+                if (prefilledSbxPath != null && sbxPath() == prefilledSbxPath) {
+                    sbxPathField.text = OpenCodeSettingsState.getInstance().sbxBinaryPath.trim()
+                }
+                prefilledSbxPath = null
+            }
             updateSbxControls()
             scheduleExecutableProbe()
         }
         customSbxRadioButton.addItemListener { event ->
             if (event.stateChange == ItemEvent.SELECTED && !resetting && sbxPath().isEmpty()) {
-                detectedSbxPath?.let { sbxPathField.text = it }
+                detectedSbxPath?.let {
+                    sbxPathField.text = it
+                    prefilledSbxPath = it
+                }
             }
             updateSbxControls()
             scheduleExecutableProbe()

@@ -1,0 +1,138 @@
+package de.moritzf.opencodewebpanel.settings
+
+import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.options.ConfigurationException
+import com.intellij.openapi.ui.TextFieldWithBrowseButton
+import com.intellij.testFramework.ApplicationRule
+import com.intellij.testFramework.DisposableRule
+import com.intellij.testFramework.replaceService
+import de.moritzf.opencodewebpanel.configuration.OpenCodeBinaryMode
+import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsState
+import javax.swing.AbstractButton
+import javax.swing.SwingUtilities
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.ClassRule
+import org.junit.Rule
+import org.junit.Test
+import org.junit.rules.TemporaryFolder
+
+class OpenCodeSettingsConfigurableTest {
+    companion object {
+        @ClassRule @JvmField val application = ApplicationRule()
+    }
+
+    @get:Rule val disposable = DisposableRule()
+    @get:Rule val temp = TemporaryFolder()
+
+    private val settings = OpenCodeSettingsState()
+    private lateinit var configurable: OpenCodeSettingsConfigurable
+
+    @Before
+    fun setUp() {
+        ApplicationManager.getApplication()
+            .replaceService(OpenCodeSettingsState::class.java, settings, disposable.disposable)
+    }
+
+    @After
+    fun tearDown() {
+        if (::configurable.isInitialized) {
+            SwingUtilities.invokeAndWait { configurable.disposeUIResources() }
+        }
+    }
+
+    private fun open() {
+        configurable = OpenCodeSettingsConfigurable()
+        configurable.createComponent()
+    }
+
+    @Test
+    fun applyRejectsANewCustomPathThatIsNotAnExecutable() {
+        SwingUtilities.invokeAndWait {
+            open()
+            field<AbstractButton>("customBinaryRadioButton").isSelected = true
+            field<TextFieldWithBrowseButton>("binaryPathField").text =
+                temp.root.resolve("missing").absolutePath
+            val error = assertThrows(ConfigurationException::class.java) { configurable.apply() }
+            assertTrue(
+                error.messageHtml.toString(),
+                error.messageHtml.toString().contains("not found"),
+            )
+            assertEquals(OpenCodeBinaryMode.AUTO, settings.binaryModeValue())
+        }
+    }
+
+    @Test
+    fun anUnchangedSavedPathIsNotRevalidated() {
+        settings.binaryMode = OpenCodeBinaryMode.CUSTOM.name
+        settings.binaryPath = temp.root.resolve("uninstalled").absolutePath
+        SwingUtilities.invokeAndWait {
+            open()
+            // A zoom change must not fail because an untouched saved path is gone.
+            call("validateChangedExecutables", settings)
+        }
+    }
+
+    @Test
+    fun customPathStartsFromTheDetectedOneAndAutoDropsTheUntouchedPrefill() {
+        SwingUtilities.invokeAndWait {
+            open()
+            set("detectedOpenCodePath", "/detected/opencode")
+            field<AbstractButton>("customBinaryRadioButton").isSelected = true
+            assertEquals(
+                "/detected/opencode",
+                field<TextFieldWithBrowseButton>("binaryPathField").text,
+            )
+            assertTrue(configurable.isModified)
+            field<AbstractButton>("autoBinaryRadioButton").isSelected = true
+            assertEquals("", field<TextFieldWithBrowseButton>("binaryPathField").text)
+            assertFalse("Toggling back changes nothing", configurable.isModified)
+        }
+    }
+
+    @Test
+    fun resetNeverPrefillsAndAStrayAutoPathChangesNoLaunch() {
+        settings.binaryMode = OpenCodeBinaryMode.CUSTOM.name
+        SwingUtilities.invokeAndWait {
+            open()
+            set("detectedOpenCodePath", "/detected/opencode")
+            configurable.reset()
+            assertEquals("", field<TextFieldWithBrowseButton>("binaryPathField").text)
+            assertFalse(configurable.isModified)
+            field<AbstractButton>("autoBinaryRadioButton").isSelected = true
+            field<TextFieldWithBrowseButton>("binaryPathField").text = "/typed/but/unused"
+            assertFalse(
+                "Auto detect ignores the disabled field",
+                call("hostLaunchChanged", OpenCodeSettingsState().apply { binaryMode = "AUTO" })
+                    as Boolean,
+            )
+        }
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun <T> field(name: String): T =
+        OpenCodeSettingsConfigurable::class
+            .java
+            .getDeclaredField(name)
+            .apply { isAccessible = true }
+            .get(configurable) as T
+
+    private fun set(name: String, value: Any?) {
+        OpenCodeSettingsConfigurable::class
+            .java
+            .getDeclaredField(name)
+            .apply { isAccessible = true }
+            .set(configurable, value)
+    }
+
+    private fun call(name: String, settings: OpenCodeSettingsState): Any? =
+        OpenCodeSettingsConfigurable::class
+            .java
+            .getDeclaredMethod(name, OpenCodeSettingsState::class.java)
+            .apply { isAccessible = true }
+            .invoke(configurable, settings)
+}
