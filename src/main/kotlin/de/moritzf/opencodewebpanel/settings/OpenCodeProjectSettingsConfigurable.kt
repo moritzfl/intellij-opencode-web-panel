@@ -1536,7 +1536,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
     companion object {
         /** plugin.xml `projectConfigurable` id. */
         const val ID = "opencode.web.panel.project.settings"
-        const val PROJECT_SETTINGS_DISPLAY_NAME = "OpenCode Web Panel (Project)"
+        const val PROJECT_SETTINGS_DISPLAY_NAME = "This Project"
         private const val SBX_KIT_DOCS_URL = "https://docs.docker.com/ai/sandboxes/customize/kits/"
         private const val OPENCODE_IMAGE_TAGS_PAGE = "https://hub.docker.com/r/sbx/opencode/tags"
     }

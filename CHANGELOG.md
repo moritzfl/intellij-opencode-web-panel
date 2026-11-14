@@ -47,6 +47,9 @@
   description follows the runtime and an invalid port is marked while typing.
   Empty mount and kit tables offer an add link, and the mount table's tooltip
   explains `${NAME}` host paths.
+- The project settings moved from **Tools | OpenCode Web Panel (Project)** to
+  **Tools | OpenCode Web Panel | This Project**, next to the settings they
+  depend on.
 
 ### Fixed
 

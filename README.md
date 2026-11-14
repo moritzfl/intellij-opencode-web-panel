@@ -89,7 +89,7 @@ The tool window title bar and editor toolbar offer quick controls (also availabl
 - **Zoom out / Zoom in** - Scale the embedded OpenCode UI in 10% steps without reloading. Cmd/Ctrl with <kbd>+</kbd>, <kbd>-</kbd>, and <kbd>0</kbd> work inside the panel too.
 - **Reload Page** - Reload the embedded OpenCode UI. The server stays running.
 - **Move to Editor / Move to Tool Window** - Move the live panel without reloading. The current session, draft, and browser state stay intact.
-- **Restart Server** - Stop and restart this project's OpenCode server, and recreate the embedded browser in its current host. Recovers a stuck or crashed panel. Also on **OpenCode Web Panel (Project)**, where it reads **Start Server** while the server is stopped.
+- **Restart Server** - Stop and restart this project's OpenCode server, and recreate the embedded browser in its current host. Recovers a stuck or crashed panel. Also on **OpenCode Web Panel | This Project**, where it reads **Start Server** while the server is stopped.
 - The gear menu additionally offers **Reset Zoom**, **View Server Log**, and **OpenCode Web Panel Settings**.
 
 ### OpenCode in the Editor
@@ -116,7 +116,7 @@ Open <kbd>Settings/Preferences</kbd> > <kbd>Tools</kbd> > <kbd>OpenCode Web Pane
 
 ### OpenCode Server Setup
 
-- Per project (**OpenCode Web Panel (Project)**): **Runtime** Host or Docker Sandbox, this project's server status/restart/log/port, plus mounts and kits. Stored in `opencode-sbx/opencode-sbx.yaml` (source of truth; the panel hydrates from it). Apply also writes `opencode-sbx/opencode-sbx.sh`: run it with no arguments for the TUI, `--web` for the published browser server, or `acp` for ACP stdio, without the plugin. On Windows, run the `.sh` from Git Bash.
+- Per project (**OpenCode Web Panel | This Project**): **Runtime** Host or Docker Sandbox, this project's server status/restart/log/port, plus mounts and kits. Stored in `opencode-sbx/opencode-sbx.yaml` (source of truth; the panel hydrates from it). Apply also writes `opencode-sbx/opencode-sbx.sh`: run it with no arguments for the TUI, `--web` for the published browser server, or `acp` for ACP stdio, without the plugin. On Windows, run the `.sh` from Git Bash.
 - For monorepos, keep the project directory on the repository root and set **OpenCode working directory** to a relative subdirectory, for example `workingDirectory: ./app` in the project YAML. The whole repository stays mounted; OpenCode starts in that subdirectory. Changing it restarts OpenCode without recreating the sandbox or deleting its conversations. The foreign-session warning maps Windows sandbox paths back to the host and treats folders in one Git worktree as the same project; a separate linked worktree stays distinct.
 - Application settings: Host CLI binary, password, HTTP proxy, `sbx` path, and network-policy consent.
 - **Share host OpenCode config (read-only)** mounts the host config directory, including JSON/JSONC, skills, agents, commands, and plugins. The sandbox can read any credentials embedded in those files, but cannot change them. Host `auth.json` and the host credential database are not shared. Sandbox sessions and browser preferences remain separate.
@@ -141,9 +141,9 @@ Open <kbd>Settings/Preferences</kbd> > <kbd>Tools</kbd> > <kbd>OpenCode Web Pane
 - Edit, generate, show, or copy the local server password stored in IntelliJ Password Safe.
 - Choose how the OpenCode server reaches the network: the IDE HTTP Proxy, environment
   variables, or no proxy.
-- Restart this project's OpenCode server from the tool window or **OpenCode Web Panel (Project)**.
+- Restart this project's OpenCode server from the tool window or **OpenCode Web Panel | This Project**.
 - During startup/restart, the waiting view explains the current step and streams recent command output. Image downloads and kit installation can take several minutes. Elapsed time belongs to the current attempt, and a quiet step offers log/cancel guidance rather than an estimated countdown. Recent activity is available even with file logging disabled.
-- View recent OpenCode server output from **OpenCode Web Panel (Project)**.
+- View recent OpenCode server output from **OpenCode Web Panel | This Project**.
 - An optional lightning-bolt action indicates a newer same-major OpenCode release. Click it to upgrade a sandbox or view a copyable Host CLI upgrade command. For a 2.x sandbox it also checks Docker's OpenCode image and offers **Reset Sandbox** when that image is newer. Disable it in application settings.
 
 ### Sandbox credentials and standalone use
@@ -283,7 +283,7 @@ Project-specific settings are stored with the IDE project.
 
 **The panel is stuck, blank, or frozen on “Opening the OpenCode page…”**
 
-- Use **Restart Server** in the tool window title bar, gear menu, or **OpenCode Web Panel (Project)** settings (**Start Server** there while the server is stopped). Host CLI and Docker Sandbox restarts are this project only.
+- Use **Restart Server** in the tool window title bar, gear menu, or **OpenCode Web Panel | This Project** settings (**Start Server** there while the server is stopped). Host CLI and Docker Sandbox restarts are this project only.
 - **Reload Page** reloads the UI without restarting the server; use Restart if that is not enough.
 
 **The embedded UI behaves unexpectedly after an OpenCode update**

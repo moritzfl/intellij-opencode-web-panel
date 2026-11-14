@@ -3,6 +3,9 @@ package de.moritzf.opencodewebpanel
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.KeyboardShortcut
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.options.Configurable
+import com.intellij.openapi.options.SearchableConfigurable
+import com.intellij.openapi.options.ex.ConfigurableExtensionPointUtil
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.util.SystemInfo
 import com.intellij.openapi.wm.ToolWindow
@@ -170,16 +173,39 @@ class OpenCodePluginTest : BasePlatformTestCase() {
         assertTrue(pluginXml.contains("displayName=\"OpenCode Web Panel\""))
         assertEquals("OpenCode Web Panel", OpenCodeSettingsConfigurable().displayName)
 
-        // Both pages sit under Tools; the project-scoped one is suffixed so the tree does not
-        // show the same label twice. The descriptor supplies the tree label before the class is
-        // instantiated, so the two spellings must match.
+        // The project page is a child of the application page. The descriptor supplies the tree
+        // label before the class is instantiated, so the two spellings must match.
         val projectDisplayName = OpenCodeProjectSettingsConfigurable.PROJECT_SETTINGS_DISPLAY_NAME
-        assertEquals("OpenCode Web Panel (Project)", projectDisplayName)
+        assertEquals("This Project", projectDisplayName)
         assertEquals(projectDisplayName, OpenCodeProjectSettingsConfigurable(project).displayName)
-        assertTrue(pluginXml.contains("displayName=\"$projectDisplayName\""))
+        assertTrue(
+            pluginXml.contains(
+                "parentId=\"${OpenCodeSettingsConfigurable.ID}\" nonDefaultProject=\"true\" " +
+                    "displayName=\"$projectDisplayName\"",
+            ),
+        )
         // The pages link to each other through these ids.
         assertTrue(pluginXml.contains("id=\"${OpenCodeSettingsConfigurable.ID}\""))
         assertTrue(pluginXml.contains("id=\"${OpenCodeProjectSettingsConfigurable.ID}\""))
+    }
+
+    fun testProjectPageIsNestedUnderTheApplicationPageInTheSettingsTree() {
+        fun ids(configurable: Configurable): List<String> =
+            listOfNotNull((configurable as? SearchableConfigurable)?.id) +
+                (configurable as? Configurable.Composite)?.configurables.orEmpty().flatMap(::ids)
+        fun find(configurables: List<Configurable>, id: String): Configurable? =
+            configurables.firstNotNullOfOrNull { candidate ->
+                if ((candidate as? SearchableConfigurable)?.id == id) candidate
+                else
+                    find(
+                        (candidate as? Configurable.Composite)?.configurables.orEmpty().toList(),
+                        id,
+                    )
+            }
+        val group = ConfigurableExtensionPointUtil.getConfigurableGroup(project, true)
+        val application = find(group.configurables.toList(), OpenCodeSettingsConfigurable.ID)
+        assertNotNull("application page in the tree", application)
+        assertTrue(ids(application!!).contains(OpenCodeProjectSettingsConfigurable.ID))
     }
 
     fun testBrowserShortcutActionsAreRegisteredForKeymapCustomization() {
