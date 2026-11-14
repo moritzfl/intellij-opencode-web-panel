@@ -404,8 +404,9 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
         val serverPanel = panel {
             row {
                 comment(
-                    "For projects that run OpenCode on this computer (Host CLI). Each project " +
-                        "chooses its runtime in its <a href=\"project\">project settings</a>.",
+                    "Applies to every project; the executable and HTTP Proxy only to projects " +
+                        "on the Host CLI runtime, chosen in each project's " +
+                        "<a href=\"project\">project settings</a>.",
                     action = HyperlinkEventAction { openProjectSettings() },
                 )
             }
@@ -525,8 +526,8 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
         val uiSettingsPanel = panel {
             row {
                 comment(
-                        "These options add to OpenCode's page in the panel. If one clashes with an " +
-                            "OpenCode update, turn it off: the page reloads without it.",
+                        "Most of these options change OpenCode's page in the panel. If one clashes " +
+                            "with an OpenCode update, turn it off: the page reloads without it.",
                     )
                     .resizableColumn()
                 link("Restore defaults") { restorePanelDefaults() }.align(AlignX.RIGHT)
@@ -1388,6 +1389,7 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
             sbxFound && !policyReady && policyStatus != SbxPolicyStatus.CHECKING
         initSbxPolicyButton.toolTipText =
             when {
+                policyStatus == SbxPolicyStatus.CHECKING -> "Checking the current policy…"
                 policyReady -> "This computer already has a sandbox network policy."
                 !sbxFound -> "Install sbx first, or choose its Custom path above."
                 else ->

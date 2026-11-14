@@ -571,7 +571,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                     row {
                         cell(sbxRuntimeRadioButton)
                             .comment(
-                                "Runs OpenCode in a Docker Sandbox VM from Docker's OpenCode kits. Needs sbx ${SbxCli.MINIMUM_SBX_VERSION} or later and a Docker account; Apple silicon Mac, Windows 11, or Linux with KVM.",
+                                "Runs OpenCode in a Docker Sandbox VM from Docker's OpenCode kits. Needs sbx ${SbxCli.MINIMUM_SBX_VERSION} or later and a Docker account; Apple silicon Mac, Windows 11 with Hyper-V (WHP), or Linux with KVM.",
                             )
                     }
                     indent {

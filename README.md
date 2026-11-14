@@ -125,7 +125,7 @@ Open <kbd>Settings/Preferences</kbd> > <kbd>Tools</kbd> > <kbd>OpenCode Web Pane
 
 ### Panel
 
-These options add to OpenCode's page in the panel. If one clashes with an OpenCode update, turn it off: the page reloads without it. **Restore defaults** resets this tab.
+Most of these options change OpenCode's page in the panel. If one clashes with an OpenCode update, turn it off: the page reloads without it. **Restore defaults** resets this tab.
 
 - **Appearance**: zoom; keep the compact (mobile) layout at any panel width, with a full-width Home session list in OpenCode 2.x; show agent and model on responses in the compact layout, which OpenCode 2 otherwise omits; hide OpenCode's floating website button; show path previews faster; match OpenCode's color scheme to the IDE theme; show the page's mouse cursors.
 - **Navigation and Input**: open file links in the IDE, optionally also file, class, and code references in chat; open diffs in the IDE with Ctrl/Cmd+Click or Alt+Click; open web links in the system browser; drop and paste files into chat, using `@relative/path` for project files.
@@ -192,7 +192,8 @@ credential proxy; OpenCode owns accounts created inside the sandbox.
    With `sbx` 0.39.0, removing a secret did not clear its injected value even
    after a VM Stop/Start. Remove the secret and recreate the sandbox when
    switching from native key injection to a sandbox-owned account; keep
-   **Persist sandbox sessions across Reset** enabled to retain OpenCode data.
+   **Persist sandbox sessions and sign-ins across Reset Sandbox** enabled to
+   retain OpenCode data.
 4. Run `./opencode-sbx/opencode-sbx.sh` to open a TUI in the same sandbox, even
    while the IDE-managed server is running. The launcher attaches with `sbx exec`
    and keeps the configured project working directory; it never creates another

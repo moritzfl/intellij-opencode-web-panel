@@ -228,7 +228,7 @@ internal class SbxOpenCodeServerBackend(
             SbxFailureKind.POLICY_UNINITIALIZED ->
                 "Sandbox network policy is not set up. Set up the default network policy under OpenCode Settings, Docker Sandboxes tab, or switch this project to the Host CLI runtime."
             SbxFailureKind.FOREIGN_SANDBOX ->
-                "A sandbox already exists at this name or workspace that this panel does not own. Adopt it or create a new one from settings."
+                "A sandbox already exists at this name or workspace that this panel does not own. Adopt it, or create a new one."
             SbxFailureKind.SERVE_UNHEALTHY ->
                 "The sandbox started but OpenCode did not become available on the published loopback port."
             SbxFailureKind.COMMAND_FAILED ->
