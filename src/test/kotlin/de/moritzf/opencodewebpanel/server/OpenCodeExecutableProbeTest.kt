@@ -30,16 +30,29 @@ class OpenCodeExecutableProbeTest {
         val failing = OpenCodeExecutableProbes.openCode(path, answering("", exitCode = 1))
         assertEquals(path, failing.path)
         assertNull(failing.version)
+        assertTrue(failing.failed)
     }
 
     @Test
-    fun missingExecutableHasNoPath() {
+    fun missingOrUnparseablePathHasNoPathAndRunsNothing() {
+        val mustNotRun = SbxCommandRunner { _, _, _, _ -> error("must not run") }
+        for (path in listOf(File(temp.root, "missing").absolutePath, "/tmp/a\u0000b")) {
+            assertNull(path, OpenCodeExecutableProbes.openCode(path, mustNotRun).path)
+            assertNull(path, OpenCodeExecutableProbes.sbx(path, mustNotRun).path)
+        }
+    }
+
+    @Test
+    fun theDesktopAppIsNeverLaunched() {
+        val macOs = File(temp.newFolder("OpenCode.app", "Contents", "MacOS"), "OpenCode")
+        macOs.createNewFile()
+        macOs.setExecutable(true)
         val probe =
-            OpenCodeExecutableProbes.openCode(
-                File(temp.root, "missing").absolutePath,
-                { _, _, _, _ -> error("must not run") },
-            )
-        assertNull(probe.path)
+            OpenCodeExecutableProbes.openCode(macOs.absolutePath) { _, _, _, _ ->
+                error("must not run")
+            }
+        assertTrue(probe.desktopApp)
+        assertEquals(macOs.absolutePath, probe.path)
     }
 
     @Test

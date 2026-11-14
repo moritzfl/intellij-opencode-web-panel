@@ -3,6 +3,7 @@ package de.moritzf.opencodewebpanel.server
 import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsState
 import java.io.File
 import java.nio.file.Files
+import java.nio.file.InvalidPathException
 
 /**
  * Host CLI launch: command line, PATH lookup, and the serve [ProcessBuilder]. Call sites still go
@@ -153,9 +154,16 @@ internal object OpenCodeProcessLaunch {
             .distinct()
     }
 
+    /** A typed path can be no path at all (quotes or `*` on Windows, NUL): not runnable. */
     private fun File.isRunnableCommand(): Boolean {
-        return Files.isRegularFile(toPath()) &&
-            (Files.isExecutable(toPath()) || hasWindowsCommandExtension(name))
+        val path =
+            try {
+                toPath()
+            } catch (_: InvalidPathException) {
+                return false
+            }
+        return Files.isRegularFile(path) &&
+            (Files.isExecutable(path) || hasWindowsCommandExtension(name))
     }
 
     private fun hasWindowsCommandExtension(fileName: String): Boolean {

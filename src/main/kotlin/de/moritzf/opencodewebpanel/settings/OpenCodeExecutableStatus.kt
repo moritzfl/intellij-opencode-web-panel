@@ -13,6 +13,13 @@ internal fun openCodeExecutableStatus(
 ): ExecutableStatus {
     val path = probe.path
     return when {
+        path != null && probe.desktopApp ->
+            ExecutableStatus(
+                "$path is the OpenCode desktop app. Choose the opencode command-line tool.",
+                true,
+            )
+        path != null && probe.failed ->
+            ExecutableStatus("$path did not answer opencode --version.", true)
         path != null ->
             ExecutableStatus(
                 "Uses $path" + probe.version?.let { " (OpenCode $it)" }.orEmpty(),
@@ -30,7 +37,10 @@ internal fun openCodeExecutableStatus(
     }
 }
 
-/** What a sandbox start needs from this computer, in one line under the runtime choice. */
+/**
+ * What a sandbox start needs from this computer, in one line under the runtime choice. Docker
+ * sign-in cannot be read without starting the daemon, so it is not part of the line.
+ */
 internal fun sandboxPrerequisitesText(
     probe: OpenCodeExecutableProbe,
     policyReady: Boolean,
@@ -38,12 +48,13 @@ internal fun sandboxPrerequisitesText(
     val sbx =
         when {
             probe.path == null -> "sbx not found"
+            probe.failed -> "sbx does not run"
             probe.tooOld -> "sbx ${probe.version} is too old (needs ${SbxCli.MINIMUM_SBX_VERSION})"
             else -> probe.version?.let { "sbx $it" } ?: "sbx found"
         }
     val policy = if (policyReady) "network policy set up" else "no network policy yet"
-    val ready = probe.path != null && !probe.tooOld && policyReady
-    return ExecutableStatus((if (ready) "Ready: " else "Needs setup: ") + "$sbx · $policy", !ready)
+    val ready = probe.path != null && !probe.failed && !probe.tooOld && policyReady
+    return ExecutableStatus("This computer: $sbx · $policy", !ready)
 }
 
 /** sbx is optional: missing is only a problem when the user pointed at a path. */
@@ -54,6 +65,7 @@ internal fun sbxExecutableStatus(
 ): ExecutableStatus {
     val path = probe.path
     return when {
+        path != null && probe.failed -> ExecutableStatus("$path did not answer sbx version.", true)
         path != null && probe.tooOld ->
             ExecutableStatus(
                 "Uses $path (sbx ${probe.version}). Docker Sandboxes need sbx " +

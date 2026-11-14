@@ -22,16 +22,41 @@ class OpenCodeExecutableStatusTest {
             openCodeExecutableStatus(OpenCodeExecutableProbe(null, null), true, "/nope"),
         )
         assertTrue(openCodeExecutableStatus(OpenCodeExecutableProbe(null, null), false, "").problem)
+        assertTrue(
+            "An executable that does not answer --version is flagged",
+            openCodeExecutableStatus(
+                    OpenCodeExecutableProbe("/bin/opencode", null, failed = true),
+                    true,
+                    "/bin/opencode",
+                )
+                .problem,
+        )
+        assertEquals(
+            ExecutableStatus(
+                "/A/OpenCode.app/Contents/MacOS/OpenCode is the OpenCode desktop app. " +
+                    "Choose the opencode command-line tool.",
+                true,
+            ),
+            openCodeExecutableStatus(
+                OpenCodeExecutableProbe(
+                    "/A/OpenCode.app/Contents/MacOS/OpenCode",
+                    null,
+                    desktopApp = true,
+                ),
+                true,
+                "x",
+            ),
+        )
     }
 
     @Test
     fun sandboxPrerequisitesNameWhatIsMissing() {
         assertEquals(
-            ExecutableStatus("Ready: sbx 0.53.0 · network policy set up", false),
+            ExecutableStatus("This computer: sbx 0.53.0 · network policy set up", false),
             sandboxPrerequisitesText(OpenCodeExecutableProbe("/bin/sbx", "0.53.0"), true),
         )
         assertEquals(
-            ExecutableStatus("Needs setup: sbx not found · no network policy yet", true),
+            ExecutableStatus("This computer: sbx not found · no network policy yet", true),
             sandboxPrerequisitesText(OpenCodeExecutableProbe(null, null), false),
         )
         assertTrue(

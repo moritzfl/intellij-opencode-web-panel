@@ -32,6 +32,7 @@ import de.moritzf.opencodewebpanel.configuration.OpenCodeRestartScope
 import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsListener
 import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsState
 import de.moritzf.opencodewebpanel.configuration.OpenCodeUiSetting
+import de.moritzf.opencodewebpanel.server.OpenCodeExecutableProbe
 import de.moritzf.opencodewebpanel.server.OpenCodeExecutableProbes
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
@@ -42,6 +43,8 @@ import de.moritzf.opencodewebpanel.server.SbxProcessRunner
 import de.moritzf.opencodewebpanel.ui.confirmOpenCodeServersRestart
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
+import java.awt.event.FocusAdapter
+import java.awt.event.FocusEvent
 import java.awt.event.ItemEvent
 import java.util.concurrent.atomic.AtomicLong
 import javax.swing.ButtonGroup
@@ -934,12 +937,23 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
             updateSbxControls()
             scheduleExecutableProbe()
         }
-        val reprobe =
-            object : DocumentAdapter() {
-                override fun textChanged(e: DocumentEvent) = scheduleExecutableProbe()
-            }
-        binaryPathField.textField.document.addDocumentListener(reprobe)
-        sbxPathField.textField.document.addDocumentListener(reprobe)
+        // Probe typed paths once typing ends (focus leaves the field), not on every pause: a
+        // partial path could resolve to an unrelated program and run it. Browsing and prefills
+        // change the text without focus and probe right away.
+        for (field in listOf(binaryPathField.textField, sbxPathField.textField)) {
+            field.document.addDocumentListener(
+                object : DocumentAdapter() {
+                    override fun textChanged(e: DocumentEvent) {
+                        if (!field.isFocusOwner) scheduleExecutableProbe()
+                    }
+                },
+            )
+            field.addFocusListener(
+                object : FocusAdapter() {
+                    override fun focusLost(e: FocusEvent) = scheduleExecutableProbe()
+                },
+            )
+        }
         showPasswordButton.addActionListener { updatePasswordVisibility() }
         copyPasswordButton.addActionListener { copyPassword() }
         generatePasswordButton.addActionListener {
@@ -1088,15 +1102,21 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
         sbxStatusLabel.text = "Checking…"
         val app = ApplicationManager.getApplication()
         app.executeOnPooledThread {
-            val openCode =
+            // A probe that throws must end as a status line, never as an IDE error report.
+            val unknown = OpenCodeExecutableProbe(null, null)
+            val openCode = runCatching {
                 OpenCodeExecutableProbes.openCode(
                     if (customOpenCode) openCodeEntered
                     else OpenCodeSettingsState.DEFAULT_EXECUTABLE,
                 )
-            val sbx =
+            }
+                .getOrDefault(unknown)
+            val sbx = runCatching {
                 OpenCodeExecutableProbes.sbx(
                     if (customSbx) sbxEntered else SbxCli.DEFAULT_EXECUTABLE,
                 )
+            }
+                .getOrDefault(unknown)
             val autoOpenCode =
                 if (customOpenCode) OpenCodeServerProtocol.detectExecutablePath() else openCode.path
             val autoSbx =
