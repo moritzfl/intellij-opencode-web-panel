@@ -17,6 +17,10 @@
 
 ### Fixed
 
+- Applying right after typing a new OpenCode directory no longer stops with
+  "Loaded the sandbox settings of the new OpenCode directory"; the directory's
+  own sandbox settings load and apply in one step. A folder chosen with the
+  browse button loads its settings immediately.
 - Declining a settings confirmation reports "Apply cancelled" rather than an
   error.
 

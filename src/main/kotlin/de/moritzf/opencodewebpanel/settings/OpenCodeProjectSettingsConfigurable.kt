@@ -13,6 +13,7 @@ import com.intellij.openapi.ui.MessageDialogBuilder
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.ui.TextFieldWithBrowseButton
 import com.intellij.ui.CollectionComboBoxModel
+import com.intellij.ui.DocumentAdapter
 import com.intellij.ui.ToolbarDecorator
 import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.JBLabel
@@ -60,6 +61,8 @@ import javax.swing.ButtonGroup
 import javax.swing.JButton
 import javax.swing.JComponent
 import javax.swing.JTable
+import javax.swing.SwingUtilities
+import javax.swing.event.DocumentEvent
 import javax.swing.table.TableCellEditor
 
 class OpenCodeProjectSettingsConfigurable(private val project: Project) : Configurable {
@@ -70,6 +73,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
     private var loadedSpecDirectory: String? = null
     private var setupCheckSequence = 0L
     private var setupCheckRunning = false
+    private var directoryReloadQueued = false
     private val serverStatusLabel =
         JBLabel().apply { toolTipText = "OpenCode server status for this project" }
     private val diagnosticsLabel =
@@ -558,14 +562,10 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
             }
         }
         commitTableEditors()
-        // Enter or the folder chooser can apply before focus-lost loaded the new directory's spec.
-        // Never write the previous directory's form into another project's YAML.
-        if (effectiveDirectory() != loadedSpecDirectory) {
-            onDirectoryTargetChanged()
-            throw ConfigurationException(
-                "Loaded the sandbox settings of the new OpenCode directory. Review them, then apply again.",
-            )
-        }
+        // Enter in the directory field can apply before focus-lost loaded the new directory's
+        // spec. Never write the previous directory's form into another project's YAML: load the
+        // destination first; the confirmation below still lists the switch.
+        if (effectiveDirectory() != loadedSpecDirectory) onDirectoryTargetChanged()
         if (sbxRuntimeRadioButton.isSelected) {
             if (SbxCli.parseMemory(sbxMemoryField.text) == null) {
                 throw ConfigurationException("Sandbox memory must be a value like 4g or 512m.")
@@ -735,6 +735,21 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
             object : java.awt.event.FocusAdapter() {
                 override fun focusLost(e: java.awt.event.FocusEvent) {
                     onDirectoryTargetChanged()
+                }
+            },
+        )
+        // The folder chooser sets the text without focus passing through the field. setText
+        // fires remove + insert; load once, after both.
+        projectDirectoryField.textField.document.addDocumentListener(
+            object : DocumentAdapter() {
+                override fun textChanged(e: DocumentEvent) {
+                    if (hydrating || directoryReloadQueued) return
+                    if (projectDirectoryField.textField.isFocusOwner) return
+                    directoryReloadQueued = true
+                    SwingUtilities.invokeLater {
+                        directoryReloadQueued = false
+                        if (panel != null) onDirectoryTargetChanged()
+                    }
                 }
             },
         )

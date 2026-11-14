@@ -515,6 +515,34 @@ class OpenCodeProjectSettingsConfigurableTest {
         }
     }
 
+    @Test
+    fun applyBeforeTheDirectoryFieldLostFocusLoadsTheDestinationInsteadOfFailing() {
+        SwingUtilities.invokeAndWait {
+            val oldDirectory = temp.newFolder("typed old").toPath().toRealPath().toString()
+            val newDirectory = temp.newFolder("typed new").toPath().toRealPath().toString()
+            assertNotNull(
+                SbxLaunchSpec.persist(
+                    SbxLaunchSpec.defaults(newDirectory, hostPort = appSettings.hostPortOrNull())
+                        .copy(kits = listOf("./dest-kit")),
+                ),
+            )
+            projectSettings.projectDirectoryMode = OpenCodeProjectDirectoryMode.CUSTOM.name
+            projectSettings.openCodeProjectDirectory = oldDirectory
+            configurable.disposeUIResources()
+            configurable = OpenCodeProjectSettingsConfigurable(project)
+            configurable.createComponent()
+            field<JTextField>("sbxMemoryField").text = "16g"
+            // Enter in the field applies before focus-lost or the queued reload ran.
+            field<TextFieldWithBrowseButton>("projectDirectoryField").text = newDirectory
+            configurable.apply()
+            val written = SbxLaunchSpec.load(newDirectory)!!
+            assertEquals(listOf("./dest-kit"), written.kits)
+            assertEquals("The old form must not leak into the destination", "4g", written.memory)
+            assertEquals(newDirectory, projectSettings.openCodeProjectDirectory)
+            assertFalse(configurable.isModified())
+        }
+    }
+
     @Suppress("UNCHECKED_CAST")
     private fun <T> field(name: String): T =
         OpenCodeProjectSettingsConfigurable::class
