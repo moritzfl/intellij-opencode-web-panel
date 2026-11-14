@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [2.9.0] - 2026-11-14
+
 ### Changed
 
 - Docker Sandboxes create OpenCode from Docker's published kits
@@ -1241,7 +1243,13 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.7.5...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.9.0...HEAD
+[2.9.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.8.3...2.9.0
+[2.8.3]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.8.2...2.8.3
+[2.8.2]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.8.1...2.8.2
+[2.8.1]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.8.0...2.8.1
+[2.8.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.7.6...2.8.0
+[2.7.6]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.7.5...2.7.6
 [2.7.5]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.7.4...2.7.5
 [2.7.4]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.7.3...2.7.4
 [2.7.3]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.7.2...2.7.3
