@@ -113,7 +113,7 @@ class OpenCodeProjectSettingsConfigurableTest {
             native.setServerRunning(true) // No actual process or server is launched by this test.
             field<AbstractButton>("sbxRuntimeRadioButton").isSelected = true
             field<JTextField>("sbxMemoryField").text = "8g"
-            field<JTextField>("sbxCpusField").text = "4"
+            field<javax.swing.JSpinner>("sbxCpusField").value = 4
             field<AbstractButton>("sbxShareHostConfigCheckBox").isSelected = true
             field<AbstractButton>("sbxOpenCodeV2RadioButton").isSelected = true
             field<AbstractButton>("sbxEnableIntellijMcpCheckBox").isSelected = false
@@ -570,6 +570,35 @@ class OpenCodeProjectSettingsConfigurableTest {
                 "Blank means the default port",
                 null,
                 portField.getClientProperty("JComponent.outline"),
+            )
+        }
+    }
+
+    @Test
+    fun badMemoryAndMissingMountPathsAreMarkedBeforeApply() {
+        val existing = temp.newFolder("shared").toPath().toRealPath().toString()
+        SwingUtilities.invokeAndWait {
+            configurable.createComponent()
+            val memory = field<JTextField>("sbxMemoryField")
+            memory.text = "8GB"
+            assertEquals("error", memory.getClientProperty("JComponent.outline"))
+            memory.text = "8g"
+            assertEquals(null, memory.getClientProperty("JComponent.outline"))
+            val problem =
+                OpenCodeProjectSettingsConfigurable::class
+                    .java
+                    .getDeclaredMethod("hostPathProblem", String::class.java)
+                    .apply { isAccessible = true }
+            assertEquals(null, problem.invoke(configurable, existing))
+            assertEquals(null, problem.invoke(configurable, "$existing:ro"))
+            assertTrue(
+                (problem.invoke(configurable, "./not-here") as String).startsWith(
+                    "Not on this computer:",
+                ),
+            )
+            assertTrue(
+                "An unset required variable explains itself",
+                problem.invoke(configurable, "\${OCWP_SURELY_UNSET_VARIABLE}") != null,
             )
         }
     }

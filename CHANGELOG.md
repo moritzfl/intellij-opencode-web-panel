@@ -64,6 +64,9 @@
   opening another application. It is disabled, with the reason, while there is
   nothing to show. The sandbox details under the server status show one item
   per line and can be copied.
+- **CPUs** is a number field from 1 to 32, an invalid **Memory** value is
+  marked while typing, mount host paths that do not exist on this computer
+  show a warning, and the Docker image field is wide enough for a digest.
 
 ### Fixed
 

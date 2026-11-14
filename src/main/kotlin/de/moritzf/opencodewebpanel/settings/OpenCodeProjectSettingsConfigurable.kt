@@ -72,15 +72,21 @@ import java.awt.Component
 import java.awt.event.HierarchyEvent
 import java.awt.event.ItemEvent
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.Path
 import javax.swing.AbstractCellEditor
 import javax.swing.ButtonGroup
 import javax.swing.JButton
 import javax.swing.JComponent
 import javax.swing.JEditorPane
+import javax.swing.JSpinner
 import javax.swing.JTable
+import javax.swing.SpinnerNumberModel
 import javax.swing.SwingUtilities
 import javax.swing.event.DocumentEvent
+import javax.swing.table.DefaultTableCellRenderer
 import javax.swing.table.TableCellEditor
+import javax.swing.table.TableCellRenderer
 
 class OpenCodeProjectSettingsConfigurable(private val project: Project) : Configurable {
     private var panel: JComponent? = null
@@ -194,7 +200,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
     private val sbxOpenCodeImageComboBox =
         ComboBox(sbxOpenCodeImageModel).apply {
             isEditable = true
-            prototypeDisplayValue = "2.10.10-rc.1"
+            prototypeDisplayValue = "sha256:0123456789abcdef0123456789"
             toolTipText =
                 "Docker's OpenCode 2 image for new sandboxes: latest, a tag such as 2.2.7, or a sha256: digest"
             accessibleContext.accessibleName = "OpenCode 2 Docker image"
@@ -228,13 +234,25 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
             columns = 6
             toolTipText = "Sandbox memory at create time (for example 4g)"
             accessibleContext.accessibleName = "Sandbox memory"
+            // Marked while typing, like the port; Apply still rejects it with the reason.
+            document.addDocumentListener(
+                object : DocumentAdapter() {
+                    override fun textChanged(e: DocumentEvent) {
+                        val invalid = SbxCli.parseMemory(text) == null
+                        putClientProperty("JComponent.outline", if (invalid) "error" else null)
+                    }
+                },
+            )
         }
+    // 1..32 like `SbxCli.parseCpus`: a spinner cannot hold an invalid count.
     private val sbxCpusField =
-        JBTextField().apply {
-            columns = 4
+        JSpinner(SpinnerNumberModel(SbxCli.DEFAULT_CPUS.toInt(), 1, 32, 1)).apply {
             toolTipText = "Sandbox CPUs at create time"
             accessibleContext.accessibleName = "Sandbox CPUs"
         }
+
+    private fun cpusText(): String = (sbxCpusField.value as Number).toInt().toString()
+
     private val sbxWorkingDirectoryField =
         JBTextField().apply {
             columns = 24
@@ -279,6 +297,8 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                 }
 
                 override fun getEditor(item: ExtraMountRow): TableCellEditor = hostPathEditor
+
+                override fun getRenderer(item: ExtraMountRow): TableCellRenderer = hostPathRenderer
             },
             object : ColumnInfo<ExtraMountRow, String>("Sandbox Path") {
                 override fun valueOf(item: ExtraMountRow): String = item.sandboxPath
@@ -301,6 +321,41 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                 }
             },
         )
+    /** Marks host paths a start would skip, so a typo is visible before the sandbox starts. */
+    private val hostPathRenderer =
+        object : DefaultTableCellRenderer() {
+            override fun getTableCellRendererComponent(
+                table: JTable,
+                value: Any?,
+                isSelected: Boolean,
+                hasFocus: Boolean,
+                row: Int,
+                column: Int,
+            ): Component {
+                super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column)
+                val problem = hostPathProblem(value as? String)
+                icon = if (problem != null) AllIcons.General.Warning else null
+                toolTipText = problem
+                return this
+            }
+        }
+
+    private fun hostPathProblem(raw: String?): String? {
+        val text = raw?.trim().orEmpty().removeSuffix(":ro").removeSuffix(":RO")
+        if (text.isEmpty()) return null
+        val workspace = effectiveDirectory() ?: return null
+        val host = runCatching {
+            SbxCli.resolveExtraMounts(listOf(SbxExtraMount(text, "", false)), workspace)
+                .single()
+                .hostPath
+        }
+            .getOrElse {
+                return it.message ?: "Cannot resolve this host path."
+            }
+        val exists = runCatching { Files.exists(Path.of(host)) }.getOrDefault(false)
+        return if (exists) null else "Not on this computer: $host. A start skips this mount."
+    }
+
     private val extraMountTable =
         TableView<ExtraMountRow>(extraMountTableModel).apply {
             tableHeader.reorderingAllowed = false
@@ -587,7 +642,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         if (
             sbxRuntimeRadioButton.isSelected &&
                 (SbxCli.parseMemory(sbxMemoryField.text) == null ||
-                    SbxCli.parseCpus(sbxCpusField.text) == null)
+                    SbxCli.parseCpus(cpusText()) == null)
         ) {
             return true
         }
@@ -638,9 +693,10 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         }
         if (sbxRuntimeRadioButton.isSelected) {
             if (SbxCli.parseMemory(sbxMemoryField.text) == null) {
+                resourcesGroup?.expanded = true // the field may sit in the collapsed section
                 throw ConfigurationException("Sandbox memory must be a value like 4g or 512m.")
             }
-            if (SbxCli.parseCpus(sbxCpusField.text) == null) {
+            if (SbxCli.parseCpus(cpusText()) == null) {
                 throw ConfigurationException("Sandbox CPUs must be an integer from 1 to 32.")
             }
             if (
@@ -1119,7 +1175,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
             workingDirectory = SbxCli.posixPath(sbxWorkingDirectoryField.text).ifBlank { "./" },
             name = SbxCli.sandboxName(canonical),
             memory = SbxCli.sanitizeMemory(sbxMemoryField.text),
-            cpus = SbxCli.sanitizeCpus(sbxCpusField.text),
+            cpus = SbxCli.sanitizeCpus(cpusText()),
             kits = SbxCli.parseLineList(kitRows().joinToString("\n") { it.ref }),
             extraMounts =
                 extraMountRows()
@@ -1205,7 +1261,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         if (sandbox) sbxRuntimeRadioButton.isSelected = true
         else hostRuntimeRadioButton.isSelected = true
         sbxMemoryField.text = spec?.memory ?: SbxCli.DEFAULT_MEMORY
-        sbxCpusField.text = spec?.cpus ?: SbxCli.DEFAULT_CPUS
+        sbxCpusField.value = SbxCli.sanitizeCpus(spec?.cpus).toInt()
         sbxWorkingDirectoryField.text = spec?.workingDirectory ?: "./"
         sbxShareHostConfigCheckBox.isSelected = spec?.shareHostOpencodeConfig ?: false
         if (spec?.openCodeVersion == SbxOpenCodeVersion.V2) {
