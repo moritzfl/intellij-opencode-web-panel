@@ -13,6 +13,7 @@ import com.intellij.openapi.ui.MessageDialogBuilder
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.ui.TextFieldWithBrowseButton
 import com.intellij.openapi.util.ThrowableComputable
+import com.intellij.ui.DocumentAdapter
 import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBPasswordField
@@ -29,6 +30,7 @@ import de.moritzf.opencodewebpanel.configuration.OpenCodeRestartScope
 import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsListener
 import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsState
 import de.moritzf.opencodewebpanel.configuration.OpenCodeUiSetting
+import de.moritzf.opencodewebpanel.server.OpenCodeExecutableProbes
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
@@ -37,6 +39,7 @@ import de.moritzf.opencodewebpanel.server.SbxProcessRunner
 import de.moritzf.opencodewebpanel.ui.confirmOpenCodeServersRestart
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
+import java.awt.event.ItemEvent
 import java.util.concurrent.atomic.AtomicLong
 import javax.swing.ButtonGroup
 import javax.swing.JButton
@@ -45,6 +48,7 @@ import javax.swing.JSpinner
 import javax.swing.JToggleButton
 import javax.swing.SpinnerNumberModel
 import javax.swing.Timer
+import javax.swing.event.DocumentEvent
 
 class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
     private var panel: JComponent? = null
@@ -80,9 +84,16 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
         }
 
     private val autoBinaryRadioButton = JBRadioButton("Auto detect")
-    private val customBinaryRadioButton = JBRadioButton("OpenCode path")
+    private val customBinaryRadioButton = JBRadioButton("Custom path")
     private val autoSbxRadioButton = JBRadioButton("Auto detect")
-    private val customSbxRadioButton = JBRadioButton("Sbx path")
+    private val customSbxRadioButton = JBRadioButton("Custom path")
+    private val binaryStatusLabel = JBLabel().apply { setAllowAutoWrapping(true) }
+    private val sbxStatusLabel = JBLabel().apply { setAllowAutoWrapping(true) }
+    private val probeTimer =
+        Timer(PROBE_DELAY_MILLIS) { probeExecutables() }.apply { isRepeats = false }
+    private val probeGeneration = AtomicLong(0)
+    private var detectedOpenCodePath: String? = null
+    private var detectedSbxPath: String? = null
     private val sbxPathField =
         TextFieldWithBrowseButton().apply {
             textField.columns = 40
@@ -95,11 +106,6 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
                 FileChooserDescriptorFactory.createSingleFileNoJarsDescriptor(),
             )
             addActionListener { customSbxRadioButton.isSelected = true }
-        }
-    private val detectSbxButton =
-        JButton("Detect").apply {
-            toolTipText = "Auto-detect sbx and fill the path"
-            accessibleContext.accessibleName = "Detect sbx path"
         }
     private val sbxLoginHintLabel =
         JBLabel("Sign in with sbx login in a terminal. The panel does not embed OAuth.")
@@ -121,11 +127,6 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
                 FileChooserDescriptorFactory.createSingleFileNoJarsDescriptor(),
             )
             addActionListener { customBinaryRadioButton.isSelected = true }
-        }
-    private val detectBinaryButton =
-        JButton("Detect").apply {
-            toolTipText = "Auto-detect opencode and fill the path"
-            accessibleContext.accessibleName = "Detect OpenCode path"
         }
     private val ideProxyRadioButton = JBRadioButton("Use IDE HTTP Proxy")
     private val environmentProxyRadioButton = JBRadioButton("Use environment variables")
@@ -191,6 +192,7 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
     private val policyCheckGeneration = AtomicLong(0)
     private var policyStatus = SbxPolicyStatus.UNKNOWN
     private var policyCheckDetail: String? = null
+    private var resetting = false
 
     private enum class SbxPolicyStatus {
         CHECKING,
@@ -377,28 +379,25 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
                     row {
                         cell(autoBinaryRadioButton)
                             .comment(
-                                "Find opencode from PATH plus common install locations, including Homebrew, system paths, and npm locations on Windows.",
+                                "Searches PATH and common install locations (Homebrew, npm, bun, Windows installers).",
                             )
                     }
                     row {
                         cell(customBinaryRadioButton).gap(RightGap.SMALL)
-                        cell(binaryPathField)
-                            .resizableColumn()
-                            .align(AlignX.FILL)
-                            .gap(RightGap.SMALL)
-                        cell(detectBinaryButton)
+                        cell(binaryPathField).resizableColumn().align(AlignX.FILL)
                     }
+                    row { cell(binaryStatusLabel).resizableColumn().align(AlignX.FILL) }
                 }
                 buttonsGroup("Docker Sandbox — sbx executable:") {
                     row {
                         cell(autoSbxRadioButton)
-                            .comment("Find sbx from PATH plus Homebrew and WinGet locations.")
+                            .comment("Searches PATH plus Homebrew and WinGet locations.")
                     }
                     row {
                         cell(customSbxRadioButton).gap(RightGap.SMALL)
-                        cell(sbxPathField).resizableColumn().align(AlignX.FILL).gap(RightGap.SMALL)
-                        cell(detectSbxButton)
+                        cell(sbxPathField).resizableColumn().align(AlignX.FILL)
                     }
+                    row { cell(sbxStatusLabel).resizableColumn().align(AlignX.FILL) }
                 }
             }
             group("Authentication") {
@@ -657,6 +656,7 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
 
     override fun apply() {
         val settings = OpenCodeSettingsState.getInstance()
+        validateChangedExecutables(settings)
         confirmRestartOfRunningServers(settings)
         passwordLoadGeneration.incrementAndGet()
         passwordLoading = false
@@ -748,16 +748,21 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
 
     override fun reset() {
         val settings = OpenCodeSettingsState.getInstance()
-        when (settings.binaryModeValue()) {
-            OpenCodeBinaryMode.AUTO -> autoBinaryRadioButton.isSelected = true
-            OpenCodeBinaryMode.CUSTOM -> customBinaryRadioButton.isSelected = true
+        resetting = true
+        try {
+            when (settings.binaryModeValue()) {
+                OpenCodeBinaryMode.AUTO -> autoBinaryRadioButton.isSelected = true
+                OpenCodeBinaryMode.CUSTOM -> customBinaryRadioButton.isSelected = true
+            }
+            binaryPathField.text = settings.binaryPath.trim()
+            when (settings.sbxBinaryModeValue()) {
+                OpenCodeBinaryMode.AUTO -> autoSbxRadioButton.isSelected = true
+                OpenCodeBinaryMode.CUSTOM -> customSbxRadioButton.isSelected = true
+            }
+            sbxPathField.text = settings.sbxBinaryPath.trim()
+        } finally {
+            resetting = false
         }
-        binaryPathField.text = settings.binaryPath.trim()
-        when (settings.sbxBinaryModeValue()) {
-            OpenCodeBinaryMode.AUTO -> autoSbxRadioButton.isSelected = true
-            OpenCodeBinaryMode.CUSTOM -> customSbxRadioButton.isSelected = true
-        }
-        sbxPathField.text = settings.sbxBinaryPath.trim()
         when (settings.proxyModeValue()) {
             OpenCodeProxyMode.IDE -> ideProxyRadioButton.isSelected = true
             OpenCodeProxyMode.ENVIRONMENT -> environmentProxyRadioButton.isSelected = true
@@ -771,12 +776,15 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
         updateSbxControls()
         updateRuntimeControls()
         updateUiDependencyControls()
+        scheduleExecutableProbe()
     }
 
     override fun disposeUIResources() {
         panel = null
         passwordLoadGeneration.incrementAndGet()
         policyCheckGeneration.incrementAndGet()
+        probeGeneration.incrementAndGet()
+        probeTimer.stop()
     }
 
     /**
@@ -925,18 +933,41 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
             add(environmentProxyRadioButton)
             add(noProxyRadioButton)
         }
-        autoBinaryRadioButton.addItemListener { updateBinaryControls() }
-        customBinaryRadioButton.addItemListener { updateBinaryControls() }
-        autoSbxRadioButton.addItemListener { updateSbxControls() }
-        customSbxRadioButton.addItemListener { updateSbxControls() }
+        autoBinaryRadioButton.addItemListener {
+            updateBinaryControls()
+            scheduleExecutableProbe()
+        }
+        customBinaryRadioButton.addItemListener { event ->
+            // Choosing a custom path starts from what auto detection found.
+            if (event.stateChange == ItemEvent.SELECTED && !resetting && binaryPath().isEmpty()) {
+                detectedOpenCodePath?.let { binaryPathField.text = it }
+            }
+            updateBinaryControls()
+            scheduleExecutableProbe()
+        }
+        autoSbxRadioButton.addItemListener {
+            updateSbxControls()
+            scheduleExecutableProbe()
+        }
+        customSbxRadioButton.addItemListener { event ->
+            if (event.stateChange == ItemEvent.SELECTED && !resetting && sbxPath().isEmpty()) {
+                detectedSbxPath?.let { sbxPathField.text = it }
+            }
+            updateSbxControls()
+            scheduleExecutableProbe()
+        }
+        val reprobe =
+            object : DocumentAdapter() {
+                override fun textChanged(e: DocumentEvent) = scheduleExecutableProbe()
+            }
+        binaryPathField.textField.document.addDocumentListener(reprobe)
+        sbxPathField.textField.document.addDocumentListener(reprobe)
         showPasswordButton.addActionListener { updatePasswordVisibility() }
         copyPasswordButton.addActionListener { copyPassword() }
         generatePasswordButton.addActionListener {
             setPasswordText(OpenCodePasswordStore.getInstance().generatePasswordForEditing())
             updatePasswordHint()
         }
-        detectBinaryButton.addActionListener { detectBinaryPath() }
-        detectSbxButton.addActionListener { detectSbxPath() }
         initSbxPolicyButton.addActionListener { consentToSbxPolicy() }
         openFileLinksInIdeCheckBox.addItemListener { updateUiDependencyControls() }
         enableSystemNotificationsCheckBox.addItemListener { updateUiDependencyControls() }
@@ -1055,34 +1086,94 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
         copyPasswordFeedbackTimer.restart()
     }
 
-    private fun detectBinaryPath() {
-        customBinaryRadioButton.isSelected = true
-        val detectedPath = OpenCodeServerProtocol.detectExecutablePath()
-        if (detectedPath == null) {
-            Messages.showWarningDialog(
-                panel ?: binaryPathField,
-                "Could not find opencode on PATH or in common install locations.",
-                "OpenCode Path Not Found",
-            )
-            return
-        }
-        binaryPathField.text = detectedPath
-        updateBinaryControls()
+    private fun scheduleExecutableProbe() {
+        if (panel == null || ApplicationManager.getApplication().isUnitTestMode) return
+        probeTimer.restart()
     }
 
-    private fun detectSbxPath() {
-        customSbxRadioButton.isSelected = true
-        val detectedPath = OpenCodeServerProtocol.detectExecutablePath(SbxCli.DEFAULT_EXECUTABLE)
-        if (detectedPath == null) {
-            Messages.showWarningDialog(
-                panel ?: sbxPathField,
-                "Could not find sbx on PATH or in common install locations.",
-                "Sbx Path Not Found",
+    /**
+     * Shows which executables the form would launch, so a wrong path shows before a failed start.
+     */
+    private fun probeExecutables() {
+        if (panel == null) return
+        val generation = probeGeneration.incrementAndGet()
+        val customOpenCode = customBinaryRadioButton.isSelected
+        val customSbx = customSbxRadioButton.isSelected
+        val openCodeEntered = binaryPath()
+        val sbxEntered = sbxPath()
+        // Label-only update: run even while the settings dialog is modal, before it is showing.
+        val modality = ModalityState.any()
+        binaryStatusLabel.foreground = UIUtil.getContextHelpForeground()
+        binaryStatusLabel.text = "Checking…"
+        sbxStatusLabel.foreground = UIUtil.getContextHelpForeground()
+        sbxStatusLabel.text = "Checking…"
+        val app = ApplicationManager.getApplication()
+        app.executeOnPooledThread {
+            val openCode =
+                OpenCodeExecutableProbes.openCode(
+                    if (customOpenCode) openCodeEntered
+                    else OpenCodeSettingsState.DEFAULT_EXECUTABLE,
+                )
+            val sbx =
+                OpenCodeExecutableProbes.sbx(
+                    if (customSbx) sbxEntered else SbxCli.DEFAULT_EXECUTABLE,
+                )
+            val autoOpenCode =
+                if (customOpenCode) OpenCodeServerProtocol.detectExecutablePath() else openCode.path
+            val autoSbx =
+                if (customSbx)
+                    OpenCodeServerProtocol.detectExecutablePath(SbxCli.DEFAULT_EXECUTABLE)
+                else sbx.path
+            app.invokeLater(
+                {
+                    if (generation != probeGeneration.get() || panel == null) return@invokeLater
+                    detectedOpenCodePath = autoOpenCode
+                    detectedSbxPath = autoSbx
+                    showStatus(
+                        binaryStatusLabel,
+                        openCodeExecutableStatus(openCode, customOpenCode, openCodeEntered),
+                    )
+                    showStatus(sbxStatusLabel, sbxExecutableStatus(sbx, customSbx, sbxEntered))
+                    updateRuntimeControls()
+                },
+                modality,
             )
-            return
         }
-        sbxPathField.text = detectedPath
-        updateSbxControls()
+    }
+
+    private fun showStatus(label: JBLabel, status: ExecutableStatus) {
+        label.text = status.text
+        label.foreground =
+            if (status.problem) UIUtil.getErrorForeground() else UIUtil.getContextHelpForeground()
+    }
+
+    /**
+     * Rejects a newly entered custom path that cannot run; an unchanged saved one is left alone.
+     */
+    private fun validateChangedExecutables(settings: OpenCodeSettingsState) {
+        if (
+            customBinaryRadioButton.isSelected &&
+                (settings.binaryModeValue() != OpenCodeBinaryMode.CUSTOM ||
+                    binaryPath() != settings.binaryPath.trim())
+        ) {
+            requireRunnable(binaryPath(), "OpenCode")
+        }
+        if (
+            customSbxRadioButton.isSelected &&
+                (settings.sbxBinaryModeValue() != OpenCodeBinaryMode.CUSTOM ||
+                    sbxPath() != settings.sbxBinaryPath.trim())
+        ) {
+            requireRunnable(sbxPath(), "sbx")
+        }
+    }
+
+    private fun requireRunnable(path: String, name: String) {
+        if (path.isEmpty()) {
+            throw ConfigurationException("Enter the $name executable path, or choose Auto detect.")
+        }
+        if (OpenCodeServerProtocol.detectExecutablePath(path) == null) {
+            throw ConfigurationException("$name executable not found or not executable: $path")
+        }
     }
 
     private fun consentToSbxPolicy() {
@@ -1195,12 +1286,10 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
 
     private fun updateBinaryControls() {
         binaryPathField.textField.isEnabled = customBinaryRadioButton.isSelected
-        detectBinaryButton.isEnabled = customBinaryRadioButton.isSelected
     }
 
     private fun updateSbxControls() {
         sbxPathField.textField.isEnabled = customSbxRadioButton.isSelected
-        detectSbxButton.isEnabled = customSbxRadioButton.isSelected
     }
 
     private fun updateRuntimeControls() {
@@ -1247,6 +1336,7 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
     }
 
     companion object {
+        private const val PROBE_DELAY_MILLIS = 400
         private const val SBX_POLICY_DOCS_URL =
             "https://docs.docker.com/ai/sandboxes/security/defaults/"
     }

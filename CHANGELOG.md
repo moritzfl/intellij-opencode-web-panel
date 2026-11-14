@@ -19,6 +19,10 @@
 - **Docker Sandboxes** checks the network policy when the settings open. A
   policy set up in a terminal or by your organization shows as present, and a
   removed one is noticed before the next sandbox start.
+- The OpenCode and `sbx` executable settings show which executable a start
+  would use and its version, or what is wrong, while you edit them. **Detect**
+  is gone: choosing **Custom path** starts from the detected executable, and
+  Apply rejects a new custom path that cannot run.
 
 ### Fixed
 
