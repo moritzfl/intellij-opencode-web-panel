@@ -10,7 +10,6 @@ class SbxSetupChecklistTest {
             "○ Sandbox: created when OpenCode starts\n○ OpenCode: not running",
             SbxSetupChecklist.format(
                 SbxSetupChecklist.projectSteps(owned = false, running = false),
-                openMark = SbxSetupChecklist.PENDING,
             ),
         )
         assertEquals(
@@ -20,13 +19,14 @@ class SbxSetupChecklistTest {
     }
 
     @Test
-    fun failedChecksAreCrossedOut() {
+    fun checksThatDidNotRunAreNotFailures() {
         assertEquals(
-            "✓ Server: up\n✗ Network: blocked",
+            "✓ Server: up\n✗ Network: blocked\n○ Guest network: start first",
             SbxSetupChecklist.format(
                 listOf(
                     SbxSetupStep("Server", true, "up"),
                     SbxSetupStep("Network", false, "blocked"),
+                    SbxSetupStep("Guest network", false, "start first", skipped = true),
                 ),
             ),
         )

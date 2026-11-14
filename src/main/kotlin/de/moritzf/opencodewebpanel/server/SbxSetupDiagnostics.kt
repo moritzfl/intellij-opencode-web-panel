@@ -15,7 +15,8 @@ internal object SbxSetupDiagnostics {
                 SbxSetupStep(
                     "Guest network",
                     false,
-                    "Start or Adopt this sandbox before checking guest access",
+                    "Start OpenCode once to create the sandbox, then check again",
+                    skipped = true,
                 )
         val inventory = runner.run(SbxCli.buildLsCommand(executable), emptyMap(), 15_000L)
         val entries =
@@ -41,6 +42,7 @@ internal object SbxSetupDiagnostics {
                     "Guest network",
                     false,
                     "Start this sandbox before checking guest access",
+                    skipped = true,
                 )
         for ((host, url) in NETWORK_TARGETS) {
             val result =

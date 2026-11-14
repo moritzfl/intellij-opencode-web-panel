@@ -301,6 +301,7 @@ internal class SbxOpenCodeServerBackend(
                                     "Project spec",
                                     false,
                                     "Apply valid sandbox settings before checking setup",
+                                    skipped = true,
                                 ),
                             )
                         } else {

@@ -71,6 +71,10 @@
   show a warning, and the Docker image field is wide enough for a digest.
 - The settings search no longer finds live status texts such as "OpenCode
   server: Stopped".
+- **Check Sandbox Setup** marks checks that could not run yet, such as the
+  guest network of a stopped sandbox, with ○ instead of reporting them as
+  failures. Its description says what it tests: that the running sandbox
+  reaches `models.opencode.ai`, not provider sign-in.
 
 ### Fixed
 
@@ -82,6 +86,8 @@
   "Loaded the sandbox settings of the new OpenCode directory"; the directory's
   own sandbox settings load and apply in one step. A folder chosen with the
   browse button loads its settings immediately.
+- While **Docker Sandbox** is selected but not yet applied, the project page
+  no longer reports the Host CLI server as the sandbox's running OpenCode.
 - Declining a settings confirmation reports "Apply cancelled: Nothing was
   changed" instead of a generic save error.
 - Changing only the spelling of the OpenCode directory (a trailing slash or a

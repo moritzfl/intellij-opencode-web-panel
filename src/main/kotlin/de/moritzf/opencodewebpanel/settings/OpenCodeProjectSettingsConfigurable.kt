@@ -539,7 +539,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
             row {
                 cell(checkSetupButton)
                     .comment(
-                        "Uses the saved settings and the running sandbox: server health, outbound access, provider sign-in.",
+                        "Checks that the running sandbox reaches models.opencode.ai, using the saved settings; does not test provider sign-in.",
                     )
             }
             row { cell(setupCheckResultLabel) }
@@ -1502,9 +1502,10 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                 de.moritzf.opencodewebpanel.server.SbxSetupChecklist.format(
                         de.moritzf.opencodewebpanel.server.SbxSetupChecklist.projectSteps(
                             owned = record != null,
-                            running = state == OpenCodeServerLifecycleState.RUNNING,
+                            // Not the Host CLI's state while Docker Sandbox is chosen, unapplied.
+                            running =
+                                sandboxBackend && state == OpenCodeServerLifecycleState.RUNNING,
                         ),
-                        openMark = de.moritzf.opencodewebpanel.server.SbxSetupChecklist.PENDING,
                     )
                     .replace("\n", "<br>") +
                 "</html>"
