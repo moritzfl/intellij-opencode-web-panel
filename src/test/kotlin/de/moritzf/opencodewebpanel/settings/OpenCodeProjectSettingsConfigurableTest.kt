@@ -614,18 +614,19 @@ class OpenCodeProjectSettingsConfigurableTest {
             val problem =
                 OpenCodeProjectSettingsConfigurable::class
                     .java
-                    .getDeclaredMethod("hostPathProblem", String::class.java)
+                    .getDeclaredMethod("hostPathProblem", String::class.java, String::class.java)
                     .apply { isAccessible = true }
-            assertEquals(null, problem.invoke(configurable, existing))
-            assertEquals(null, problem.invoke(configurable, "$existing:ro"))
+            val workspace = project.basePath!!
+            assertEquals(null, problem.invoke(configurable, existing, workspace))
+            assertEquals(null, problem.invoke(configurable, "$existing:ro", workspace))
             assertTrue(
-                (problem.invoke(configurable, "./not-here") as String).startsWith(
+                (problem.invoke(configurable, "./not-here", workspace) as String).startsWith(
                     "Not on this computer:",
                 ),
             )
             assertTrue(
                 "An unset required variable explains itself",
-                problem.invoke(configurable, "\${OCWP_SURELY_UNSET_VARIABLE}") != null,
+                problem.invoke(configurable, "\${OCWP_SURELY_UNSET_VARIABLE}", workspace) != null,
             )
         }
     }

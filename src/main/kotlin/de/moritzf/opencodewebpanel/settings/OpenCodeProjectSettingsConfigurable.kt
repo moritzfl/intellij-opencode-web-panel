@@ -74,6 +74,8 @@ import java.awt.event.ItemEvent
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.Optional
+import java.util.concurrent.ConcurrentHashMap
 import javax.swing.AbstractCellEditor
 import javax.swing.ButtonGroup
 import javax.swing.JButton
@@ -333,17 +335,40 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                 column: Int,
             ): Component {
                 super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column)
-                val problem = hostPathProblem(value as? String)
+                val problem = cachedHostPathProblem(value as? String, table)
                 icon = if (problem != null) AllIcons.General.Warning else null
                 toolTipText = problem
                 return this
             }
         }
 
-    private fun hostPathProblem(raw: String?): String? {
-        val text = raw?.trim().orEmpty().removeSuffix(":ro").removeSuffix(":RO")
+    // Renderers run on every paint, and `Files.exists` on a network or automounted path can stall:
+    // check each path once off the EDT, then repaint.
+    private val hostPathProblems = ConcurrentHashMap<Pair<String, String>, Optional<String>>()
+    private val hostPathChecks: MutableSet<Pair<String, String>> = ConcurrentHashMap.newKeySet()
+
+    private fun cachedHostPathProblem(raw: String?, table: JTable): String? {
+        val text = raw?.trim().orEmpty()
         if (text.isEmpty()) return null
         val workspace = effectiveDirectory() ?: return null
+        val key = workspace to text
+        hostPathProblems[key]?.let {
+            return it.orElse(null)
+        }
+        if (hostPathChecks.add(key)) {
+            val application = ApplicationManager.getApplication()
+            application.executeOnPooledThread {
+                hostPathProblems[key] = Optional.ofNullable(hostPathProblem(text, workspace))
+                hostPathChecks.remove(key)
+                application.invokeLater({ table.repaint() }, ModalityState.any())
+            }
+        }
+        return null
+    }
+
+    private fun hostPathProblem(raw: String?, workspace: String): String? {
+        val text = raw?.trim().orEmpty().removeSuffix(":ro").removeSuffix(":RO")
+        if (text.isEmpty()) return null
         val host = runCatching {
             SbxCli.resolveExtraMounts(listOf(SbxExtraMount(text, "", false)), workspace)
                 .single()
@@ -820,6 +845,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
 
     override fun reset() {
         val settings = OpenCodeProjectSettingsState.getInstance(project)
+        hostPathProblems.clear()
         hydrating = true
         try {
             when (settings.projectDirectoryModeValue()) {
