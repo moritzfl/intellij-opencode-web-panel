@@ -52,6 +52,7 @@ import de.moritzf.opencodewebpanel.server.SbxSandboxRecordStore
 import de.moritzf.opencodewebpanel.server.formatOpenCodeServerLifecycleStatusText
 import de.moritzf.opencodewebpanel.server.formatOpenCodeServerStatusDetail
 import de.moritzf.opencodewebpanel.ui.confirmOpenCodeSandboxBinaryUpgrade
+import de.moritzf.opencodewebpanel.ui.confirmOpenCodeSandboxReset
 import de.moritzf.opencodewebpanel.ui.confirmOpenCodeServerRestart
 import de.moritzf.opencodewebpanel.ui.sandboxSessionRetentionSummary
 import java.awt.Component
@@ -106,9 +107,17 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         }
     private val upgradeOpenCodeButton =
         JButton("Upgrade OpenCode", AllIcons.Actions.Lightning).apply {
-            toolTipText =
-                "Install the latest OpenCode release inside this sandbox. The VM and sessions stay. Reset Sandbox returns to Docker's image."
             accessibleContext.accessibleName = "Upgrade OpenCode in sandbox"
+            isVisible = false
+        }
+    private val resetSandboxButton =
+        JButton("Reset Sandbox…", AllIcons.Actions.GC).apply {
+            accessibleContext.accessibleName = "Reset Docker Sandbox"
+            isVisible = false
+        }
+    private val actionsHintLabel =
+        JBLabel("Apply first: these actions use the saved settings, not unapplied changes.").apply {
+            foreground = JBUI.CurrentTheme.ContextHelp.FOREGROUND
             isVisible = false
         }
     private val autoPortRadioButton = JBRadioButton("Auto select")
@@ -336,13 +345,13 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
             row("Memory:") {
                 cell(sbxMemoryField)
                     .comment(
-                        "Used when creating a sandbox (default ${SbxCli.DEFAULT_MEMORY}). An existing VM keeps its value until Reset Sandbox (gear menu).",
+                        "Used when creating a sandbox (default ${SbxCli.DEFAULT_MEMORY}). An existing VM keeps its value until Reset Sandbox (Server section above).",
                     )
             }
             row("CPUs:") {
                 cell(sbxCpusField)
                     .comment(
-                        "Used when creating a sandbox (default ${SbxCli.DEFAULT_CPUS}). An existing VM keeps its value until Reset Sandbox (gear menu).",
+                        "Used when creating a sandbox (default ${SbxCli.DEFAULT_CPUS}). An existing VM keeps its value until Reset Sandbox (Server section above).",
                     )
             }
             row {
@@ -390,7 +399,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
             row {
                 cell(sbxProtectSandboxFilesCheckBox)
                     .comment(
-                        "Overlays the opencode-sbx/ folder (spec, launchers, extra-network kit) and other local kit directories as read-only extra workspaces on the writable project tree. Git/OCI kits are unchanged. Applies when the sandbox is created (gear menu → Reset Sandbox).",
+                        "Overlays the opencode-sbx/ folder (spec, launchers, extra-network kit) and other local kit directories as read-only extra workspaces on the writable project tree. Git/OCI kits are unchanged. Applies when the sandbox is created (Reset Sandbox in the Server section).",
                     )
             }
             row {
@@ -437,7 +446,6 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                         "Writes opencode-sbx/opencode-network-kit/spec.yaml with hosts commented out. Configure it before the first Apply. Editing an already installed kit does not update the sandbox: Reset Sandbox reloads it but deletes VM-only data. Restart alone is insufficient. Network access belongs in a kit, not the launch YAML.",
                     )
             }
-            row { cell(installedHintLabel) }
             row { cell(setupChecklistLabel) }
             row {
                 cell(checkSetupButton)
@@ -481,8 +489,11 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                 row {
                     cell(restartServerButton).gap(RightGap.SMALL)
                     cell(viewServerLogButton).gap(RightGap.SMALL)
-                    cell(upgradeOpenCodeButton)
+                    cell(upgradeOpenCodeButton).gap(RightGap.SMALL)
+                    cell(resetSandboxButton)
                 }
+                row { cell(actionsHintLabel) }
+                row { cell(installedHintLabel) }
                 row { cell(portControlsPanel).align(AlignX.FILL) }
             }
             group("Runtime") {
@@ -510,7 +521,13 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         return panel!!
     }
 
-    override fun isModified(): Boolean {
+    /** Settings polls this after every edit, which keeps the "Apply first" hint current. */
+    override fun isModified(): Boolean =
+        formDiffersFromSavedSettings().also { modified ->
+            if (panel != null) actionsHintLabel.isVisible = modified
+        }
+
+    private fun formDiffersFromSavedSettings(): Boolean {
         val settings = OpenCodeProjectSettingsState.getInstance(project)
         val directoryChanged =
             selectedProjectDirectoryMode() != settings.projectDirectoryModeValue() ||
@@ -761,6 +778,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         restartServerButton.addActionListener { restartThisProjectServer() }
         viewServerLogButton.addActionListener { showThisProjectServerLog() }
         upgradeOpenCodeButton.addActionListener { upgradeOpenCodeInSandbox() }
+        resetSandboxButton.addActionListener { resetThisProjectSandbox() }
         // Selecting 2.x deselects 1.x before 2.x reads as selected; update on both events.
         sbxOpenCodeV1RadioButton.addItemListener { updateSandboxControls() }
         sbxOpenCodeV2RadioButton.addItemListener { updateSandboxControls() }
@@ -841,6 +859,12 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                 ?.openCodeVersion == SbxOpenCodeVersion.V2
         if (!confirmOpenCodeSandboxBinaryUpgrade(project, dockerKit)) return
         backend.upgradeOpenCodeBinary(project)
+    }
+
+    private fun resetThisProjectSandbox() {
+        if (projectBackend() !is SbxOpenCodeServerBackend) return
+        if (!confirmOpenCodeSandboxReset(project)) return
+        OpenCodeProjectRuntime.getInstance(project).resetSandbox()
     }
 
     private fun checkSandboxSetup() {
@@ -1188,19 +1212,40 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                 de.moritzf.opencodewebpanel.server.SbxSandboxRecordStore.getInstance()
                     .recordFor(directory) != null
         upgradeOpenCodeButton.isVisible = sandbox
+        resetSandboxButton.isVisible = sandbox
         val pinnable = sandbox && sbxOpenCodeV2RadioButton.isSelected
         sbxOpenCodeImageRow?.visible(pinnable)
         if (pinnable) loadOpenCodeImageTags()
-        upgradeOpenCodeButton.isEnabled =
-            sandboxBackend &&
-                owned &&
-                state != OpenCodeServerLifecycleState.STARTING &&
-                state != OpenCodeServerLifecycleState.RESTARTING
-        checkSetupButton.isEnabled =
-            sandboxBackend &&
-                !setupCheckRunning &&
-                state != OpenCodeServerLifecycleState.STARTING &&
-                state != OpenCodeServerLifecycleState.RESTARTING
+        val busy =
+            state == OpenCodeServerLifecycleState.STARTING ||
+                state == OpenCodeServerLifecycleState.RESTARTING
+        // Say why a sandbox action is unavailable instead of only greying it out.
+        val vmBlocker =
+            when {
+                !sandboxBackend -> "Apply first: this project still runs the Host CLI."
+                !owned -> "No sandbox yet. It is created when OpenCode starts the first time."
+                busy -> "Wait until OpenCode has started."
+                else -> null
+            }
+        upgradeOpenCodeButton.isEnabled = vmBlocker == null
+        upgradeOpenCodeButton.toolTipText =
+            vmBlocker
+                ?: "Install the latest OpenCode release inside this sandbox. The VM and sessions stay; Reset Sandbox returns to Docker's image."
+        resetSandboxButton.isEnabled = vmBlocker == null
+        resetSandboxButton.toolTipText =
+            vmBlocker
+                ?: "Delete this project's sandbox and create a new one from Docker's OpenCode kit. Applies create-time settings such as memory and CPUs."
+        val checkBlocker =
+            when {
+                !sandboxBackend -> "Apply first: this project still runs the Host CLI."
+                busy -> "Wait until OpenCode has started."
+                setupCheckRunning -> "A check is running."
+                else -> null
+            }
+        checkSetupButton.isEnabled = checkBlocker == null
+        checkSetupButton.toolTipText =
+            checkBlocker
+                ?: "Check sandbox setup and guest network access using saved project settings"
         val spec = currentSpec()
         val record = directory?.let {
             de.moritzf.opencodewebpanel.server.SbxSandboxRecordStore.getInstance().recordFor(it)
