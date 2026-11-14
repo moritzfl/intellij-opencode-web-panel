@@ -246,13 +246,17 @@ class OpenCodeJcefLiveRuntimeSwitchTest {
                 open(origin, OpenCodeServerProtocol.buildServerSessionUrl(origin), parent) {
                     previous?.let { old -> SwingUtilities.invokeAndWait { Disposer.dispose(old) } }
                 }
+            // The region can mount a moment before its text (seen once on CLI 2.3.0); wait for
+            // both.
             OpenCodeJcefTestHelper.awaitCondition(
                 "real home content after backend replacement $index",
                 30,
             ) {
-                evaluate(browser, "!!document.querySelector('main [role=region]')") == "true"
+                evaluate(
+                    browser,
+                    "!!document.querySelector('main [role=region]') && document.body.innerText.length > 20",
+                ) == "true"
             }
-            assertTrue(evaluate(browser, "document.body.innerText.length").toInt() > 20)
             previous = parent
         }
     }
