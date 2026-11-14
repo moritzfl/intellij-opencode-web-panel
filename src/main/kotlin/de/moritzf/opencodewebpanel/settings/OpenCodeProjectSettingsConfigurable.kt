@@ -811,6 +811,18 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         restartServerButton.isEnabled =
             state != OpenCodeServerLifecycleState.STARTING &&
                 state != OpenCodeServerLifecycleState.RESTARTING
+        val start =
+            state == OpenCodeServerLifecycleState.STOPPED ||
+                state == OpenCodeServerLifecycleState.FAILED
+        restartServerButton.apply {
+            text = if (start) "Start Server" else "Restart Server"
+            icon = if (start) AllIcons.Actions.Execute else AllIcons.Actions.Restart
+            toolTipText =
+                if (start) "Start OpenCode for this project"
+                else "Restart OpenCode for this project"
+            accessibleContext.accessibleName =
+                if (start) "Start OpenCode server" else "Restart OpenCode server"
+        }
         updateSandboxControls()
     }
 

@@ -14,6 +14,8 @@
   apply live or wait for the next Reset no longer prompt, and the confirmation
   says what each change does: applies now, restarts OpenCode, or recreates the
   sandbox.
+- The project page's server button reads **Start Server** while the server is
+  stopped.
 
 ### Fixed
 
