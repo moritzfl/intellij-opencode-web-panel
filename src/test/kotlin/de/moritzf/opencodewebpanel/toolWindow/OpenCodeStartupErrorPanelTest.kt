@@ -59,6 +59,42 @@ class OpenCodeStartupErrorPanelTest : BasePlatformTestCase() {
         )
     }
 
+    fun testTheSettingsPageThatCanFixTheFailureComesFirst() {
+        useServerLogs(false)
+        val panel = OpenCodeStartupErrorPanel(project) {}
+        panel.showFailure(existingExecutable(), null, failureDetail = detail)
+        assertEquals(listOf("Project Settings", "OpenCode Settings"), settingsButtons(panel))
+
+        panel.showFailure(
+            existingExecutable(),
+            null,
+            failureMessage = "The sbx CLI was not found.",
+            applicationSettingsFirst = true,
+        )
+        assertEquals(listOf("OpenCode Settings", "Project Settings"), settingsButtons(panel))
+
+        val missing = Files.createTempDirectory("ocwp-card").resolve("opencode").toString()
+        panel.showFailure(missing, null)
+        PlatformTestUtil.waitWithEventsDispatching(
+            "Missing executable reorders the actions",
+            { settingsButtons(panel).first() == "OpenCode Settings" },
+            5,
+        )
+    }
+
+    private fun settingsButtons(panel: OpenCodeStartupErrorPanel): List<String> {
+        val actions =
+            OpenCodeStartupErrorPanel::class
+                .java
+                .getDeclaredField("actionsPanel")
+                .apply { isAccessible = true }
+                .get(panel) as javax.swing.JPanel
+        return actions.components
+            .filterIsInstance<javax.swing.JButton>()
+            .map { it.text }
+            .filter { it.endsWith("Settings") }
+    }
+
     private fun useServerLogs(enabled: Boolean) {
         ApplicationManager.getApplication()
             .replaceService(

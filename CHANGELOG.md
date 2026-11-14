@@ -55,6 +55,10 @@
   window stripe, which reads **OpenCode (Host CLI)** or **OpenCode (Sandbox)**.
   Dialog titles and buttons use title case, and the Recreate Sandbox
   confirmation says that it does what Reset Sandbox does.
+- The startup error card wraps its actions instead of cutting them off in a
+  narrow tool window, and lists first the settings page that can fix the
+  failure: **OpenCode Settings** for a missing executable, `sbx`, Docker
+  sign-in or network policy, **Project Settings** otherwise.
 
 ### Fixed
 

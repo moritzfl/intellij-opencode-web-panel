@@ -10,6 +10,7 @@ import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTextArea
 import com.intellij.util.ui.JBFont
 import com.intellij.util.ui.JBUI
+import com.intellij.util.ui.WrapLayout
 import com.intellij.util.ui.components.BorderLayoutPanel
 import de.moritzf.opencodewebpanel.configuration.OpenCodePortMode
 import de.moritzf.opencodewebpanel.configuration.OpenCodeProjectSettingsState
@@ -20,6 +21,7 @@ import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.server.SbxLaunchSpec
 import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsConfigurable
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable
+import java.awt.FlowLayout
 import java.awt.Font
 import java.nio.file.Path
 import javax.swing.Box
@@ -47,8 +49,8 @@ internal class OpenCodeStartupErrorPanel(
             addActionListener { onRetry() }
         }
     private val openSettingsButton =
-        JButton("Settings", AllIcons.General.Settings).apply {
-            toolTipText = "Open plugin settings"
+        JButton("OpenCode Settings", AllIcons.General.Settings).apply {
+            toolTipText = "Executables, password, proxy, and Docker Sandbox setup"
             addActionListener {
                 ShowSettingsUtil.getInstance()
                     .showSettingsDialog(project, OpenCodeSettingsConfigurable::class.java)
@@ -56,7 +58,7 @@ internal class OpenCodeStartupErrorPanel(
         }
     private val openProjectSettingsButton =
         JButton("Project Settings", AllIcons.Actions.Properties).apply {
-            toolTipText = "Open OpenCode Web Panel project settings"
+            toolTipText = "This project's directory, runtime, sandbox, and port"
             addActionListener {
                 ShowSettingsUtil.getInstance()
                     .showSettingsDialog(project, OpenCodeProjectSettingsConfigurable::class.java)
@@ -106,6 +108,13 @@ internal class OpenCodeStartupErrorPanel(
     private val logScrollPane = JBScrollPane(logArea).apply { isVisible = false }
     private var logFile: Path? = null
 
+    // Wraps instead of clipping: the tool window is often narrower than all actions together.
+    private val actionsPanel =
+        JPanel(WrapLayout(FlowLayout.LEFT, JBUI.scale(8), JBUI.scale(4))).apply {
+            isOpaque = false
+            alignmentX = 0f
+        }
+
     val component: JComponent =
         BorderLayoutPanel().apply {
             border = JBUI.Borders.empty(16)
@@ -116,35 +125,35 @@ internal class OpenCodeStartupErrorPanel(
                     add(titleLabel)
                     add(Box.createVerticalStrut(JBUI.scale(8)))
                     add(messageLabel)
-                    add(Box.createVerticalStrut(JBUI.scale(12)))
-                    add(
-                        JPanel().apply {
-                            layout = BoxLayout(this, BoxLayout.X_AXIS)
-                            isOpaque = false
-                            alignmentX = 0f
-                            add(retryButton)
-                            add(Box.createHorizontalStrut(JBUI.scale(8)))
-                            add(recoveryButton)
-                            add(Box.createHorizontalStrut(JBUI.scale(8)))
-                            add(useAutoPortButton)
-                            add(Box.createHorizontalStrut(JBUI.scale(8)))
-                            add(adoptSandboxButton)
-                            add(Box.createHorizontalStrut(JBUI.scale(8)))
-                            add(createNewSandboxButton)
-                            add(Box.createHorizontalStrut(JBUI.scale(8)))
-                            add(openProjectSettingsButton)
-                            add(Box.createHorizontalStrut(JBUI.scale(8)))
-                            add(openSettingsButton)
-                            add(Box.createHorizontalStrut(JBUI.scale(8)))
-                            add(viewLogButton)
-                        },
-                    )
+                    add(Box.createVerticalStrut(JBUI.scale(8)))
+                    add(actionsPanel)
                     add(logTitleLabel)
                     components.filterIsInstance<JComponent>().forEach { it.alignmentX = 0f }
                 },
             )
             addToCenter(logScrollPane)
         }
+
+    init {
+        arrangeActions(applicationSettingsFirst = false)
+    }
+
+    /** The settings page that can fix the failure comes right after the recovery actions. */
+    private fun arrangeActions(applicationSettingsFirst: Boolean) {
+        actionsPanel.removeAll()
+        val settings =
+            if (applicationSettingsFirst) listOf(openSettingsButton, openProjectSettingsButton)
+            else listOf(openProjectSettingsButton, openSettingsButton)
+        (listOf(
+                retryButton,
+                recoveryButton,
+                useAutoPortButton,
+                adoptSandboxButton,
+                createNewSandboxButton,
+            ) + settings + viewLogButton)
+            .forEach(actionsPanel::add)
+        actionsPanel.revalidate()
+    }
 
     init {
         viewLogButton.addActionListener { openOpenCodeServerLogInEditor(project) }
@@ -165,8 +174,10 @@ internal class OpenCodeStartupErrorPanel(
         onAdoptForeign: (() -> Unit)? = null,
         onCreateNewSandbox: (() -> Unit)? = null,
         recoveryAction: OpenCodeStartupRecoveryAction? = null,
+        applicationSettingsFirst: Boolean = false,
     ) {
         logFile = serverLogFile
+        arrangeActions(applicationSettingsFirst)
         val cancelled = failureMessage?.contains("cancelled", ignoreCase = true) == true
         titleLabel.text = if (cancelled) "Start cancelled" else "Could not start OpenCode"
         messageLabel.text =
@@ -226,6 +237,10 @@ internal class OpenCodeStartupErrorPanel(
                         else ->
                             "OpenCode was started as \u201C$executable\u201D but the server did not become available."
                     }
+                // The Host CLI executable is chosen on the application page.
+                if (failureMessage.isNullOrBlank() && !executableFound) {
+                    arrangeActions(applicationSettingsFirst = true)
+                }
                 useAutoPortButton.isVisible = portConflict && offerAutomaticPort
                 viewLogButton.isEnabled = serverLogFile != null
                 val hasLog = logTail.isNotEmpty()

@@ -2049,6 +2049,12 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
             failureDetail = serverManager.startFailureDetail(),
             recentOutput = serverManager.getStartupProgress()?.recentOutput.orEmpty(),
             recoveryAction = recoveryAction,
+            // sbx itself, its sign-in and the network policy are set up on the application page.
+            applicationSettingsFirst =
+                failure == SbxFailureKind.SBX_NOT_FOUND ||
+                    failure == SbxFailureKind.SBX_TOO_OLD ||
+                    failure == SbxFailureKind.NOT_AUTHENTICATED ||
+                    failure == SbxFailureKind.POLICY_UNINITIALIZED,
             onAdoptForeign =
                 if (foreign) {
                     { if (sbx.adoptForeignSandbox()) restartOpenCodeServer() }
