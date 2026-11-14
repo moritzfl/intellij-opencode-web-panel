@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [2.10.0] - 2026-11-14
+
 ### Changed
 
 - Applying the application settings asks before it restarts OpenCode servers
@@ -70,8 +72,6 @@
 - **CPUs** is a number field from 1 to 32, an invalid **Memory** value is
   marked while typing, mount host paths that do not exist on this computer
   show a warning, and the Docker image field is wide enough for a digest.
-- The settings search no longer finds live status texts such as "OpenCode
-  server: Stopped".
 - **Check Sandbox Setup** marks checks that could not run yet, such as the
   guest network of a stopped sandbox, with ○ instead of reporting them as
   failures. Its description says what it tests: that the running sandbox
@@ -90,6 +90,8 @@
   browse button loads its settings immediately.
 - While **Docker Sandbox** is selected but not yet applied, the project page
   no longer reports the Host CLI server as the sandbox's running OpenCode.
+- The settings search no longer finds live status texts such as "OpenCode
+  server: Stopped".
 - Declining a settings confirmation reports "Apply cancelled: Nothing was
   changed" instead of a generic save error.
 - Changing only the spelling of the OpenCode directory (a trailing slash or a
@@ -1359,7 +1361,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.9.1...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.10.0...HEAD
+[2.10.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.9.1...2.10.0
 [2.9.1]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.9.0...2.9.1
 [2.9.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.8.3...2.9.0
 [2.8.3]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.8.2...2.8.3
