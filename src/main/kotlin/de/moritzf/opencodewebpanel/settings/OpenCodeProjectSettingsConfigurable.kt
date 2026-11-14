@@ -1006,16 +1006,18 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                 }
                 .orEmpty()
         diagnosticsLabel.isVisible = sbx != null
-        restartServerButton.isEnabled =
-            state != OpenCodeServerLifecycleState.STARTING &&
-                state != OpenCodeServerLifecycleState.RESTARTING
-        val logAvailable = OpenCodeServerLogDialog.hasOutput(backend)
+        val starting =
+            state == OpenCodeServerLifecycleState.STARTING ||
+                state == OpenCodeServerLifecycleState.RESTARTING
+        restartServerButton.isEnabled = !starting
+        // Output of a start arrives after its state change; keep the button usable meanwhile.
+        val logAvailable = starting || OpenCodeServerLogDialog.hasOutput(backend)
         viewServerLogButton.isEnabled = logAvailable
         viewServerLogButton.toolTipText =
             when {
                 logAvailable -> "Show the end of this project's OpenCode server output"
                 !OpenCodeSettingsState.getInstance().enableServerLogs ->
-                    "Nothing to show. Server logs are off (OpenCode Settings | Server); output appears here while OpenCode starts."
+                    "Nothing to show. Server logs are off (OpenCode Settings, Server tab); the output of a start shows here while it runs."
                 else -> "Nothing to show yet: OpenCode has not written any output."
             }
         val start =
@@ -1163,7 +1165,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
     }
 
     private fun showThisProjectServerLog() {
-        if (!OpenCodeServerLogDialog.show(project, projectBackend())) updateServerStatus()
+        OpenCodeServerLogDialog.show(panel ?: return, projectBackend())
     }
 
     private fun projectDirectory(): String {

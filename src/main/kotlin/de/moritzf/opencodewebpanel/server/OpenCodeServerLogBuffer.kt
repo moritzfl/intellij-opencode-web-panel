@@ -41,6 +41,10 @@ internal class OpenCodeServerLogBuffer(
         }
     }
 
+    /** This buffer's own file of the current or last start; never another run's file. */
+    fun currentFile(): Path? =
+        synchronized(fileLock) { currentLogFile?.takeIf { Files.isRegularFile(it) } }
+
     fun currentOrLatestFile(): Path? {
         synchronized(fileLock) {
             currentLogFile

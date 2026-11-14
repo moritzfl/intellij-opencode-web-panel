@@ -67,6 +67,13 @@ interface OpenCodeServerBackend {
 
     fun getServerLogFile(): Path?
 
+    /**
+     * The log file this backend writes for its current or last start in this IDE session. Unlike
+     * [getServerLogFile] never the newest file in the shared log directory, which can be an older
+     * run or another project's server.
+     */
+    fun getCurrentServerLogFile(): Path? = null
+
     fun consumeUnsupportedServerVersionWarning(): String?
 
     fun consumeV2ProtocolWarning(): Boolean

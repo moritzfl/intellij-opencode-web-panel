@@ -322,6 +322,8 @@ internal class SbxOpenCodeServerBackend(
 
     override fun getServerLogFile(): Path? = serverLogBuffer.currentOrLatestFile()
 
+    override fun getCurrentServerLogFile(): Path? = serverLogBuffer.currentFile()
+
     override fun ensureStarted(
         project: Project,
         projectBasePath: String?,

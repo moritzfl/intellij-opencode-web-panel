@@ -61,10 +61,11 @@
   failure: **OpenCode Settings** for a missing executable, `sbx`, Docker
   sign-in or network policy, **Project Settings** otherwise. For `sbx`
   problems it opens the **Docker Sandboxes** tab, which the message names.
-- **View Server Log** on the project page shows the end of the log inside
-  Settings, or the output of the current start when logs are off, instead of
-  opening another application. It is disabled, with the reason, while there is
-  nothing to show. The sandbox details under the server status show one item
+- **View Server Log** on the project page shows the end of this project's
+  server log inside Settings, or the output of the current start when logs are
+  off, instead of opening another application. It stays available while
+  OpenCode starts and is disabled, with the reason, while there is nothing to
+  show. The sandbox details under the server status show one item
   per line and can be copied.
 - **CPUs** is a number field from 1 to 32, an invalid **Memory** value is
   marked while typing, mount host paths that do not exist on this computer

@@ -126,6 +126,8 @@ class SharedOpenCodeServerManager(
         return serverLogBuffer.currentOrLatestFile()
     }
 
+    override fun getCurrentServerLogFile(): Path? = serverLogBuffer.currentFile()
+
     override fun ensureStarted(
         project: Project,
         projectBasePath: String?,

@@ -30,6 +30,12 @@ class OpenCodeServerLogBufferTest {
             buffer.append("second")
 
             assertEquals(file, buffer.currentOrLatestFile())
+            assertEquals(file, buffer.currentFile())
+            assertEquals(
+                "Another buffer sharing the directory has no file of its own",
+                null,
+                OpenCodeServerLogBuffer(logDir = dir, enabled = { true }).currentFile(),
+            )
             assertEquals(
                 listOf(
                     "========== OpenCode server start/restart via OpenCode Web Panel at 2026-06-21T12:00:00Z ==========",
