@@ -1037,10 +1037,17 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         val settings = Settings.KEY.getData(DataManager.getInstance().getDataContext(component))
         val target = settings?.find(OpenCodeSettingsConfigurable.ID)
         if (settings != null && target != null) {
+            settings
+                .find(OpenCodeSettingsConfigurable::class.java)
+                ?.selectTab(OpenCodeSettingsTab.DOCKER_SANDBOXES)
             settings.select(target)
         } else {
-            ShowSettingsUtil.getInstance()
-                .showSettingsDialog(project, OpenCodeSettingsConfigurable::class.java)
+            ShowSettingsUtil.getInstance().showSettingsDialog(
+                project,
+                OpenCodeSettingsConfigurable::class.java,
+            ) {
+                it.selectTab(OpenCodeSettingsTab.DOCKER_SANDBOXES)
+            }
         }
     }
 

@@ -214,7 +214,7 @@ internal class SbxOpenCodeServerBackend(
         return when (lastFailure()) {
             SbxFailureKind.NONE -> null
             SbxFailureKind.SBX_NOT_FOUND ->
-                "The sbx CLI was not found. Install Docker Sandboxes (brew install docker/tap/sbx or winget install Docker.sbx), or choose its path under Settings | Tools | OpenCode Web Panel."
+                "The sbx CLI was not found. Install Docker Sandboxes (brew install docker/tap/sbx or winget install Docker.sbx), or choose its path under OpenCode Settings, Docker Sandboxes tab."
             SbxFailureKind.SBX_TOO_OLD ->
                 "Docker Sandboxes ${synchronized(lock) { unsupportedSbxVersion }} is too old. " +
                     "OpenCode comes from Docker's OpenCode sandbox kits, which need sbx ${SbxCli.MINIMUM_SBX_VERSION} or later. " +
@@ -226,7 +226,7 @@ internal class SbxOpenCodeServerBackend(
             SbxFailureKind.UNSUPPORTED_OS ->
                 "Docker Sandboxes is not supported on this machine. Switch this project to the Host CLI runtime."
             SbxFailureKind.POLICY_UNINITIALIZED ->
-                "Sandbox network policy is not set up. Open OpenCode Web Panel settings and set up the default network policy, or stay on Host."
+                "Sandbox network policy is not set up. Set up the default network policy under OpenCode Settings, Docker Sandboxes tab, or switch this project to the Host CLI runtime."
             SbxFailureKind.FOREIGN_SANDBOX ->
                 "A sandbox already exists at this name or workspace that this panel does not own. Adopt it or create a new one from settings."
             SbxFailureKind.SERVE_UNHEALTHY ->

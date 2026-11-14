@@ -207,9 +207,12 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
     private var policyCheckDetail: String? = null
     private var policyCheckedExecutable: String? = null
     private var resetting = false
+    private var pendingTab: OpenCodeSettingsTab? = null
 
     private data class CheckBoxSettingBinding(
         val checkBox: JBCheckBox,
+        /** Where the checkbox is laid out; Restore defaults resets the Panel tab's. */
+        val tab: OpenCodeSettingsTab,
         val read: OpenCodeSettingsState.() -> Boolean,
         val write: OpenCodeSettingsState.(Boolean) -> Unit,
         /**
@@ -223,90 +226,105 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
         listOf(
             CheckBoxSettingBinding(
                 openFileLinksInIdeCheckBox,
+                OpenCodeSettingsTab.PANEL,
                 { openFileLinksInIde },
                 { value -> openFileLinksInIde = value },
                 OpenCodeUiSetting.FILE_LINK_NAVIGATION,
             ),
             CheckBoxSettingBinding(
                 openExternalLinksInBrowserCheckBox,
+                OpenCodeSettingsTab.PANEL,
                 { openExternalLinksInBrowser },
                 { value -> openExternalLinksInBrowser = value },
                 OpenCodeUiSetting.EXTERNAL_LINK_NAVIGATION,
             ),
             CheckBoxSettingBinding(
                 enableCodeNavigationCheckBox,
+                OpenCodeSettingsTab.PANEL,
                 { enableCodeNavigation },
                 { value -> enableCodeNavigation = value },
                 OpenCodeUiSetting.CODE_NAVIGATION,
             ),
             CheckBoxSettingBinding(
                 openDiffsInIdeCheckBox,
+                OpenCodeSettingsTab.PANEL,
                 { openDiffsInIde },
                 { value -> openDiffsInIde = value },
                 OpenCodeUiSetting.DIFF_NAVIGATION,
             ),
             CheckBoxSettingBinding(
                 enableChatFileDropCheckBox,
+                OpenCodeSettingsTab.PANEL,
                 { enableChatFileDrop },
                 { value -> enableChatFileDrop = value },
                 OpenCodeUiSetting.CHAT_FILE_DROP,
             ),
             CheckBoxSettingBinding(
                 forceCompactLayoutCheckBox,
+                OpenCodeSettingsTab.PANEL,
                 { forceCompactLayout },
                 { value -> forceCompactLayout = value },
                 OpenCodeUiSetting.COMPACT_LAYOUT,
             ),
             CheckBoxSettingBinding(
                 showResponseModelInCompactLayoutCheckBox,
+                OpenCodeSettingsTab.PANEL,
                 { showResponseModelInCompactLayout },
                 { value -> showResponseModelInCompactLayout = value },
                 OpenCodeUiSetting.RESPONSE_MODEL_LABEL,
             ),
             CheckBoxSettingBinding(
                 hideWebsiteButtonCheckBox,
+                OpenCodeSettingsTab.PANEL,
                 { hideWebsiteButton },
                 { value -> hideWebsiteButton = value },
                 OpenCodeUiSetting.HIDE_WEBSITE_BUTTON,
             ),
             CheckBoxSettingBinding(
                 fasterPathHoverPreviewCheckBox,
+                OpenCodeSettingsTab.PANEL,
                 { fasterPathHoverPreview },
                 { value -> fasterPathHoverPreview = value },
                 OpenCodeUiSetting.PATH_HOVER_PREVIEW,
             ),
             CheckBoxSettingBinding(
                 syncThemeWithIdeCheckBox,
+                OpenCodeSettingsTab.PANEL,
                 { syncThemeWithIde },
                 { value -> syncThemeWithIde = value },
                 OpenCodeUiSetting.IDE_THEME_SYNC,
             ),
             CheckBoxSettingBinding(
                 suppressProjectSwitchPromptsCheckBox,
+                OpenCodeSettingsTab.PANEL,
                 { suppressProjectSwitchPrompts },
                 { value -> suppressProjectSwitchPrompts = value },
                 OpenCodeUiSetting.PROJECT_SWITCH_PROMPT_SUPPRESSION,
             ),
             CheckBoxSettingBinding(
                 mirrorBrowserCursorCheckBox,
+                OpenCodeSettingsTab.PANEL,
                 { mirrorBrowserCursor },
                 { value -> mirrorBrowserCursor = value },
                 OpenCodeUiSetting.BROWSER_CURSOR_MIRROR,
             ),
             CheckBoxSettingBinding(
                 recoverStalledEventStreamCheckBox,
+                OpenCodeSettingsTab.PANEL,
                 { recoverStalledEventStream },
                 { value -> recoverStalledEventStream = value },
                 OpenCodeUiSetting.EVENT_STREAM_WATCHDOG,
             ),
             CheckBoxSettingBinding(
                 recoverFailedChunkLoadsCheckBox,
+                OpenCodeSettingsTab.PANEL,
                 { recoverFailedChunkLoads },
                 { value -> recoverFailedChunkLoads = value },
                 OpenCodeUiSetting.CHUNK_LOAD_RECOVERY,
             ),
             CheckBoxSettingBinding(
                 recoverStalledRendererCheckBox,
+                OpenCodeSettingsTab.PANEL,
                 { recoverStalledRenderer },
                 { value -> recoverStalledRenderer = value },
                 OpenCodeUiSetting.RENDERER_WATCHDOG,
@@ -315,43 +333,51 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
             // re-checks the setting on every event.
             CheckBoxSettingBinding(
                 notifyOpenCodeUpdatesCheckBox,
+                OpenCodeSettingsTab.SERVER,
                 { notifyOpenCodeUpdates },
                 { value -> notifyOpenCodeUpdates = value },
             ),
             CheckBoxSettingBinding(
                 enableSystemNotificationsCheckBox,
+                OpenCodeSettingsTab.PANEL,
                 { enableSystemNotifications },
                 { value -> enableSystemNotifications = value },
             ),
             CheckBoxSettingBinding(
                 enablePermissionNotificationActionsCheckBox,
+                OpenCodeSettingsTab.PANEL,
                 { enablePermissionNotificationActions },
                 { value -> enablePermissionNotificationActions = value },
             ),
             CheckBoxSettingBinding(
                 showAgentStatusBadgeCheckBox,
+                OpenCodeSettingsTab.PANEL,
                 { showAgentStatusBadge },
                 { value -> showAgentStatusBadge = value },
                 OpenCodeUiSetting.AGENT_STATUS_BADGE,
             ),
             CheckBoxSettingBinding(
                 warnForeignSessionCheckBox,
+                OpenCodeSettingsTab.PANEL,
                 { warnForeignSession },
                 { value -> warnForeignSession = value },
                 OpenCodeUiSetting.FOREIGN_SESSION_WARNING,
             ),
             CheckBoxSettingBinding(
                 autoContinueInterruptedSessionsCheckBox,
+                OpenCodeSettingsTab.PANEL,
                 { autoContinueInterruptedSessions },
                 { value -> autoContinueInterruptedSessions = value },
             ),
             CheckBoxSettingBinding(
                 waitForIntellijMcpServerCheckBox,
+                OpenCodeSettingsTab.SERVER,
                 { waitForIntellijMcpServer },
                 { value -> waitForIntellijMcpServer = value },
             ),
             CheckBoxSettingBinding(
                 enableServerLogsCheckBox,
+                OpenCodeSettingsTab.SERVER,
                 { enableServerLogs },
                 { value -> enableServerLogs = value },
             ),
@@ -615,11 +641,17 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
                 }
             }
         }
+        val tabs =
+            mapOf(
+                OpenCodeSettingsTab.SERVER to serverPanel,
+                OpenCodeSettingsTab.PANEL to uiSettingsPanel,
+                OpenCodeSettingsTab.DOCKER_SANDBOXES to sandboxPanel,
+            )
         panel =
             OpenCodeSettingsTabbedPane().apply {
-                addTab("Server", serverPanel)
-                addTab("Panel", uiSettingsPanel)
-                addTab("Docker Sandboxes", sandboxPanel)
+                OpenCodeSettingsTab.entries.forEach { addTab(it.title, tabs.getValue(it)) }
+                pendingTab?.let { selectedIndex = it.ordinal }
+                pendingTab = null
             }
         reset()
         checkSbxPolicy()
@@ -1369,36 +1401,20 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
     private fun restorePanelDefaults() {
         val defaults = OpenCodeSettingsState()
         checkBoxSettingBindings
-            .filter { it.checkBox in panelCheckBoxes }
+            .filter { it.tab == OpenCodeSettingsTab.PANEL }
             .forEach { it.checkBox.isSelected = it.read(defaults) }
         uiZoomSpinner.value = defaults.uiZoomPercent
         updateUiDependencyControls()
     }
 
-    private val panelCheckBoxes: Set<JBCheckBox>
-        get() =
-            setOf(
-                forceCompactLayoutCheckBox,
-                showResponseModelInCompactLayoutCheckBox,
-                hideWebsiteButtonCheckBox,
-                fasterPathHoverPreviewCheckBox,
-                syncThemeWithIdeCheckBox,
-                mirrorBrowserCursorCheckBox,
-                openFileLinksInIdeCheckBox,
-                enableCodeNavigationCheckBox,
-                openDiffsInIdeCheckBox,
-                openExternalLinksInBrowserCheckBox,
-                enableChatFileDropCheckBox,
-                enableSystemNotificationsCheckBox,
-                enablePermissionNotificationActionsCheckBox,
-                showAgentStatusBadgeCheckBox,
-                suppressProjectSwitchPromptsCheckBox,
-                warnForeignSessionCheckBox,
-                autoContinueInterruptedSessionsCheckBox,
-                recoverStalledEventStreamCheckBox,
-                recoverFailedChunkLoadsCheckBox,
-                recoverStalledRendererCheckBox,
-            )
+    /**
+     * Opens [tab] now, or when the page is created: links from the project page and the failure
+     * card land on the tab that holds what they point to.
+     */
+    internal fun selectTab(tab: OpenCodeSettingsTab) {
+        val tabs = panel as? OpenCodeSettingsTabbedPane
+        if (tabs == null) pendingTab = tab else tabs.selectedIndex = tab.ordinal
+    }
 
     private fun updateUiDependencyControls() {
         enableCodeNavigationCheckBox.isEnabled = openFileLinksInIdeCheckBox.isSelected

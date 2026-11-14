@@ -30,8 +30,9 @@
 - The project page says when its server actions need Apply first, and why a
   sandbox action is unavailable.
 - Choosing **Docker Sandbox** shows right away whether this computer has a
-  recent enough `sbx` and a network policy, with a link to the Docker Sandbox
-  settings. The application page links back to the project's runtime choice.
+  recent enough `sbx` and a network policy, with a link that opens the
+  **Docker Sandboxes** settings tab. The application page links back to the
+  project's runtime choice.
 - The application settings have three tabs: **Server**, **Panel** and
   **Docker Sandboxes**, so Host CLI users never scroll past sandbox setup. The
   Panel options are grouped into Appearance, Navigation and Input,
@@ -58,7 +59,8 @@
 - The startup error card wraps its actions instead of cutting them off in a
   narrow tool window, and lists first the settings page that can fix the
   failure: **OpenCode Settings** for a missing executable, `sbx`, Docker
-  sign-in or network policy, **Project Settings** otherwise.
+  sign-in or network policy, **Project Settings** otherwise. For `sbx`
+  problems it opens the **Docker Sandboxes** tab, which the message names.
 - **View Server Log** on the project page shows the end of the log inside
   Settings, or the output of the current start when logs are off, instead of
   opening another application. It is disabled, with the reason, while there is

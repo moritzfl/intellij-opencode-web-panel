@@ -74,6 +74,7 @@ import de.moritzf.opencodewebpanel.server.shouldShowStartupError
 import de.moritzf.opencodewebpanel.server.shouldTickLifecycleStrip
 import de.moritzf.opencodewebpanel.server.visibleRecoveryNotice
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable
+import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsTab
 import de.moritzf.opencodewebpanel.ui.confirmDiscardForeignSandbox
 import de.moritzf.opencodewebpanel.ui.confirmOpenCodeSandboxExposure
 import de.moritzf.opencodewebpanel.ui.confirmOpenCodeSandboxRecreate
@@ -2050,11 +2051,13 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
             recentOutput = serverManager.getStartupProgress()?.recentOutput.orEmpty(),
             recoveryAction = recoveryAction,
             // sbx itself, its sign-in and the network policy are set up on the application page.
-            applicationSettingsFirst =
-                failure == SbxFailureKind.SBX_NOT_FOUND ||
-                    failure == SbxFailureKind.SBX_TOO_OLD ||
-                    failure == SbxFailureKind.NOT_AUTHENTICATED ||
-                    failure == SbxFailureKind.POLICY_UNINITIALIZED,
+            applicationSettingsTab =
+                OpenCodeSettingsTab.DOCKER_SANDBOXES.takeIf {
+                    failure == SbxFailureKind.SBX_NOT_FOUND ||
+                        failure == SbxFailureKind.SBX_TOO_OLD ||
+                        failure == SbxFailureKind.NOT_AUTHENTICATED ||
+                        failure == SbxFailureKind.POLICY_UNINITIALIZED
+                },
             onAdoptForeign =
                 if (foreign) {
                     { if (sbx.adoptForeignSandbox()) restartOpenCodeServer() }

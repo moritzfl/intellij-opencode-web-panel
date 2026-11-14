@@ -21,6 +21,7 @@ import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.server.SbxLaunchSpec
 import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsConfigurable
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable
+import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsTab
 import java.awt.FlowLayout
 import java.awt.Font
 import java.nio.file.Path
@@ -52,8 +53,12 @@ internal class OpenCodeStartupErrorPanel(
         JButton("OpenCode Settings", AllIcons.General.Settings).apply {
             toolTipText = "Executables, password, proxy, and Docker Sandbox setup"
             addActionListener {
-                ShowSettingsUtil.getInstance()
-                    .showSettingsDialog(project, OpenCodeSettingsConfigurable::class.java)
+                ShowSettingsUtil.getInstance().showSettingsDialog(
+                    project,
+                    OpenCodeSettingsConfigurable::class.java,
+                ) {
+                    it.selectTab(applicationTab)
+                }
             }
         }
     private val openProjectSettingsButton =
@@ -107,6 +112,8 @@ internal class OpenCodeStartupErrorPanel(
         }
     private val logScrollPane = JBScrollPane(logArea).apply { isVisible = false }
     private var logFile: Path? = null
+    /** The application settings tab that can fix the current failure. */
+    private var applicationTab = OpenCodeSettingsTab.SERVER
 
     // Wraps instead of clipping: the tool window is often narrower than all actions together.
     private val actionsPanel =
@@ -174,10 +181,11 @@ internal class OpenCodeStartupErrorPanel(
         onAdoptForeign: (() -> Unit)? = null,
         onCreateNewSandbox: (() -> Unit)? = null,
         recoveryAction: OpenCodeStartupRecoveryAction? = null,
-        applicationSettingsFirst: Boolean = false,
+        applicationSettingsTab: OpenCodeSettingsTab? = null,
     ) {
         logFile = serverLogFile
-        arrangeActions(applicationSettingsFirst)
+        applicationTab = applicationSettingsTab ?: OpenCodeSettingsTab.SERVER
+        arrangeActions(applicationSettingsFirst = applicationSettingsTab != null)
         val cancelled = failureMessage?.contains("cancelled", ignoreCase = true) == true
         titleLabel.text = if (cancelled) "Start cancelled" else "Could not start OpenCode"
         messageLabel.text =
@@ -239,6 +247,7 @@ internal class OpenCodeStartupErrorPanel(
                     }
                 // The Host CLI executable is chosen on the application page.
                 if (failureMessage.isNullOrBlank() && !executableFound) {
+                    applicationTab = OpenCodeSettingsTab.SERVER
                     arrangeActions(applicationSettingsFirst = true)
                 }
                 useAutoPortButton.isVisible = portConflict && offerAutomaticPort

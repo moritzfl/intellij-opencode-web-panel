@@ -69,7 +69,8 @@ class OpenCodeStartupErrorPanelTest : BasePlatformTestCase() {
             existingExecutable(),
             null,
             failureMessage = "The sbx CLI was not found.",
-            applicationSettingsFirst = true,
+            applicationSettingsTab =
+                de.moritzf.opencodewebpanel.settings.OpenCodeSettingsTab.DOCKER_SANDBOXES,
         )
         assertEquals(listOf("OpenCode Settings", "Project Settings"), settingsButtons(panel))
 
