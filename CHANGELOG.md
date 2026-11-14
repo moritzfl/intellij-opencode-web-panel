@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [2.9.1] - 2026-11-14
+
 ### Added
 
 - A 2.x sandbox can pin Docker's OpenCode image instead of following `latest`,
@@ -12,14 +14,18 @@
   `latest`); `opencode-sbx.yaml` takes `openCodeImage: 2.2.7` or a `sha256:`
   digest, and the standalone launcher honors it. Changing the image recreates
   the sandbox; OpenCode itself can still be upgraded inside it.
-- **Upgrade OpenCode in Sandbox** now works for 2.x sandboxes too, so a sandbox
-  does not have to wait for Docker's OpenCode image to catch up with a release.
-  It installs the newest release inside the VM with OpenCode's own installer;
-  the plugin, the TUI, ACP, and `--web` of the standalone launcher then run it.
-  The upgrade survives Stop/Start; **Reset Sandbox** returns to Docker's image.
-- The OpenCode update indicator covers 2.x sandboxes. It also checks Docker's
-  OpenCode image and offers **Reset Sandbox** next to **Upgrade in Sandbox**
-  when that image is newer than the running version.
+
+### Fixed
+
+- **Upgrade OpenCode in Sandbox** works for 2.x sandboxes again. Since 2.9.0 a
+  2.x sandbox could only get a newer OpenCode from **Reset Sandbox**, after
+  Docker's OpenCode image had caught up with the release. The upgrade installs
+  the newest release inside the VM with OpenCode's own installer; the plugin,
+  the TUI, ACP, and `--web` of the standalone launcher then run it. It survives
+  Stop/Start; **Reset Sandbox** returns to Docker's image.
+- The OpenCode update indicator covers 2.x sandboxes again. It also checks
+  Docker's OpenCode image and offers **Reset Sandbox** next to **Upgrade in
+  Sandbox** when that image is newer than the running version.
 
 ## [2.9.0] - 2026-11-14
 
@@ -1260,7 +1266,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.9.0...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.9.1...HEAD
+[2.9.1]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.9.0...2.9.1
 [2.9.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.8.3...2.9.0
 [2.8.3]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.8.2...2.8.3
 [2.8.2]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.8.1...2.8.2
