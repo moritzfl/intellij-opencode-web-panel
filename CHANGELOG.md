@@ -32,6 +32,12 @@
 - Choosing **Docker Sandbox** shows right away whether this computer has a
   recent enough `sbx` and a network policy, with a link to the Docker Sandbox
   settings. The application page links back to the project's runtime choice.
+- The application settings have three tabs: **Server**, **Panel** and
+  **Docker Sandboxes**, so Host CLI users never scroll past sandbox setup. The
+  Panel options are grouped into Appearance, Navigation and Input,
+  Notifications and Status, and Recovery, with shorter descriptions and labels
+  that say what each option does and are found by the settings search. The
+  Panel tab has **Restore defaults**.
 
 ### Fixed
 

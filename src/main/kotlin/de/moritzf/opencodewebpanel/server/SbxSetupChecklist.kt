@@ -7,21 +7,6 @@ internal data class SbxSetupStep(
 )
 
 internal object SbxSetupChecklist {
-    fun appSteps(sbxFound: Boolean, policyReady: Boolean): List<SbxSetupStep> =
-        listOf(
-            SbxSetupStep(
-                "sbx",
-                sbxFound,
-                if (sbxFound) "found" else "install Docker Sandboxes, or choose its Custom path",
-            ),
-            SbxSetupStep(
-                "Network policy",
-                policyReady,
-                if (policyReady) "set up on this computer"
-                else "Set up default network policy below",
-            ),
-        )
-
     fun projectSteps(useSandbox: Boolean, owned: Boolean, running: Boolean): List<SbxSetupStep> =
         listOf(
             SbxSetupStep(

@@ -113,6 +113,32 @@ class OpenCodeSettingsConfigurableTest {
         }
     }
 
+    @Test
+    fun restoreDefaultsResetsOnlyThePanelTab() {
+        settings.forceCompactLayout = false
+        settings.warnForeignSession = true
+        settings.enableServerLogs = false
+        settings.uiZoomPercent = 150
+        SwingUtilities.invokeAndWait {
+            open()
+            configurable.javaClass
+                .getDeclaredMethod("restorePanelDefaults")
+                .apply { isAccessible = true }
+                .invoke(configurable)
+            assertTrue(field<AbstractButton>("forceCompactLayoutCheckBox").isSelected)
+            assertFalse(
+                "Off by default",
+                field<AbstractButton>("warnForeignSessionCheckBox").isSelected,
+            )
+            assertEquals(100, field<javax.swing.JSpinner>("uiZoomSpinner").value)
+            assertFalse(
+                "Server tab options keep their value",
+                field<AbstractButton>("enableServerLogsCheckBox").isSelected,
+            )
+            assertTrue("Restored values wait for Apply", configurable.isModified)
+        }
+    }
+
     @Suppress("UNCHECKED_CAST")
     private fun <T> field(name: String): T =
         OpenCodeSettingsConfigurable::class

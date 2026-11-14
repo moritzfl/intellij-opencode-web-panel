@@ -6,22 +6,6 @@ import org.junit.Test
 
 class SbxSetupChecklistTest {
     @Test
-    fun appChecklistMarksMissingPolicy() {
-        val text =
-            SbxSetupChecklist.format(
-                SbxSetupChecklist.appSteps(sbxFound = true, policyReady = false),
-            )
-        assertTrue(text.contains("✓ sbx: found"))
-        assertTrue(text.contains("[ ] Network policy"))
-        assertTrue(text.contains("Set up default network policy below"))
-        assertFalse(
-            "An adopted policy was never initialized by the plugin",
-            SbxSetupChecklist.format(SbxSetupChecklist.appSteps(true, policyReady = true))
-                .contains("succeeded"),
-        )
-    }
-
-    @Test
     fun projectChecklistRequiresOwnedRunningSandbox() {
         val incomplete =
             SbxSetupChecklist.format(

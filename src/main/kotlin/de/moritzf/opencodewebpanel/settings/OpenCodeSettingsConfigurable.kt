@@ -116,12 +116,12 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
             addActionListener { customSbxRadioButton.isSelected = true }
         }
     private val sbxLoginHintLabel =
-        JBLabel("Sign in with sbx login in a terminal. The panel does not embed OAuth.")
+        JBLabel(
+            "Sign in once with sbx login in a terminal; the panel does not show Docker's sign-in.",
+        )
     private val sbxPolicyHintLabel = JBLabel("No sandbox network policy yet.")
-    private val setupChecklistLabel =
-        JBLabel().apply { foreground = UIUtil.getContextHelpForeground() }
     private val initSbxPolicyButton =
-        JButton("Set up default network policy").apply {
+        JButton("Set Up Default Network Policy…").apply {
             toolTipText =
                 "Runs Docker's balanced policy once on this computer so sandboxes can reach typical AI APIs and package sites"
             accessibleContext.accessibleName = "Set up default sandbox network policy"
@@ -139,44 +139,49 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
     private val ideProxyRadioButton = JBRadioButton("Use IDE HTTP Proxy")
     private val environmentProxyRadioButton = JBRadioButton("Use environment variables")
     private val noProxyRadioButton = JBRadioButton("No proxy")
+    // Settings search indexes labels, not comments: labels carry the words people search for.
     private val enableServerLogsCheckBox = JBCheckBox("Write server logs to disk")
-    private val openFileLinksInIdeCheckBox = JBCheckBox("Enable IDE navigation from OpenCode")
+    private val openFileLinksInIdeCheckBox = JBCheckBox("Open file links in the IDE")
     private val openExternalLinksInBrowserCheckBox =
-        JBCheckBox("Open external HTTP links in the system browser")
-    private val enableCodeNavigationCheckBox = JBCheckBox("Also navigate code references in chat")
+        JBCheckBox("Open web links in the system browser")
+    private val enableCodeNavigationCheckBox =
+        JBCheckBox("Also open file, class, and code references in chat")
     private val openDiffsInIdeCheckBox =
-        JBCheckBox("Open diffs in the IDE on Ctrl/Cmd+Click or Alt+Click")
-    private val enableChatFileDropCheckBox = JBCheckBox("Enable file drop and paste into chat")
-    private val forceCompactLayoutCheckBox = JBCheckBox("Lock to compact view")
+        JBCheckBox("Open diffs in the IDE with Ctrl/Cmd+Click or Alt+Click")
+    private val enableChatFileDropCheckBox = JBCheckBox("Drop and paste files into chat")
+    private val forceCompactLayoutCheckBox =
+        JBCheckBox("Keep the compact (mobile) layout at any panel width")
     private val showResponseModelInCompactLayoutCheckBox =
-        JBCheckBox("Show agent and model on responses in compact view")
-    private val hideWebsiteButtonCheckBox = JBCheckBox("Hide the OpenCode website button")
+        JBCheckBox("Show agent and model on responses in the compact layout (OpenCode 2)")
+    private val hideWebsiteButtonCheckBox = JBCheckBox("Hide OpenCode's floating website button")
     private val fasterPathHoverPreviewCheckBox =
-        JBCheckBox("Faster path previews on tabs, projects, and sessions")
+        JBCheckBox("Show path previews on tabs, projects, and sessions faster")
     private val syncThemeWithIdeCheckBox =
-        JBCheckBox("Sync OpenCode color scheme with the IDE theme")
-    private val suppressProjectSwitchPromptsCheckBox = JBCheckBox("Suppress project-switch prompts")
-    private val mirrorBrowserCursorCheckBox = JBCheckBox("Mirror the web page mouse cursor")
+        JBCheckBox("Match OpenCode's color scheme (dark/light) to the IDE theme")
+    private val suppressProjectSwitchPromptsCheckBox =
+        JBCheckBox("Hide prompts to switch to another session or project")
+    private val mirrorBrowserCursorCheckBox =
+        JBCheckBox("Show the page's mouse cursors (text, link, resize)")
     private val recoverStalledEventStreamCheckBox =
-        JBCheckBox("Reconnect the panel after a stalled connection")
+        JBCheckBox("Reconnect after sleep or a network change (OpenCode 1.x)")
     private val recoverFailedChunkLoadsCheckBox =
-        JBCheckBox("Reload the panel after a failed page chunk")
+        JBCheckBox("Reload the page when part of it fails to load")
     private val recoverStalledRendererCheckBox =
-        JBCheckBox("Reload the panel when its renderer goes silent")
+        JBCheckBox("Reload the panel when the embedded browser stops responding")
     private val notifyOpenCodeUpdatesCheckBox =
-        JBCheckBox("Show an update indicator when a newer matching OpenCode release is available")
+        JBCheckBox("Show when a newer OpenCode release is available")
     private val enableSystemNotificationsCheckBox =
-        JBCheckBox("Forward OpenCode system notifications to the IDE")
+        JBCheckBox("Show OpenCode notifications in the IDE")
     private val enablePermissionNotificationActionsCheckBox =
-        JBCheckBox("Offer Allow/Deny actions on permission notifications")
+        JBCheckBox("With Allow and Deny buttons on permission requests")
     private val showAgentStatusBadgeCheckBox =
         JBCheckBox("Show agent status on the tool window icon")
     private val warnForeignSessionCheckBox =
-        JBCheckBox("Warn when a selected conversation belongs to another workspace")
+        JBCheckBox("Warn when a conversation belongs to another folder or workspace")
     private val autoContinueInterruptedSessionsCheckBox =
-        JBCheckBox("Automatically continue interrupted conversations after recovery")
+        JBCheckBox("Continue interrupted conversations after a restart")
     private val waitForIntellijMcpServerCheckBox =
-        JBCheckBox("Wait for IntelliJ MCP server before starting OpenCode")
+        JBCheckBox("Wait for the IntelliJ MCP server before starting OpenCode")
     private val uiZoomSpinner =
         JSpinner(
                 SpinnerNumberModel(
@@ -370,14 +375,16 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
     private fun createSettingsComponent(): JComponent {
         installControlListenersOnce()
 
-        val serverSetupPanel = panel {
-            group("OpenCode Launch") {
-                row {
-                    comment(
-                        "Which runtime starts OpenCode. Host CLI runs opencode on this machine; Docker Sandbox runs it inside a Docker Sandbox. Runtime is chosen per project.",
-                    )
-                }
-                buttonsGroup("Host CLI — OpenCode executable:") {
+        val serverPanel = panel {
+            row {
+                comment(
+                    "For projects that run OpenCode on this computer (Host CLI). Each project " +
+                        "chooses its runtime in its <a href=\"project\">project settings</a>.",
+                    action = HyperlinkEventAction { openProjectSettings() },
+                )
+            }
+            group("OpenCode Executable") {
+                buttonsGroup {
                     row {
                         cell(autoBinaryRadioButton)
                             .comment(
@@ -390,7 +397,75 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
                     }
                     row { cell(binaryStatusLabel).resizableColumn().align(AlignX.FILL) }
                 }
-                buttonsGroup("Docker Sandbox — sbx executable:") {
+            }
+            group("Authentication") {
+                row("Password:") {
+                    cell(passwordField).resizableColumn().align(AlignX.FILL).gap(RightGap.SMALL)
+                    cell(showPasswordButton).gap(RightGap.SMALL)
+                    cell(copyPasswordButton).gap(RightGap.SMALL)
+                    cell(generatePasswordButton)
+                }
+                row { cell(hintLabel) }
+                row {
+                    comment(
+                        "Protects every OpenCode server the panel starts, Host CLI and Docker Sandbox. Stored in the IDE's password safe.",
+                    )
+                }
+            }
+            group("HTTP Proxy") {
+                buttonsGroup {
+                    row {
+                        cell(ideProxyRadioButton)
+                            .comment(
+                                "Includes auto-detect and PAC; PAC is resolved for a generic HTTPS address.",
+                            )
+                    }
+                    row {
+                        cell(environmentProxyRadioButton)
+                            .comment(
+                                "HTTP_PROXY and HTTPS_PROXY from the environment the IDE started with.",
+                            )
+                    }
+                    row { cell(noProxyRadioButton).comment("Provider traffic goes out directly.") }
+                }
+                row {
+                    comment(
+                        "Host CLI only. Docker Sandboxes route traffic through Docker's gateway; " +
+                            "configure a company proxy in Docker Sandboxes.",
+                    )
+                }
+            }
+            group("Startup and Logs") {
+                row {
+                    cell(waitForIntellijMcpServerCheckBox)
+                        .comment(
+                            "Only when IntelliJ's MCP server is enabled; waits briefly so OpenCode finds its tools.",
+                        )
+                }
+                row {
+                    cell(enableServerLogsCheckBox)
+                        .comment("In the IDE log directory; old logs are removed automatically.")
+                }
+            }
+            group("Updates") {
+                row {
+                    cell(notifyOpenCodeUpdatesCheckBox)
+                        .comment(
+                            "A lightning bolt in the panel's title bar. Click it to upgrade a sandbox or to copy the Host CLI command. Stays within the major version you use.",
+                        )
+                }
+            }
+        }
+        val sandboxPanel = panel {
+            row {
+                comment(
+                    "For projects that run OpenCode in a Docker Sandbox. Each project chooses " +
+                        "its runtime in its <a href=\"project\">project settings</a>.",
+                    action = HyperlinkEventAction { openProjectSettings() },
+                )
+            }
+            group("sbx Executable") {
+                buttonsGroup {
                     row {
                         cell(autoSbxRadioButton)
                             .comment("Searches PATH plus Homebrew and WinGet locations.")
@@ -402,75 +477,16 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
                     row { cell(sbxStatusLabel).resizableColumn().align(AlignX.FILL) }
                 }
             }
-            group("Authentication") {
-                row("Password:") {
-                    cell(passwordField).resizableColumn().align(AlignX.FILL).gap(RightGap.SMALL)
-                    cell(showPasswordButton).gap(RightGap.SMALL)
-                    cell(copyPasswordButton).gap(RightGap.SMALL)
-                    cell(generatePasswordButton)
-                }
-                row { cell(hintLabel) }
-            }
-            buttonsGroup("HTTP proxy:") {
-                row {
-                    cell(ideProxyRadioButton)
-                        .comment(
-                            "Forward the IDE HTTP or SOCKS proxy, including auto-detect and PAC. PAC is resolved for a generic HTTPS target.",
-                        )
-                }
-                row {
-                    cell(environmentProxyRadioButton)
-                        .comment(
-                            "Use HTTP_PROXY and HTTPS_PROXY from the environment the IDE was started with.",
-                        )
-                }
-                row {
-                    cell(noProxyRadioButton)
-                        .comment("Do not send OpenCode provider traffic through a proxy.")
-                }
-                row {
-                    comment(
-                        "Applies to Host CLI only. Docker Sandboxes send provider traffic through the sandbox gateway; " +
-                            "do not set HTTP_PROXY inside the VM. If your company requires an HTTP proxy, configure it " +
-                            "in Docker Sandboxes on the host — this setting does not control or bypass that proxy.",
-                    )
-                }
-            }
-            group("Startup") {
-                row {
-                    cell(waitForIntellijMcpServerCheckBox)
-                        .comment(
-                            "If IntelliJ's MCP server is enabled, wait briefly for it to report that it is running before launching OpenCode.",
-                        )
-                }
-            }
-            group("Server Logs") {
-                row {
-                    cell(enableServerLogsCheckBox)
-                        .comment(
-                            "Persist OpenCode server output in the IDE log directory and prune old log files automatically.",
-                        )
-                }
-            }
-            group("Docker Sandboxes") {
-                row {
-                    comment(
-                        "Needed only for projects that run OpenCode in a Docker Sandbox; each " +
-                            "project chooses its runtime in its <a href=\"project\">project settings</a>.",
-                        action = HyperlinkEventAction { openProjectSettings() },
-                    )
-                }
-                row { cell(sbxLoginHintLabel) }
+            group("Sign-In") { row { cell(sbxLoginHintLabel) } }
+            group("Network Policy") {
                 row { cell(sbxPolicyHintLabel) }
-                row { cell(setupChecklistLabel) }
                 row {
                     cell(initSbxPolicyButton)
                         .comment(
-                            "Sandboxes block all outbound internet until a policy exists. " +
-                                "Docker's balanced profile allows common AI APIs and package registries " +
-                                "and denies everything else. This is machine-wide (every sbx sandbox on this " +
-                                "computer), not just this IDE. The plugin never runs it silently. " +
-                                "<a href=\"$SBX_POLICY_DOCS_URL\">Docker network defaults</a>",
+                            "Sandboxes cannot reach the internet until a policy exists. Docker's balanced " +
+                                "profile allows common AI APIs and package registries and blocks the rest. It " +
+                                "applies to every sandbox on this computer; the plugin never sets it up " +
+                                "without asking. <a href=\"$SBX_POLICY_DOCS_URL\">Docker network defaults</a>",
                             action =
                                 HyperlinkEventAction { event ->
                                     val href = event.url?.toString() ?: event.description
@@ -481,153 +497,129 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
             }
         }
         val uiSettingsPanel = panel {
-            group("Browser Appearance") {
+            row {
+                comment(
+                        "These options add to OpenCode's page in the panel. If one clashes with an " +
+                            "OpenCode update, turn it off: the page reloads without it.",
+                    )
+                    .resizableColumn()
+                link("Restore defaults") { restorePanelDefaults() }.align(AlignX.RIGHT)
+            }
+            group("Appearance") {
                 row("Zoom:") {
-                    cell(uiZoomSpinner)
-                        .comment(
-                            "Scale the embedded OpenCode UI. Default: ${OpenCodeSettingsState.DEFAULT_UI_ZOOM_PERCENT}%.",
-                        )
+                    cell(uiZoomSpinner).gap(RightGap.SMALL)
+                    label("%")
+                        .comment("Default: ${OpenCodeSettingsState.DEFAULT_UI_ZOOM_PERCENT}%.")
                 }
                 row {
                     cell(forceCompactLayoutCheckBox)
                         .comment(
-                            "Keep the compact mobile layout even when the panel is wide, with a full-width Home session list in OpenCode 2.x. On: classic review panel. Off: OpenCode's native responsive layout and redesigned desktop review panel.",
+                            "Off: OpenCode switches to its desktop layout and review panel when the panel is wide.",
                         )
                 }
                 row {
                     cell(showResponseModelInCompactLayoutCheckBox)
                         .comment(
-                            "OpenCode 2.x leaves the agent and model out of a response's info line in the compact view. Adds them back, as in the wide layout, so the model that actually answered stays visible, including automatically routed ones. Turn off if an OpenCode update clashes with it.",
+                            "OpenCode 2 leaves them out in the compact layout, including the model an automatic router picked.",
                         )
                 }
                 row {
                     cell(hideWebsiteButtonCheckBox)
-                        .comment(
-                            "Hide OpenCode's floating help button that opens the OpenCode website. It only overlaps the message box in the panel. Turn off if an OpenCode update needs the control visible again.",
-                        )
+                        .comment("It overlaps the message box in the panel.")
                 }
                 row {
                     cell(fasterPathHoverPreviewCheckBox)
                         .comment(
-                            "Session tabs wait 2s in OpenCode; the panel shows that path preview after 250ms. Home project rows get the same preview so duplicate names stay distinguishable. Turn off if an OpenCode update clashes with the overlay.",
+                            "After 250 ms instead of OpenCode's 2 s, also on Home rows, so projects with the same name stay distinguishable.",
                         )
                 }
                 row {
                     cell(syncThemeWithIdeCheckBox)
-                        .comment(
-                            "Patches the browser's prefers-color-scheme media query to match the IntelliJ theme. Only affects OpenCode when its color scheme is set to System.",
-                        )
+                        .comment("Applies while OpenCode's color scheme is set to System.")
                 }
                 row {
                     cell(mirrorBrowserCursorCheckBox)
                         .comment(
-                            "Apply the hovered page element's cursor style to the panel, like a regular browser would. Fixes the embedded browser never showing text or link cursors and resize cursors getting stuck.",
+                            "The embedded browser does not change the cursor on its own; without this, resize cursors can get stuck.",
                         )
                 }
             }
-            group("IDE Navigation") {
+            group("Navigation and Input") {
                 row {
                     cell(openFileLinksInIdeCheckBox)
-                        .comment("Open local file links and changed-file buttons in IntelliJ.")
+                        .comment("Local file links and changed-file buttons open in the editor.")
                 }
-                indent {
-                    row {
-                        cell(enableCodeNavigationCheckBox)
-                            .comment("Open file names, class names, and code references from chat.")
-                    }
-                }
+                indent { row { cell(enableCodeNavigationCheckBox) } }
                 row {
                     cell(openDiffsInIdeCheckBox)
                         .comment(
-                            "Ctrl+Click (Cmd+Click on macOS) or Alt+Click a diff in chat or in the changes list to open it in the IDE's diff viewer. F4 then jumps to the original file.",
+                            "In chat and in the changes list. F4 jumps from the diff to the file.",
                         )
                 }
-            }
-            group("Link Handling") {
                 row {
                     cell(openExternalLinksInBrowserCheckBox)
-                        .comment(
-                            "Open external HTTP and HTTPS links in the system browser instead of navigating the embedded panel.",
-                        )
+                        .comment("Instead of navigating the panel away from OpenCode.")
                 }
-            }
-            group("Chat File Input") {
                 row {
                     cell(enableChatFileDropCheckBox)
                         .comment(
-                            "Use OpenCode's native handling for project file references and file attachments.",
+                            "Project files become @path references; other files and screenshots become attachments.",
                         )
                 }
             }
-            group("OpenCode Event Handling") {
-                row {
-                    cell(notifyOpenCodeUpdatesCheckBox)
-                        .comment(
-                            "Shows a lightning bolt on the OpenCode tool-window title bar. Hover for the version; click to upgrade a 1.x sandbox or copy the Host CLI command. 1.x checks npm opencode-ai; 2.x checks @opencode/cli. Does not suggest switching major versions. A 2.x Docker Sandbox follows Docker's OpenCode kit; Reset Sandbox picks up its latest release.",
-                        )
-                }
+            group("Notifications and Status") {
                 row {
                     cell(enableSystemNotificationsCheckBox)
-                        .comment(
-                            "Show OpenCode browser notifications as IntelliJ notifications and route notification clicks back to OpenCode.",
-                        )
+                        .comment("Clicking one shows its conversation in the panel.")
                 }
-                indent {
-                    row {
-                        cell(enablePermissionNotificationActionsCheckBox)
-                            .comment(
-                                "Answer agent permission requests directly from the IDE notification without switching to the panel.",
-                            )
-                    }
+                indent { row { cell(enablePermissionNotificationActionsCheckBox) } }
+                row {
+                    cell(showAgentStatusBadgeCheckBox)
+                        .comment("While the agent works, and when it waits for your input.")
                 }
                 row {
                     cell(suppressProjectSwitchPromptsCheckBox)
                         .comment(
-                            "Hide OpenCode in-app prompts that ask this panel to switch to another session or project for approval.",
-                        )
-                }
-                row {
-                    cell(showAgentStatusBadgeCheckBox)
-                        .comment(
-                            "Overlay the tool window icon with a live indicator while the agent works and a warning while it awaits your input.",
+                            "OpenCode asks the panel to switch sessions or projects for approvals elsewhere; the panel stays where it is.",
                         )
                 }
                 row {
                     cell(warnForeignSessionCheckBox)
                         .comment(
-                            "Off by default. Show an IDE warning and a bright red border around the panel when the conversation's directory is not this project's OpenCode directory, including a session OpenCode restores on startup. Does not block opening it. Symlink spellings and sandbox guest paths count as the same folder.",
+                            "An IDE warning and a red border when the open conversation's folder is not this project's OpenCode directory. Opening it is not blocked.",
                         )
                 }
+            }
+            group("Recovery") {
                 row {
                     cell(autoContinueInterruptedSessionsCheckBox)
                         .comment(
-                            "Send a continuation prompt to recently active sessions after the server restarts or recovers, if their last assistant turn was interrupted.",
+                            "Sends a continuation prompt to recently active conversations whose last answer was cut off.",
                         )
                 }
                 row {
                     cell(recoverStalledEventStreamCheckBox)
-                        .comment(
-                            "On OpenCode 1.18, reconnect when sleep or a network change leaves the panel's connection silent. This prevents answered permission prompts and new messages from getting stuck. OpenCode 2 handles this natively; no connection patch is injected there.",
-                        )
+                        .comment("OpenCode 2 reconnects on its own and is left unchanged.")
                 }
                 row {
                     cell(recoverFailedChunkLoadsCheckBox)
                         .comment(
-                            "Reload the page once when a lazy-loaded OpenCode chunk fails (\"Failed to fetch dynamically imported module\"), which leaves the page stuck behind OpenCode's error boundary until reloaded. CEF only reports main-frame failures to the IDE; without this the boundary sits there until you restart the panel manually.",
+                            "Recovers from \"Failed to fetch dynamically imported module\", which otherwise needs a manual reload.",
                         )
                 }
                 row {
                     cell(recoverStalledRendererCheckBox)
                         .comment(
-                            "Watch the page's heartbeat and reload it when the embedded browser goes silent without an error (a stuck or dead JCEF renderer, as happens with out-of-process browser mode). Persistent stalls recreate the panel; a failure card with Retry is the fallback.",
+                            "Reloads the page, then recreates the panel if it stays silent.",
                         )
                 }
             }
         }
         panel =
             OpenCodeSettingsTabbedPane().apply {
-                addTab("OpenCode Server Setup", serverSetupPanel)
-                addTab("OpenCode UI Settings", uiSettingsPanel)
+                addTab("Server", serverPanel)
+                addTab("Panel", uiSettingsPanel)
+                addTab("Docker Sandboxes", sandboxPanel)
             }
         reset()
         checkSbxPolicy()
@@ -1347,19 +1339,51 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
                 (policyStatus != SbxPolicyStatus.ABSENT && consented)
         initSbxPolicyButton.isEnabled =
             sbxFound && !policyReady && policyStatus != SbxPolicyStatus.CHECKING
-        setupChecklistLabel.text =
-            "<html>" +
-                de.moritzf.opencodewebpanel.server.SbxSetupChecklist.format(
-                        de.moritzf.opencodewebpanel.server.SbxSetupChecklist.appSteps(
-                            sbxFound,
-                            policyReady,
-                        ),
-                    )
-                    .replace("\n", "<br>") +
-                "</html>"
+        initSbxPolicyButton.toolTipText =
+            when {
+                policyReady -> "This computer already has a sandbox network policy."
+                !sbxFound -> "Install sbx first, or choose its Custom path above."
+                else ->
+                    "Runs Docker's balanced policy once on this computer so sandboxes can reach typical AI APIs and package sites"
+            }
         updateSbxControls()
         updateBinaryControls()
     }
+
+    /** The Panel tab only: executables, password and proxy have no safe "default". */
+    private fun restorePanelDefaults() {
+        val defaults = OpenCodeSettingsState()
+        checkBoxSettingBindings
+            .filter { it.checkBox in panelCheckBoxes }
+            .forEach { it.checkBox.isSelected = it.read(defaults) }
+        uiZoomSpinner.value = defaults.uiZoomPercent
+        updateUiDependencyControls()
+    }
+
+    private val panelCheckBoxes: Set<JBCheckBox>
+        get() =
+            setOf(
+                forceCompactLayoutCheckBox,
+                showResponseModelInCompactLayoutCheckBox,
+                hideWebsiteButtonCheckBox,
+                fasterPathHoverPreviewCheckBox,
+                syncThemeWithIdeCheckBox,
+                mirrorBrowserCursorCheckBox,
+                openFileLinksInIdeCheckBox,
+                enableCodeNavigationCheckBox,
+                openDiffsInIdeCheckBox,
+                openExternalLinksInBrowserCheckBox,
+                enableChatFileDropCheckBox,
+                enableSystemNotificationsCheckBox,
+                enablePermissionNotificationActionsCheckBox,
+                showAgentStatusBadgeCheckBox,
+                suppressProjectSwitchPromptsCheckBox,
+                warnForeignSessionCheckBox,
+                autoContinueInterruptedSessionsCheckBox,
+                recoverStalledEventStreamCheckBox,
+                recoverFailedChunkLoadsCheckBox,
+                recoverStalledRendererCheckBox,
+            )
 
     private fun updateUiDependencyControls() {
         enableCodeNavigationCheckBox.isEnabled = openFileLinksInIdeCheckBox.isSelected
