@@ -641,7 +641,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                         true,
                         project,
                     )
-            if (!completed) throw ConfigurationException("Cancelled.")
+            if (!completed) throw applyCancelled()
             failure?.let {
                 throw ConfigurationException("Could not verify sandbox kit contents: ${it.message}")
             }
@@ -650,12 +650,12 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
             !exposure.isEmpty &&
                 !SbxSandboxRecordStore.getInstance()
                     .isExposureAcknowledged(spec.canonicalDirectory, exposure.fingerprint)
+        val serverRunning =
+            projectBackend().getLifecycleState() == OpenCodeServerLifecycleState.RUNNING
         if (
-            (preview.changes.isNotEmpty() || exposureUnacknowledged) &&
+            plan.needsConfirmation(serverRunning, exposureUnacknowledged) &&
                 !ApplicationManager.getApplication().isUnitTestMode
         ) {
-            val recreate =
-                preview.effect == de.moritzf.opencodewebpanel.server.SbxApplyEffect.RECREATE
             val message =
                 if (exposureUnacknowledged) {
                     preview.message() +
@@ -664,16 +664,19 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                 } else {
                     preview.message()
                 }
+            val (title, confirmText) =
+                when {
+                    plan.recreate -> "Recreate Sandbox" to "Recreate Sandbox"
+                    plan.requiresStop && serverRunning -> "Restart OpenCode" to "Apply and Restart"
+                    else -> "Allow Sandbox Access" to "Allow and Apply"
+                }
             val confirmed =
-                MessageDialogBuilder.yesNo(preview.confirmTitle(), message)
-                    .yesText(if (recreate) "Recreate" else "Apply")
+                MessageDialogBuilder.yesNo(title, message)
+                    .yesText(confirmText)
                     .noText("Cancel")
-                    .icon(
-                        if (recreate || exposureUnacknowledged) Messages.getWarningIcon()
-                        else Messages.getInformationIcon(),
-                    )
+                    .icon(Messages.getWarningIcon())
                     .ask(panel)
-            if (!confirmed) throw ConfigurationException("Cancelled.")
+            if (!confirmed) throw applyCancelled()
         }
         applier.apply(plan, exposure)
         fixedPortField.text = plan.values.fixedPort.toString()

@@ -25,24 +25,17 @@ internal data class SbxApplyPreview(
     val reloadPage: Boolean
         get() = changes.any { it.reloadPage }
 
-    fun confirmTitle(): String =
-        when (effect) {
-            SbxApplyEffect.RECREATE -> "Recreate sandbox"
-            SbxApplyEffect.RESTART -> "Restart OpenCode"
-            SbxApplyEffect.LIVE -> "Apply OpenCode settings"
-            SbxApplyEffect.NONE -> "Apply OpenCode settings"
-        }
-
     fun message(): String {
         val lines = ArrayList<String>()
         lines += "Directory: $directory"
         lines += "Runtime: $runtimeLabel"
         if (changes.isEmpty()) {
-            lines += "No process changes."
+            lines += "Nothing restarts."
         } else {
             lines += "Changes:"
             changes.forEach { change ->
-                lines += "• ${change.summary} (${effectLabel(change.effect)})"
+                lines +=
+                    "• ${change.summary}" + effectLabel(change.effect)?.let { " — $it" }.orEmpty()
             }
         }
         if (historyNote.isNotBlank()) lines += historyNote
@@ -181,12 +174,13 @@ internal data class SbxApplyPreview(
             return if (spec.useSandbox) "Docker Sandbox (sbx)" else "Host (native CLI)"
         }
 
-        fun effectLabel(effect: SbxApplyEffect): String =
+        /** Null for changes that are only saved; their summary says when they take effect. */
+        fun effectLabel(effect: SbxApplyEffect): String? =
             when (effect) {
-                SbxApplyEffect.LIVE -> "now"
-                SbxApplyEffect.RESTART -> "restart"
-                SbxApplyEffect.RECREATE -> "recreate VM"
-                SbxApplyEffect.NONE -> "settings"
+                SbxApplyEffect.LIVE -> "applies now"
+                SbxApplyEffect.RESTART -> "restarts OpenCode"
+                SbxApplyEffect.RECREATE -> "recreates the sandbox"
+                SbxApplyEffect.NONE -> null
             }
     }
 }

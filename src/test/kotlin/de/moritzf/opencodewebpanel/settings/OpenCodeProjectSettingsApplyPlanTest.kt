@@ -117,6 +117,26 @@ class OpenCodeProjectSettingsApplyPlanTest {
     }
 
     @Test
+    fun onlyCostlyChangesAskForConfirmation() {
+        val deferred = plan(base.copy(memory = "8g"))
+        assertFalse(deferred.needsConfirmation(serverRunning = true, false))
+        val live = plan(base.copy(hostPort = 4097))
+        assertFalse(live.needsConfirmation(serverRunning = true, false))
+        val restart = plan(base.copy(workingDirectory = "./app"))
+        assertTrue(restart.needsConfirmation(serverRunning = true, false))
+        assertFalse(
+            "Restarting a stopped server loses nothing",
+            restart.needsConfirmation(serverRunning = false, false),
+        )
+        val recreate = plan(base.copy(shareHostOpencodeConfig = true))
+        assertTrue(recreate.needsConfirmation(serverRunning = false, false))
+        assertTrue(
+            "New sandbox access is always acknowledged",
+            deferred.needsConfirmation(serverRunning = false, exposureUnacknowledged = true),
+        )
+    }
+
+    @Test
     fun destinationBaselineDoesNotRecreateTheProjectBeingLeft() {
         val destination =
             base.copy(canonicalDirectory = "/destination", kits = listOf("./other-kit"))

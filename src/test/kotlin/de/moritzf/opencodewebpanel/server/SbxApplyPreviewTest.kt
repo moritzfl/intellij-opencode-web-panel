@@ -70,9 +70,26 @@ class SbxApplyPreviewTest {
                 "sessions kept",
             )
         assertEquals(SbxApplyEffect.NONE, preview.effect)
-        assertTrue(preview.message().contains("applies at Reset"))
+        assertTrue(preview.message().contains("• Memory 4g → 8g (applies at Reset)\n"))
         assertTrue(preview.message().contains("sessions kept"))
-        assertEquals("Apply OpenCode settings", preview.confirmTitle())
+    }
+
+    @Test
+    fun eachChangeSaysWhatApplyDoesInPlainWords() {
+        val message =
+            SbxApplyPreview.build(
+                    "/tmp/p",
+                    base.copy(kits = listOf("./a")),
+                    base.copy(hostPort = 4097, workingDirectory = "./app", kits = emptyList()),
+                    false,
+                    true,
+                    "",
+                )
+                .message()
+        assertTrue(message, message.contains("• Server port — applies now"))
+        assertTrue(message, message.contains("• OpenCode working directory — restarts OpenCode"))
+        assertTrue(message, message.contains("• Kits removed or reordered — recreates the sandbox"))
+        assertFalse(message, message.contains("(settings)"))
     }
 
     @Test
@@ -95,7 +112,7 @@ class SbxApplyPreviewTest {
             )
         assertEquals(SbxApplyEffect.RESTART, preview.effect)
         assertTrue(preview.message().contains("OpenCode working directory"))
-        assertFalse(preview.message().contains("recreate VM"))
+        assertFalse(preview.message().contains("recreates the sandbox"))
     }
 
     @Test
@@ -230,7 +247,7 @@ class SbxApplyPreviewTest {
     fun emptyPreviewHasNoProcessChanges() {
         val preview = SbxApplyPreview.build("/tmp/p", base, base, false, false, "")
         assertEquals(SbxApplyEffect.NONE, preview.effect)
-        assertTrue(preview.message().contains("No process changes"))
+        assertTrue(preview.message().contains("Nothing restarts"))
         assertFalse(preview.message().contains("Cancel leaves"))
     }
 }

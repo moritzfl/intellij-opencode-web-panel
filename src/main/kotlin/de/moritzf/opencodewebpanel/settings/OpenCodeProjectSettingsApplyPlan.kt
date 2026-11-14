@@ -35,6 +35,14 @@ internal data class OpenCodeProjectSettingsApplyPlan(
     val requiresStop: Boolean
         get() = backendChanged || preview.effect >= SbxApplyEffect.RESTART
 
+    /**
+     * Ask only when Apply costs something: it recreates the VM, interrupts a running server, or
+     * grants the sandbox access the user has not acknowledged. Live and deferred changes apply
+     * without a prompt; the page shows what waits for Reset.
+     */
+    fun needsConfirmation(serverRunning: Boolean, exposureUnacknowledged: Boolean): Boolean =
+        exposureUnacknowledged || recreate || (requiresStop && serverRunning)
+
     /** Stop completion, not STOPPED publication, releases a fixed port for the next backend. */
     fun applyRuntime(
         leavingSharedBackend: Boolean,
