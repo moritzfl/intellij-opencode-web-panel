@@ -144,7 +144,7 @@ Open <kbd>Settings/Preferences</kbd> > <kbd>Tools</kbd> > <kbd>OpenCode Web Pane
 - Restart this project's OpenCode server from the tool window or **OpenCode Web Panel (Project)**.
 - During startup/restart, the waiting view explains the current step and streams recent command output. Image downloads and kit installation can take several minutes. Elapsed time belongs to the current attempt, and a quiet step offers log/cancel guidance rather than an estimated countdown. Recent activity is available even with file logging disabled.
 - View recent OpenCode server output from **OpenCode Web Panel (Project)**.
-- An optional lightning-bolt action indicates a newer same-major OpenCode release. Click it to upgrade a 1.x sandbox or view a copyable Host CLI upgrade command. Disable it in application settings. A 2.x sandbox follows Docker's kit instead.
+- An optional lightning-bolt action indicates a newer same-major OpenCode release. Click it to upgrade a sandbox or view a copyable Host CLI upgrade command. For a 2.x sandbox it also checks Docker's OpenCode image and offers **Reset Sandbox** when that image is newer. Disable it in application settings.
 
 ### Sandbox credentials and standalone use
 

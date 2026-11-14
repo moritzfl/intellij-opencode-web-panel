@@ -12,15 +12,23 @@ import java.net.URI
 /**
  * Optional same-major OpenCode upgrade action on the tool-window title bar. 1.x → npm
  * `opencode-ai`; 2.x → npm `@opencode/cli`. Never suggests crossing a major version. A 2.x Docker
- * Sandbox runs Docker's published kit, so the caller skips npm for it.
+ * Sandbox also reads Docker Hub, which can lag npm: its OpenCode image is what Reset Sandbox
+ * creates, while an in-VM upgrade installs the npm release.
  */
 internal object OpenCodeReleaseUpdates {
     const val NPM_V1_LATEST_URL = "https://registry.npmjs.org/opencode-ai/latest"
     const val NPM_V2_LATEST_URL = "https://registry.npmjs.org/@opencode/cli/latest"
+    const val DOCKER_IMAGE_TAGS_URL =
+        "https://hub.docker.com/v2/repositories/sbx/opencode/tags?page_size=100&ordering=last_updated"
 
+    /**
+     * [latest] is the newest release in either catalog. [dockerImage] is set only when Docker's
+     * current image is newer than [installed], i.e. when Reset Sandbox would update OpenCode.
+     */
     data class Notice(
         val installed: String,
         val latest: String,
+        val dockerImage: String? = null,
     )
 
     fun catalogUrl(major: Int): String? =
@@ -44,6 +52,40 @@ internal object OpenCodeReleaseUpdates {
             ?.takeIf { it.isNotEmpty() }
     }
 
+    /**
+     * The release that Docker's `latest` image carries: the plain version tag with the same digest.
+     * Null without such a tag or for another major, so a moved `latest` is never misreported.
+     */
+    fun parseDockerImageVersion(json: String, major: Int): String? {
+        val results =
+            runCatching { JsonParser.parseString(json) }
+                .getOrNull()
+                ?.takeIf { it.isJsonObject }
+                ?.asJsonObject
+                ?.get("results")
+                ?.takeIf { it.isJsonArray }
+                ?.asJsonArray ?: return null
+        val tags = results.mapNotNull { element ->
+            val tag = element.takeIf { it.isJsonObject }?.asJsonObject ?: return@mapNotNull null
+            val name = tag.stringMember("name") ?: return@mapNotNull null
+            val digest = tag.stringMember("digest") ?: return@mapNotNull null
+            name to digest
+        }
+        val latestDigest = tags.firstOrNull { it.first == "latest" }?.second ?: return null
+        return tags
+            .filter { (name, digest) -> digest == latestDigest && RELEASE_TAG.matches(name) }
+            .mapNotNull { (name, _) ->
+                parseSemVer(name)?.takeIf { it.major == major }?.let { name to it }
+            }
+            .maxByOrNull { it.second }
+            ?.first
+    }
+
+    private val RELEASE_TAG = Regex("""\d+\.\d+\.\d+""")
+
+    private fun com.google.gson.JsonObject.stringMember(name: String): String? =
+        get(name)?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }?.asString
+
     private class Check {
         @Volatile var notice: Notice? = null
     }
@@ -60,10 +102,10 @@ internal object OpenCodeReleaseUpdates {
     fun tooltip(notice: Notice, sandbox: Boolean = false): String {
         val base =
             "OpenCode ${notice.latest} is available. Consider upgrading. Installed: ${notice.installed}."
-        return if (sandbox) {
-            "$base Click to upgrade this sandbox."
-        } else {
-            "$base Click for Host CLI upgrade steps."
+        return when {
+            sandbox && notice.dockerImage != null -> "$base Click to upgrade or reset this sandbox."
+            sandbox -> "$base Click to upgrade this sandbox."
+            else -> "$base Click for Host CLI upgrade steps."
         }
     }
 
@@ -75,15 +117,30 @@ internal object OpenCodeReleaseUpdates {
     fun notice(
         installed: String,
         latest: String?,
+        dockerImage: String? = null,
     ): Notice? {
         val installedSem = parseSemVer(installed) ?: return null
-        val latestSem = parseSemVer(latest) ?: return null
-        if (installedSem.major != latestSem.major) return null
-        if (latestSem <= installedSem) return null
-        return Notice(installed = stripPrefix(installed), latest = stripPrefix(latest!!))
+        fun newer(version: String?): SemVer? =
+            parseSemVer(version)?.takeIf { it.major == installedSem.major && it > installedSem }
+        val newest =
+            listOfNotNull(latest, dockerImage)
+                .mapNotNull { version -> newer(version)?.let { version to it } }
+                .maxByOrNull { it.second }
+                ?.first ?: return null
+        return Notice(
+            installed = stripPrefix(installed),
+            latest = stripPrefix(newest),
+            dockerImage = dockerImage?.takeIf { newer(it) != null }?.let(::stripPrefix),
+        )
     }
 
-    fun checkAndIndicate(project: Project, installedVersion: String?, onReady: () -> Unit) {
+    /** [dockerImage]: also compare Docker's OpenCode sandbox image (a 2.x sandbox). */
+    fun checkAndIndicate(
+        project: Project,
+        installedVersion: String?,
+        dockerImage: Boolean = false,
+        onReady: () -> Unit,
+    ) {
         val check = Check()
         project.putUserData(checkKey, check)
         val application = ApplicationManager.getApplication()
@@ -93,7 +150,7 @@ internal object OpenCodeReleaseUpdates {
         if (!OpenCodeSettingsState.getInstance().notifyOpenCodeUpdates) return
         val installed = installedVersion?.trim()?.takeIf { it.isNotEmpty() } ?: return
         application.executeOnPooledThread {
-            val notice = evaluate(installed)
+            val notice = evaluate(installed, dockerImage = dockerImage)
             application.invokeLater {
                 if (project.isDisposed || project.getUserData(checkKey) !== check)
                     return@invokeLater
@@ -108,11 +165,18 @@ internal object OpenCodeReleaseUpdates {
     internal fun evaluate(
         installed: String,
         fetch: (String) -> String? = ::readUrl,
+        dockerImage: Boolean = false,
     ): Notice? {
         val major = parseSemVer(installed)?.major ?: return null
         val url = catalogUrl(major) ?: return null
-        val latest = parseNpmLatestVersion(fetch(url) ?: return null)
-        return notice(installed, latest)
+        val latest = fetch(url)?.let(::parseNpmLatestVersion)
+        val image =
+            if (dockerImage) {
+                fetch(DOCKER_IMAGE_TAGS_URL)?.let { parseDockerImageVersion(it, major) }
+            } else {
+                null
+            }
+        return notice(installed, latest, image)
     }
 
     private fun parseSemVer(version: String?): SemVer? {

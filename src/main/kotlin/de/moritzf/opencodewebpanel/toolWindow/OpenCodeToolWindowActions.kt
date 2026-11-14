@@ -44,6 +44,8 @@ import de.moritzf.opencodewebpanel.server.isOpenCodePageReloadEnabled
 import de.moritzf.opencodewebpanel.server.isOpenCodeServerStopEnabled
 import de.moritzf.opencodewebpanel.settings.OpenCodeProjectSettingsConfigurable
 import de.moritzf.opencodewebpanel.settings.OpenCodeSettingsConfigurable
+import de.moritzf.opencodewebpanel.ui.OpenCodeSandboxUpdateChoice
+import de.moritzf.opencodewebpanel.ui.chooseOpenCodeSandboxUpdate
 import de.moritzf.opencodewebpanel.ui.confirmOpenCodeSandboxBinaryUpgrade
 import de.moritzf.opencodewebpanel.ui.confirmOpenCodeSandboxReset
 import de.moritzf.opencodewebpanel.ui.confirmOpenCodeServerRestart
@@ -132,8 +134,8 @@ internal class OpenCodeMovePanelAction :
 
 /**
  * Lightning on the tool-window title when a same-major OpenCode release is newer. Hover shows the
- * version. Click upgrades a 1.x sandbox (confirm) or shows Host CLI steps. A 2.x sandbox follows
- * Docker's kit and gets no notice.
+ * version. Click upgrades a 1.x sandbox (confirm), offers a 2.x sandbox an in-VM upgrade or, when
+ * Docker's image is newer, Reset Sandbox, or shows Host CLI steps.
  */
 internal class OpenCodeUpdateAvailableAction :
     DumbAwareAction(
@@ -189,8 +191,19 @@ internal fun offerOpenCodeUpdate(project: Project, notice: OpenCodeReleaseUpdate
         )
         return
     }
-    if (!confirmOpenCodeSandboxBinaryUpgrade(project)) return
-    sandbox.upgradeOpenCodeBinary(project)
+    if (sandboxOpenCodeVersion(project) != SbxOpenCodeVersion.V2) {
+        if (!confirmOpenCodeSandboxBinaryUpgrade(project)) return
+        sandbox.upgradeOpenCodeBinary(project)
+        return
+    }
+    when (
+        chooseOpenCodeSandboxUpdate(project, notice.installed, notice.latest, notice.dockerImage)
+    ) {
+        OpenCodeSandboxUpdateChoice.UPGRADE_IN_SANDBOX -> sandbox.upgradeOpenCodeBinary(project)
+        OpenCodeSandboxUpdateChoice.RESET_SANDBOX ->
+            OpenCodeProjectRuntime.getInstance(project).resetSandbox()
+        null -> Unit
+    }
 }
 
 private class OpenCodeHostUpgradeDialog(

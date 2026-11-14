@@ -70,6 +70,73 @@ internal fun confirmOpenCodeSandboxBinaryUpgrade(
         .ask(project)
 }
 
+internal enum class OpenCodeSandboxUpdateChoice {
+    UPGRADE_IN_SANDBOX,
+    RESET_SANDBOX,
+}
+
+private const val UPGRADE_IN_SANDBOX = "Upgrade in Sandbox"
+private const val RESET_SANDBOX = "Reset Sandbox"
+
+/**
+ * A 2.x sandbox can install [latest] inside the VM, or be recreated from Docker's image when that
+ * image ([dockerImage]) is newer than [installed]. Choosing Reset is the destructive confirmation;
+ * the text states what is dropped. Null when cancelled.
+ */
+internal fun chooseOpenCodeSandboxUpdate(
+    project: Project?,
+    installed: String,
+    latest: String,
+    dockerImage: String?,
+): OpenCodeSandboxUpdateChoice? {
+    val retention =
+        project?.let {
+            OpenCodeProjectSettingsState.getInstance(it)
+                .effectiveProjectDirectory(it.basePath)
+                ?.let(::sandboxSessionRetentionSummary)
+        } ?: "Conversation history retention is unknown until the VM is inspected."
+    val buttons =
+        if (dockerImage != null)
+            arrayOf(UPGRADE_IN_SANDBOX, RESET_SANDBOX, Messages.getCancelButton())
+        else arrayOf(UPGRADE_IN_SANDBOX, Messages.getCancelButton())
+    val chosen =
+        MessageDialogBuilder.Message(
+                "OpenCode Update",
+                openCodeSandboxUpdateMessage(installed, latest, dockerImage, retention),
+            )
+            .buttons(*buttons)
+            .defaultButton(UPGRADE_IN_SANDBOX)
+            .focusedButton(UPGRADE_IN_SANDBOX)
+            .icon(Messages.getInformationIcon())
+            .show(project)
+    return when (chosen) {
+        UPGRADE_IN_SANDBOX -> OpenCodeSandboxUpdateChoice.UPGRADE_IN_SANDBOX
+        RESET_SANDBOX -> OpenCodeSandboxUpdateChoice.RESET_SANDBOX
+        else -> null
+    }
+}
+
+internal fun openCodeSandboxUpdateMessage(
+    installed: String,
+    latest: String,
+    dockerImage: String?,
+    retention: String,
+): String {
+    val upgrade =
+        "$UPGRADE_IN_SANDBOX installs OpenCode $latest inside this VM with OpenCode's own " +
+            "installer and restarts OpenCode. The VM and sessions stay; a later Reset Sandbox " +
+            "returns to Docker's image."
+    val reset =
+        if (dockerImage != null) {
+            "$RESET_SANDBOX recreates the VM from Docker's OpenCode image, which has OpenCode " +
+                "$dockerImage. Packages and other VM-only state are dropped. $retention"
+        } else {
+            "Docker's OpenCode image has no newer release yet, so Reset Sandbox would not " +
+                "update OpenCode."
+        }
+    return "OpenCode $latest is available. This sandbox runs $installed.\n\n$upgrade\n\n$reset"
+}
+
 internal fun confirmOpenCodeSandboxExposure(project: Project?, exposure: SbxExposure?): Boolean {
     val items = exposure?.items.orEmpty()
     if (items.isEmpty()) return true

@@ -1158,12 +1158,15 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
 
     private fun warnIfOpenCodeVersionIsUnsupported() {
         if (project.isDisposed) return
-        // Docker publishes a 2.x sandbox's OpenCode; npm releases do not apply to it.
+        // A 2.x sandbox can upgrade in the VM (npm release) or reset to Docker's image.
         val dockerKit =
             !OpenCodeServerBackend.isNative(serverManager.backendId) &&
                 sandboxOpenCodeVersion(project) == SbxOpenCodeVersion.V2
-        val checkedVersion = serverManager.getServerVersion().takeUnless { dockerKit }
-        OpenCodeReleaseUpdates.checkAndIndicate(project, checkedVersion) {
+        OpenCodeReleaseUpdates.checkAndIndicate(
+            project,
+            serverManager.getServerVersion(),
+            dockerImage = dockerKit,
+        ) {
             if (!isContentDisposed()) host.updateHeading()
         }
         warnIfSandboxCreateIsStale()

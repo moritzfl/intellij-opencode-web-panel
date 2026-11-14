@@ -11,6 +11,9 @@
   It installs the newest release inside the VM with OpenCode's own installer;
   the plugin, the TUI, ACP, and `--web` of the standalone launcher then run it.
   The upgrade survives Stop/Start; **Reset Sandbox** returns to Docker's image.
+- The OpenCode update indicator covers 2.x sandboxes. It also checks Docker's
+  OpenCode image and offers **Reset Sandbox** next to **Upgrade in Sandbox**
+  when that image is newer than the running version.
 
 ## [2.9.0] - 2026-11-14
 
