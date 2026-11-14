@@ -99,17 +99,17 @@ internal fun chooseOpenCodeSandboxUpdate(
         if (dockerImage != null)
             arrayOf(UPGRADE_IN_SANDBOX, RESET_SANDBOX, Messages.getCancelButton())
         else arrayOf(UPGRADE_IN_SANDBOX, Messages.getCancelButton())
+    // Messages.showDialog rather than MessageDialogBuilder.Message, which is experimental API.
     val chosen =
-        MessageDialogBuilder.Message(
-                "OpenCode Update",
-                openCodeSandboxUpdateMessage(installed, latest, dockerImage, retention),
-            )
-            .buttons(*buttons)
-            .defaultButton(UPGRADE_IN_SANDBOX)
-            .focusedButton(UPGRADE_IN_SANDBOX)
-            .icon(Messages.getInformationIcon())
-            .show(project)
-    return when (chosen) {
+        Messages.showDialog(
+            project,
+            openCodeSandboxUpdateMessage(installed, latest, dockerImage, retention),
+            "OpenCode Update",
+            buttons,
+            0,
+            Messages.getInformationIcon(),
+        )
+    return when (buttons.getOrNull(chosen)) {
         UPGRADE_IN_SANDBOX -> OpenCodeSandboxUpdateChoice.UPGRADE_IN_SANDBOX
         RESET_SANDBOX -> OpenCodeSandboxUpdateChoice.RESET_SANDBOX
         else -> null
