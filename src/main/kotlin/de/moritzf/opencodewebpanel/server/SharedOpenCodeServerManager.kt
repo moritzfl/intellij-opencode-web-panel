@@ -20,8 +20,10 @@ import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 import org.jetbrains.annotations.TestOnly
 
-class SharedOpenCodeServerManager(private val canonicalDirectory: String) :
-    OpenCodeServerBackend, Disposable {
+class SharedOpenCodeServerManager(
+    private val canonicalDirectory: String,
+    private val startProcess: (ProcessBuilder) -> Process = ProcessBuilder::start,
+) : OpenCodeServerBackend, Disposable {
 
     companion object {
         private const val SERVER_START_TIMEOUT_MILLIS = 60_000L
@@ -677,7 +679,7 @@ class SharedOpenCodeServerManager(private val canonicalDirectory: String) :
                     stripInheritedProxy = settings.proxyModeValue() == OpenCodeProxyMode.NONE,
                 )
             serverLogBuffer.startNewFile()
-            process = processBuilder.start()
+            process = startProcess(processBuilder)
 
             if (!setStartedProcess(startId, process, password)) {
                 processTerminator.destroy(process)
@@ -686,6 +688,7 @@ class SharedOpenCodeServerManager(private val canonicalDirectory: String) :
 
             val reader = BufferedReader(InputStreamReader(process.inputStream))
             val urlLatch = CountDownLatch(1)
+            val outputEnded = CountDownLatch(1)
             val logThread =
                 Thread(
                     {
@@ -710,6 +713,7 @@ class SharedOpenCodeServerManager(private val canonicalDirectory: String) :
                             thisLogger().info("Stopped reading OpenCode output: ${e.message}")
                             serverLogBuffer.append("Stopped reading OpenCode output: ${e.message}")
                         }
+                        outputEnded.countDown()
                         if (isCurrentStart(startId)) {
                             thisLogger()
                                 .warn(
@@ -743,7 +747,10 @@ class SharedOpenCodeServerManager(private val canonicalDirectory: String) :
                 if (url != null && checkServerResponding(url)) {
                     break
                 }
-                if (!process.isAlive && url == null) {
+                // On Windows a launcher that spawns the server and returns leaves the server
+                // holding our output pipe, so its banner may still follow; give up only once that
+                // output ended. (Unix JDKs close the pipe when the launched process exits.)
+                if (!process.isAlive && url == null && outputEnded.count == 0L) {
                     break
                 }
                 // Once the latch is open, await() returns immediately; without a pause the

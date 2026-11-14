@@ -36,6 +36,9 @@
   window now uses its own id and still shows as **OpenCode**. Its saved position
   resets to the right sidebar once, and a keyboard shortcut assigned to the old
   **OpenCode** tool window action needs to be assigned again.
+- On Windows, the Host CLI no longer gives up when the `opencode` launcher exits
+  before the server it started has printed its address; the plugin now waits for
+  that server's output.
 
 ### Removed
 
