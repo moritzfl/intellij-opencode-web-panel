@@ -28,7 +28,7 @@ internal class OpenCodeLifecycleStatusPanel(
             addActionListener { onRetry() }
         }
     private val viewLogButton =
-        JButton("View log", AllIcons.Actions.Show).apply {
+        JButton("View Log", AllIcons.Actions.Show).apply {
             isVisible = false
             addActionListener { onViewLog() }
         }

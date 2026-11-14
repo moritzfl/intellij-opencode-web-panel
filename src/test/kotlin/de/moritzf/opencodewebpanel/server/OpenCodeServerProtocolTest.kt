@@ -513,15 +513,18 @@ class OpenCodeServerProtocolTest {
                 null,
                 "sbx:ide-ocwp-deadbeef",
             )
-        assertEquals(": http://127.0.0.1:4096 (OpenCode 1.18.23, 1.18, native CLI)", runningNative)
-        assertEquals(": http://127.0.0.1:4096 (OpenCode 2.0.5, 2.x, native CLI)", runningCli)
-        assertEquals(": http://127.0.0.1:49196 (OpenCode 1.18.23, 1.18, sbx)", runningSbx)
-        assertEquals(" (sbx)", stoppedSbx)
+        assertEquals(": http://127.0.0.1:4096 (OpenCode 1.18.23, 1.18, Host CLI)", runningNative)
+        assertEquals(": http://127.0.0.1:4096 (OpenCode 2.0.5, 2.x, Host CLI)", runningCli)
         assertEquals(
-            "native CLI",
+            ": http://127.0.0.1:49196 (OpenCode 1.18.23, 1.18, Docker Sandbox)",
+            runningSbx,
+        )
+        assertEquals(" (Docker Sandbox)", stoppedSbx)
+        assertEquals(
+            "Host CLI",
             formatOpenCodeServerRuntimeLabel(OpenCodeServerBackend.NATIVE_ID),
         )
-        assertEquals("sbx", formatOpenCodeServerRuntimeLabel("sbx:ide-ocwp-deadbeef"))
+        assertEquals("Docker Sandbox", formatOpenCodeServerRuntimeLabel("sbx:ide-ocwp-deadbeef"))
     }
 
     @Test

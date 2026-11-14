@@ -171,7 +171,7 @@ internal data class SbxApplyPreview(
         }
 
         fun runtimeLabel(spec: SbxLaunchSpec): String {
-            return if (spec.useSandbox) "Docker Sandbox (sbx)" else "Host (native CLI)"
+            return if (spec.useSandbox) "Docker Sandbox" else "Host CLI"
         }
 
         /** Null for changes that are only saved; their summary says when they take effect. */

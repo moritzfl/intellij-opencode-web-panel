@@ -224,7 +224,7 @@ internal class SbxOpenCodeServerBackend(
             SbxFailureKind.NOT_AUTHENTICATED ->
                 "Docker Sandboxes is not signed in. Run sbx login in a terminal, then Retry."
             SbxFailureKind.UNSUPPORTED_OS ->
-                "Docker Sandboxes is not supported on this machine. Switch runtime to Host (native CLI)."
+                "Docker Sandboxes is not supported on this machine. Switch this project to the Host CLI runtime."
             SbxFailureKind.POLICY_UNINITIALIZED ->
                 "Sandbox network policy is not set up. Open OpenCode Web Panel settings and set up the default network policy, or stay on Host."
             SbxFailureKind.FOREIGN_SANDBOX ->
@@ -237,7 +237,7 @@ internal class SbxOpenCodeServerBackend(
             SbxFailureKind.CANCELLED -> "Start was cancelled."
             SbxFailureKind.UNTRUSTED_PROJECT ->
                 "This project is not trusted, so its opencode-sbx.yaml is not used to create a Docker Sandbox. " +
-                    "Trust the project, or switch the runtime to Host (native CLI)."
+                    "Trust the project, or switch this project to the Host CLI runtime."
             SbxFailureKind.EXPOSURE_UNCONFIRMED -> {
                 val items = synchronized(lock) { pendingExposure?.items }.orEmpty()
                 "opencode-sbx.yaml gives this sandbox access beyond the project:\n" +

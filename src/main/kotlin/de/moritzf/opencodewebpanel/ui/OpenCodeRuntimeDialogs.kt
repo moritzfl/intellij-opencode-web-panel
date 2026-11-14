@@ -195,11 +195,11 @@ internal fun confirmOpenCodeSandboxExposure(project: Project?, exposure: SbxExpo
 
 internal fun confirmDiscardForeignSandbox(project: Project?): Boolean {
     return MessageDialogBuilder.yesNo(
-            "Create new sandbox",
+            "Create New Sandbox",
             "This force-removes the unmatched sandbox at this name or workspace, then creates one owned by this panel. " +
                 "Sessions in that VM are dropped.",
         )
-        .yesText("Create new")
+        .yesText("Create New Sandbox")
         .noText("Cancel")
         .icon(Messages.getWarningIcon())
         .ask(project)
@@ -216,10 +216,10 @@ internal fun confirmOpenCodeSandboxRecreate(project: Project?, reasons: List<Str
             "Recreate Sandbox",
             "The sandbox differs from opencode-sbx.yaml:\n" +
                 reasons.joinToString("\n") { "• $it" } +
-                "\n\nRecreating removes the VM and creates a new one from the file. " +
+                "\n\nRecreating removes the VM and creates a new one from the file, like Reset Sandbox. " +
                 "Packages and other VM-only state are dropped. $retention",
         )
-        .yesText("Recreate")
+        .yesText("Recreate Sandbox")
         .noText("Cancel")
         .icon(Messages.getWarningIcon())
         .ask(project)

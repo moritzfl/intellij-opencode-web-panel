@@ -99,7 +99,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
     private val setupChecklistLabel =
         JBLabel().apply { foreground = JBUI.CurrentTheme.ContextHelp.FOREGROUND }
     private val checkSetupButton =
-        JButton("Check sandbox setup").apply {
+        JButton("Check Sandbox Setup").apply {
             toolTipText =
                 "Check sandbox setup and guest network access using saved project settings"
         }
@@ -178,8 +178,8 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
             )
             addActionListener { customProjectDirectoryRadioButton.isSelected = true }
         }
-    private val hostRuntimeRadioButton = JBRadioButton("Host (native CLI)")
-    private val sbxRuntimeRadioButton = JBRadioButton("Docker Sandbox (sbx)")
+    private val hostRuntimeRadioButton = JBRadioButton("Host CLI")
+    private val sbxRuntimeRadioButton = JBRadioButton("Docker Sandbox")
     private val sbxOpenCodeV1RadioButton = JBRadioButton("1.x")
     private val sbxOpenCodeV2RadioButton = JBRadioButton("2.x")
 
@@ -653,7 +653,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                 if (
                     ApplicationManager.getApplication().isUnitTestMode ||
                         !MessageDialogBuilder.yesNo(
-                                "Replace invalid sandbox spec",
+                                "Replace Invalid Sandbox Spec",
                                 "The file at ${inspection.path} is invalid (${inspection.reason}). Replace it with the current form values?",
                             )
                             .yesText("Replace")
@@ -1264,11 +1264,11 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         if (java.nio.file.Files.isRegularFile(specPath)) {
             val overwrite =
                 MessageDialogBuilder.yesNo(
-                        "Replace extra-network kit template",
+                        "Replace Extra-Network Kit Template",
                         "A kit already exists at ${SbxCli.posixPath(specPath.toString())}. Replace it with a fresh commented template?",
                     )
                     .yesText("Replace")
-                    .noText("Keep existing")
+                    .noText("Keep Existing")
                     .ask(panel)
             if (!overwrite) {
                 addNetworkKitRefIfMissing()

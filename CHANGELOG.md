@@ -50,6 +50,11 @@
 - The project settings moved from **Tools | OpenCode Web Panel (Project)** to
   **Tools | OpenCode Web Panel | This Project**, next to the settings they
   depend on.
+- Each runtime has one name everywhere: **Host CLI** and **Docker Sandbox**,
+  in the settings, the server status, the Apply confirmation and the tool
+  window stripe, which reads **OpenCode (Host CLI)** or **OpenCode (Sandbox)**.
+  Dialog titles and buttons use title case, and the Recreate Sandbox
+  confirmation says that it does what Reset Sandbox does.
 
 ### Fixed
 

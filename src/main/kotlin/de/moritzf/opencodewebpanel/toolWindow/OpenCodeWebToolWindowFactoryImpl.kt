@@ -15,7 +15,7 @@ internal fun openCodeToolWindowHeading(project: Project?): String {
         OpenCodeServerBackend.isNative(
             OpenCodeServerBackendRegistry.getInstance().backendFor(project).backendId,
         )
-    return if (native) "OpenCode (native CLI)" else "OpenCode (sbx)"
+    return if (native) "OpenCode (Host CLI)" else "OpenCode (Sandbox)"
 }
 
 internal fun updateOpenCodeToolWindowHeading(toolWindow: ToolWindow) {

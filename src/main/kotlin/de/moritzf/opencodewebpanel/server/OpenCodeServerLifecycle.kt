@@ -27,7 +27,7 @@ interface OpenCodeServerLifecycleListener {
 }
 
 internal fun formatOpenCodeServerRuntimeLabel(backendId: String): String {
-    return if (OpenCodeServerBackend.isNative(backendId)) "native CLI" else "sbx"
+    return if (OpenCodeServerBackend.isNative(backendId)) "Host CLI" else "Docker Sandbox"
 }
 
 internal data class OpenCodeRecoveryNotice(

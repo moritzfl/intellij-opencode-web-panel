@@ -120,7 +120,7 @@ class SbxApplyPreviewTest {
         val preview =
             SbxApplyPreview.build("/tmp/p", base.copy(useSandbox = false), base, false, false, "")
         assertEquals(SbxApplyEffect.RESTART, preview.effect)
-        assertEquals("Docker Sandbox (sbx)", preview.runtimeLabel)
+        assertEquals("Docker Sandbox", preview.runtimeLabel)
     }
 
     @Test

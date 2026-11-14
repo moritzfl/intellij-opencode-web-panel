@@ -82,12 +82,12 @@ internal class OpenCodeStartupErrorPanel(
             }
         }
     private val adoptSandboxButton =
-        JButton("Adopt sandbox").apply {
+        JButton("Adopt Sandbox").apply {
             toolTipText = "Take ownership of the existing sandbox at this workspace"
             isVisible = false
         }
     private val createNewSandboxButton =
-        JButton("Create new").apply {
+        JButton("Create New Sandbox").apply {
             toolTipText = "Remove the unmatched sandbox and create one owned by this panel"
             isVisible = false
         }
