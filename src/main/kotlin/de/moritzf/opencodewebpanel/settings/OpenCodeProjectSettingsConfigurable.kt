@@ -953,6 +953,9 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
     }
 
     private fun updateServerStatus() {
+        // Building searchable options creates this page headless: index labels, not live state.
+        val app = ApplicationManager.getApplication()
+        if (app.isHeadlessEnvironment && !app.isUnitTestMode) return
         val backend = projectBackend()
         val state = backend.getLifecycleState()
         val detail =

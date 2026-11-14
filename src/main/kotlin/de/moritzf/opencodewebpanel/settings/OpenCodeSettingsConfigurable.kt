@@ -1024,7 +1024,14 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
         )
     }
 
+    /** Searchable options are built headless: their index must hold labels, not live status. */
+    private fun buildingSearchIndex(): Boolean {
+        val app = ApplicationManager.getApplication()
+        return app.isHeadlessEnvironment && !app.isUnitTestMode
+    }
+
     private fun loadPasswordField() {
+        if (buildingSearchIndex()) return
         val store = OpenCodePasswordStore.getInstance()
         val cachedPassword = store.cachedPassword()
         if (cachedPassword != null && password() == savedPassword) {
@@ -1284,6 +1291,10 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
     }
 
     private fun updatePasswordHint() {
+        if (buildingSearchIndex()) {
+            hintLabel.isVisible = false
+            return
+        }
         val currentPassword = password()
         val loadError = passwordLoadError
         var isError = false
@@ -1317,6 +1328,10 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
     }
 
     private fun updateRuntimeControls() {
+        if (buildingSearchIndex()) {
+            sbxPolicyHintLabel.text = ""
+            return
+        }
         val consented = OpenCodeSettingsState.getInstance().sbxNetworkPolicyConsent
         val sbxFound = OpenCodeServerProtocol.detectExecutablePath(sbxExecutableForChecks()) != null
         val detail = policyCheckDetail?.let { " ($it)" }.orEmpty()

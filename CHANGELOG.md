@@ -67,6 +67,8 @@
 - **CPUs** is a number field from 1 to 32, an invalid **Memory** value is
   marked while typing, mount host paths that do not exist on this computer
   show a warning, and the Docker image field is wide enough for a digest.
+- The settings search no longer finds live status texts such as "OpenCode
+  server: Stopped".
 
 ### Fixed
 
