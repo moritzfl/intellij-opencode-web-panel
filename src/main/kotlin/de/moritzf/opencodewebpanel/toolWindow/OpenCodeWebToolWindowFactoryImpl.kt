@@ -29,6 +29,7 @@ class OpenCodeWebToolWindowFactoryImpl : ToolWindowFactory, DumbAware {
     // otherwise show the internal id.
     override fun init(toolWindow: ToolWindow) {
         toolWindow.stripeTitle = OPEN_CODE_TOOL_WINDOW_TITLE
+        OpenCodeToolWindowPlacement.migrateOnce(toolWindow)
     }
 
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {

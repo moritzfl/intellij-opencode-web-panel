@@ -72,6 +72,10 @@
 
 ### Fixed
 
+- The OpenCode tool window button returns to the place you gave it before
+  2.9.0. The new internal tool window id in 2.9.0 put the button at the end of
+  its sidebar in every project that had placed it elsewhere; each project now
+  moves it back once. Later moves are kept.
 - Applying right after typing a new OpenCode directory no longer stops with
   "Loaded the sandbox settings of the new OpenCode directory"; the directory's
   own sandbox settings load and apply in one step. A folder chosen with the
