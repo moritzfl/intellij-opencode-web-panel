@@ -788,7 +788,8 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
         if (app.isUnitTestMode) return
         val generation = policyCheckGeneration.incrementAndGet()
         val executable = sbxExecutableForChecks()
-        val modality = uiModality()
+        // Label-only update: run even while the settings dialog is modal, before it is showing.
+        val modality = ModalityState.any()
         policyStatus = SbxPolicyStatus.CHECKING
         policyCheckDetail = null
         updateRuntimeControls()
