@@ -75,6 +75,12 @@ interface OpenCodeServerBackend {
 
     fun startFailureMessage(): String? = null
 
+    /**
+     * Why the last start failed, shown only when the failure card has no more specific diagnosis
+     * (missing executable, port conflict). Unlike [startFailureMessage] it never overrides those.
+     */
+    fun startFailureDetail(): String? = null
+
     companion object {
         const val NATIVE_ID = "native"
         const val NATIVE_ID_PREFIX = "native:"

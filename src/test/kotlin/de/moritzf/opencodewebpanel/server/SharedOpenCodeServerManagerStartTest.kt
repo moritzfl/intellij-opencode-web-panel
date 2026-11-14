@@ -2,6 +2,7 @@ package de.moritzf.opencodewebpanel.server
 
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.util.Disposer
+import com.intellij.openapi.util.SystemInfo
 import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.intellij.testFramework.replaceService
@@ -63,6 +64,80 @@ class SharedOpenCodeServerManagerStartTest : BasePlatformTestCase() {
 
         assertEquals("started", awaitStart(manager))
         assertEquals(url, manager.getServerUrl())
+        assertNull(manager.startFailureDetail())
+    }
+
+    fun testServerThatExitsBeforeReportingItsAddressFailsFast() {
+        if (SystemInfo.isWindows) return
+        useScript(
+            """
+            echo "Error: Failed to start server. Is port 4096 in use?"
+            exit 3
+            """,
+        )
+        val manager = manager()
+        val started = System.nanoTime()
+
+        assertEquals("failed", awaitStart(manager))
+        assertTrue(System.nanoTime() - started < TimeUnit.SECONDS.toNanos(15))
+        assertEquals(
+            "OpenCode was started as \u201C${directory.resolve("opencode")}\u201D but exited with " +
+                "code 3 before reporting its server address.",
+            manager.startFailureDetail(),
+        )
+        // The card shows this attempt's output even with server logs turned off.
+        assertTrue(
+            manager
+                .getStartupProgress()!!
+                .recentOutput
+                .contains("Error: Failed to start server. Is port 4096 in use?"),
+        )
+    }
+
+    fun testMissingExecutableFails() {
+        val missing = directory.resolve("missing-opencode").toString()
+        useExecutable(missing)
+        val manager = manager()
+
+        assertEquals("failed", awaitStart(manager))
+        assertTrue(
+            manager.startFailureDetail()!!,
+            manager
+                .startFailureDetail()!!
+                .startsWith("OpenCode could not be started as \u201C$missing\u201D: "),
+        )
+    }
+
+    fun testStartFailureDetailNamesWhatWasMissing() {
+        val exe = "opencode"
+        val url = "http://127.0.0.1:4096"
+        assertEquals(
+            "OpenCode was started as \u201Copencode\u201D but did not report its server address " +
+                "within 60 seconds.",
+            SharedOpenCodeServerManager.describeStartFailure(exe, url = null, exitCode = null),
+        )
+        assertEquals(
+            "OpenCode was started as \u201Copencode\u201D and reported $url, but exited with code 1.",
+            SharedOpenCodeServerManager.describeStartFailure(exe, url, exitCode = 1),
+        )
+        assertEquals(
+            "OpenCode was started as \u201Copencode\u201D and reported $url, but did not answer " +
+                "there within 60 seconds.",
+            SharedOpenCodeServerManager.describeStartFailure(exe, url, exitCode = null),
+        )
+    }
+
+    private fun manager(): SharedOpenCodeServerManager =
+        OpenCodeServerBackendRegistry.getInstance()
+            .backendForCanonicalDirectory(
+                directory.toString(),
+            ) as SharedOpenCodeServerManager
+
+    private fun useScript(body: String) {
+        val script = directory.resolve("opencode")
+        Files.writeString(script, "#!/bin/sh\n" + body.trimIndent() + "\n")
+        script.toFile().setExecutable(true)
+        useExecutable(script.toString())
     }
 
     private fun useExecutable(path: String) {

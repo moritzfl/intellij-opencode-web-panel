@@ -2037,6 +2037,8 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
             serverManager.getServerLogFile(),
             offerAutomaticPort = serverManager.offersHostPortControls,
             failureMessage = serverManager.startFailureMessage(),
+            failureDetail = serverManager.startFailureDetail(),
+            recentOutput = serverManager.getStartupProgress()?.recentOutput.orEmpty(),
             recoveryAction = recoveryAction,
             onAdoptForeign =
                 if (foreign) {

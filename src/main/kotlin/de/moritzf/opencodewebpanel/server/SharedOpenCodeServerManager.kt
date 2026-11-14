@@ -2,6 +2,7 @@ package de.moritzf.opencodewebpanel.server
 
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.diagnostic.ControlFlowException
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.ProgressManager
@@ -12,8 +13,10 @@ import de.moritzf.opencodewebpanel.configuration.OpenCodeProjectSettingsState
 import de.moritzf.opencodewebpanel.configuration.OpenCodeProxyMode
 import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsState
 import java.io.BufferedReader
+import java.io.IOException
 import java.io.InputStreamReader
 import java.nio.file.Path
+import java.util.concurrent.CancellationException
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledFuture
@@ -28,6 +31,26 @@ class SharedOpenCodeServerManager(
     companion object {
         private const val SERVER_START_TIMEOUT_MILLIS = 60_000L
         private const val SERVER_START_POLL_MILLIS = 1_000L
+
+        /** [exitCode] is null while the process, or a child holding its output, still runs. */
+        internal fun describeStartFailure(
+            executable: String,
+            url: String?,
+            exitCode: Int?,
+            timeoutMillis: Long = SERVER_START_TIMEOUT_MILLIS,
+        ): String {
+            val started = "OpenCode was started as \u201C$executable\u201D"
+            val seconds = TimeUnit.MILLISECONDS.toSeconds(timeoutMillis)
+            return when {
+                url == null && exitCode != null ->
+                    "$started but exited with code $exitCode before reporting its server address."
+                url == null ->
+                    "$started but did not report its server address within $seconds seconds."
+                exitCode != null -> "$started and reported $url, but exited with code $exitCode."
+                else ->
+                    "$started and reported $url, but did not answer there within $seconds seconds."
+            }
+        }
     }
 
     private data class ServerResourcesToStop(
@@ -95,6 +118,7 @@ class SharedOpenCodeServerManager(
     }
     private val serverLogBuffer = OpenCodeServerLogBuffer()
     private val startupProgress = OpenCodeStartupProgressTracker()
+    @Volatile private var lastStartFailureDetail: String? = null
 
     override fun getStartupProgress(): OpenCodeStartupProgress? = startupProgress.snapshot()
 
@@ -285,6 +309,8 @@ class SharedOpenCodeServerManager(
         synchronized(lock) { warnings.consumeUnsupportedVersion(serverVersion) }
 
     override fun startFailureMessage(): String? = null
+
+    override fun startFailureDetail(): String? = lastStartFailureDetail
 
     /** Returns true once when the running server would make the embedded page use permission v2. */
     override fun consumeV2ProtocolWarning(): Boolean =
@@ -641,8 +667,10 @@ class SharedOpenCodeServerManager(
     ) {
         var process: Process? = null
         var capturedDescendants: List<ProcessHandle> = emptyList()
+        var executable = OpenCodeSettingsState.DEFAULT_EXECUTABLE
         try {
             if (!isCurrentStart(startId)) return
+            lastStartFailureDetail = null
             if (!waitForIntellijMcpServerIfNeeded(startId)) {
                 // MCP wait CANCELLED covers both supersession and thread interrupt. Only the
                 // still-current case must finishStart — otherwise starting stays true forever.
@@ -668,7 +696,7 @@ class SharedOpenCodeServerManager(
                 SERVER_START_TIMEOUT_MILLIS,
             )
             val port = portArgumentFor(project)
-            val executable = settings.executablePath()
+            executable = settings.executablePath()
             val processBuilder =
                 OpenCodeServerProtocol.createProcessBuilder(
                     projectBasePath,
@@ -773,20 +801,37 @@ class SharedOpenCodeServerManager(
                 setServerRunningForStart(startId)
                 finishStart(startId, success = true)
             } else {
-                val reason =
-                    if (url == null) {
-                        "listen URL not found in process output"
-                    } else {
-                        "not responding at $url"
-                    }
-                thisLogger().error("Failed to start OpenCode server: $reason")
+                // The user's installation or configuration, not the plugin: warn rather than
+                // error, which the IDE would offer to send as a Marketplace exception report.
+                val exited = !process.isAlive && outputEnded.count == 0L
+                val detail =
+                    describeStartFailure(executable, url, if (exited) process.exitValue() else null)
+                lastStartFailureDetail = detail
+                thisLogger().warn("Failed to start OpenCode server: $detail")
                 destroyCurrentProcess()
                 clearServerStateForStart(startId)
                 finishStart(startId, success = false)
             }
         } catch (e: Exception) {
-            thisLogger().error("Error starting OpenCode server: ${e.message}")
-            if (isCurrentStart(startId)) {
+            val current = isCurrentStart(startId)
+            when (e) {
+                is ControlFlowException,
+                is CancellationException -> thisLogger().info("OpenCode server start cancelled")
+                is InterruptedException -> {
+                    Thread.currentThread().interrupt()
+                    thisLogger().info("OpenCode server start interrupted")
+                }
+                // Typically a missing or non-executable binary.
+                is IOException -> {
+                    thisLogger().warn("Could not start OpenCode: ${e.message}")
+                    if (current) {
+                        lastStartFailureDetail =
+                            "OpenCode could not be started as \u201C$executable\u201D: ${e.message}"
+                    }
+                }
+                else -> thisLogger().error("Error starting OpenCode server", e)
+            }
+            if (current) {
                 destroyCurrentProcess()
                 clearServerStateForStart(startId)
                 finishStart(startId, success = false)

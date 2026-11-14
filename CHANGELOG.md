@@ -39,6 +39,11 @@
 - On Windows, the Host CLI no longer gives up when the `opencode` launcher exits
   before the server it started has printed its address; the plugin now waits for
   that server's output.
+- When the Host CLI cannot start, the panel says why: OpenCode exited with a
+  given code before reporting its address, did not report it within 60 seconds,
+  or could not be run at all. The recent server output from that attempt is shown
+  even with server logs turned off. These failures are no longer reported as
+  internal IDE errors.
 
 ### Removed
 

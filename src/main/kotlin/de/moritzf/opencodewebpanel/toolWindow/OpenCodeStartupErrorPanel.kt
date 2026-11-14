@@ -13,6 +13,7 @@ import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.components.BorderLayoutPanel
 import de.moritzf.opencodewebpanel.configuration.OpenCodePortMode
 import de.moritzf.opencodewebpanel.configuration.OpenCodeProjectSettingsState
+import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsState
 import de.moritzf.opencodewebpanel.server.OpenCodeProjectRuntime
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLogBuffer
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
@@ -159,6 +160,8 @@ internal class OpenCodeStartupErrorPanel(
         serverLogFile: Path?,
         offerAutomaticPort: Boolean = true,
         failureMessage: String? = null,
+        failureDetail: String? = null,
+        recentOutput: List<String> = emptyList(),
         onAdoptForeign: (() -> Unit)? = null,
         onCreateNewSandbox: (() -> Unit)? = null,
         recoveryAction: OpenCodeStartupRecoveryAction? = null,
@@ -167,7 +170,7 @@ internal class OpenCodeStartupErrorPanel(
         val cancelled = failureMessage?.contains("cancelled", ignoreCase = true) == true
         titleLabel.text = if (cancelled) "Start cancelled" else "Could not start OpenCode"
         messageLabel.text =
-            failureMessage?.let(::messageHtml)
+            (failureMessage ?: failureDetail)?.let(::messageHtml)
                 ?: "OpenCode was started as \u201C$executable\u201D but the server did not become available."
         adoptSandboxButton.isVisible = onAdoptForeign != null
         createNewSandboxButton.isVisible = onCreateNewSandbox != null
@@ -193,7 +196,14 @@ internal class OpenCodeStartupErrorPanel(
                 OpenCodeServerProtocol.detectExecutablePath(executable) != null
             }
                 .getOrDefault(true)
-            val logTail = OpenCodeServerLogBuffer.tailLines(serverLogFile)
+            // With server logs off the newest file on disk is from an older run; this attempt's
+            // output only exists in memory.
+            val logTail =
+                if (OpenCodeSettingsState.getInstance().enableServerLogs) {
+                    OpenCodeServerLogBuffer.tailLines(serverLogFile).ifEmpty { recentOutput }
+                } else {
+                    recentOutput
+                }
             val settings = OpenCodeProjectSettingsState.getInstance(project)
             val directory = settings.effectiveProjectDirectory(project.basePath)
             val yamlPort = SbxLaunchSpec.load(directory)?.hostPort?.takeIf { it in 1..65535 }
@@ -212,6 +222,7 @@ internal class OpenCodeStartupErrorPanel(
                         portConflict ->
                             "OpenCode could not start on the fixed port $fixedPort. " +
                                 "The port appears to be in use by another application."
+                        !failureDetail.isNullOrBlank() -> messageHtml(failureDetail)
                         else ->
                             "OpenCode was started as \u201C$executable\u201D but the server did not become available."
                     }
