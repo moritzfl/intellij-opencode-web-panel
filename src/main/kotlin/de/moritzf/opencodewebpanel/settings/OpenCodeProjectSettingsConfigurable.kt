@@ -954,9 +954,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
     }
 
     private fun updateServerStatus() {
-        // Building searchable options creates this page headless: index labels, not live state.
-        val app = ApplicationManager.getApplication()
-        if (app.isHeadlessEnvironment && !app.isUnitTestMode) return
+        if (buildingSearchIndex()) return
         val backend = projectBackend()
         val state = backend.getLifecycleState()
         val detail =
@@ -1488,7 +1486,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
             de.moritzf.opencodewebpanel.server.SbxSandboxRecordStore.getInstance().recordFor(it)
         }
         val pending =
-            if (sandbox && spec != null) {
+            if (sandbox && spec != null && !buildingSearchIndex()) {
                 de.moritzf.opencodewebpanel.server.SbxInstalledVmStatus.hint(
                     de.moritzf.opencodewebpanel.server.SbxInstalledVmStatus.settings(spec, record),
                     adopted = record?.adopted == true,
@@ -1499,17 +1497,20 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         installedHintLabel.text = pending.orEmpty()
         installedHintLabel.isVisible = !pending.isNullOrBlank()
         setupChecklistLabel.text =
-            "<html>" +
-                de.moritzf.opencodewebpanel.server.SbxSetupChecklist.format(
-                        de.moritzf.opencodewebpanel.server.SbxSetupChecklist.projectSteps(
-                            owned = record != null,
-                            // Not the Host CLI's state while Docker Sandbox is chosen, unapplied.
-                            running =
-                                sandboxBackend && state == OpenCodeServerLifecycleState.RUNNING,
-                        ),
-                    )
-                    .replace("\n", "<br>") +
-                "</html>"
+            if (buildingSearchIndex()) ""
+            else
+                "<html>" +
+                    de.moritzf.opencodewebpanel.server.SbxSetupChecklist.format(
+                            de.moritzf.opencodewebpanel.server.SbxSetupChecklist.projectSteps(
+                                owned = record != null,
+                                // Not the Host CLI's state while Docker Sandbox is chosen,
+                                // unapplied.
+                                running =
+                                    sandboxBackend && state == OpenCodeServerLifecycleState.RUNNING,
+                            ),
+                        )
+                        .replace("\n", "<br>") +
+                    "</html>"
         setupChecklistLabel.isVisible = sandbox
         updatePortControls()
     }

@@ -1057,12 +1057,6 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
         )
     }
 
-    /** Searchable options are built headless: their index must hold labels, not live status. */
-    private fun buildingSearchIndex(): Boolean {
-        val app = ApplicationManager.getApplication()
-        return app.isHeadlessEnvironment && !app.isUnitTestMode
-    }
-
     private fun loadPasswordField() {
         if (buildingSearchIndex()) return
         val store = OpenCodePasswordStore.getInstance()
