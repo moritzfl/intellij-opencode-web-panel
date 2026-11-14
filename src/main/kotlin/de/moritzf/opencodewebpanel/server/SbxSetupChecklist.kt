@@ -18,7 +18,8 @@ internal object SbxSetupChecklist {
             SbxSetupStep(
                 "Network policy",
                 policyReady,
-                if (policyReady) "sbx policy init succeeded" else "Run Set up policy",
+                if (policyReady) "set up on this computer"
+                else "Set up default network policy below",
             ),
         )
 

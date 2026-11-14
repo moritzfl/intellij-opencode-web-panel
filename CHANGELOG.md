@@ -16,6 +16,9 @@
   sandbox.
 - The project page's server button reads **Start Server** while the server is
   stopped.
+- **Docker Sandboxes** checks the network policy when the settings open. A
+  policy set up in a terminal or by your organization shows as present, and a
+  removed one is noticed before the next sandbox start.
 
 ### Fixed
 

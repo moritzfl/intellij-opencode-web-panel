@@ -188,6 +188,16 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
     private var passwordLoading = false
     private var passwordLoadError: String? = null
     private var controlListenersInstalled = false
+    private val policyCheckGeneration = AtomicLong(0)
+    private var policyStatus = SbxPolicyStatus.UNKNOWN
+    private var policyCheckDetail: String? = null
+
+    private enum class SbxPolicyStatus {
+        CHECKING,
+        PRESENT,
+        ABSENT,
+        UNKNOWN,
+    }
 
     private data class CheckBoxSettingBinding(
         val checkBox: JBCheckBox,
@@ -618,6 +628,7 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
                 addTab("OpenCode UI Settings", uiSettingsPanel)
             }
         reset()
+        checkSbxPolicy()
         return panel!!
     }
 
@@ -765,7 +776,79 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
     override fun disposeUIResources() {
         panel = null
         passwordLoadGeneration.incrementAndGet()
+        policyCheckGeneration.incrementAndGet()
     }
+
+    /**
+     * The stored consent flag only says a policy existed once; a policy set up in a terminal, by
+     * the organisation, or removed since is only visible live. Read-only: never initializes one.
+     */
+    private fun checkSbxPolicy() {
+        val app = ApplicationManager.getApplication()
+        if (app.isUnitTestMode) return
+        val generation = policyCheckGeneration.incrementAndGet()
+        val executable = sbxExecutableForChecks()
+        val modality = uiModality()
+        policyStatus = SbxPolicyStatus.CHECKING
+        policyCheckDetail = null
+        updateRuntimeControls()
+        app.executeOnPooledThread {
+            val resolved = OpenCodeServerProtocol.detectExecutablePath(executable)
+            val result = resolved?.let { sbx ->
+                runCatching {
+                    SbxProcessRunner.run(
+                        SbxCli.buildPolicyLsCommand(sbx),
+                        emptyMap(),
+                        15_000L,
+                    )
+                }
+                    .getOrNull()
+            }
+            val status =
+                when {
+                    resolved == null || result == null || result.exitCode != 0 ->
+                        SbxPolicyStatus.UNKNOWN
+                    SbxCli.policyIsInitialized(result.stdout) -> SbxPolicyStatus.PRESENT
+                    else -> SbxPolicyStatus.ABSENT
+                }
+            val detail =
+                when {
+                    resolved == null -> "sbx was not found"
+                    result == null -> "sbx could not be run"
+                    result.exitCode != 0 ->
+                        result.output
+                            .lineSequence()
+                            .map { it.trim() }
+                            .firstOrNull { it.isNotEmpty() }
+                            ?.take(160) ?: "sbx exited with ${result.exitCode}"
+                    else -> null
+                }
+            app.invokeLater(
+                {
+                    if (generation != policyCheckGeneration.get() || panel == null) {
+                        return@invokeLater
+                    }
+                    policyStatus = status
+                    policyCheckDetail = detail
+                    // Match the start-time check: an existing policy counts as consent, and a
+                    // removed one must be noticed before the next sandbox start.
+                    when (status) {
+                        SbxPolicyStatus.PRESENT ->
+                            OpenCodeSettingsState.getInstance().sbxNetworkPolicyConsent = true
+                        SbxPolicyStatus.ABSENT ->
+                            OpenCodeSettingsState.getInstance().sbxNetworkPolicyConsent = false
+                        else -> Unit
+                    }
+                    updateRuntimeControls()
+                },
+                modality,
+            )
+        }
+    }
+
+    /** The sbx the form selects, applied or not. */
+    private fun sbxExecutableForChecks(): String =
+        if (customSbxRadioButton.isSelected) sbxPath() else SbxCli.DEFAULT_EXECUTABLE
 
     /** Runs before anything is saved, so declining leaves every setting and server unchanged. */
     private fun confirmRestartOfRunningServers(settings: OpenCodeSettingsState) {
@@ -935,12 +1018,12 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
                         )
                         updatePasswordHint()
                     },
-                    passwordLoadModality(),
+                    uiModality(),
                 )
         }
     }
 
-    private fun passwordLoadModality(): ModalityState {
+    private fun uiModality(): ModalityState {
         val component = panel ?: passwordField
         if (!component.isShowing) return ModalityState.defaultModalityState()
         return runCatching { ModalityState.stateForComponent(component) }
@@ -1003,14 +1086,12 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
 
     private fun consentToSbxPolicy() {
         val settings = OpenCodeSettingsState.getInstance()
-        val executable =
-            OpenCodeServerProtocol.resolveExecutableForLaunch(
-                if (customSbxRadioButton.isSelected) sbxPath() else settings.sbxExecutablePath(),
-            )
+        val executable = OpenCodeServerProtocol.resolveExecutableForLaunch(sbxExecutableForChecks())
         // Captured on the EDT: a pooled thread's invokeLater would otherwise wait for Settings to
         // close.
         val modality = ModalityState.stateForComponent(initSbxPolicyButton)
         initSbxPolicyButton.isEnabled = false
+        policyCheckGeneration.incrementAndGet()
         ApplicationManager.getApplication().executeOnPooledThread {
             val existing =
                 SbxProcessRunner.run(SbxCli.buildPolicyLsCommand(executable), emptyMap(), 30_000L)
@@ -1022,6 +1103,8 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
                             // `sbx policy init` is one-time; never replace a policy set up
                             // elsewhere.
                             settings.sbxNetworkPolicyConsent = true
+                            policyStatus = SbxPolicyStatus.PRESENT
+                            policyCheckDetail = null
                             Messages.showInfoMessage(
                                 panel ?: initSbxPolicyButton,
                                 "This computer already has a sandbox network policy. The plugin uses it and does not change it.",
@@ -1040,14 +1123,14 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
     private fun initializeSbxPolicy(executable: String, modality: ModalityState) {
         val confirmed =
             MessageDialogBuilder.yesNo(
-                    "Set up sandbox network policy",
+                    "Set Up Sandbox Network Policy",
                     "Docker Sandboxes start with no internet. This runs sbx policy init balanced once " +
                         "on this computer: typical AI APIs and package sites are allowed, and everything " +
                         "else stays blocked.\n\n" +
                         "It applies to every sandbox on this machine, including ones outside IntelliJ. " +
                         "The plugin will not change the policy again afterwards.",
                 )
-                .yesText("Set up policy")
+                .yesText("Set Up Policy")
                 .noText("Cancel")
                 .icon(Messages.getWarningIcon())
                 .ask(panel)
@@ -1068,6 +1151,8 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
                     {
                         if (result.exitCode == 0) {
                             settings.sbxNetworkPolicyConsent = true
+                            policyStatus = SbxPolicyStatus.PRESENT
+                            policyCheckDetail = null
                         } else {
                             Messages.showErrorDialog(
                                 panel ?: initSbxPolicyButton,
@@ -1119,23 +1204,33 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
 
     private fun updateRuntimeControls() {
         val consented = OpenCodeSettingsState.getInstance().sbxNetworkPolicyConsent
+        val sbxFound = OpenCodeServerProtocol.detectExecutablePath(sbxExecutableForChecks()) != null
+        val detail = policyCheckDetail?.let { " ($it)" }.orEmpty()
         sbxPolicyHintLabel.text =
-            if (consented) {
-                "Default network policy is set on this machine. The plugin will not change it again."
-            } else {
-                "No sandbox network policy yet. Sandboxes cannot reach the internet until you set one up."
+            when (policyStatus) {
+                SbxPolicyStatus.CHECKING -> "Checking the sandbox network policy…"
+                SbxPolicyStatus.PRESENT ->
+                    "This computer has a sandbox network policy. The plugin uses it and never changes it."
+                SbxPolicyStatus.ABSENT ->
+                    "No sandbox network policy yet. Sandboxes cannot reach the internet until you set one up."
+                SbxPolicyStatus.UNKNOWN ->
+                    if (consented) {
+                        "A sandbox network policy was found earlier; it could not be checked now$detail."
+                    } else {
+                        "Could not check the sandbox network policy$detail. A sandbox checks again when it starts."
+                    }
             }
-        initSbxPolicyButton.isEnabled = !consented
-        val executable =
-            if (customSbxRadioButton.isSelected) sbxPath()
-            else OpenCodeSettingsState.getInstance().sbxExecutablePath()
-        val sbxFound = OpenCodeServerProtocol.detectExecutablePath(executable) != null
+        val policyReady =
+            policyStatus == SbxPolicyStatus.PRESENT ||
+                (policyStatus != SbxPolicyStatus.ABSENT && consented)
+        initSbxPolicyButton.isEnabled =
+            sbxFound && !policyReady && policyStatus != SbxPolicyStatus.CHECKING
         setupChecklistLabel.text =
             "<html>" +
                 de.moritzf.opencodewebpanel.server.SbxSetupChecklist.format(
                         de.moritzf.opencodewebpanel.server.SbxSetupChecklist.appSteps(
                             sbxFound,
-                            consented,
+                            policyReady,
                         ),
                     )
                     .replace("\n", "<br>") +

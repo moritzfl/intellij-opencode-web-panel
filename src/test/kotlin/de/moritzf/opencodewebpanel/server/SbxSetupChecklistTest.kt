@@ -13,7 +13,12 @@ class SbxSetupChecklistTest {
             )
         assertTrue(text.contains("✓ Detect sbx"))
         assertTrue(text.contains("[ ] Network policy"))
-        assertTrue(text.contains("Run Set up policy"))
+        assertTrue(text.contains("Set up default network policy below"))
+        assertFalse(
+            "An adopted policy was never initialized by the plugin",
+            SbxSetupChecklist.format(SbxSetupChecklist.appSteps(true, policyReady = true))
+                .contains("succeeded"),
+        )
     }
 
     @Test
