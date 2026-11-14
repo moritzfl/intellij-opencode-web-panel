@@ -543,6 +543,46 @@ class OpenCodeProjectSettingsConfigurableTest {
         }
     }
 
+    @Test
+    fun aFolderPickedWithoutFocusLoadsItsSettingsOnce() {
+        val picked = temp.newFolder("picked").toPath().toRealPath().toString()
+        SwingUtilities.invokeAndWait {
+            configurable.createComponent()
+            assertFalse("reset() queues no reload", field<Boolean>("directoryReloadQueued"))
+            field<AbstractButton>("customProjectDirectoryRadioButton").isSelected = true
+            // The folder chooser sets the text while focus is elsewhere.
+            field<TextFieldWithBrowseButton>("projectDirectoryField").text = picked
+            assertTrue(field<Boolean>("directoryReloadQueued"))
+        }
+        SwingUtilities.invokeAndWait {
+            assertFalse(field<Boolean>("directoryReloadQueued"))
+            assertEquals(picked, field<String>("loadedSpecDirectory"))
+        }
+    }
+
+    @Test
+    fun applyRightAfterTypingADirectoryWithAnInvalidSpecStopsForReview() {
+        val broken = temp.newFolder("broken").toPath().toRealPath().toString()
+        val specPath = SbxLaunchSpec.projectSpecPath(broken)
+        Files.createDirectories(specPath.parent)
+        Files.writeString(specPath, "not a spec")
+        SwingUtilities.invokeAndWait {
+            configurable.createComponent()
+            field<AbstractButton>("customProjectDirectoryRadioButton").isSelected = true
+            field<TextFieldWithBrowseButton>("projectDirectoryField").text = broken
+            val error = assertThrows(ConfigurationException::class.java) { configurable.apply() }
+            assertTrue(
+                error.messageHtml.toString(),
+                error.messageHtml.toString().contains("Review"),
+            )
+            assertEquals("not a spec", Files.readString(specPath))
+            assertEquals(
+                OpenCodeProjectDirectoryMode.AUTO,
+                projectSettings.projectDirectoryModeValue(),
+            )
+        }
+    }
+
     @Suppress("UNCHECKED_CAST")
     private fun <T> field(name: String): T =
         OpenCodeProjectSettingsConfigurable::class

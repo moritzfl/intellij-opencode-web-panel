@@ -3,6 +3,11 @@ package de.moritzf.opencodewebpanel.settings
 import de.moritzf.opencodewebpanel.configuration.OpenCodePortMode
 import de.moritzf.opencodewebpanel.configuration.OpenCodeProjectDirectoryMode
 import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsState
+import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState.FAILED
+import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState.RESTARTING
+import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState.RUNNING
+import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState.STARTING
+import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState.STOPPED
 import de.moritzf.opencodewebpanel.server.SbxApplyEffect
 import de.moritzf.opencodewebpanel.server.SbxLaunchSpec
 import org.junit.Assert.assertEquals
@@ -33,7 +38,6 @@ class OpenCodeProjectSettingsApplyPlanTest {
             values,
             next,
             base,
-            oldDirectory,
             oldDirectory,
             true,
             hasVm,
@@ -119,21 +123,40 @@ class OpenCodeProjectSettingsApplyPlanTest {
     @Test
     fun onlyCostlyChangesAskForConfirmation() {
         val deferred = plan(base.copy(memory = "8g"))
-        assertFalse(deferred.needsConfirmation(serverRunning = true, false))
+        assertFalse(deferred.needsConfirmation(RUNNING, false))
         val live = plan(base.copy(hostPort = 4097))
-        assertFalse(live.needsConfirmation(serverRunning = true, false))
+        assertFalse(live.needsConfirmation(RUNNING, false))
         val restart = plan(base.copy(workingDirectory = "./app"))
-        assertTrue(restart.needsConfirmation(serverRunning = true, false))
-        assertFalse(
-            "Restarting a stopped server loses nothing",
-            restart.needsConfirmation(serverRunning = false, false),
+        for (state in listOf(RUNNING, STARTING, RESTARTING)) {
+            assertTrue("Interrupts $state", restart.needsConfirmation(state, false))
+        }
+        assertTrue(
+            "Apply starts a server the user stopped",
+            restart.needsConfirmation(STOPPED, false),
         )
+        assertFalse("Retrying a failed server", restart.needsConfirmation(FAILED, false))
         val recreate = plan(base.copy(shareHostOpencodeConfig = true))
-        assertTrue(recreate.needsConfirmation(serverRunning = false, false))
+        assertTrue(recreate.needsConfirmation(FAILED, false))
         assertTrue(
             "New sandbox access is always acknowledged",
-            deferred.needsConfirmation(serverRunning = false, exposureUnacknowledged = true),
+            deferred.needsConfirmation(STOPPED, exposureUnacknowledged = true),
         )
+    }
+
+    @Test
+    fun anotherSpellingOfTheSameDirectoryIsNoSwitch() {
+        val plan =
+            OpenCodeProjectSettingsApplyPlan.build(
+                values.copy(effectiveDirectory = "/workspace/"),
+                base,
+                base,
+                "/workspace",
+                true,
+                true,
+                "",
+            )
+        assertFalse(plan.backendChanged)
+        assertFalse(plan.requiresStop)
     }
 
     @Test
@@ -145,7 +168,6 @@ class OpenCodeProjectSettingsApplyPlanTest {
                 values.copy(effectiveDirectory = "/destination"),
                 destination,
                 destination,
-                "/workspace",
                 "/workspace",
                 true,
                 true,

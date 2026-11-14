@@ -57,7 +57,6 @@ internal class OpenCodeProjectSettingsApplier(private val project: Project) {
             values = values,
             spec = stored?.let { spec.adoptStoredName(it) } ?: spec,
             baselineSpec = baseline,
-            oldDirectory = oldDirectory,
             canonicalOldDirectory =
                 OpenCodeServerProtocol.canonicalOpenCodeDirectory(oldDirectory) ?: oldDirectory,
             oldUsesSandbox =

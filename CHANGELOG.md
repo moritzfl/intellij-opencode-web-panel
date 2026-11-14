@@ -12,10 +12,10 @@
   setting unchanged. A server you stopped now stays stopped and uses the new
   settings at its next start.
 - Project settings ask before Apply only when it recreates the sandbox,
-  interrupts a running server, or gives the sandbox new access. Changes that
-  apply live or wait for the next Reset no longer prompt, and the confirmation
-  says what each change does: applies now, restarts OpenCode, or recreates the
-  sandbox.
+  restarts OpenCode, starts a stopped server, or gives the sandbox new access.
+  Retrying a failed server and changes that apply live or wait for the next
+  Reset no longer prompt, and the confirmation says what each change does:
+  applies now, restarts OpenCode, or recreates the sandbox.
 - The project page's server button reads **Start Server** while the server is
   stopped.
 - **Docker Sandboxes** checks the network policy when the settings open. A
@@ -39,8 +39,12 @@
   "Loaded the sandbox settings of the new OpenCode directory"; the directory's
   own sandbox settings load and apply in one step. A folder chosen with the
   browse button loads its settings immediately.
-- Declining a settings confirmation reports "Apply cancelled" rather than an
-  error.
+- Declining a settings confirmation reports "Apply cancelled: Nothing was
+  changed" instead of a generic save error.
+- Changing only the spelling of the OpenCode directory (a trailing slash or a
+  symlink) no longer reloads its settings or restarts OpenCode. A directory
+  whose sandbox spec is invalid still stops Apply so the values that would
+  replace it can be reviewed first.
 
 ## [2.9.1] - 2026-11-14
 

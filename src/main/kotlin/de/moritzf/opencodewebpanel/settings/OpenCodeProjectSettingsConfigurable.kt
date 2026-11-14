@@ -50,6 +50,7 @@ import de.moritzf.opencodewebpanel.server.SbxCli
 import de.moritzf.opencodewebpanel.server.SbxExposure
 import de.moritzf.opencodewebpanel.server.SbxExtraMount
 import de.moritzf.opencodewebpanel.server.SbxLaunchSpec
+import de.moritzf.opencodewebpanel.server.SbxLaunchSpecInspection
 import de.moritzf.opencodewebpanel.server.SbxOpenCodeImages
 import de.moritzf.opencodewebpanel.server.SbxOpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.SbxOpenCodeVersion
@@ -594,7 +595,16 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         // Enter in the directory field can apply before focus-lost loaded the new directory's
         // spec. Never write the previous directory's form into another project's YAML: load the
         // destination first; the confirmation below still lists the switch.
-        if (effectiveDirectory() != loadedSpecDirectory) onDirectoryTargetChanged()
+        if (!sameDirectory(effectiveDirectory(), loadedSpecDirectory)) {
+            onDirectoryTargetChanged()
+            // Replacing an invalid spec needs the user to have seen the values that replace it.
+            if (SbxLaunchSpec.inspect(effectiveDirectory()) is SbxLaunchSpecInspection.Invalid) {
+                throw ConfigurationException(
+                    "The new OpenCode directory has an invalid sandbox spec. Review the message " +
+                        "under Runtime and the loaded values, then apply again.",
+                )
+            }
+        }
         if (sbxRuntimeRadioButton.isSelected) {
             if (SbxCli.parseMemory(sbxMemoryField.text) == null) {
                 throw ConfigurationException("Sandbox memory must be a value like 4g or 512m.")
@@ -679,24 +689,30 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
             !exposure.isEmpty &&
                 !SbxSandboxRecordStore.getInstance()
                     .isExposureAcknowledged(spec.canonicalDirectory, exposure.fingerprint)
-        val serverRunning =
-            projectBackend().getLifecycleState() == OpenCodeServerLifecycleState.RUNNING
+        val serverState = projectBackend().getLifecycleState()
         if (
-            plan.needsConfirmation(serverRunning, exposureUnacknowledged) &&
+            plan.needsConfirmation(serverState, exposureUnacknowledged) &&
                 !ApplicationManager.getApplication().isUnitTestMode
         ) {
+            val startsStopped =
+                !plan.recreate &&
+                    plan.requiresStop &&
+                    serverState == OpenCodeServerLifecycleState.STOPPED
             val message =
-                if (exposureUnacknowledged) {
+                (if (startsStopped) "OpenCode is stopped; Apply starts it.\n\n" else "") +
                     preview.message() +
+                    if (exposureUnacknowledged) {
                         "\n\nThe sandbox gets access beyond the project:\n" +
-                        exposure.items.joinToString("\n") { "• $it" }
-                } else {
-                    preview.message()
-                }
+                            exposure.items.joinToString("\n") { "• $it" }
+                    } else {
+                        ""
+                    }
             val (title, confirmText) =
                 when {
                     plan.recreate -> "Recreate Sandbox" to "Recreate Sandbox"
-                    plan.requiresStop && serverRunning -> "Restart OpenCode" to "Apply and Restart"
+                    startsStopped -> "Start OpenCode" to "Apply and Start"
+                    plan.requiresStop && serverState.isInterruptible() ->
+                        "Restart OpenCode" to "Apply and Restart"
                     else -> "Allow Sandbox Access" to "Allow and Apply"
                 }
             val confirmed =
@@ -1371,10 +1387,18 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         onDirectoryTargetChanged()
     }
 
+    /** Canonical comparison: a trailing slash or symlinked spelling is the same project. */
+    private fun sameDirectory(a: String?, b: String?): Boolean {
+        if (a == b) return true
+        if (a == null || b == null) return false
+        return (OpenCodeServerProtocol.canonicalOpenCodeDirectory(a) ?: a) ==
+            (OpenCodeServerProtocol.canonicalOpenCodeDirectory(b) ?: b)
+    }
+
     private fun onDirectoryTargetChanged() {
         if (hydrating) return
         val next = effectiveDirectory()
-        if (next == loadedSpecDirectory) return
+        if (sameDirectory(next, loadedSpecDirectory)) return
         val inspection = SbxLaunchSpec.inspect(next)
         val destination =
             (inspection as? de.moritzf.opencodewebpanel.server.SbxLaunchSpecInspection.Valid)?.spec

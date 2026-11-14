@@ -89,7 +89,7 @@ The tool window title bar and editor toolbar offer quick controls (also availabl
 - **Zoom out / Zoom in** - Scale the embedded OpenCode UI in 10% steps without reloading. Cmd/Ctrl with <kbd>+</kbd>, <kbd>-</kbd>, and <kbd>0</kbd> work inside the panel too.
 - **Reload Page** - Reload the embedded OpenCode UI. The server stays running.
 - **Move to Editor / Move to Tool Window** - Move the live panel without reloading. The current session, draft, and browser state stay intact.
-- **Restart Server** - Stop and restart this project's OpenCode server, and recreate the embedded browser in its current host. Recovers a stuck or crashed panel. Also on **OpenCode Web Panel (Project)**.
+- **Restart Server** - Stop and restart this project's OpenCode server, and recreate the embedded browser in its current host. Recovers a stuck or crashed panel. Also on **OpenCode Web Panel (Project)**, where it reads **Start Server** while the server is stopped.
 - The gear menu additionally offers **Reset Zoom**, **View Server Log**, and **OpenCode Web Panel Settings**.
 
 ### OpenCode in the Editor
@@ -283,7 +283,7 @@ Project-specific settings are stored with the IDE project.
 
 **The panel is stuck, blank, or frozen on “Opening the OpenCode page…”**
 
-- Use **Restart Server** in the tool window title bar, gear menu, or **OpenCode Web Panel (Project)** settings. Host CLI and Docker Sandbox restarts are this project only.
+- Use **Restart Server** in the tool window title bar, gear menu, or **OpenCode Web Panel (Project)** settings (**Start Server** there while the server is stopped). Host CLI and Docker Sandbox restarts are this project only.
 - **Reload Page** reloads the UI without restarting the server; use Restart if that is not enough.
 
 **The embedded UI behaves unexpectedly after an OpenCode update**

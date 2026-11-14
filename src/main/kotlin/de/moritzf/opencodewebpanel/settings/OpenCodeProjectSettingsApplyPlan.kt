@@ -3,6 +3,7 @@ package de.moritzf.opencodewebpanel.settings
 import de.moritzf.opencodewebpanel.configuration.OpenCodePortMode
 import de.moritzf.opencodewebpanel.configuration.OpenCodeProjectDirectoryMode
 import de.moritzf.opencodewebpanel.configuration.OpenCodeProjectSettingsState
+import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState
 import de.moritzf.opencodewebpanel.server.SbxApplyEffect
 import de.moritzf.opencodewebpanel.server.SbxApplyPreview
 import de.moritzf.opencodewebpanel.server.SbxLaunchSpec
@@ -36,12 +37,18 @@ internal data class OpenCodeProjectSettingsApplyPlan(
         get() = backendChanged || preview.effect >= SbxApplyEffect.RESTART
 
     /**
-     * Ask only when Apply costs something: it recreates the VM, interrupts a running server, or
-     * grants the sandbox access the user has not acknowledged. Live and deferred changes apply
-     * without a prompt; the page shows what waits for Reset.
+     * Ask only when Apply costs something: it recreates the VM, interrupts a server or a start in
+     * progress, starts a server the user stopped, or grants the sandbox access the user has not
+     * acknowledged. Retrying a failed server and live or deferred changes need no prompt; the page
+     * shows what waits for Reset.
      */
-    fun needsConfirmation(serverRunning: Boolean, exposureUnacknowledged: Boolean): Boolean =
-        exposureUnacknowledged || recreate || (requiresStop && serverRunning)
+    fun needsConfirmation(
+        serverState: OpenCodeServerLifecycleState,
+        exposureUnacknowledged: Boolean,
+    ): Boolean =
+        exposureUnacknowledged ||
+            recreate ||
+            (requiresStop && serverState != OpenCodeServerLifecycleState.FAILED)
 
     /** Stop completion, not STOPPED publication, releases a fixed port for the next backend. */
     fun applyRuntime(
@@ -64,7 +71,6 @@ internal data class OpenCodeProjectSettingsApplyPlan(
             values: OpenCodeProjectSettingsValues,
             spec: SbxLaunchSpec,
             baselineSpec: SbxLaunchSpec,
-            oldDirectory: String?,
             canonicalOldDirectory: String?,
             oldUsesSandbox: Boolean,
             hasVm: Boolean,
@@ -84,8 +90,10 @@ internal data class OpenCodeProjectSettingsApplyPlan(
                     historyNote = historyNote,
                     hasVm = hasVm,
                 ),
+                // Canonical: another spelling of the same folder is not a switch.
                 backendChanged =
-                    oldDirectory != values.effectiveDirectory || oldUsesSandbox != spec.useSandbox,
+                    canonicalOldDirectory != spec.canonicalDirectory ||
+                        oldUsesSandbox != spec.useSandbox,
             )
     }
 }
