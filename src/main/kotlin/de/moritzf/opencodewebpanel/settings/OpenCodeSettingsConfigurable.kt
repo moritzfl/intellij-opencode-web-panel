@@ -2,12 +2,14 @@ package de.moritzf.opencodewebpanel.settings
 
 import com.intellij.icons.AllIcons
 import com.intellij.ide.BrowserUtil
+import com.intellij.ide.DataManager
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
 import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.options.ConfigurationException
+import com.intellij.openapi.options.ex.Settings
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.ui.MessageDialogBuilder
 import com.intellij.openapi.ui.Messages
@@ -453,8 +455,9 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
             group("Docker Sandboxes") {
                 row {
                     comment(
-                        "Prerequisites for Docker Sandbox runtimes (per project on " +
-                            "Tools → OpenCode Web Panel (Project)). Not needed for Host CLI.",
+                        "Needed only for projects that run OpenCode in a Docker Sandbox; each " +
+                            "project chooses its runtime in its <a href=\"project\">project settings</a>.",
+                        action = HyperlinkEventAction { openProjectSettings() },
                     )
                 }
                 row { cell(sbxLoginHintLabel) }
@@ -1335,8 +1338,27 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
             enableSystemNotificationsCheckBox.isSelected
     }
 
+    /** The project page exists only when the dialog was opened from a project window. */
+    private fun openProjectSettings() {
+        val component = panel ?: return
+        val settings = Settings.KEY.getData(DataManager.getInstance().getDataContext(component))
+        val target = settings?.find(OpenCodeProjectSettingsConfigurable.ID)
+        if (settings != null && target != null) {
+            settings.select(target)
+        } else {
+            Messages.showInfoMessage(
+                component,
+                "Open Settings from a project window to choose that project's runtime.",
+                "Project Runtime Settings",
+            )
+        }
+    }
+
     companion object {
         private const val PROBE_DELAY_MILLIS = 400
+
+        /** plugin.xml `applicationConfigurable` id. */
+        const val ID = "opencode.web.panel.settings"
         private const val SBX_POLICY_DOCS_URL =
             "https://docs.docker.com/ai/sandboxes/security/defaults/"
     }

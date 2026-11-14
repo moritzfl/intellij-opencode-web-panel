@@ -30,6 +30,22 @@ internal fun openCodeExecutableStatus(
     }
 }
 
+/** What a sandbox start needs from this computer, in one line under the runtime choice. */
+internal fun sandboxPrerequisitesText(
+    probe: OpenCodeExecutableProbe,
+    policyReady: Boolean,
+): ExecutableStatus {
+    val sbx =
+        when {
+            probe.path == null -> "sbx not found"
+            probe.tooOld -> "sbx ${probe.version} is too old (needs ${SbxCli.MINIMUM_SBX_VERSION})"
+            else -> probe.version?.let { "sbx $it" } ?: "sbx found"
+        }
+    val policy = if (policyReady) "network policy set up" else "no network policy yet"
+    val ready = probe.path != null && !probe.tooOld && policyReady
+    return ExecutableStatus((if (ready) "Ready: " else "Needs setup: ") + "$sbx · $policy", !ready)
+}
+
 /** sbx is optional: missing is only a problem when the user pointed at a path. */
 internal fun sbxExecutableStatus(
     probe: OpenCodeExecutableProbe,

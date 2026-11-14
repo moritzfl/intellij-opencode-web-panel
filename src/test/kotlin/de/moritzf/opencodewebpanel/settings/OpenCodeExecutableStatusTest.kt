@@ -25,6 +25,23 @@ class OpenCodeExecutableStatusTest {
     }
 
     @Test
+    fun sandboxPrerequisitesNameWhatIsMissing() {
+        assertEquals(
+            ExecutableStatus("Ready: sbx 0.53.0 · network policy set up", false),
+            sandboxPrerequisitesText(OpenCodeExecutableProbe("/bin/sbx", "0.53.0"), true),
+        )
+        assertEquals(
+            ExecutableStatus("Needs setup: sbx not found · no network policy yet", true),
+            sandboxPrerequisitesText(OpenCodeExecutableProbe(null, null), false),
+        )
+        assertTrue(
+            sandboxPrerequisitesText(OpenCodeExecutableProbe("/bin/sbx", "0.48.0", true), true)
+                .text
+                .contains("sbx 0.48.0 is too old (needs 0.51.0)"),
+        )
+    }
+
+    @Test
     fun missingSbxIsOnlyAProblemWhenAPathWasGiven() {
         assertFalse(sbxExecutableStatus(OpenCodeExecutableProbe(null, null), false, "").problem)
         assertTrue(sbxExecutableStatus(OpenCodeExecutableProbe(null, null), true, "/x").problem)

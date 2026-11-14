@@ -177,6 +177,9 @@ class OpenCodePluginTest : BasePlatformTestCase() {
         assertEquals("OpenCode Web Panel (Project)", projectDisplayName)
         assertEquals(projectDisplayName, OpenCodeProjectSettingsConfigurable(project).displayName)
         assertTrue(pluginXml.contains("displayName=\"$projectDisplayName\""))
+        // The pages link to each other through these ids.
+        assertTrue(pluginXml.contains("id=\"${OpenCodeSettingsConfigurable.ID}\""))
+        assertTrue(pluginXml.contains("id=\"${OpenCodeProjectSettingsConfigurable.ID}\""))
     }
 
     fun testBrowserShortcutActionsAreRegisteredForKeymapCustomization() {

@@ -27,6 +27,9 @@
   with the create-time settings that wait for it right below.
 - The project page says when its server actions need Apply first, and why a
   sandbox action is unavailable.
+- Choosing **Docker Sandbox** shows right away whether this computer has a
+  recent enough `sbx` and a network policy, with a link to the Docker Sandbox
+  settings. The application page links back to the project's runtime choice.
 
 ### Fixed
 

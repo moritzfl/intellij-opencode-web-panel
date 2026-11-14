@@ -2,11 +2,14 @@ package de.moritzf.opencodewebpanel.settings
 
 import com.intellij.icons.AllIcons
 import com.intellij.ide.BrowserUtil
+import com.intellij.ide.DataManager
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
 import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.options.ConfigurationException
+import com.intellij.openapi.options.ShowSettingsUtil
+import com.intellij.openapi.options.ex.Settings
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.ComboBox
 import com.intellij.openapi.ui.MessageDialogBuilder
@@ -15,6 +18,7 @@ import com.intellij.openapi.ui.TextFieldWithBrowseButton
 import com.intellij.ui.CollectionComboBoxModel
 import com.intellij.ui.DocumentAdapter
 import com.intellij.ui.ToolbarDecorator
+import com.intellij.ui.components.ActionLink
 import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBRadioButton
@@ -35,6 +39,7 @@ import de.moritzf.opencodewebpanel.configuration.OpenCodePortMode
 import de.moritzf.opencodewebpanel.configuration.OpenCodeProjectDirectoryMode
 import de.moritzf.opencodewebpanel.configuration.OpenCodeProjectSettingsState
 import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsState
+import de.moritzf.opencodewebpanel.server.OpenCodeExecutableProbes
 import de.moritzf.opencodewebpanel.server.OpenCodeProjectRuntime
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
@@ -120,6 +125,12 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
             foreground = JBUI.CurrentTheme.ContextHelp.FOREGROUND
             isVisible = false
         }
+    private val sbxPrerequisitesLabel =
+        JBLabel().apply { foreground = JBUI.CurrentTheme.ContextHelp.FOREGROUND }
+    private val sbxPrerequisitesLink =
+        ActionLink("Docker Sandbox settings") { openApplicationSettings() }
+    private var prerequisitesGeneration = 0L
+    private var prerequisitesRequested = false
     private val autoPortRadioButton = JBRadioButton("Auto select")
     private val fixedPortRadioButton = JBRadioButton("Fixed port")
     private val fixedPortField =
@@ -454,11 +465,6 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                     )
             }
             row { cell(setupCheckResultLabel) }
-            row {
-                comment(
-                    "Sbx location, login, and network policy: Tools → OpenCode Web Panel → Docker Sandboxes.",
-                )
-            }
         }
     }
 
@@ -510,6 +516,12 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                             .comment(
                                 "OpenCode inside a Docker Sandbox, from Docker's published OpenCode kits. Requires sbx ${SbxCli.MINIMUM_SBX_VERSION} or later and a Docker account. Apple silicon macOS, Windows 11 with WHP, or KVM Linux.",
                             )
+                    }
+                    indent {
+                        row {
+                            cell(sbxPrerequisitesLabel).gap(RightGap.SMALL)
+                            cell(sbxPrerequisitesLink)
+                        }
                     }
                 }
             }
@@ -732,6 +744,8 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         setupCheckSequence++
         setupCheckRunning = false
         openCodeImageTagsRequested = false
+        prerequisitesRequested = false
+        prerequisitesGeneration++
         panel = null
         lifecycleConnection?.disconnect()
         lifecycleConnection = null
@@ -865,6 +879,52 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         if (projectBackend() !is SbxOpenCodeServerBackend) return
         if (!confirmOpenCodeSandboxReset(project)) return
         OpenCodeProjectRuntime.getInstance(project).resetSandbox()
+    }
+
+    /** Settings lives in the dialog's data context; outside it, open a dialog for the page. */
+    private fun openApplicationSettings() {
+        val component = panel ?: sbxPrerequisitesLink
+        val settings = Settings.KEY.getData(DataManager.getInstance().getDataContext(component))
+        val target = settings?.find(OpenCodeSettingsConfigurable.ID)
+        if (settings != null && target != null) {
+            settings.select(target)
+        } else {
+            ShowSettingsUtil.getInstance()
+                .showSettingsDialog(project, OpenCodeSettingsConfigurable::class.java)
+        }
+    }
+
+    /**
+     * What a sandbox start needs from this computer, read off the EDT once per page: an sbx that is
+     * new enough, and a network policy. Shown under the runtime choice before anything is applied.
+     */
+    private fun loadSandboxPrerequisites() {
+        if (prerequisitesRequested || ApplicationManager.getApplication().isUnitTestMode) return
+        prerequisitesRequested = true
+        val generation = ++prerequisitesGeneration
+        val settings = OpenCodeSettingsState.getInstance()
+        val executable = settings.sbxExecutablePath()
+        // Label-only update: run even while the settings dialog is modal, before it is showing.
+        val modality = ModalityState.any()
+        sbxPrerequisitesLabel.text = "Checking sbx…"
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val probe = OpenCodeExecutableProbes.sbx(executable)
+            ApplicationManager.getApplication()
+                .invokeLater(
+                    {
+                        if (panel == null || generation != prerequisitesGeneration) {
+                            return@invokeLater
+                        }
+                        val (text, problem) =
+                            sandboxPrerequisitesText(probe, settings.sbxNetworkPolicyConsent)
+                        sbxPrerequisitesLabel.text = text
+                        sbxPrerequisitesLabel.foreground =
+                            if (problem) UIUtil.getErrorForeground()
+                            else JBUI.CurrentTheme.ContextHelp.FOREGROUND
+                    },
+                    modality,
+                )
+        }
     }
 
     private fun checkSandboxSetup() {
@@ -1213,6 +1273,9 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                     .recordFor(directory) != null
         upgradeOpenCodeButton.isVisible = sandbox
         resetSandboxButton.isVisible = sandbox
+        sbxPrerequisitesLabel.isVisible = sandbox
+        sbxPrerequisitesLink.isVisible = sandbox
+        if (sandbox) loadSandboxPrerequisites()
         val pinnable = sandbox && sbxOpenCodeV2RadioButton.isSelected
         sbxOpenCodeImageRow?.visible(pinnable)
         if (pinnable) loadOpenCodeImageTags()
@@ -1360,6 +1423,8 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
     }
 
     companion object {
+        /** plugin.xml `projectConfigurable` id. */
+        const val ID = "opencode.web.panel.project.settings"
         const val PROJECT_SETTINGS_DISPLAY_NAME = "OpenCode Web Panel (Project)"
         private const val SBX_KIT_DOCS_URL = "https://docs.docker.com/ai/sandboxes/customize/kits/"
         private const val OPENCODE_IMAGE_TAGS_PAGE = "https://hub.docker.com/r/sbx/opencode/tags"
