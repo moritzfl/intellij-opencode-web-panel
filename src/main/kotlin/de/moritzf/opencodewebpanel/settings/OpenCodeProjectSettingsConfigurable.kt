@@ -697,6 +697,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                 throw ConfigurationException("Sandbox memory must be a value like 4g or 512m.")
             }
             if (SbxCli.parseCpus(cpusText()) == null) {
+                resourcesGroup?.expanded = true
                 throw ConfigurationException("Sandbox CPUs must be an integer from 1 to 32.")
             }
             if (
@@ -1606,6 +1607,8 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                     ) +
                     "</html>"
             sbxRuntimeRadioButton.isSelected = true
+            // Apply can replace the file with this form: show everything it would write.
+            resourcesGroup?.expanded = true
         }
     }
 

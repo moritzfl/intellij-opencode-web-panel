@@ -255,6 +255,33 @@ class OpenCodeProjectSettingsConfigurableTest {
     }
 
     @Test
+    fun resourcesSectionOpensWhenItHoldsSomethingWorthSeeing() {
+        val specPath = SbxLaunchSpec.projectSpecPath(temp.root.toPath().toString())
+        val defaults =
+            SbxLaunchSpec.defaults(project.basePath!!, hostPort = appSettings.hostPortOrNull())
+                .copy(useSandbox = true)
+        SwingUtilities.invokeAndWait {
+            configurable.createComponent()
+            val group = { field<com.intellij.ui.dsl.builder.CollapsibleRow>("resourcesGroup") }
+
+            assertNotNull(SbxLaunchSpec.persist(defaults))
+            configurable.reset()
+            assertFalse("Only defaults: folded away", group().expanded)
+
+            assertNotNull(SbxLaunchSpec.persist(defaults.copy(kits = listOf("./kit"))))
+            configurable.reset()
+            assertTrue("A kit is configured", group().expanded)
+
+            assertNotNull(SbxLaunchSpec.persist(defaults))
+            configurable.reset()
+            assertFalse(group().expanded)
+            Files.writeString(specPath, "not a spec")
+            configurable.reset()
+            assertTrue("Apply can replace an invalid file with this form", group().expanded)
+        }
+    }
+
+    @Test
     fun failedSaveDoesNotChangeSettingsOrStopPreviousServer() {
         val specPath = SbxLaunchSpec.projectSpecPath(temp.root.toPath().toString())
         SwingUtilities.invokeAndWait {
