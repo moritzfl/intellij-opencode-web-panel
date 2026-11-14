@@ -35,6 +35,7 @@ import de.moritzf.opencodewebpanel.configuration.OpenCodeUiSetting
 import de.moritzf.opencodewebpanel.server.OpenCodeExecutableProbes
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
+import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState
 import de.moritzf.opencodewebpanel.server.OpenCodeServerProtocol
 import de.moritzf.opencodewebpanel.server.SbxCli
 import de.moritzf.opencodewebpanel.server.SbxProcessRunner
@@ -654,15 +655,13 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
     override fun apply() {
         val settings = OpenCodeSettingsState.getInstance()
         validateChangedExecutables(settings)
-        confirmRestartOfRunningServers(settings)
+        val hostChanged = hostLaunchChanged(settings)
+        val sandboxChanged = sandboxLaunchChanged(settings)
+        // Before anything is saved, so declining leaves every setting and server unchanged.
+        confirmServerRestart(appRestartScope(passwordEdited(), hostChanged, sandboxChanged))
         passwordLoadGeneration.incrementAndGet()
         passwordLoading = false
         val editedPassword = password().takeIf { it != savedPassword }
-        val oldBinaryMode = settings.binaryModeValue()
-        val oldBinaryPath = settings.binaryPath.trim()
-        val oldSbxBinaryMode = settings.sbxBinaryModeValue()
-        val oldSbxBinaryPath = settings.sbxBinaryPath.trim()
-        val oldProxyMode = settings.proxyModeValue()
         val oldUiZoomPercent = OpenCodeSettingsState.sanitizeUiZoomPercent(settings.uiZoomPercent)
         val oldSystemNotificationsEnabled = settings.enableSystemNotifications
         val pendingBroadcasts = checkBoxSettingBindings.mapNotNull { binding ->
@@ -698,27 +697,24 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
         updateSbxControls()
         updateRuntimeControls()
         updateUiDependencyControls()
-        val registry = OpenCodeServerBackendRegistry.getInstance()
-        val passwordChanged = oldPassword != nextPassword
-        val nativeChanged =
-            oldBinaryMode != nextBinaryMode ||
-                oldBinaryPath != nextBinaryPath ||
-                oldProxyMode != settings.proxyModeValue()
-        val sbxChanged =
-            oldSbxBinaryMode != nextSbxBinaryMode || oldSbxBinaryPath != nextSbxBinaryPath
-        if (passwordChanged || nativeChanged || sbxChanged) {
-            if (passwordChanged || nativeChanged) registry.stopAllNativeBackends()
-            if (passwordChanged || sbxChanged) registry.stopAllSbxBackends()
-            val scope =
-                when {
-                    passwordChanged || (nativeChanged && sbxChanged) -> OpenCodeRestartScope.ALL
-                    nativeChanged -> OpenCodeRestartScope.NATIVE
-                    else -> OpenCodeRestartScope.SBX
-                }
+        val scope = appRestartScope(oldPassword != nextPassword, hostChanged, sandboxChanged)
+        if (scope != null) {
+            val registry = OpenCodeServerBackendRegistry.getInstance()
+            // Restart what was in use; a server the user stopped stays stopped until started.
+            val inUse =
+                registry
+                    .backends()
+                    .filter {
+                        scope.covers(it.backendId) &&
+                            it.getLifecycleState() != OpenCodeServerLifecycleState.STOPPED
+                    }
+                    .mapTo(HashSet()) { it.backendId }
+            if (scope != OpenCodeRestartScope.SBX) registry.stopAllNativeBackends()
+            if (scope != OpenCodeRestartScope.NATIVE) registry.stopAllSbxBackends()
             ApplicationManager.getApplication()
                 .messageBus
                 .syncPublisher(OpenCodeSettingsListener.TOPIC)
-                .serverRestartRequested(scope)
+                .serverRestartRequested(scope, inUse)
         }
         if (oldUiZoomPercent != nextUiZoomPercent) {
             ApplicationManager.getApplication()
@@ -841,28 +837,28 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
         if (customSbxRadioButton.isSelected) sbxPath().ifBlank { SbxCli.DEFAULT_EXECUTABLE }
         else SbxCli.DEFAULT_EXECUTABLE
 
-    /** Runs before anything is saved, so declining leaves every setting and server unchanged. */
-    private fun confirmRestartOfRunningServers(settings: OpenCodeSettingsState) {
-        val app = ApplicationManager.getApplication()
-        if (app.isUnitTestMode) return
-        val passwordChanging = password() != savedPassword
-        val hostChanging =
-            passwordChanging ||
-                selectedBinaryMode() != settings.binaryModeValue() ||
-                binaryPath() != settings.binaryPath.trim() ||
-                selectedProxyMode() != settings.proxyModeValue()
-        val sandboxChanging =
-            passwordChanging ||
-                selectedSbxBinaryMode() != settings.sbxBinaryModeValue() ||
-                sbxPath() != settings.sbxBinaryPath.trim()
-        if (!hostChanging && !sandboxChanging) return
-        val running = OpenCodeServerBackendRegistry.getInstance().runningBackends()
-        val host =
-            if (hostChanging) running.count { OpenCodeServerBackend.isNative(it.backendId) } else 0
-        val sandbox =
-            if (sandboxChanging) running.count { !OpenCodeServerBackend.isNative(it.backendId) }
-            else 0
-        if (!confirmOpenCodeServersRestart(panel, host, sandbox)) throw applyCancelled()
+    /** A cleared field keeps the stored password, so only a non-blank new value counts. */
+    private fun passwordEdited(): Boolean = password().let { it != null && it != savedPassword }
+
+    private fun hostLaunchChanged(settings: OpenCodeSettingsState): Boolean =
+        selectedBinaryMode() != settings.binaryModeValue() ||
+            binaryPath() != settings.binaryPath.trim() ||
+            selectedProxyMode() != settings.proxyModeValue()
+
+    private fun sandboxLaunchChanged(settings: OpenCodeSettingsState): Boolean =
+        selectedSbxBinaryMode() != settings.sbxBinaryModeValue() ||
+            sbxPath() != settings.sbxBinaryPath.trim()
+
+    private fun confirmServerRestart(scope: OpenCodeRestartScope?) {
+        if (scope == null || ApplicationManager.getApplication().isUnitTestMode) return
+        val interrupted =
+            OpenCodeServerBackendRegistry.getInstance().backends().filter {
+                scope.covers(it.backendId) && it.getLifecycleState().isInterruptible()
+            }
+        val host = interrupted.count { OpenCodeServerBackend.isNative(it.backendId) }
+        if (!confirmOpenCodeServersRestart(panel, host, interrupted.size - host)) {
+            throw applyCancelled()
+        }
     }
 
     private fun resolveAndSavePasswordOffEdt(

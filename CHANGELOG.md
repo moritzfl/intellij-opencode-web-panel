@@ -6,9 +6,11 @@
 
 ### Changed
 
-- Applying the application settings asks before it restarts running OpenCode
-  servers, which happens when the password, the OpenCode or `sbx` executable,
-  or the HTTP proxy changes. Declining leaves every setting unchanged.
+- Applying the application settings asks before it restarts OpenCode servers
+  that are running or starting, which happens when the password, the OpenCode
+  or `sbx` executable, or the HTTP proxy changes. Declining leaves every
+  setting unchanged. A server you stopped now stays stopped and uses the new
+  settings at its next start.
 - Project settings ask before Apply only when it recreates the sandbox,
   interrupts a running server, or gives the sandbox new access. Changes that
   apply live or wait for the next Reset no longer prompt, and the confirmation

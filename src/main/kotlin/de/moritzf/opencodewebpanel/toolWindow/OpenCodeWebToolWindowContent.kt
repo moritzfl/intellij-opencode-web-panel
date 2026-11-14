@@ -789,10 +789,14 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
                         }
                     }
 
-                    override fun serverRestartRequested(scope: OpenCodeRestartScope) {
+                    override fun serverRestartRequested(
+                        scope: OpenCodeRestartScope,
+                        backendIds: Set<String>?,
+                    ) {
                         val native = OpenCodeServerBackend.isNative(serverManager.backendId)
                         if (scope == OpenCodeRestartScope.NATIVE && !native) return
                         if (scope == OpenCodeRestartScope.SBX && native) return
+                        if (backendIds != null && serverManager.backendId !in backendIds) return
                         restartOpenCodeServer()
                         schedulePanelReplacement()
                     }

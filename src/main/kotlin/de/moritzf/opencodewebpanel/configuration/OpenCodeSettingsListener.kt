@@ -36,7 +36,11 @@ interface OpenCodeSettingsListener {
 
     fun systemNotificationsChanged(enabled: Boolean) {}
 
-    fun serverRestartRequested(scope: OpenCodeRestartScope = OpenCodeRestartScope.ALL) {}
+    /** [backendIds]: restart only these backends' panels; null restarts every panel in [scope]. */
+    fun serverRestartRequested(
+        scope: OpenCodeRestartScope = OpenCodeRestartScope.ALL,
+        backendIds: Set<String>? = null,
+    ) {}
 
     companion object {
         val TOPIC: Topic<OpenCodeSettingsListener> =
