@@ -545,6 +545,36 @@ class OpenCodeProjectSettingsConfigurableTest {
     }
 
     @Test
+    fun customDirectoryStartsFromTheProjectRootAndAutoDropsTheUntouchedPrefill() {
+        SwingUtilities.invokeAndWait {
+            configurable.createComponent()
+            val directoryField = field<TextFieldWithBrowseButton>("projectDirectoryField")
+            field<AbstractButton>("customProjectDirectoryRadioButton").isSelected = true
+            assertEquals(project.basePath, directoryField.text)
+            field<AbstractButton>("autoProjectDirectoryRadioButton").isSelected = true
+            assertEquals("", directoryField.text)
+            assertFalse("Toggling back changes nothing", configurable.isModified())
+        }
+    }
+
+    @Test
+    fun anInvalidFixedPortIsMarkedWhileTyping() {
+        SwingUtilities.invokeAndWait {
+            configurable.createComponent()
+            field<AbstractButton>("fixedPortRadioButton").isSelected = true
+            val portField = field<JTextField>("fixedPortField")
+            portField.text = "70000"
+            assertEquals("error", portField.getClientProperty("JComponent.outline"))
+            portField.text = ""
+            assertEquals(
+                "Blank means the default port",
+                null,
+                portField.getClientProperty("JComponent.outline"),
+            )
+        }
+    }
+
+    @Test
     fun resetSandboxWaitsForApplyAndSaysWhy() {
         assertNotNull(
             SbxLaunchSpec.persist(

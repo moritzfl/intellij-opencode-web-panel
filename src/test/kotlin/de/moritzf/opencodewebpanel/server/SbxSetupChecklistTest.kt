@@ -1,24 +1,34 @@
 package de.moritzf.opencodewebpanel.server
 
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
+import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class SbxSetupChecklistTest {
     @Test
-    fun projectChecklistRequiresOwnedRunningSandbox() {
-        val incomplete =
+    fun projectChecklistShowsWhatIsStillPending() {
+        assertEquals(
+            "○ Sandbox: created when OpenCode starts\n○ OpenCode: not running",
             SbxSetupChecklist.format(
-                SbxSetupChecklist.projectSteps(useSandbox = true, owned = false, running = false),
-            )
-        assertTrue(incomplete.contains("✓ Sandbox runtime"))
-        assertTrue(incomplete.contains("[ ] Owned VM"))
-        assertFalse(incomplete.contains("✓ OpenCode serve"))
-        val ready =
+                SbxSetupChecklist.projectSteps(owned = false, running = false),
+                openMark = SbxSetupChecklist.PENDING,
+            ),
+        )
+        assertEquals(
+            "✓ Sandbox: created\n✓ OpenCode: running",
+            SbxSetupChecklist.format(SbxSetupChecklist.projectSteps(owned = true, running = true)),
+        )
+    }
+
+    @Test
+    fun failedChecksAreCrossedOut() {
+        assertEquals(
+            "✓ Server: up\n✗ Network: blocked",
             SbxSetupChecklist.format(
-                SbxSetupChecklist.projectSteps(useSandbox = true, owned = true, running = true),
-            )
-        assertTrue(ready.contains("✓ Owned VM"))
-        assertTrue(ready.contains("✓ OpenCode serve"))
+                listOf(
+                    SbxSetupStep("Server", true, "up"),
+                    SbxSetupStep("Network", false, "blocked"),
+                ),
+            ),
+        )
     }
 }

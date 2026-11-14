@@ -7,28 +7,27 @@ internal data class SbxSetupStep(
 )
 
 internal object SbxSetupChecklist {
-    fun projectSteps(useSandbox: Boolean, owned: Boolean, running: Boolean): List<SbxSetupStep> =
+    /** Marks a step that has not happened yet, as opposed to [FAILED]. */
+    const val PENDING = "○"
+    const val FAILED = "✗"
+
+    fun projectSteps(owned: Boolean, running: Boolean): List<SbxSetupStep> =
         listOf(
             SbxSetupStep(
-                "Sandbox runtime",
-                useSandbox,
-                if (useSandbox) "Docker Sandbox selected" else "Host CLI selected",
-            ),
-            SbxSetupStep(
-                "Owned VM",
+                "Sandbox",
                 owned,
-                if (owned) "Plugin owns this sandbox" else "Start or Adopt to create one",
+                if (owned) "created" else "created when OpenCode starts",
             ),
             SbxSetupStep(
-                "OpenCode serve",
+                "OpenCode",
                 running,
-                if (running) "Healthy" else "Not running",
+                if (running) "running" else "not running",
             ),
         )
 
-    fun format(steps: List<SbxSetupStep>): String {
+    fun format(steps: List<SbxSetupStep>, openMark: String = FAILED): String {
         return steps.joinToString("\n") { step ->
-            val mark = if (step.done) "✓" else "[ ]"
+            val mark = if (step.done) "✓" else openMark
             "$mark ${step.label}: ${step.detail}"
         }
     }

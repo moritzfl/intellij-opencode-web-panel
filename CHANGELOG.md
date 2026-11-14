@@ -38,6 +38,15 @@
   Notifications and Status, and Recovery, with shorter descriptions and labels
   that say what each option does and are found by the settings search. The
   Panel tab has **Restore defaults**.
+- The project settings list the directory, the runtime, the Docker Sandbox
+  options and then the server. Memory, CPUs, mounts and kits sit in a
+  collapsible **Resources, Mounts and Kits** section that opens when any of
+  them is set. Each description says when a change takes effect, and the
+  sandbox checkboxes say what they do. **Detect** next to the directory is
+  gone: **Custom directory** starts from the project root. The port
+  description follows the runtime and an invalid port is marked while typing.
+  Empty mount and kit tables offer an add link, and the mount table's tooltip
+  explains `${NAME}` host paths.
 
 ### Fixed
 
