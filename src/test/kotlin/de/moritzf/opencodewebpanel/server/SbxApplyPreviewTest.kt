@@ -208,6 +208,25 @@ class SbxApplyPreviewTest {
     }
 
     @Test
+    fun changingTheImagePinNeedsANewVm() {
+        val latest = base.copy(openCodeVersion = SbxOpenCodeVersion.V2)
+        val pinned = latest.copy(openCodeImage = "2.2.7")
+        val pin = SbxApplyPreview.build("/tmp/p", latest, pinned, false, false, "")
+        assertEquals(SbxApplyEffect.RECREATE, pin.effect)
+        assertTrue(pin.message(), pin.message().contains("Docker image latest → 2.2.7"))
+        val unpin = SbxApplyPreview.build("/tmp/p", pinned, latest, false, false, "")
+        assertTrue(unpin.message().contains("Docker image 2.2.7 → latest"))
+        val noVm = SbxApplyPreview.build("/tmp/p", latest, pinned, false, false, "", hasVm = false)
+        assertEquals(SbxApplyEffect.NONE, noVm.effect)
+        val version = SbxApplyPreview.build("/tmp/p", base, pinned, false, false, "")
+        assertTrue(
+            "A version switch names the pinned kit once",
+            version.message().contains("OpenCode 2.x (Docker's OpenCode 2 kit 2.2.7)"),
+        )
+        assertFalse(version.message().contains("Docker image latest"))
+    }
+
+    @Test
     fun emptyPreviewHasNoProcessChanges() {
         val preview = SbxApplyPreview.build("/tmp/p", base, base, false, false, "")
         assertEquals(SbxApplyEffect.NONE, preview.effect)

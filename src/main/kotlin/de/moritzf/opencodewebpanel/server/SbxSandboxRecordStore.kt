@@ -103,6 +103,7 @@ internal class SbxSandboxRecordBean {
     var hostPort: Int = 0
     var createSnapshot: String = ""
     var adopted: Boolean = false
+    var openCodeImage: String = ""
 
     fun copy(): SbxSandboxRecordBean {
         return SbxSandboxRecordBean().also {
@@ -115,6 +116,7 @@ internal class SbxSandboxRecordBean {
             it.hostPort = hostPort
             it.createSnapshot = createSnapshot
             it.adopted = adopted
+            it.openCodeImage = openCodeImage
         }
     }
 
@@ -130,6 +132,7 @@ internal class SbxSandboxRecordBean {
             hostPort = hostPort.takeIf { it in 1..65535 },
             createSnapshot = createSnapshot,
             adopted = adopted,
+            openCodeImage = openCodeImage,
         )
     }
 
@@ -145,6 +148,7 @@ internal class SbxSandboxRecordBean {
                 it.hostPort = record.hostPort ?: 0
                 it.createSnapshot = record.createSnapshot
                 it.adopted = record.adopted
+                it.openCodeImage = record.openCodeImage
             }
         }
     }

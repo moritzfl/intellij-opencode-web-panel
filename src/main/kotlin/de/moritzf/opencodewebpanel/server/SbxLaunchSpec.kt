@@ -59,6 +59,8 @@ internal data class SbxLaunchSpec(
     val protectSandboxFiles: Boolean = true,
     val persistSandboxSessions: Boolean = true,
     val workingDirectory: String = "./",
+    /** 2.x only: Docker image tag or `sha256:` digest; null follows `latest`. */
+    val openCodeImage: String? = null,
 ) {
     /** Host spelling of OpenCode's cwd; the primary sbx workspace remains [canonicalDirectory]. */
     fun hostWorkingDirectory(): String =
@@ -89,6 +91,9 @@ internal data class SbxLaunchSpec(
         }
         out.append("shareHostOpencodeConfig: ").append(shareHostOpencodeConfig).append('\n')
         out.append("openCodeVersion: ").append(openCodeVersion.yamlValue()).append('\n')
+        if (openCodeImage != null) {
+            out.append("openCodeImage: ").append(yamlScalar(openCodeImage)).append('\n')
+        }
         out.append("enableIntellijMcp: ").append(enableIntellijMcp).append('\n')
         out.append("protectSandboxFiles: ").append(protectSandboxFiles).append('\n')
         out.append("persistSandboxSessions: ").append(persistSandboxSessions).append('\n')
@@ -306,6 +311,10 @@ internal data class SbxLaunchSpec(
                             ?: return ParseResult(null, "openCodeVersion must be 1.x or 2.x")
                     else -> SbxOpenCodeVersion.fromYaml(values)
                 }
+            val openCodeImage = SbxCli.normalizeOpenCodeImage(values["openCodeImage"])
+            SbxCli.openCodeImageProblem(openCodeImage, version)?.let {
+                return ParseResult(null, it)
+            }
             val hostPort =
                 values["hostPort"]
                     ?.trim()
@@ -349,6 +358,7 @@ internal data class SbxLaunchSpec(
                     protectSandboxFiles = flags.getValue("protectSandboxFiles"),
                     persistSandboxSessions = flags.getValue("persistSandboxSessions"),
                     workingDirectory = workingDirectory,
+                    openCodeImage = openCodeImage,
                 ),
                 null,
             )
@@ -378,6 +388,7 @@ internal data class SbxLaunchSpec(
                 "memory",
                 "cpus",
                 "openCodeVersion",
+                "openCodeImage",
                 "hostPort",
             ) + BOOLEAN_KEYS.map { it.first }
 

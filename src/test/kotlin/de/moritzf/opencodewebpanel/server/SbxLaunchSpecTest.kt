@@ -295,6 +295,63 @@ class SbxLaunchSpecTest {
     }
 
     @Test
+    fun openCodeImagePinsDockersOpenCode2Image() {
+        val base = "canonicalDirectory: ./\nopenCodeVersion: 2.x\n"
+        val digest = "sha256:" + "a".repeat(64)
+        assertNull(SbxLaunchSpec.parseYaml(base)!!.openCodeImage)
+        assertNull(
+            "latest is the default, not a pin",
+            SbxLaunchSpec.parseYaml("${base}openCodeImage: latest\n")!!.openCodeImage,
+        )
+        assertEquals(
+            "2.2.7",
+            SbxLaunchSpec.parseYaml("${base}openCodeImage: '2.2.7'\n")!!.openCodeImage,
+        )
+        assertEquals(
+            digest,
+            SbxLaunchSpec.parseYaml("${base}openCodeImage: $digest\n")!!.openCodeImage,
+        )
+        val pinned = SbxLaunchSpec.parseYaml("${base}openCodeImage: 2.2.7\n")!!
+        assertEquals(pinned, SbxLaunchSpec.parseYaml(pinned.toYaml()))
+        assertFalse(
+            "An unpinned spec writes no key",
+            pinned.copy(openCodeImage = null).toYaml().contains("openCodeImage"),
+        )
+        for ((yaml, reason) in
+            listOf(
+                "canonicalDirectory: ./\nopenCodeImage: 2.2.7\n" to "only to openCodeVersion 2.x",
+                "${base}openCodeImage: 1.18.31\n" to "not an OpenCode 2 image",
+                "${base}openCodeImage: 3.0.0\n" to "not an OpenCode 2 image",
+                "${base}openCodeImage: two words\n" to "Docker tag",
+                "${base}openCodeImage: sha256:abc\n" to "Docker tag",
+                "${base}openCodeImage:\n  - 2.2.7\n" to "plain value",
+            )) {
+            val result = SbxLaunchSpec.parseYamlResult(yaml)
+            assertNull(yaml, result.spec)
+            assertTrue("$yaml -> ${result.error}", result.error!!.contains(reason))
+        }
+    }
+
+    @Test
+    fun applyAddsAndRemovesTheImagePin() {
+        val root = Files.createTempDirectory("opencode-sbx-image")
+        try {
+            val path = SbxLaunchSpec.projectSpecPath(root.toString())
+            Files.createDirectories(path.parent)
+            Files.writeString(path, "# keep\ncanonicalDirectory: ./\nopenCodeVersion: 2.x\n")
+            val loaded = SbxLaunchSpec.load(root.toString())!!
+            assertNotNull(SbxLaunchSpec.persist(loaded.copy(openCodeImage = "2.2.7")))
+            assertTrue(Files.readString(path).contains("openCodeImage: 2.2.7\n"))
+            assertNotNull(SbxLaunchSpec.persist(loaded))
+            val unpinned = Files.readString(path)
+            assertFalse(unpinned, unpinned.contains("openCodeImage"))
+            assertTrue(unpinned.startsWith("# keep\n"))
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
     fun readOnlyMountsRoundTripAndAcceptTheSbxSuffix() {
         val spec =
             SbxLaunchSpec.defaults(

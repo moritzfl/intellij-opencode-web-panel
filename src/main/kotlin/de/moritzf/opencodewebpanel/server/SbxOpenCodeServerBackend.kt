@@ -416,8 +416,12 @@ internal class SbxOpenCodeServerBackend(
         extraCreateArgs: List<String>,
         shareHostConfig: Boolean,
         persistSandboxSessions: Boolean,
+        spec: SbxLaunchSpec,
     ) {
-        val desired = SbxCli.createSnapshot(memory, cpus, protectSandboxFiles, extraCreateArgs)
+        val desired =
+            SbxCli.createSnapshot(memory, cpus, protectSandboxFiles, extraCreateArgs) +
+                "\n" +
+                SbxCli.agentFor(spec.openCodeVersion, spec.openCodeImage)
         val reasons =
             SbxCli.staleCreateReasons(
                 record,
@@ -427,7 +431,14 @@ internal class SbxOpenCodeServerBackend(
                 extraCreateArgs,
                 shareHostConfig,
                 persistSandboxSessions,
-            )
+            ) +
+                listOfNotNull(
+                    SbxCli.staleOpenCodeImageReason(
+                        record,
+                        spec.openCodeVersion,
+                        spec.openCodeImage,
+                    ),
+                )
         synchronized(lock) {
             if (reasons.isEmpty()) {
                 pendingCreateStaleReasons = emptyList()
@@ -925,6 +936,7 @@ internal class SbxOpenCodeServerBackend(
                     }
             }
             if ((record == null || owned == null) && !gateSandboxProvisioning(startId, spec)) return
+            val createAgent = SbxCli.agentFor(spec.openCodeVersion, spec.openCodeImage)
             var createdNow = false
             if (record == null || owned == null) {
                 if (!isCurrentStart(startId)) return
@@ -941,7 +953,7 @@ internal class SbxOpenCodeServerBackend(
                         hostPort = desiredHostPort,
                         extraWorkspaces = extraCreateArgs,
                         kits = kitRefs,
-                        agent = SbxCli.agentFor(spec.openCodeVersion),
+                        agent = createAgent,
                     ),
                     FIRST_START_TIMEOUT_MILLIS,
                     Path.of(canonicalDirectory),
@@ -985,6 +997,7 @@ internal class SbxOpenCodeServerBackend(
                                 spec.protectSandboxFiles,
                                 extraCreateArgs,
                             ),
+                        openCodeImage = createAgent,
                     )
                 recordStore().save(canonicalDirectory, record)
                 listedWorkspaces = createdEntry.workspaces
@@ -998,6 +1011,7 @@ internal class SbxOpenCodeServerBackend(
                     extraCreateArgs,
                     shareHostConfig,
                     spec.persistSandboxSessions,
+                    spec,
                 )
             }
             if (!isCurrentStart(startId)) return

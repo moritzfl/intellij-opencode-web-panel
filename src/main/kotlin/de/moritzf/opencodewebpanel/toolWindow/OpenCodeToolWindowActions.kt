@@ -35,6 +35,7 @@ import de.moritzf.opencodewebpanel.server.OpenCodeProjectRuntime
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.OpenCodeServerBackendRegistry
 import de.moritzf.opencodewebpanel.server.OpenCodeServerLifecycleState
+import de.moritzf.opencodewebpanel.server.SbxCli
 import de.moritzf.opencodewebpanel.server.SbxLaunchSpec
 import de.moritzf.opencodewebpanel.server.SbxOpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.SbxOpenCodeVersion
@@ -196,8 +197,15 @@ internal fun offerOpenCodeUpdate(project: Project, notice: OpenCodeReleaseUpdate
         sandbox.upgradeOpenCodeBinary(project)
         return
     }
+    val pinned = sandboxSpec(project)?.openCodeImage?.let(SbxCli::openCodeImageLabel)
     when (
-        chooseOpenCodeSandboxUpdate(project, notice.installed, notice.latest, notice.dockerImage)
+        chooseOpenCodeSandboxUpdate(
+            project,
+            notice.installed,
+            notice.latest,
+            notice.dockerImage,
+            pinned,
+        )
     ) {
         OpenCodeSandboxUpdateChoice.UPGRADE_IN_SANDBOX -> sandbox.upgradeOpenCodeBinary(project)
         OpenCodeSandboxUpdateChoice.RESET_SANDBOX ->
@@ -742,14 +750,18 @@ internal fun ownedSandboxRecord(project: Project?): SbxSandboxRecord? {
     return SbxSandboxRecordStore.getInstance().recordFor(directory)
 }
 
-/** The OpenCode version the project's sandbox spec selects, or null without a valid spec. */
-internal fun sandboxOpenCodeVersion(project: Project?): SbxOpenCodeVersion? {
+/** The project's sandbox spec, or null without a valid one. */
+internal fun sandboxSpec(project: Project?): SbxLaunchSpec? {
     val directory =
         project?.let {
             OpenCodeProjectSettingsState.getInstance(it).effectiveProjectDirectory(it.basePath)
         } ?: return null
-    return SbxLaunchSpec.load(directory)?.openCodeVersion
+    return SbxLaunchSpec.load(directory)
 }
+
+/** The OpenCode version the project's sandbox spec selects, or null without a valid spec. */
+internal fun sandboxOpenCodeVersion(project: Project?): SbxOpenCodeVersion? =
+    sandboxSpec(project)?.openCodeVersion
 
 internal fun openOpenCodeServerLogInEditor(project: Project) {
     val file = openCodeBackend(project).getServerLogFile() ?: return

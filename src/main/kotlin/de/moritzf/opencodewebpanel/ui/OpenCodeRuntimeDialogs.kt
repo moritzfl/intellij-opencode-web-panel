@@ -80,14 +80,16 @@ private const val RESET_SANDBOX = "Reset Sandbox"
 
 /**
  * A 2.x sandbox can install [latest] inside the VM, or be recreated from Docker's image when that
- * image ([dockerImage]) is newer than [installed]. Choosing Reset is the destructive confirmation;
- * the text states what is dropped. Null when cancelled.
+ * image ([dockerImage]) is newer than [installed]. [pinnedImage] is the project's Docker image pin;
+ * Reset returns to it, so it is never offered as an update. Choosing Reset is the destructive
+ * confirmation; the text states what is dropped. Null when cancelled.
  */
 internal fun chooseOpenCodeSandboxUpdate(
     project: Project?,
     installed: String,
     latest: String,
     dockerImage: String?,
+    pinnedImage: String? = null,
 ): OpenCodeSandboxUpdateChoice? {
     val retention =
         project?.let {
@@ -103,7 +105,7 @@ internal fun chooseOpenCodeSandboxUpdate(
     val chosen =
         Messages.showDialog(
             project,
-            openCodeSandboxUpdateMessage(installed, latest, dockerImage, retention),
+            openCodeSandboxUpdateMessage(installed, latest, dockerImage, retention, pinnedImage),
             "OpenCode Update",
             buttons,
             0,
@@ -121,18 +123,23 @@ internal fun openCodeSandboxUpdateMessage(
     latest: String,
     dockerImage: String?,
     retention: String,
+    pinnedImage: String? = null,
 ): String {
     val upgrade =
         "$UPGRADE_IN_SANDBOX installs OpenCode $latest inside this VM with OpenCode's own " +
             "installer and restarts OpenCode. The VM and sessions stay; a later Reset Sandbox " +
             "returns to Docker's image."
     val reset =
-        if (dockerImage != null) {
-            "$RESET_SANDBOX recreates the VM from Docker's OpenCode image, which has OpenCode " +
-                "$dockerImage. Packages and other VM-only state are dropped. $retention"
-        } else {
-            "Docker's OpenCode image has no newer release yet, so Reset Sandbox would not " +
-                "update OpenCode."
+        when {
+            pinnedImage != null ->
+                "This project pins Docker's OpenCode image to $pinnedImage, so Reset Sandbox " +
+                    "would not update OpenCode."
+            dockerImage != null ->
+                "$RESET_SANDBOX recreates the VM from Docker's OpenCode image, which has " +
+                    "OpenCode $dockerImage. Packages and other VM-only state are dropped. $retention"
+            else ->
+                "Docker's OpenCode image has no newer release yet, so Reset Sandbox would not " +
+                    "update OpenCode."
         }
     return "OpenCode $latest is available. This sandbox runs $installed.\n\n$upgrade\n\n$reset"
 }
@@ -195,7 +202,7 @@ internal fun confirmOpenCodeSandboxReset(project: Project?): Boolean {
     return MessageDialogBuilder.yesNo(
             "Reset Sandbox",
             "This force-removes the plugin-owned Docker Sandbox VM and creates a new one from Docker's " +
-                "selected OpenCode sandbox kit (2.x: its latest image), then starts OpenCode. " +
+                "selected OpenCode sandbox kit (2.x: the latest or pinned image), then starts OpenCode. " +
                 "Packages, in-VM OpenCode upgrades and other VM-only state are dropped. $retention " +
                 "Host OpenCode history is not affected.",
         )

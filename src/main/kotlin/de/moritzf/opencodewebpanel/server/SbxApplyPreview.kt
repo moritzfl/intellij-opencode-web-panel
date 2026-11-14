@@ -106,7 +106,15 @@ internal data class SbxApplyPreview(
                 changes +=
                     SbxApplyChange(
                         "OpenCode ${newSpec.openCodeVersion.yamlValue()} " +
-                            "(${SbxCli.kitLabel(newSpec.openCodeVersion)})$atCreate",
+                            "(${SbxCli.kitLabel(newSpec.openCodeVersion, newSpec.openCodeImage)})" +
+                            atCreate,
+                        recreate,
+                    )
+            } else if (oldSpec.openCodeImage != newSpec.openCodeImage) {
+                changes +=
+                    SbxApplyChange(
+                        "Docker image ${SbxCli.openCodeImageLabel(oldSpec.openCodeImage)} → " +
+                            "${SbxCli.openCodeImageLabel(newSpec.openCodeImage)}$atCreate",
                         recreate,
                     )
             }

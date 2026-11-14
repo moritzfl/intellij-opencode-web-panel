@@ -8,9 +8,11 @@ import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
 import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.options.ConfigurationException
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.ui.ComboBox
 import com.intellij.openapi.ui.MessageDialogBuilder
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.ui.TextFieldWithBrowseButton
+import com.intellij.ui.CollectionComboBoxModel
 import com.intellij.ui.ToolbarDecorator
 import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.JBLabel
@@ -20,12 +22,14 @@ import com.intellij.ui.dsl.builder.AlignX
 import com.intellij.ui.dsl.builder.HyperlinkEventAction
 import com.intellij.ui.dsl.builder.LabelPosition
 import com.intellij.ui.dsl.builder.RightGap
+import com.intellij.ui.dsl.builder.Row
 import com.intellij.ui.dsl.builder.panel
 import com.intellij.ui.table.TableView
 import com.intellij.util.messages.MessageBusConnection
 import com.intellij.util.ui.ColumnInfo
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.ListTableModel
+import com.intellij.util.ui.UIUtil
 import de.moritzf.opencodewebpanel.configuration.OpenCodePortMode
 import de.moritzf.opencodewebpanel.configuration.OpenCodeProjectDirectoryMode
 import de.moritzf.opencodewebpanel.configuration.OpenCodeProjectSettingsState
@@ -40,6 +44,7 @@ import de.moritzf.opencodewebpanel.server.SbxCli
 import de.moritzf.opencodewebpanel.server.SbxExposure
 import de.moritzf.opencodewebpanel.server.SbxExtraMount
 import de.moritzf.opencodewebpanel.server.SbxLaunchSpec
+import de.moritzf.opencodewebpanel.server.SbxOpenCodeImages
 import de.moritzf.opencodewebpanel.server.SbxOpenCodeServerBackend
 import de.moritzf.opencodewebpanel.server.SbxOpenCodeVersion
 import de.moritzf.opencodewebpanel.server.SbxSandboxRecordStore
@@ -150,6 +155,21 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
     private val sbxRuntimeRadioButton = JBRadioButton("Docker Sandbox (sbx)")
     private val sbxOpenCodeV1RadioButton = JBRadioButton("1.x")
     private val sbxOpenCodeV2RadioButton = JBRadioButton("2.x")
+
+    // Rarely changed: latest by default, Docker Hub's current 2.x tags load in the background.
+    private val sbxOpenCodeImageModel = CollectionComboBoxModel(mutableListOf(SbxCli.LATEST_IMAGE))
+    private val sbxOpenCodeImageComboBox =
+        ComboBox(sbxOpenCodeImageModel).apply {
+            isEditable = true
+            prototypeDisplayValue = "2.10.10-rc.1"
+            toolTipText =
+                "Docker's OpenCode 2 image for new sandboxes: latest, a tag such as 2.2.7, or a sha256: digest"
+            accessibleContext.accessibleName = "OpenCode 2 Docker image"
+        }
+    private val sbxOpenCodeImageHint =
+        JBLabel().apply { foreground = UIUtil.getContextHelpForeground() }
+    private var sbxOpenCodeImageRow: Row? = null
+    private var openCodeImageTagsRequested = false
 
     init {
         ButtonGroup().apply {
@@ -337,8 +357,25 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                 row {
                     cell(sbxOpenCodeV2RadioButton)
                         .comment(
-                            "Docker's OpenCode 2 kit (docker.io/sbx/opencode, latest). Upgrade OpenCode installs a newer release inside the VM; Reset Sandbox returns to Docker's latest image. Select this before the first start when sharing an OpenCode 2 host config.",
+                            "Docker's OpenCode 2 kit (${SbxCli.OPENCODE_IMAGE_REPOSITORY}). Upgrade OpenCode installs a newer release inside the VM; Reset Sandbox returns to the Docker image below. Select this before the first start when sharing an OpenCode 2 host config.",
                         )
+                }
+                indent {
+                    sbxOpenCodeImageRow =
+                        row("Docker image:") {
+                                cell(sbxOpenCodeImageComboBox)
+                                cell(sbxOpenCodeImageHint)
+                            }
+                            .rowComment(
+                                "Keep latest. If a new Docker image breaks the sandbox, pin an earlier tag (or a sha256: digest) until Docker fixes it; Docker keeps only recent tags. " +
+                                    "OpenCode itself can still be upgraded inside the VM. Changing the image needs a new VM; Apply asks before recreating it. " +
+                                    "<a href=\"$OPENCODE_IMAGE_TAGS_PAGE\">Tags on Docker Hub</a>",
+                                action =
+                                    HyperlinkEventAction { event ->
+                                        val href = event.url?.toString() ?: event.description
+                                        if (!href.isNullOrBlank()) BrowserUtil.browse(href)
+                                    },
+                            )
                 }
                 row {
                     comment(
@@ -536,6 +573,15 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
             if (SbxCli.parseCpus(sbxCpusField.text) == null) {
                 throw ConfigurationException("Sandbox CPUs must be an integer from 1 to 32.")
             }
+            if (
+                sbxOpenCodeV2RadioButton.isSelected &&
+                    SbxCli.openCodeImageProblem(selectedOpenCodeImage(), SbxOpenCodeVersion.V2) !=
+                        null
+            ) {
+                throw ConfigurationException(
+                    "The Docker image must be latest, a tag of an OpenCode 2 image such as 2.2.7, or a sha256: digest.",
+                )
+            }
         }
         val targetDirectory = effectiveDirectory()
         when (val inspection = SbxLaunchSpec.inspect(targetDirectory)) {
@@ -665,6 +711,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
     override fun disposeUIResources() {
         setupCheckSequence++
         setupCheckRunning = false
+        openCodeImageTagsRequested = false
         panel = null
         lifecycleConnection?.disconnect()
         lifecycleConnection = null
@@ -696,7 +743,9 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         restartServerButton.addActionListener { restartThisProjectServer() }
         viewServerLogButton.addActionListener { showThisProjectServerLog() }
         upgradeOpenCodeButton.addActionListener { upgradeOpenCodeInSandbox() }
+        // Selecting 2.x deselects 1.x before 2.x reads as selected; update on both events.
         sbxOpenCodeV1RadioButton.addItemListener { updateSandboxControls() }
+        sbxOpenCodeV2RadioButton.addItemListener { updateSandboxControls() }
         createNetworkKitButton.addActionListener { createNetworkKitTemplate() }
         checkSetupButton.addActionListener { checkSandboxSetup() }
     }
@@ -889,6 +938,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                 } else {
                     SbxOpenCodeVersion.V1
                 },
+            openCodeImage = selectedOpenCodeImage().takeIf { sbxOpenCodeV2RadioButton.isSelected },
             enableIntellijMcp = sbxEnableIntellijMcpCheckBox.isSelected,
             protectSandboxFiles = sbxProtectSandboxFilesCheckBox.isSelected,
             persistSandboxSessions = sbxPersistSandboxSessionsCheckBox.isSelected,
@@ -900,6 +950,48 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                     null
                 },
         )
+    }
+
+    /** The typed or chosen image; null follows Docker's latest. */
+    private fun selectedOpenCodeImage(): String? =
+        SbxCli.normalizeOpenCodeImage(
+            (sbxOpenCodeImageComboBox.editor.item ?: sbxOpenCodeImageModel.selectedItem)
+                ?.toString(),
+        )
+
+    /**
+     * Fills the image box with Docker Hub's current 2.x tags once per page, off the EDT, and keeps
+     * whatever is typed. The box stays editable when Docker Hub is unreachable.
+     */
+    private fun loadOpenCodeImageTags() {
+        if (openCodeImageTagsRequested || ApplicationManager.getApplication().isUnitTestMode) return
+        openCodeImageTagsRequested = true
+        sbxOpenCodeImageHint.text = "Loading tags…"
+        val modality = ModalityState.stateForComponent(sbxOpenCodeImageComboBox)
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val tags = SbxOpenCodeImages.fetchTags()
+            ApplicationManager.getApplication()
+                .invokeLater(
+                    {
+                        if (panel == null || project.isDisposed) return@invokeLater
+                        if (tags == null) {
+                            sbxOpenCodeImageHint.text = "Docker Hub unreachable; type a tag."
+                            return@invokeLater
+                        }
+                        val typed = sbxOpenCodeImageComboBox.editor.item
+                        sbxOpenCodeImageModel.replaceAll(
+                            listOf(SbxCli.LATEST_IMAGE) + SbxOpenCodeImages.releases(tags, 2),
+                        )
+                        sbxOpenCodeImageModel.selectedItem = typed
+                        sbxOpenCodeImageComboBox.editor.item = typed
+                        sbxOpenCodeImageHint.text =
+                            SbxOpenCodeImages.latestRelease(tags, 2)?.let {
+                                "latest is OpenCode $it"
+                            } ?: "latest is no OpenCode 2 image right now"
+                    },
+                    modality,
+                )
+        }
     }
 
     private fun loadSpecIntoUi(spec: SbxLaunchSpec?, fromYaml: Boolean = spec != null) {
@@ -915,6 +1007,9 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         } else {
             sbxOpenCodeV1RadioButton.isSelected = true
         }
+        val image = spec?.openCodeImage ?: SbxCli.LATEST_IMAGE
+        sbxOpenCodeImageModel.selectedItem = image
+        sbxOpenCodeImageComboBox.editor.item = image
         sbxEnableIntellijMcpCheckBox.isSelected = spec?.enableIntellijMcp ?: true
         sbxProtectSandboxFilesCheckBox.isSelected = spec?.protectSandboxFiles ?: true
         sbxPersistSandboxSessionsCheckBox.isSelected = spec?.persistSandboxSessions ?: true
@@ -1063,6 +1158,9 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                 de.moritzf.opencodewebpanel.server.SbxSandboxRecordStore.getInstance()
                     .recordFor(directory) != null
         upgradeOpenCodeButton.isVisible = sandbox
+        val pinnable = sandbox && sbxOpenCodeV2RadioButton.isSelected
+        sbxOpenCodeImageRow?.visible(pinnable)
+        if (pinnable) loadOpenCodeImageTags()
         upgradeOpenCodeButton.isEnabled =
             sandboxBackend &&
                 owned &&
@@ -1189,6 +1287,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
     companion object {
         const val PROJECT_SETTINGS_DISPLAY_NAME = "OpenCode Web Panel (Project)"
         private const val SBX_KIT_DOCS_URL = "https://docs.docker.com/ai/sandboxes/customize/kits/"
+        private const val OPENCODE_IMAGE_TAGS_PAGE = "https://hub.docker.com/r/sbx/opencode/tags"
     }
 
     private class ExtraMountRow(

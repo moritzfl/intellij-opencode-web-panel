@@ -273,6 +273,38 @@ class OpenCodeProjectSettingsConfigurableTest {
     }
 
     @Test
+    fun dockerImagePinRoundTripsThroughTheForm() {
+        // Sandbox Apply runs modal progress, which needs the IDE's write-intent EDT.
+        ApplicationManager.getApplication().invokeAndWait {
+            configurable.createComponent() // installs the control listeners
+            field<AbstractButton>("sbxRuntimeRadioButton").isSelected = true
+            field<AbstractButton>("sbxOpenCodeV2RadioButton").isSelected = true
+            val image = field<javax.swing.JComboBox<*>>("sbxOpenCodeImageComboBox")
+            assertTrue("Shown for 2.x", image.isVisible)
+            assertEquals(SbxCli.LATEST_IMAGE, image.editor.item)
+            image.editor.item = "1.18.31"
+            val error = assertThrows(ConfigurationException::class.java) { configurable.apply() }
+            assertTrue(error.message!!.contains("Docker image"))
+            image.editor.item = "2.2.7"
+            configurable.apply()
+            assertEquals("2.2.7", SbxLaunchSpec.load(project.basePath)!!.openCodeImage)
+            assertFalse(configurable.isModified())
+            configurable.reset()
+            assertEquals("2.2.7", image.editor.item)
+            image.editor.item = SbxCli.LATEST_IMAGE
+            assertTrue(configurable.isModified())
+            configurable.apply()
+            assertEquals(null, SbxLaunchSpec.load(project.basePath)!!.openCodeImage)
+            assertFalse(
+                Files.readString(SbxLaunchSpec.projectSpecPath(project.basePath!!))
+                    .contains("openCodeImage"),
+            )
+            field<AbstractButton>("sbxOpenCodeV1RadioButton").isSelected = true
+            assertFalse("1.x has no image to pin", image.isVisible)
+        }
+    }
+
+    @Test
     fun invalidFixedPortIsRejectedOnApply() {
         SwingUtilities.invokeAndWait {
             field<AbstractButton>("fixedPortRadioButton").isSelected = true

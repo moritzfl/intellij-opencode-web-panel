@@ -6,6 +6,12 @@
 
 ### Added
 
+- A 2.x sandbox can pin Docker's OpenCode image instead of following `latest`,
+  as a way out when Docker publishes a broken image. Project settings show the
+  current 2.x tags under **OpenCode version → Docker image** (default
+  `latest`); `opencode-sbx.yaml` takes `openCodeImage: 2.2.7` or a `sha256:`
+  digest, and the standalone launcher honors it. Changing the image recreates
+  the sandbox; OpenCode itself can still be upgraded inside it.
 - **Upgrade OpenCode in Sandbox** now works for 2.x sandboxes too, so a sandbox
   does not have to wait for Docker's OpenCode image to catch up with a release.
   It installs the newest release inside the VM with OpenCode's own installer;

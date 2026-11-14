@@ -46,6 +46,8 @@ internal data class SbxSandboxRecord(
     val hostPort: Int? = null,
     val createSnapshot: String = "",
     val adopted: Boolean = false,
+    /** The `sbx create` agent argument ([SbxCli.agentFor]); blank for records of older releases. */
+    val openCodeImage: String = "",
 ) {
     fun matches(entry: SbxSandboxListEntry): Boolean {
         return sandboxId == entry.id
@@ -74,9 +76,52 @@ internal object SbxCli {
     /** First release with Docker's v3 OpenCode kits; older ones only know the retired template. */
     const val MINIMUM_SBX_VERSION = "0.51.0"
 
-    /** The `sbx create` agent argument for [version]. */
-    fun agentFor(version: SbxOpenCodeVersion): String =
-        if (version == SbxOpenCodeVersion.V2) AGENT else V1_KIT
+    /** Docker's OpenCode kit repository; the 2.x agent is its `latest` tag. */
+    const val OPENCODE_IMAGE_REPOSITORY = "docker.io/sbx/opencode"
+    const val LATEST_IMAGE = "latest"
+
+    /**
+     * The `sbx create` agent argument for [version]. [image] pins Docker's OpenCode 2 image to a
+     * tag or `sha256:` digest, a way out when `latest` breaks; sbx reports either as the `opencode`
+     * agent.
+     */
+    fun agentFor(version: SbxOpenCodeVersion, image: String? = null): String =
+        when {
+            version != SbxOpenCodeVersion.V2 -> V1_KIT
+            image == null -> AGENT
+            IMAGE_DIGEST.matches(image) -> "$OPENCODE_IMAGE_REPOSITORY@$image"
+            else -> "$OPENCODE_IMAGE_REPOSITORY:$image"
+        }
+
+    /** Blank and `latest` follow Docker's latest image (null). */
+    fun normalizeOpenCodeImage(raw: String?): String? =
+        raw?.trim()?.takeUnless { it.isEmpty() || it == LATEST_IMAGE }
+
+    /** Why [image] cannot pin [version]'s Docker image, or null. */
+    fun openCodeImageProblem(image: String?, version: SbxOpenCodeVersion): String? {
+        if (image == null) return null
+        if (version != SbxOpenCodeVersion.V2) {
+            return "openCodeImage applies only to openCodeVersion 2.x"
+        }
+        if (!IMAGE_TAG.matches(image) && !IMAGE_DIGEST.matches(image)) {
+            return "openCodeImage must be a Docker tag such as 2.2.7 or a sha256: digest"
+        }
+        val major = RELEASE_IMAGE_TAG.matchEntire(image)?.groupValues?.get(1)?.toIntOrNull()
+        if (major != null && major != 2) return "openCodeImage $image is not an OpenCode 2 image"
+        return null
+    }
+
+    /** Short form for messages: `latest`, the tag, or an abbreviated digest. */
+    fun openCodeImageLabel(image: String?): String =
+        when {
+            image == null -> LATEST_IMAGE
+            IMAGE_DIGEST.matches(image) -> image.take("sha256:".length + 12) + "…"
+            else -> image
+        }
+
+    private val IMAGE_TAG = Regex("[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}")
+    private val IMAGE_DIGEST = Regex("sha256:[0-9a-f]{64}")
+    private val RELEASE_IMAGE_TAG = Regex("""(\d+)\.\d+\.\d+""")
 
     const val DEFAULT_MEMORY = SbxSettingsValues.DEFAULT_MEMORY
     const val DEFAULT_CPUS = SbxSettingsValues.DEFAULT_CPUS
@@ -628,6 +673,22 @@ internal object SbxCli {
         return reasons.distinct()
     }
 
+    /**
+     * A changed 2.x image pin; the VM keeps the image it was created from until Reset. Version
+     * switches are left to [openCodeVersionMismatch], records of older releases are unknown.
+     */
+    fun staleOpenCodeImageReason(
+        record: SbxSandboxRecord,
+        version: SbxOpenCodeVersion,
+        image: String?,
+    ): String? {
+        val created = record.openCodeImage
+        val wanted = agentFor(version, image)
+        if (created.isBlank() || created == wanted) return null
+        if (created == V1_KIT || wanted == V1_KIT) return null
+        return "Docker image ${openCodeImageLabel(image)}"
+    }
+
     internal data class ParsedCreateSnapshot(
         val memory: String,
         val cpus: String,
@@ -873,9 +934,12 @@ internal object SbxCli {
     /** `1.18.31` (1.x CLI and API) or `opencode v2.3.0` (2.x CLI); group 1 is the version. */
     private val OPENCODE_VERSION_LINE = Regex("""^(?:opencode\s+)?v?((\d+)\.\d+\.\d+[^\s,"]*)""")
 
-    fun kitLabel(version: SbxOpenCodeVersion): String =
-        if (version == SbxOpenCodeVersion.V2) "Docker's latest OpenCode 2 kit"
-        else "Docker's OpenCode 1.x kit"
+    fun kitLabel(version: SbxOpenCodeVersion, image: String? = null): String =
+        when {
+            version != SbxOpenCodeVersion.V2 -> "Docker's OpenCode 1.x kit"
+            image == null -> "Docker's latest OpenCode 2 kit"
+            else -> "Docker's OpenCode 2 kit ${openCodeImageLabel(image)}"
+        }
 
     fun buildNetworkProbeCommand(executable: String, name: String, url: String): List<String> =
         listOf(

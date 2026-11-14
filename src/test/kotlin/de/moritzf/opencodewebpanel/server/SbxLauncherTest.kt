@@ -643,6 +643,22 @@ class SbxLauncherTest {
     }
 
     @Test
+    fun pinnedImageCreatesFromThatTagOrDigestLikeThePlugin() {
+        val project = directory("project")
+        val digest = "sha256:" + "0123456789abcdef".repeat(4)
+        for (image in listOf("2.2.7", digest)) {
+            temp.root.toPath().resolve("log").toFile().deleteRecursively()
+            val yaml = "canonicalDirectory: ./\nopenCodeVersion: 2.x\nopenCodeImage: $image\n"
+            Files.writeString(project.resolve("opencode-sbx.yaml"), yaml)
+            val spec = SbxLaunchSpec.parseYaml(yaml)!!
+            val args = runLauncher(launcher(project), project)
+            val agent = SbxCli.agentFor(spec.openCodeVersion, spec.openCodeImage)
+            assertEquals(listOf(agent, project.toString()), args.drop(args.indexOf(agent)).take(2))
+            assertFalse(args.contains(SbxCli.AGENT))
+        }
+    }
+
+    @Test
     fun existingSandboxOfTheOtherVersionMustBeRecreated() {
         val project = directory("project")
         Files.writeString(
@@ -1165,6 +1181,9 @@ class SbxLauncherTest {
                 "canonicalDirectory: ./\nmemory: 8GB\n",
                 "canonicalDirectory: ./\n<<<<<<< HEAD\n",
                 "memory: 4g\n",
+                "canonicalDirectory: ./\nopenCodeImage: 2.2.7\n",
+                "canonicalDirectory: ./\nopenCodeVersion: 2.x\nopenCodeImage: 1.18.31\n",
+                "canonicalDirectory: ./\nopenCodeVersion: 2.x\nopenCodeImage: 'two words'\n",
             )) {
             val project = directory("project ${yaml.hashCode()}")
             Files.writeString(project.resolve("opencode-sbx.yaml"), yaml)

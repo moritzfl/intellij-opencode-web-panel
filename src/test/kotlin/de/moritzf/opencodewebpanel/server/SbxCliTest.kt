@@ -1130,6 +1130,63 @@ class SbxCliTest {
     }
 
     @Test
+    fun pinnedOpenCode2ImageIsATagOrDigestOfDockersKit() {
+        val digest = "sha256:" + "0123456789abcdef".repeat(4)
+        assertEquals("opencode", SbxCli.agentFor(SbxOpenCodeVersion.V2, null))
+        assertEquals(
+            "docker.io/sbx/opencode:2.2.7",
+            SbxCli.agentFor(SbxOpenCodeVersion.V2, "2.2.7"),
+        )
+        assertEquals(
+            "docker.io/sbx/opencode@$digest",
+            SbxCli.agentFor(SbxOpenCodeVersion.V2, digest),
+        )
+        assertEquals(
+            "A pin never applies to 1.x",
+            SbxCli.V1_KIT,
+            SbxCli.agentFor(SbxOpenCodeVersion.V1, "2.2.7"),
+        )
+        assertNull(SbxCli.normalizeOpenCodeImage(" latest "))
+        assertNull(SbxCli.normalizeOpenCodeImage(""))
+        assertEquals("Latest", SbxCli.normalizeOpenCodeImage("Latest"))
+        assertNull(SbxCli.openCodeImageProblem("2.3.0-rc.1", SbxOpenCodeVersion.V2))
+        assertNull(SbxCli.openCodeImageProblem(digest, SbxOpenCodeVersion.V2))
+        assertNotNull(SbxCli.openCodeImageProblem("2.2.7", SbxOpenCodeVersion.V1))
+        assertNotNull(SbxCli.openCodeImageProblem("1.18.31", SbxOpenCodeVersion.V2))
+        assertNotNull(SbxCli.openCodeImageProblem("-flag", SbxOpenCodeVersion.V2))
+        assertEquals("sha256:0123456789ab…", SbxCli.openCodeImageLabel(digest))
+        assertEquals("latest", SbxCli.openCodeImageLabel(null))
+        assertEquals(
+            "Docker's OpenCode 2 kit 2.2.7",
+            SbxCli.kitLabel(SbxOpenCodeVersion.V2, "2.2.7"),
+        )
+    }
+
+    @Test
+    fun changedImagePinIsAStaleCreateReasonForKnownRecords() {
+        val record = SbxSandboxRecord("id", "ide-ocwp-abc", "opencode", "/tmp/p")
+        assertNull(
+            "Records of older releases are unknown",
+            SbxCli.staleOpenCodeImageReason(record, SbxOpenCodeVersion.V2, "2.2.7"),
+        )
+        val latest = record.copy(openCodeImage = SbxCli.AGENT)
+        assertNull(SbxCli.staleOpenCodeImageReason(latest, SbxOpenCodeVersion.V2, null))
+        assertEquals(
+            "Docker image 2.2.7",
+            SbxCli.staleOpenCodeImageReason(latest, SbxOpenCodeVersion.V2, "2.2.7"),
+        )
+        val pinned = record.copy(openCodeImage = SbxCli.agentFor(SbxOpenCodeVersion.V2, "2.2.7"))
+        assertEquals(
+            "Docker image latest",
+            SbxCli.staleOpenCodeImageReason(pinned, SbxOpenCodeVersion.V2, null),
+        )
+        assertNull(
+            "A version switch is the mismatch check's job",
+            SbxCli.staleOpenCodeImageReason(pinned, SbxOpenCodeVersion.V1, null),
+        )
+    }
+
+    @Test
     fun runningVersionMustMatchTheSelectedKit() {
         assertNull(SbxCli.openCodeVersionMismatch(SbxOpenCodeVersion.V1, "1.18.31"))
         assertNull(SbxCli.openCodeVersionMismatch(SbxOpenCodeVersion.V1, "1.19.5"))

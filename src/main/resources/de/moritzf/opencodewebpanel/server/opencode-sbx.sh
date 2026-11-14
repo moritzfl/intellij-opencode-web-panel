@@ -38,8 +38,9 @@ CONTROL_DIR="opencode-sbx"
 SPEC_NAME="opencode-sbx.yaml"
 IN_VM_PORT=4096
 # Docker's published OpenCode kits, as in SbxCli.agentFor: the built-in `opencode` agent is
-# the latest 2.x kit; 1.x uses the fixed 1.x kit and is upgraded inside the VM.
+# the latest 2.x kit, or openCodeImage pins a tag or digest of it; 1.x uses the fixed 1.x kit.
 V2_AGENT="opencode"
+V2_IMAGE_REPOSITORY="docker.io/sbx/opencode"
 V1_KIT="docker.io/sbx/opencode:1.18.31"
 # First sbx with Docker's v3 OpenCode kits.
 MINIMUM_SBX_VERSION="0.51.0"
@@ -301,6 +302,7 @@ CPUS="2"
 WORKDIR="./"
 SHARE_CONFIG="false"
 OPENCODE_VERSION=""
+OPENCODE_IMAGE=""
 PROTECT_FILES="true"
 PERSIST_SESSIONS="true"
 HOST_PORT=""
@@ -471,6 +473,7 @@ parse_spec() {
                 *) spec_error "openCodeVersion must be 1.x or 2.x" ;;
               esac
               ;;
+            openCodeImage) [[ "$val" == latest ]] || OPENCODE_IMAGE="$val" ;;
           esac
           ;;
       esac
@@ -501,7 +504,7 @@ parse_spec() {
         set_mount_key "$g1" "$(yaml_unquote "$g3")"
         ;;
       setupCommands|networkAllows|networkAllowPresets|extraNetworkAllows) ;;
-      schemaVersion|canonicalDirectory|workingDirectory|name|memory|cpus|openCodeVersion|hostPort|shareHostOpencodeConfig|protectSandboxFiles|persistSandboxSessions|useSandbox|enableIntellijMcp|installOpenCodeV2)
+      schemaVersion|canonicalDirectory|workingDirectory|name|memory|cpus|openCodeVersion|openCodeImage|hostPort|shareHostOpencodeConfig|protectSandboxFiles|persistSandboxSessions|useSandbox|enableIntellijMcp|installOpenCodeV2)
         spec_error "$section must be a plain value"
         ;;
     esac
@@ -513,6 +516,17 @@ parse_spec() {
     1|1.x|v1) OPENCODE_VERSION="1.x" ;;
     *) [[ "$install_v2" == true ]] && OPENCODE_VERSION="2.x" || OPENCODE_VERSION="1.x" ;;
   esac
+  # Same rules as SbxCli.openCodeImageProblem.
+  if [[ -n "$OPENCODE_IMAGE" ]]; then
+    [[ "$OPENCODE_VERSION" == "2.x" ]] || spec_error "openCodeImage applies only to openCodeVersion 2.x"
+    local image_tag='^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$' image_digest='^sha256:[0-9a-f]{64}$'
+    local release_tag='^([0-9]+)\.[0-9]+\.[0-9]+$'
+    [[ "$OPENCODE_IMAGE" =~ $image_tag || "$OPENCODE_IMAGE" =~ $image_digest ]] ||
+      spec_error "openCodeImage must be a Docker tag such as 2.2.7 or a sha256: digest"
+    if [[ "$OPENCODE_IMAGE" =~ $release_tag && "$((10#${BASH_REMATCH[1]}))" -ne 2 ]]; then
+      spec_error "openCodeImage $OPENCODE_IMAGE is not an OpenCode 2 image"
+    fi
+  fi
   local i
   for ((i = 0; i < ${#KITS[@]}; i++)); do
     KITS[$i]="${KITS[$i]//\\//}"
@@ -558,10 +572,14 @@ if [[ -z "$SPEC" || ! -f "$SPEC" ]]; then
 fi
 parse_spec "$SPEC"
 OPENCODE_VERSION="${OPENCODE_VERSION:-1.x}"
-if [[ "$OPENCODE_VERSION" == "2.x" ]]; then
-  AGENT="$V2_AGENT"
-else
+if [[ "$OPENCODE_VERSION" != "2.x" ]]; then
   AGENT="$V1_KIT"
+elif [[ -z "$OPENCODE_IMAGE" ]]; then
+  AGENT="$V2_AGENT"
+elif [[ "$OPENCODE_IMAGE" == sha256:* ]]; then
+  AGENT="$V2_IMAGE_REPOSITORY@$OPENCODE_IMAGE"
+else
+  AGENT="$V2_IMAGE_REPOSITORY:$OPENCODE_IMAGE"
 fi
 
 spec_dir="$(cd "$(dirname "$SPEC")" && pwd -P)"

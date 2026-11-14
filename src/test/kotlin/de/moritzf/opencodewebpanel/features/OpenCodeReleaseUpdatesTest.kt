@@ -112,6 +112,14 @@ class OpenCodeReleaseUpdatesTest {
         )
         assertNull(OpenCodeReleaseUpdates.parseDockerImageVersion("""{"results":[]}""", 2))
         assertNull(OpenCodeReleaseUpdates.parseDockerImageVersion("not json", 2))
+        assertEquals(
+            "Release tags newest first, for the settings image list",
+            listOf("2.3.0", "2.2.7", "2.0.29"),
+            de.moritzf.opencodewebpanel.server.SbxOpenCodeImages.releases(
+                de.moritzf.opencodewebpanel.server.SbxOpenCodeImages.parseTags(dockerTags),
+                2,
+            ),
+        )
     }
 
     @Test

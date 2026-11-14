@@ -535,6 +535,53 @@ class SbxOpenCodeServerBackendTest {
     }
 
     @Test
+    fun pinnedImageIsCreatedRecordedAndAChangedPinWarnsUntilReset() {
+        store.remove(directory)
+        val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }
+        val spec =
+            SbxLaunchSpec.defaults(directory, hostPort = settings.hostPortOrNull())
+                .copy(
+                    useSandbox = true,
+                    enableIntellijMcp = false,
+                    openCodeVersion = SbxOpenCodeVersion.V2,
+                    openCodeImage = "2.2.7",
+                )
+        assertNotNull(SbxLaunchSpec.persist(spec))
+        acknowledge(spec)
+        var created = false
+        var createArgs: List<String>? = null
+        behavior = { command ->
+            when (command[1]) {
+                "ls" -> if (created) listed("running") else SbxCommandResult(0, "[]")
+                "create" -> {
+                    created = true
+                    createArgs = command
+                    SbxCommandResult(0, "")
+                }
+                "exec" -> SbxCommandResult(1, "stop before serve")
+                else -> SbxCommandResult(0, "")
+            }
+        }
+        backend.ensureStarted(project, directory, { false }, {}, {})
+        drain()
+        val pinned = "docker.io/sbx/opencode:2.2.7"
+        assertEquals(
+            listOf(pinned, directory),
+            createArgs!!.drop(createArgs!!.indexOf(pinned)).take(2),
+        )
+        assertEquals(pinned, store.recordFor(directory)!!.openCodeImage)
+        assertTrue(backend.consumeCreateStaleWarning().isEmpty())
+
+        assertNotNull(SbxLaunchSpec.persist(spec.copy(openCodeImage = null)))
+        calls.clear()
+        backend.ensureStarted(project, directory, { false }, {}, {})
+        drain()
+        assertFalse("A changed pin never recreates on its own", calls.contains("rm"))
+        assertFalse(calls.contains("create"))
+        assertEquals(listOf("Docker image latest"), backend.consumeCreateStaleWarning())
+    }
+
+    @Test
     fun sandboxCreateStreamsProgressBeforeCommandReturnsWithoutDiskLogging() {
         store.remove(directory)
         val settings = OpenCodeSettingsState.getInstance().apply { sbxNetworkPolicyConsent = true }

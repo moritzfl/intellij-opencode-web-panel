@@ -6,6 +6,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Key
 import com.intellij.util.text.SemVer
 import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsState
+import de.moritzf.opencodewebpanel.server.SbxOpenCodeImages
 import java.net.HttpURLConnection
 import java.net.URI
 
@@ -13,13 +14,13 @@ import java.net.URI
  * Optional same-major OpenCode upgrade action on the tool-window title bar. 1.x → npm
  * `opencode-ai`; 2.x → npm `@opencode/cli`. Never suggests crossing a major version. A 2.x Docker
  * Sandbox also reads Docker Hub, which can lag npm: its OpenCode image is what Reset Sandbox
- * creates, while an in-VM upgrade installs the npm release.
+ * creates, while an in-VM upgrade installs the npm release. A pinned image is never compared: Reset
+ * returns to the pin.
  */
 internal object OpenCodeReleaseUpdates {
     const val NPM_V1_LATEST_URL = "https://registry.npmjs.org/opencode-ai/latest"
     const val NPM_V2_LATEST_URL = "https://registry.npmjs.org/@opencode/cli/latest"
-    const val DOCKER_IMAGE_TAGS_URL =
-        "https://hub.docker.com/v2/repositories/sbx/opencode/tags?page_size=100&ordering=last_updated"
+    const val DOCKER_IMAGE_TAGS_URL = SbxOpenCodeImages.TAGS_URL
 
     /**
      * [latest] is the newest release in either catalog. [dockerImage] is set only when Docker's
@@ -52,39 +53,9 @@ internal object OpenCodeReleaseUpdates {
             ?.takeIf { it.isNotEmpty() }
     }
 
-    /**
-     * The release that Docker's `latest` image carries: the plain version tag with the same digest.
-     * Null without such a tag or for another major, so a moved `latest` is never misreported.
-     */
-    fun parseDockerImageVersion(json: String, major: Int): String? {
-        val results =
-            runCatching { JsonParser.parseString(json) }
-                .getOrNull()
-                ?.takeIf { it.isJsonObject }
-                ?.asJsonObject
-                ?.get("results")
-                ?.takeIf { it.isJsonArray }
-                ?.asJsonArray ?: return null
-        val tags = results.mapNotNull { element ->
-            val tag = element.takeIf { it.isJsonObject }?.asJsonObject ?: return@mapNotNull null
-            val name = tag.stringMember("name") ?: return@mapNotNull null
-            val digest = tag.stringMember("digest") ?: return@mapNotNull null
-            name to digest
-        }
-        val latestDigest = tags.firstOrNull { it.first == "latest" }?.second ?: return null
-        return tags
-            .filter { (name, digest) -> digest == latestDigest && RELEASE_TAG.matches(name) }
-            .mapNotNull { (name, _) ->
-                parseSemVer(name)?.takeIf { it.major == major }?.let { name to it }
-            }
-            .maxByOrNull { it.second }
-            ?.first
-    }
-
-    private val RELEASE_TAG = Regex("""\d+\.\d+\.\d+""")
-
-    private fun com.google.gson.JsonObject.stringMember(name: String): String? =
-        get(name)?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }?.asString
+    /** The release Docker's `latest` image carries ([SbxOpenCodeImages.latestRelease]). */
+    fun parseDockerImageVersion(json: String, major: Int): String? =
+        SbxOpenCodeImages.latestRelease(SbxOpenCodeImages.parseTags(json), major)
 
     private class Check {
         @Volatile var notice: Notice? = null
