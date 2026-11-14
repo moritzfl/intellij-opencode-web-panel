@@ -19,6 +19,7 @@ import com.intellij.openapi.util.text.StringUtil
 import com.intellij.ui.CollectionComboBoxModel
 import com.intellij.ui.ColorUtil
 import com.intellij.ui.DocumentAdapter
+import com.intellij.ui.JBIntSpinner
 import com.intellij.ui.SimpleTextAttributes
 import com.intellij.ui.ToolbarDecorator
 import com.intellij.ui.components.ActionLink
@@ -83,12 +84,12 @@ import javax.swing.JComponent
 import javax.swing.JEditorPane
 import javax.swing.JSpinner
 import javax.swing.JTable
-import javax.swing.SpinnerNumberModel
 import javax.swing.SwingUtilities
 import javax.swing.event.DocumentEvent
 import javax.swing.table.DefaultTableCellRenderer
 import javax.swing.table.TableCellEditor
 import javax.swing.table.TableCellRenderer
+import javax.swing.text.DefaultFormatter
 
 class OpenCodeProjectSettingsConfigurable(private val project: Project) : Configurable {
     private var panel: JComponent? = null
@@ -246,14 +247,17 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                 },
             )
         }
-    // 1..32 like `SbxCli.parseCpus`: a spinner cannot hold an invalid count.
+    // 1..32 like `SbxCli.parseCpus`: the spinner cannot hold an invalid count.
     private val sbxCpusField =
-        JSpinner(SpinnerNumberModel(SbxCli.DEFAULT_CPUS.toInt(), 1, 32, 1)).apply {
-            toolTipText = "Sandbox CPUs at create time"
+        JBIntSpinner(SbxCli.DEFAULT_CPUS.toInt(), 1, 32).apply {
+            toolTipText = "Sandbox CPUs at create time, 1 to 32"
             accessibleContext.accessibleName = "Sandbox CPUs"
+            // Typed digits count at once, so Apply sees them without leaving the field.
+            ((editor as? JSpinner.DefaultEditor)?.textField?.formatter as? DefaultFormatter)
+                ?.commitsOnValidEdit = true
         }
 
-    private fun cpusText(): String = (sbxCpusField.value as Number).toInt().toString()
+    private fun cpusText(): String = sbxCpusField.number.toString()
 
     private val sbxWorkingDirectoryField =
         JBTextField().apply {
@@ -664,11 +668,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
             // Keep Apply reachable so the user can replace the invalid file with the form values.
             return true
         }
-        if (
-            sbxRuntimeRadioButton.isSelected &&
-                (SbxCli.parseMemory(sbxMemoryField.text) == null ||
-                    SbxCli.parseCpus(cpusText()) == null)
-        ) {
+        if (sbxRuntimeRadioButton.isSelected && SbxCli.parseMemory(sbxMemoryField.text) == null) {
             return true
         }
         val loaded = loadedOrDefaultSpec() ?: return false
@@ -720,10 +720,6 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
             if (SbxCli.parseMemory(sbxMemoryField.text) == null) {
                 resourcesGroup?.expanded = true // the field may sit in the collapsed section
                 throw ConfigurationException("Sandbox memory must be a value like 4g or 512m.")
-            }
-            if (SbxCli.parseCpus(cpusText()) == null) {
-                resourcesGroup?.expanded = true
-                throw ConfigurationException("Sandbox CPUs must be an integer from 1 to 32.")
             }
             if (
                 sbxOpenCodeV2RadioButton.isSelected &&
