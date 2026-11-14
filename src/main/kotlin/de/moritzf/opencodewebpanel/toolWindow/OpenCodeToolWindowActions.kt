@@ -581,13 +581,14 @@ internal class OpenCodeResetSandboxAction :
 internal class OpenCodeUpgradeSandboxBinaryAction :
     DumbAwareAction(
         "Upgrade OpenCode in Sandbox",
-        "Run opencode upgrade inside this 1.x sandbox. The VM and sessions stay.",
+        "Install the latest OpenCode release inside this sandbox. The VM and sessions stay.",
         AllIcons.Actions.Lightning,
     ) {
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
         val backend = openCodeBackend(project) as? SbxOpenCodeServerBackend ?: return
-        if (!confirmOpenCodeSandboxBinaryUpgrade(project)) return
+        val dockerKit = sandboxOpenCodeVersion(project) == SbxOpenCodeVersion.V2
+        if (!confirmOpenCodeSandboxBinaryUpgrade(project, dockerKit)) return
         backend.upgradeOpenCodeBinary(project)
     }
 
@@ -596,16 +597,20 @@ internal class OpenCodeUpgradeSandboxBinaryAction :
         val sandbox =
             project != null && !OpenCodeServerBackend.isNative(openCodeBackend(project).backendId)
         val state = project?.let { openCodeBackend(it).getLifecycleState() }
-        // Docker's 2.x kit is upgraded by Reset Sandbox, not inside the VM.
-        val upgradable = sandbox && sandboxOpenCodeVersion(project) == SbxOpenCodeVersion.V1
-        e.presentation.isVisible = upgradable
+        val version = if (sandbox) sandboxOpenCodeVersion(project) else null
+        e.presentation.isVisible = version != null
         e.presentation.isEnabled =
-            upgradable &&
+            version != null &&
                 ownedSandboxRecord(project) != null &&
                 state != OpenCodeServerLifecycleState.STARTING &&
                 state != OpenCodeServerLifecycleState.RESTARTING
         e.presentation.description =
-            "Upgrade the OpenCode binary inside this 1.x sandbox without recreating it."
+            if (version == SbxOpenCodeVersion.V2) {
+                "Install the latest OpenCode 2 release inside this sandbox without recreating it. " +
+                    "Reset Sandbox returns to Docker's image."
+            } else {
+                "Upgrade the OpenCode binary inside this 1.x sandbox without recreating it."
+            }
     }
 
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT

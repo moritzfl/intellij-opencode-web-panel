@@ -27,6 +27,7 @@ import javax.swing.SwingUtilities
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
@@ -279,7 +280,7 @@ class SbxOpenCodeServerBackendTest {
     }
 
     @Test
-    fun dockersOpenCode2KitIsNotUpgradedInsideTheVm() {
+    fun dockersOpenCode2KitIsUpgradedWithOpenCodesInstaller() {
         val settings = OpenCodeSettingsState.getInstance()
         assertNotNull(
             SbxLaunchSpec.persist(
@@ -287,16 +288,25 @@ class SbxOpenCodeServerBackendTest {
                     .copy(useSandbox = true, openCodeVersion = SbxOpenCodeVersion.V2),
             ),
         )
+        var upgraded = false
         val original = behavior
         behavior = { command ->
-            assertFalse("2.x must not run opencode upgrade", command.contains("upgrade"))
-            original(command)
+            if (decodedGuestScript(command)?.contains("opencode upgrade") == true) {
+                assertEquals(
+                    SbxCli.buildExecUpgradeCommand(command[0], record.name, SbxOpenCodeVersion.V2),
+                    command,
+                )
+                upgraded = true
+                SbxCommandResult(0, "opencode v2.3.1")
+            } else {
+                original(command)
+            }
         }
         backend.upgradeOpenCodeBinary(project)
         drain()
-        assertEquals(SbxFailureKind.COMMAND_FAILED, backend.lastFailure())
-        assertTrue(backend.startFailureMessage()!!.contains("Reset Sandbox"))
-        assertFalse(calls.contains("diagnose"))
+        assertTrue(upgraded)
+        assertNotEquals(SbxFailureKind.UPGRADE_FAILED, backend.lastFailure())
+        assertTrue(calls.contains("diagnose"))
     }
 
     @Test

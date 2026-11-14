@@ -48,12 +48,22 @@ internal fun confirmOpenCodeServerStop(project: Project?): Boolean {
         .ask(project)
 }
 
-internal fun confirmOpenCodeSandboxBinaryUpgrade(project: Project?): Boolean {
-    return MessageDialogBuilder.yesNo(
-            "Upgrade OpenCode in Sandbox",
+/** [dockerKit]: a 2.x sandbox, whose OpenCode comes from Docker's image rather than npm. */
+internal fun confirmOpenCodeSandboxBinaryUpgrade(
+    project: Project?,
+    dockerKit: Boolean = false,
+): Boolean {
+    val message =
+        if (dockerKit) {
+            "This installs the latest OpenCode 2 release inside the existing sandbox with " +
+                "OpenCode's own installer and restarts OpenCode. The VM and sessions stay. " +
+                "Reset Sandbox later returns to Docker's OpenCode image. Needs sandbox network " +
+                "access to opencode.ai and registry.npmjs.org, which Docker's OpenCode kit allows."
+        } else {
             "This runs opencode upgrade inside the existing sandbox and restarts serve. " +
-                "The VM and sessions stay. Needs sandbox network access.",
-        )
+                "The VM and sessions stay. Needs sandbox network access."
+        }
+    return MessageDialogBuilder.yesNo("Upgrade OpenCode in Sandbox", message)
         .yesText("Upgrade")
         .noText("Cancel")
         .icon(Messages.getInformationIcon())
@@ -118,7 +128,7 @@ internal fun confirmOpenCodeSandboxReset(project: Project?): Boolean {
     return MessageDialogBuilder.yesNo(
             "Reset Sandbox",
             "This force-removes the plugin-owned Docker Sandbox VM and creates a new one from Docker's " +
-                "selected OpenCode sandbox kit (2.x: its latest release), then starts OpenCode. " +
+                "selected OpenCode sandbox kit (2.x: its latest image), then starts OpenCode. " +
                 "Packages, in-VM OpenCode upgrades and other VM-only state are dropped. $retention " +
                 "Host OpenCode history is not affected.",
         )

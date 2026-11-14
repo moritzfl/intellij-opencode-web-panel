@@ -1114,6 +1114,19 @@ class SbxCliTest {
             listOf("sbx", "exec", "-w", "/", "ide-ocwp-abc", "opencode", "upgrade", "--print-logs"),
             SbxCli.buildExecUpgradeCommand(name = "ide-ocwp-abc"),
         )
+        // The 2.x kit's binary is no install method `opencode upgrade` detects; see
+        // SbxGuestUpgradeScriptTest for the script's behavior.
+        val v2 =
+            SbxCli.buildExecUpgradeCommand(
+                name = "ide-ocwp-abc",
+                version = SbxOpenCodeVersion.V2,
+            )
+        assertEquals(listOf("sbx", "exec", "-w", "/", "ide-ocwp-abc", "sh", "-c"), v2.take(7))
+        assertTrue(
+            decodedGuestScript(v2)!!.contains(
+                "opencode upgrade --method curl --print-logs </dev/null",
+            ),
+        )
     }
 
     @Test

@@ -510,8 +510,8 @@ internal class SbxOpenCodeServerBackend(
     }
 
     /**
-     * Runs `opencode upgrade` inside the owned VM, then restarts serve. Only Docker's 1.x kit is
-     * upgraded in place; the 2.x kit gets a newer release from Reset Sandbox.
+     * Upgrades OpenCode inside the owned VM ([SbxCli.buildExecUpgradeCommand]), then restarts
+     * serve. The VM and its sessions stay; Reset Sandbox returns to Docker's image.
      */
     fun upgradeOpenCodeBinary(
         project: Project,
@@ -553,7 +553,8 @@ internal class SbxOpenCodeServerBackend(
 
     /**
      * Removes the owned VM and starts a fresh one from the current spec. Creation resolves Docker's
-     * selected OpenCode kit again, so a 2.x sandbox gets the kit's latest release.
+     * selected OpenCode kit again, so a 2.x sandbox gets the kit's latest release and loses any
+     * in-VM upgrade.
      */
     fun resetSandbox(
         project: Project,
@@ -1914,24 +1915,14 @@ internal class SbxOpenCodeServerBackend(
         indicator: ProgressIndicator?,
     ): Boolean {
         if (!isCurrentStart(startId)) return false
-        if (SbxLaunchSpec.load(canonicalDirectory)?.openCodeVersion == SbxOpenCodeVersion.V2) {
-            recordCommandFailure(
-                SbxCommandFailure(
-                    "Upgrade OpenCode",
-                    -1,
-                    "Docker's OpenCode 2 kit is not upgraded inside the VM. Reset Sandbox creates " +
-                        "it from the kit's latest release.",
-                ),
-            )
-            fail(startId, SbxFailureKind.COMMAND_FAILED)
-            return false
-        }
+        val version =
+            SbxLaunchSpec.load(canonicalDirectory)?.openCodeVersion ?: SbxOpenCodeVersion.V1
         val headline = "Upgrading OpenCode…"
         noteStartupStage(headline, UPGRADE_TIMEOUT_MILLIS)
         indicator?.text = headline
         val upgraded =
             commandRunner.run(
-                SbxCli.buildExecUpgradeCommand(sbxExecutable(), pending.sandboxName),
+                SbxCli.buildExecUpgradeCommand(sbxExecutable(), pending.sandboxName, version),
                 emptyMap(),
                 UPGRADE_TIMEOUT_MILLIS,
                 null,
@@ -1984,7 +1975,8 @@ internal class SbxOpenCodeServerBackend(
     companion object {
         private const val FIRST_START_TIMEOUT_MILLIS = 10 * 60 * 1000L
         private const val RECONNECT_TIMEOUT_MILLIS = 60_000L
-        private const val UPGRADE_TIMEOUT_MILLIS = 180_000L
+        // OpenCode's installer allows itself 5 minutes per download step; a 2.x release is ~250 MB.
+        private const val UPGRADE_TIMEOUT_MILLIS = 600_000L
         private const val STAGE_MAX_CHARS = 120
         private const val REPUBLISH_GRACE_MILLIS = 10_000L
     }

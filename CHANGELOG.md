@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Upgrade OpenCode in Sandbox** now works for 2.x sandboxes too, so a sandbox
+  does not have to wait for Docker's OpenCode image to catch up with a release.
+  It installs the newest release inside the VM with OpenCode's own installer;
+  the plugin, the TUI, ACP, and `--web` of the standalone launcher then run it.
+  The upgrade survives Stop/Start; **Reset Sandbox** returns to Docker's image.
+
 ## [2.9.0] - 2026-11-14
 
 ### Changed

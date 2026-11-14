@@ -131,6 +131,32 @@ internal object SbxCli {
         """
             .trimIndent()
 
+    /**
+     * Docker's 2.x kit installs OpenCode under /opt/opencode, which `opencode upgrade` does not
+     * recognize as an install method. OpenCode's own installer (`--method curl`) puts the release
+     * in ~/.opencode/bin; a link in ~/.local/bin, first on the kit's PATH, makes serve, the TUI,
+     * ACP and the standalone launcher run it. The link is only set when the installer ran (its copy
+     * changed) or already set, so a stale copy never replaces the kit's binary.
+     */
+    private val GUEST_UPGRADE_V2 =
+        $$"""
+        installed="$HOME/.opencode/bin/opencode"
+        link="$HOME/.local/bin/opencode"
+        before=$("$installed" --version </dev/null 2>/dev/null || true)
+        opencode upgrade --method curl --print-logs </dev/null || exit $?
+        after=$("$installed" --version </dev/null 2>/dev/null || true)
+        if [ -n "$after" ] && { [ -L "$link" ] || [ "$after" != "$before" ]; }; then
+          mkdir -p "${link%/*}" && ln -sfn "$installed" "$link" || exit 1
+        fi
+        hash -r 2>/dev/null || true
+        if [ -L "$link" ] && [ "$(command -v opencode)" != "$link" ]; then
+          echo "The upgraded OpenCode in $installed is not first on the sandbox PATH; opencode runs $(command -v opencode)." >&2
+          exit 1
+        fi
+        opencode --version </dev/null
+        """
+            .trimIndent()
+
     private const val SERVE_PKILL_PATTERN =
         $$"[o]pencode serve --hostname $${OpenCodeServerProtocol.SANDBOX_SERVE_HOST} " +
             $$"--port $${OpenCodeServerProtocol.SANDBOX_SERVE_PORT} --print-logs"
@@ -813,12 +839,23 @@ internal object SbxCli {
         return command
     }
 
-    /** In-VM upgrade of Docker's 1.x kit binary (npm). The 2.x kit is upgraded by recreating. */
+    /**
+     * In-VM upgrade to the latest release of [version]'s major. 1.x: Docker's kit installed
+     * OpenCode with npm, which `opencode upgrade` detects. 2.x: see [GUEST_UPGRADE_V2]. Reset
+     * Sandbox drops either upgrade and returns to Docker's image.
+     */
     fun buildExecUpgradeCommand(
         executable: String = DEFAULT_EXECUTABLE,
         name: String,
-    ): List<String> =
-        listOf(executable, "exec", "-w", "/", name, "opencode", "upgrade", "--print-logs")
+        version: SbxOpenCodeVersion = SbxOpenCodeVersion.V1,
+    ): List<String> {
+        val exec = listOf(executable, "exec", "-w", "/", name)
+        return if (version == SbxOpenCodeVersion.V2) {
+            exec + guestScriptCommand(GUEST_UPGRADE_V2)
+        } else {
+            exec + listOf("opencode", "upgrade", "--print-logs")
+        }
+    }
 
     /**
      * Why a sandbox serving [serverVersion] cannot run [wanted]: switching versions selects another

@@ -98,7 +98,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
     private val upgradeOpenCodeButton =
         JButton("Upgrade OpenCode", AllIcons.Actions.Lightning).apply {
             toolTipText =
-                "Run opencode upgrade inside this 1.x sandbox. The VM and sessions stay. A 2.x sandbox gets a newer release from Reset Sandbox."
+                "Install the latest OpenCode release inside this sandbox. The VM and sessions stay. Reset Sandbox returns to Docker's image."
             accessibleContext.accessibleName = "Upgrade OpenCode in sandbox"
             isVisible = false
         }
@@ -337,7 +337,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                 row {
                     cell(sbxOpenCodeV2RadioButton)
                         .comment(
-                            "Docker's OpenCode 2 kit (docker.io/sbx/opencode, latest). Reset Sandbox picks up its latest release. Select this before the first start when sharing an OpenCode 2 host config.",
+                            "Docker's OpenCode 2 kit (docker.io/sbx/opencode, latest). Upgrade OpenCode installs a newer release inside the VM; Reset Sandbox returns to Docker's latest image. Select this before the first start when sharing an OpenCode 2 host config.",
                         )
                 }
                 row {
@@ -754,7 +754,13 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
 
     private fun upgradeOpenCodeInSandbox() {
         val backend = projectBackend() as? SbxOpenCodeServerBackend ?: return
-        if (!confirmOpenCodeSandboxBinaryUpgrade(project)) return
+        // The backend upgrades according to the saved spec, not unapplied form changes.
+        val dockerKit =
+            OpenCodeProjectSettingsState.getInstance(project)
+                .effectiveProjectDirectory(project.basePath)
+                ?.let(SbxLaunchSpec::load)
+                ?.openCodeVersion == SbxOpenCodeVersion.V2
+        if (!confirmOpenCodeSandboxBinaryUpgrade(project, dockerKit)) return
         backend.upgradeOpenCodeBinary(project)
     }
 
@@ -1056,8 +1062,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
             directory != null &&
                 de.moritzf.opencodewebpanel.server.SbxSandboxRecordStore.getInstance()
                     .recordFor(directory) != null
-        // Docker's 2.x kit is upgraded by Reset Sandbox, not inside the VM.
-        upgradeOpenCodeButton.isVisible = sandbox && sbxOpenCodeV1RadioButton.isSelected
+        upgradeOpenCodeButton.isVisible = sandbox
         upgradeOpenCodeButton.isEnabled =
             sandboxBackend &&
                 owned &&
