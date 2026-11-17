@@ -15,7 +15,7 @@ internal fun openCodeExecutableStatus(
     return when {
         path != null && probe.desktopApp ->
             ExecutableStatus(
-                "$path is the OpenCode desktop app. Choose the opencode command-line tool.",
+                "$path is the Desktop launcher. Choose Auto detect or its bundled opencode-cli executable.",
                 true,
             )
         path != null && probe.failed ->
@@ -31,7 +31,7 @@ internal fun openCodeExecutableStatus(
         else ->
             ExecutableStatus(
                 "opencode was not found on PATH or in common install locations. " +
-                    "Install OpenCode, or choose its path.",
+                    "Install the OpenCode CLI or Desktop, or choose its executable path.",
                 true,
             )
     }

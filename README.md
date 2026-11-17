@@ -55,8 +55,8 @@ OpenCode Web Panel brings the official OpenCode web UI into JetBrains IDEs. Use 
 ## Requirements
 
 - A JetBrains IDE compatible with this plugin.
-- The OpenCode CLI installed on your machine (Host runtime, the default): **1.x (1.18+)** or **CLI 2.x**.
-- The `opencode` command available on `PATH`, or configured manually in the plugin settings.
+- The OpenCode CLI or **OpenCode Desktop** installed on your machine (Host runtime, the default): **1.x (1.18+)** or **CLI 2.x**. Desktop includes the CLI needed by the panel.
+- The plugin auto-detects common CLI and Desktop installations. For other locations, configure **Custom path** in the plugin settings; Desktop-only installations do not need an `opencode` command on `PATH`.
 - Optional: Docker Sandboxes (`sbx` 0.51.0 or later) and a Docker account when **Runtime** is set to Docker Sandbox.
 
 ## Installation
@@ -75,7 +75,7 @@ OpenCode Web Panel brings the official OpenCode web UI into JetBrains IDEs. Use 
 
 ## Getting Started
 
-1. Install the OpenCode CLI.
+1. Install the OpenCode CLI or OpenCode Desktop.
 2. Open a project in your JetBrains IDE.
 3. Click the **OpenCode** tool window on the right sidebar.
 4. Start using OpenCode in the embedded panel.
@@ -116,7 +116,9 @@ Open <kbd>Settings/Preferences</kbd> > <kbd>Tools</kbd> > <kbd>OpenCode Web Pane
 
 ### Server
 
-- **OpenCode Executable**: **Auto detect** or a **Custom path**. The setting shows the executable a start would use and its version, or what is wrong.
+- **OpenCode Executable**: **Auto detect** or a **Custom path**. Auto detect prefers the standalone CLI, then looks for Desktop's bundled `opencode-cli` on Windows, macOS and Linux. The setting shows the executable a start would use and its version, or what is wrong.
+  - Desktop detection covers Windows per-user and system installs, macOS `/Applications` and `~/Applications`, Linux `/opt/OpenCode`, and Desktop's versioned user cache. For Linux AppImages or a custom install location, open Desktop once to populate that cache, or select its `opencode-cli` executable manually. On macOS, a custom `OpenCode.app` path also works.
+  - The panel starts its own server using that binary; Desktop's window does not need to stay open. Update a bundled CLI by updating Desktop, then restart the panel's server.
 - **Authentication**: edit, generate, show, or copy the local server password stored in IntelliJ Password Safe.
 - **HTTP Proxy**: how the Host CLI reaches the network: the IDE HTTP Proxy, environment variables, or no proxy.
 - **Startup and Logs**: wait briefly for the IntelliJ MCP server before starting OpenCode; write server logs to disk.
@@ -259,8 +261,7 @@ and [OpenCode provider accounts](https://opencode.ai/v2/docs/cli/providers).
 
 **OpenCode does not start**
 
-- Check that the OpenCode CLI is installed.
-- Run `opencode --version` in a terminal.
+- Check that the OpenCode CLI or OpenCode Desktop is installed.
 - The panel shows an error view with recent server output plus **Retry**, **Open Settings**, and **View Full Log** actions.
 - Open the plugin settings: the OpenCode executable setting shows which executable a start uses and its version, or what is wrong. Choose **Custom path** to set it manually.
 

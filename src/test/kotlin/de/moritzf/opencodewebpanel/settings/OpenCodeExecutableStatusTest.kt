@@ -33,8 +33,8 @@ class OpenCodeExecutableStatusTest {
         )
         assertEquals(
             ExecutableStatus(
-                "/A/OpenCode.app/Contents/MacOS/OpenCode is the OpenCode desktop app. " +
-                    "Choose the opencode command-line tool.",
+                "/A/OpenCode.app/Contents/MacOS/OpenCode is the Desktop launcher. " +
+                    "Choose Auto detect or its bundled opencode-cli executable.",
                 true,
             ),
             openCodeExecutableStatus(

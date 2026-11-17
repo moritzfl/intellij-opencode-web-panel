@@ -2,6 +2,7 @@ package de.moritzf.opencodewebpanel.server
 
 import de.moritzf.opencodewebpanel.configuration.OpenCodeSettingsState
 import java.io.File
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.InvalidPathException
 
@@ -57,9 +58,17 @@ internal object OpenCodeProcessLaunch {
         currentPath: String = System.getenv("PATH").orEmpty(),
         additionalPaths: List<String>? = null,
         environment: Map<String, String> = System.getenv(),
+        osName: String = System.getProperty("os.name").orEmpty(),
+        osArch: String = System.getProperty("os.arch").orEmpty(),
     ): String {
         return (currentPath.split(File.pathSeparator) +
-                (additionalPaths ?: commonExecutablePaths(environment)))
+                (additionalPaths
+                    ?: (commonExecutablePaths(environment) +
+                        OpenCodeDesktopInstallation.executableDirectories(
+                            environment,
+                            osName,
+                            osArch,
+                        ))))
             .filter { it.isNotBlank() }
             .distinct()
             .joinToString(File.pathSeparator)
@@ -74,16 +83,36 @@ internal object OpenCodeProcessLaunch {
         val command = executable.trim().takeIf { it.isNotBlank() } ?: return null
         val commandFile = File(command)
         if (commandFile.isAbsolute || command.contains('/') || command.contains('\\')) {
+            OpenCodeDesktopInstallation.bundledExecutables(commandFile, osName)
+                .firstOrNull { it.isRunnableCommand() }
+                ?.let {
+                    return it.absolutePath
+                }
+            if (OpenCodeDesktopInstallation.isLauncher(commandFile)) return null
             return commandFile.takeIf { it.isRunnableCommand() }?.absolutePath
         }
 
-        return path
-            .split(pathSeparator)
-            .asSequence()
-            .filter { it.isNotBlank() }
-            .flatMap { directory ->
+        val directories = path.split(pathSeparator).filter { it.isNotBlank() }
+        val candidates =
+            directories.asSequence().flatMap { directory ->
                 candidateExecutableNames(command, osName).asSequence().map { File(directory, it) }
             }
+        // Complete the standalone CLI search before considering any Desktop alias, even when a
+        // Desktop directory appears first on PATH.
+        candidates
+            .firstOrNull { it.isRunnableCommand() && !OpenCodeDesktopInstallation.isLauncher(it) }
+            ?.let {
+                return it.absolutePath
+            }
+        if (!command.equals(OpenCodeSettingsState.DEFAULT_EXECUTABLE, ignoreCase = true)) {
+            return null
+        }
+        return (directories.asSequence().map {
+                File(it, OpenCodeDesktopInstallation.executableName(osName))
+            } +
+                candidates.flatMap {
+                    OpenCodeDesktopInstallation.bundledExecutables(it, osName).asSequence()
+                })
             .firstOrNull { it.isRunnableCommand() }
             ?.absolutePath
     }
@@ -92,8 +121,26 @@ internal object OpenCodeProcessLaunch {
         executable: String = OpenCodeSettingsState.DEFAULT_EXECUTABLE,
         path: String = resolvePath(),
     ): String {
-        return detectExecutablePath(executable, path)
-            ?: executable.ifBlank { OpenCodeSettingsState.DEFAULT_EXECUTABLE }
+        detectExecutablePath(executable, path)?.let {
+            return it
+        }
+        val command = executable.ifBlank { OpenCodeSettingsState.DEFAULT_EXECUTABLE }
+        val candidates =
+            if (command.contains('/') || command.contains('\\')) listOf(File(command))
+            else
+                path
+                    .split(File.pathSeparator)
+                    .filter { it.isNotBlank() }
+                    .flatMap { directory ->
+                        candidateExecutableNames(command, System.getProperty("os.name").orEmpty())
+                            .map { File(directory, it) }
+                    }
+        if (candidates.any { OpenCodeDesktopInstallation.isLauncher(it) }) {
+            throw IOException(
+                "The Desktop launcher cannot serve OpenCode. Choose its bundled opencode-cli executable.",
+            )
+        }
+        return command
     }
 
     private fun commonExecutablePaths(environment: Map<String, String>): List<String> {

@@ -4,6 +4,15 @@
 
 ## [Unreleased]
 
+### Added
+
+- Host runtime auto-detect supports OpenCode Desktop installations on Windows,
+  macOS and Linux, including versioned Desktop CLI caches. A standalone CLI
+  takes precedence when both are installed. Custom macOS app and Desktop
+  launcher paths resolve to the bundled CLI without opening the Desktop window.
+  Thanks to [@makerwitawat](https://github.com/makerwitawat) for reporting
+  [#24](https://github.com/moritzfl/intellij-opencode-web-panel/issues/24).
+
 ## [2.10.0] - 2026-11-14
 
 ### Changed

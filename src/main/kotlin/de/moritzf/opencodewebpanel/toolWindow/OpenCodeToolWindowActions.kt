@@ -231,7 +231,8 @@ private class OpenCodeHostUpgradeDialog(
             val introduction =
                 JPanel(GridLayout(0, 1, 0, JBUI.scale(12))).apply {
                     add(JBLabel(OpenCodeReleaseUpdates.hostUpgradeIntro(notice)))
-                    add(JBLabel("This plugin does not upgrade Host CLI. In a terminal run:"))
+                    add(JBLabel("Using Desktop's bundled CLI? Update OpenCode Desktop instead."))
+                    add(JBLabel("For a standalone CLI, run in a terminal:"))
                 }
             // Keep the block's outer edge aligned with the prose, independent of form-field visual
             // padding.

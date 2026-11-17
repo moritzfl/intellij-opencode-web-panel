@@ -415,7 +415,7 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
                     row {
                         cell(autoBinaryRadioButton)
                             .comment(
-                                "Searches PATH and common install locations (Homebrew, npm, bun, Windows installers).",
+                                "Prefers the standalone CLI on PATH or in common install locations, then Desktop's bundled CLI.",
                             )
                     }
                     row {
