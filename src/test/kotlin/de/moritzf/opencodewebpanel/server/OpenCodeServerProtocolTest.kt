@@ -312,6 +312,53 @@ class OpenCodeServerProtocolTest {
     }
 
     @Test
+    fun detectExecutablePathFindsBundledDesktopAppCli() {
+        val resources = tempDir("opencode-desktop-resources").toFile()
+        val bundled = File(resources, "opencode-cli.exe").apply { writeText("") }
+        try {
+            assertEquals(
+                bundled.absolutePath,
+                OpenCodeServerProtocol.detectExecutablePath(
+                    path = resources.absolutePath,
+                    osName = "Windows 11",
+                ),
+            )
+        } finally {
+            bundled.delete()
+        }
+    }
+
+    @Test
+    fun resolvePathAddsDesktopAppCliDirectoriesNewestFirst() {
+        val localAppData = tempDir("opencode-desktop-local").toFile()
+        val roaming = tempDir("opencode-desktop-roaming").toFile()
+        File(localAppData, "Programs/ai.opencode.desktop/resources").mkdirs()
+        val cliRoot = File(roaming, "ai.opencode.desktop/cli")
+        val older = File(cliRoot, "2.2.0-x64").apply { mkdirs() }
+        val newer = File(cliRoot, "2.3.0-x64").apply { mkdirs() }
+        older.setLastModified(1_000_000_000_000L)
+        newer.setLastModified(1_700_000_000_000L)
+
+        val entries =
+            OpenCodeServerProtocol.resolvePath(
+                    currentPath = "",
+                    environment =
+                        mapOf(
+                            "LOCALAPPDATA" to localAppData.absolutePath,
+                            "APPDATA" to roaming.absolutePath,
+                        ),
+                )
+                .split(File.pathSeparator)
+
+        assertTrue(entries.any { it.endsWith("ai.opencode.desktop${File.separator}resources") })
+        val newerIndex = entries.indexOfFirst { it.endsWith("2.3.0-x64") }
+        val olderIndex = entries.indexOfFirst { it.endsWith("2.2.0-x64") }
+        assertTrue(newerIndex >= 0)
+        assertTrue(olderIndex >= 0)
+        assertTrue(newerIndex < olderIndex)
+    }
+
+    @Test
     fun resolveExecutableForLaunchFallsBackToCommandNameWhenExecutableIsMissing() {
         val executableDirectory = tempDir("opencode-bin")
         try {

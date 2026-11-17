@@ -127,7 +127,40 @@ internal object OpenCodeProcessLaunch {
             userProfile?.windowsChild("scoop\\shims"),
             nvmHome,
             programData.windowsChild("chocolatey\\bin"),
-        )
+        ) + desktopAppExecutableDirectories(environment)
+    }
+
+    /**
+     * The OpenCode desktop app ships the same server as `opencode-cli(.exe)` instead of putting an
+     * `opencode` command on PATH, so a machine that only installed the app fails the bare-name
+     * lookup. The Windows installer keeps a copy next to the app resources and unpacks the
+     * versioned build under `%APPDATA%\ai.opencode.desktop\cli\<version>-<arch>`; the version
+     * folders are listed newest first rather than hardcoded so an in-place update keeps working.
+     */
+    private fun desktopAppExecutableDirectories(environment: Map<String, String>): List<String> {
+        val appData = environmentValue(environment, "APPDATA")
+        val localAppData = environmentValue(environment, "LOCALAPPDATA")
+        val home = environmentValue(environment, "HOME")
+        val roots =
+            listOfNotNull(
+                localAppData?.windowsChild("Programs\\ai.opencode.desktop\\resources"),
+                appData?.windowsChild("ai.opencode.desktop\\cli"),
+                home?.unixChild("Applications/OpenCode.app/Contents/Resources"),
+                "/Applications/OpenCode.app/Contents/Resources",
+            )
+        return roots.flatMap { root -> listOf(root) + versionedSubdirectories(root) }
+    }
+
+    private fun versionedSubdirectories(root: String): List<String> {
+        val directory = File(root)
+        if (!directory.isDirectory) return emptyList()
+        return directory
+            .listFiles { file -> file.isDirectory }
+            ?.sortedWith(
+                compareByDescending<File> { it.lastModified() }.thenByDescending { it.name },
+            )
+            ?.map { it.absolutePath }
+            .orEmpty()
     }
 
     private fun environmentValue(environment: Map<String, String>, key: String): String? {
@@ -144,14 +177,31 @@ internal object OpenCodeProcessLaunch {
     private fun candidateExecutableNames(executable: String, osName: String): List<String> {
         val lower = executable.lowercase()
         val windowsExtensions = listOf(".cmd", ".exe", ".bat", ".ps1")
-        if (!osName.startsWith("Windows", ignoreCase = true)) {
-            return (listOf(executable) +
-                    windowsExtensions.filterNot { lower.endsWith(it) }.map { executable + it })
-                .distinct()
+        val candidates =
+            if (!osName.startsWith("Windows", ignoreCase = true)) {
+                (listOf(executable) +
+                        windowsExtensions.filterNot { lower.endsWith(it) }.map { executable + it })
+                    .distinct()
+            } else {
+                (windowsExtensions.filterNot { lower.endsWith(it) }.map { executable + it } +
+                        executable)
+                    .distinct()
+            }
+        return (candidates + desktopAppCliAlias(executable, osName)).distinct()
+    }
+
+    /**
+     * The desktop app's bundled server is named `opencode-cli`, not `opencode`, so the bare-name
+     * lookup has to know the alias to find it in [desktopAppExecutableDirectories].
+     */
+    private fun desktopAppCliAlias(executable: String, osName: String): List<String> {
+        val name = executable.substringAfterLast('/').substringAfterLast('\\').lowercase()
+        if (name != OpenCodeSettingsState.DEFAULT_EXECUTABLE) return emptyList()
+        return if (osName.startsWith("Windows", ignoreCase = true)) {
+            listOf("opencode-cli.exe")
+        } else {
+            listOf("opencode-cli")
         }
-        return (windowsExtensions.filterNot { lower.endsWith(it) }.map { executable + it } +
-                executable)
-            .distinct()
     }
 
     /** A typed path can be no path at all (quotes or `*` on Windows, NUL): not runnable. */
