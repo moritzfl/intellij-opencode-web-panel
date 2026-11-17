@@ -4,12 +4,18 @@
 
 ## [Unreleased]
 
+## [2.11.0] - 2026-11-17
+
 ### Added
 
 - Host runtime auto-detect supports OpenCode Desktop installations on Windows,
-  macOS and Linux, including versioned Desktop CLI caches. A standalone CLI
-  takes precedence when both are installed. Custom macOS app and Desktop
-  launcher paths resolve to the bundled CLI without opening the Desktop window.
+  macOS and Linux, including versioned Desktop CLI caches. For a Desktop-only
+  setup, use **[Desktop 2.2.0+](https://github.com/anomalyco/opencode/releases/tag/v2.2.0)**,
+  which bundles the CLI on all three platforms. Production Desktop 1.18/1.19
+  embeds the server without a standalone CLI; install the CLI separately or
+  upgrade Desktop. A standalone CLI takes precedence when both are installed.
+  Custom macOS app and Desktop launcher paths resolve to the bundled CLI
+  without opening the Desktop window.
   Thanks to [@makerwitawat](https://github.com/makerwitawat) for reporting
   [#24](https://github.com/moritzfl/intellij-opencode-web-panel/issues/24).
 - **Hide promotional tips for Browse, Voice, and other tools** in the Panel
@@ -1373,7 +1379,8 @@
 - Configurable browser-side safeguards for injected UI behaviors, compact layout, project-switch prompt suppression, and system notifications.
 - IntelliJ notification bridge for OpenCode browser notifications.
 
-[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.10.0...HEAD
+[Unreleased]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.11.0...HEAD
+[2.11.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.10.0...2.11.0
 [2.10.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.9.1...2.10.0
 [2.9.1]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.9.0...2.9.1
 [2.9.0]: https://github.com/moritzfl/intellij-opencode-web-panel/compare/2.8.3...2.9.0
