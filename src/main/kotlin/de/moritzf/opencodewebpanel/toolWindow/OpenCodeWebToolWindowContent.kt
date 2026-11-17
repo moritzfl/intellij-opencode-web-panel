@@ -768,6 +768,12 @@ internal class OpenCodeWebToolWindowContent(private val host: OpenCodePanelContr
                             OpenCodeUiSetting.COMPACT_LAYOUT -> applyCompactLayout()
                             OpenCodeUiSetting.RESPONSE_MODEL_LABEL -> applyResponseModelLabel()
                             OpenCodeUiSetting.HIDE_WEBSITE_BUTTON -> applyHideWebsiteButton()
+                            OpenCodeUiSetting.HIDE_PROMOTIONAL_TIPS -> {
+                                if (serverManager.getWireProtocol() == OpenCodeWireProtocol.V2_CLI)
+                                    reloadForEarlyFeatureToggle(
+                                        injections.hidePromotionalTipsFeature,
+                                    )
+                            }
                             OpenCodeUiSetting.PATH_HOVER_PREVIEW -> applyPathHoverPreview()
                             OpenCodeUiSetting.IDE_THEME_SYNC -> applyIdeThemeSync(enabled)
                             OpenCodeUiSetting.PROJECT_SWITCH_PROMPT_SUPPRESSION ->

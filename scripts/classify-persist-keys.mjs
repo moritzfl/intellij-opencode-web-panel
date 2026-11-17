@@ -30,6 +30,7 @@ const classified = new Set([
   'global:sidebar.organize',
   'global:sidebar.recent',
   'global:sidebar.view',
+  // Page-local snoozed view when hidePromotionalTips is on; original history is never written/mirrored.
   'global:tips.queue',
   'global:voice.panel',
   'global:workspace-onboarding',

@@ -93,6 +93,11 @@ class OpenCodeAppearanceScriptsTest {
     }
 
     @Test
+    fun promotionalTipSuppressionIsAbsentWhenDisabled() {
+        assertNull(OpenCodeBrowserSnippets.buildHidePromotionalTipsScript(enabled = false))
+    }
+
+    @Test
     fun buildHideWebsiteButtonScriptUsesDurableHrefSelectors() {
         val script = OpenCodeBrowserSnippets.buildHideWebsiteButtonScript(enabled = true)!!
 

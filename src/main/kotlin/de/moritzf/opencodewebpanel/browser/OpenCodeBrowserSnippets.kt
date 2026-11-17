@@ -173,6 +173,9 @@ internal object OpenCodeBrowserSnippets {
     fun buildHideWebsiteButtonScript(enabled: Boolean): String? =
         OpenCodeAppearanceScripts.buildHideWebsiteButtonScript(enabled)
 
+    fun buildHidePromotionalTipsScript(enabled: Boolean): String? =
+        OpenCodeAppearanceScripts.buildHidePromotionalTipsScript(enabled)
+
     /**
      * Shortens OpenCode's session-tab path popover (Kobalte `openDelay` 2000ms) to
      * [PATH_HOVER_PREVIEW_DELAY_MILLIS], and adds the same styled preview on home project rows and

@@ -1133,8 +1133,8 @@ class OpenCodeJcefLiveRuntimeSwitchTest {
         SwingUtilities.invokeAndWait {
             OpenCodeJcefTestHelper.show(browser, "Panel injection lifecycle", disposable.disposable)
         }
-        OpenCodeDocumentStartInjector(browser)
-            .installAndWait(injections.documentStartScript(origin), 20_000)
+        val documentStart = OpenCodeDocumentStartInjector(browser)
+        documentStart.installAndWait(injections.documentStartScript(origin), 20_000)
         OpenCodeJcefTestHelper.invokeAndWaitForLoad(browser, "$origin/") {
             page.begin("$origin/")
             browser.loadURL("$origin/")
@@ -1144,6 +1144,25 @@ class OpenCodeJcefLiveRuntimeSwitchTest {
         }
         assertTrue(page.loadSucceeded)
         assertEquals("true", evaluate(browser, "!window.matchMedia('(min-width: 768px)').matches"))
+        if (protocol == OpenCodeWireProtocol.V2_CLI) {
+            assertEquals(
+                "true",
+                evaluate(browser, "window.__opencodeIntellijHidePromotionalTipsInstalled === true"),
+            )
+            settings.hidePromotionalTips = false
+            val source = injections.documentStartScript(origin)
+            assertFalse(source.contains("__opencodeIntellijHidePromotionalTipsInstalled"))
+            assertTrue(documentStart.installAndWait(source, 20_000))
+            OpenCodeJcefTestHelper.invokeAndWaitForLoad(browser, "$origin/") {
+                page.invalidatePendingLoad()
+                page.begin("$origin/")
+                browser.cefBrowser.reload()
+            }
+            assertEquals(
+                "false",
+                evaluate(browser, "window.__opencodeIntellijHidePromotionalTipsInstalled === true"),
+            )
+        }
         OpenCodeJcefTestHelper.invokeAndWaitForLoad(browser, "$origin/") {
             settings.recoverStalledRenderer = false
             injections.applyFeature(injections.rendererHeartbeatFeature, false)

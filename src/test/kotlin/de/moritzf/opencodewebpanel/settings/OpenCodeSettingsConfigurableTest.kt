@@ -116,6 +116,7 @@ class OpenCodeSettingsConfigurableTest {
     @Test
     fun restoreDefaultsResetsOnlyThePanelTab() {
         settings.forceCompactLayout = false
+        settings.hidePromotionalTips = false
         settings.warnForeignSession = true
         settings.enableServerLogs = false
         settings.uiZoomPercent = 150
@@ -126,6 +127,7 @@ class OpenCodeSettingsConfigurableTest {
                 .apply { isAccessible = true }
                 .invoke(configurable)
             assertTrue(field<AbstractButton>("forceCompactLayoutCheckBox").isSelected)
+            assertTrue(field<AbstractButton>("hidePromotionalTipsCheckBox").isSelected)
             assertFalse(
                 "Off by default",
                 field<AbstractButton>("warnForeignSessionCheckBox").isSelected,

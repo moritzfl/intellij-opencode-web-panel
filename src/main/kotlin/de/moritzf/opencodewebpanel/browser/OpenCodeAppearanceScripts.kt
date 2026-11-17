@@ -421,6 +421,47 @@ internal object OpenCodeAppearanceScripts {
         return script.trimIndent()
     }
 
+    fun buildHidePromotionalTipsScript(enabled: Boolean): String? {
+        if (!enabled) return null
+        @Language("JavaScript")
+        val script =
+            """
+            (() => {
+              if (window.__opencodeIntellijHidePromotionalTipsInstalled) return;
+              try {
+                const storage = window.localStorage;
+                const prototype = Object.getPrototypeOf(storage);
+                const key = 'opencode.global.dat:tips.queue';
+                // CLI 2.3's selectTip respects the queue cooldown once current is empty.
+                // Give only this document an indefinitely snoozed view, without writing the
+                // user's history or guessing translated toast labels / individual tool ids.
+                const snoozed = JSON.stringify({
+                  current: '', shownAt: Number.MAX_SAFE_INTEGER, dismissed: [], dismissedAt: 0,
+                });
+                const descriptors = {};
+                for (const method of ['getItem', 'setItem', 'removeItem']) {
+                  const descriptor = Object.getOwnPropertyDescriptor(prototype, method);
+                  if (!descriptor || !descriptor.configurable || typeof descriptor.value !== 'function') return;
+                  const previous = descriptor.value;
+                  descriptors[method] = Object.assign({}, descriptor, {
+                    value: function(name) {
+                      if (this === storage && name === key) {
+                        return method === 'getItem' ? snoozed : undefined;
+                      }
+                      return previous.apply(this, arguments);
+                    },
+                  });
+                }
+                // Block write-back of the synthetic view too. Reloading with the safeguard off
+                // restores the original methods and the untouched saved history.
+                Object.defineProperties(prototype, descriptors);
+                window.__opencodeIntellijHidePromotionalTipsInstalled = true;
+              } catch (_) {}
+            })();
+        """
+        return script.trimIndent()
+    }
+
     fun buildIdeThemeSyncScript(enabled: Boolean, dark: Boolean): String? {
         return buildMatchMediaPatchScript(compact = false, theme = enabled, dark = dark)
     }

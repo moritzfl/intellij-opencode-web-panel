@@ -42,6 +42,7 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
     var forceCompactLayout: Boolean = true
     var showResponseModelInCompactLayout: Boolean = true
     var hideWebsiteButton: Boolean = true
+    var hidePromotionalTips: Boolean = true
     var fasterPathHoverPreview: Boolean = true
     var syncThemeWithIde: Boolean = true
     var suppressProjectSwitchPrompts: Boolean = true
@@ -91,6 +92,7 @@ class OpenCodeSettingsState : PersistentStateComponent<OpenCodeSettingsState> {
         forceCompactLayout = state.forceCompactLayout
         showResponseModelInCompactLayout = state.showResponseModelInCompactLayout
         hideWebsiteButton = state.hideWebsiteButton
+        hidePromotionalTips = state.hidePromotionalTips
         fasterPathHoverPreview = state.fasterPathHoverPreview
         syncThemeWithIde = state.syncThemeWithIde
         suppressProjectSwitchPrompts = state.suppressProjectSwitchPrompts

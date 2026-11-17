@@ -97,6 +97,8 @@ class OpenCodeInjectedScriptSyntaxTest {
                     OpenCodeBrowserSnippets.buildCompactHomeLayoutScript(enabled = true),
                 "hideWebsite" to
                     OpenCodeBrowserSnippets.buildHideWebsiteButtonScript(enabled = true),
+                "promotions" to
+                    OpenCodeBrowserSnippets.buildHidePromotionalTipsScript(enabled = true),
                 "pathHover" to OpenCodeBrowserSnippets.buildPathHoverPreviewScript(enabled = true),
                 "responseModel" to
                     OpenCodeBrowserSnippets.buildResponseModelLabelScript(enabled = true),

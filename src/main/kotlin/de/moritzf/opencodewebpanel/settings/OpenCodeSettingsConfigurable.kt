@@ -154,6 +154,8 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
     private val showResponseModelInCompactLayoutCheckBox =
         JBCheckBox("Show agent and model on responses in the compact layout (OpenCode 2)")
     private val hideWebsiteButtonCheckBox = JBCheckBox("Hide OpenCode's floating website button")
+    private val hidePromotionalTipsCheckBox =
+        JBCheckBox("Hide promotional tips for Browse, Voice, and other tools (OpenCode 2)")
     private val fasterPathHoverPreviewCheckBox =
         JBCheckBox("Show path previews on tabs, projects, and sessions faster")
     private val syncThemeWithIdeCheckBox =
@@ -279,6 +281,13 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
                 { hideWebsiteButton },
                 { value -> hideWebsiteButton = value },
                 OpenCodeUiSetting.HIDE_WEBSITE_BUTTON,
+            ),
+            CheckBoxSettingBinding(
+                hidePromotionalTipsCheckBox,
+                OpenCodeSettingsTab.PANEL,
+                { hidePromotionalTips },
+                { value -> hidePromotionalTips = value },
+                OpenCodeUiSetting.HIDE_PROMOTIONAL_TIPS,
             ),
             CheckBoxSettingBinding(
                 fasterPathHoverPreviewCheckBox,
@@ -553,6 +562,10 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
                 row {
                     cell(hideWebsiteButtonCheckBox)
                         .comment("It overlaps the message box in the panel.")
+                }
+                row {
+                    cell(hidePromotionalTipsCheckBox)
+                        .comment("Suppresses tool-install promotions in this panel.")
                 }
                 row {
                     cell(fasterPathHoverPreviewCheckBox)

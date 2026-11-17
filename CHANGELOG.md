@@ -12,6 +12,9 @@
   launcher paths resolve to the bundled CLI without opening the Desktop window.
   Thanks to [@makerwitawat](https://github.com/makerwitawat) for reporting
   [#24](https://github.com/moritzfl/intellij-opencode-web-panel/issues/24).
+- **Hide promotional tips for Browse, Voice, and other tools** in the Panel
+  settings, enabled by default. Suppresses OpenCode 2's tool-install cards
+  without changing saved tip history or hiding normal notifications.
 
 ## [2.10.0] - 2026-11-14
 

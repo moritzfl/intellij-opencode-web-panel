@@ -66,6 +66,78 @@ async (page, { origin, serverKey, workspace, authorization, snippets, stallOrigi
   await page.evaluate(snippets.nativePaste);
   assert(await page.evaluate(() => window.__pasteResult) === 'native', 'Unavailable clipboard did not request native fallback');
   if (v2) {
+    const version = (await identity.json()).version.match(/(\d+)\.(\d+)\.(\d+)/);
+    if (version && (Number(version[1]) > 2 || Number(version[2]) >= 3)) {
+      // Exercise the actual promo queue on the real page. Accelerate only its two-minute startup
+      // delay; no synthetic cards or translated-text selectors. Both known products must display
+      // in the opt-out control, disappear when enabled, and return after toggle-off + reload.
+      for (const tip of ['browse', 'hex']) {
+        const context = await page.context().browser().newContext({
+          extraHTTPHeaders: { Authorization: authorization },
+        });
+        try {
+          const promo = await context.newPage();
+          await promo.addInitScript(snippets.seed);
+          await promo.addInitScript(({ tip, script }) => {
+            const key = 'opencode.global.dat:tips.queue';
+            window.__nativeTipRead = Storage.prototype.getItem;
+            if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify({
+              current: tip, shownAt: Date.now(), dismissed: [], dismissedAt: 0,
+            }));
+            const previous = window.setTimeout;
+            window.setTimeout = function(fn, ms) {
+              return previous.apply(this, [fn, ms === 120000 ? 0 : ms, ...Array.prototype.slice.call(arguments, 2)]);
+            };
+            if (sessionStorage.getItem('hide-tips-test') === 'on') (0, eval)(script);
+          }, { tip, script: snippets.promotions });
+          await promo.goto(origin);
+          const card = promo.locator('[data-sonner-toast]').filter({
+            has: promo.locator('[data-slot="toast-v2-actions"]'),
+          });
+          await card.waitFor({ state: 'visible', timeout: 30000 });
+          const title = await card.locator('[data-title]').textContent();
+          const original = await promo.evaluate(() => localStorage.getItem('opencode.global.dat:tips.queue'));
+          await promo.evaluate(() => sessionStorage.setItem('hide-tips-test', 'on'));
+          await promo.reload();
+          await promo.locator('[data-component="home-session-search"]').waitFor();
+          await promo.waitForFunction(() => window.__opencodeIntellijHidePromotionalTipsInstalled === true);
+          const checks = await promo.evaluate(() => {
+            const key = 'opencode.global.dat:tips.queue';
+            const view = JSON.parse(localStorage.getItem(key));
+            localStorage.setItem(key, '{"current":"browse"}');
+            localStorage.removeItem(key);
+            localStorage.setItem('promo-control', 'kept');
+            sessionStorage.setItem(key, 'session-only');
+            const result = {
+              view,
+              original: window.__nativeTipRead.call(localStorage, key),
+              other: localStorage.getItem('promo-control'),
+              session: sessionStorage.getItem(key),
+            };
+            localStorage.removeItem('promo-control');
+            result.removed = localStorage.getItem('promo-control') === null;
+            return result;
+          });
+          assert(checks.view.current === '' && checks.view.shownAt === Number.MAX_SAFE_INTEGER,
+            'Promotional queue was not snoozed');
+          assert(checks.original === original, 'Promotion suppression overwrote saved history');
+          assert(checks.other === 'kept' && checks.removed && checks.session === 'session-only',
+            'Promotion suppression intercepted unrelated storage');
+          // Queue startup has fired; allow its live location/MCP bootstrap and rendering to settle.
+          await promo.waitForTimeout(1500);
+          assert(await card.count() === 0, `${tip} promotional card remained visible`);
+          await promo.evaluate(() => sessionStorage.setItem('hide-tips-test', 'off'));
+          await promo.reload();
+          await card.waitFor({ state: 'visible', timeout: 30000 });
+          assert(await card.locator('[data-title]').textContent() === title, 'Toggle-off lost the original promotion');
+          assert(await promo.evaluate(() => !window.__opencodeIntellijHidePromotionalTipsInstalled),
+            'Toggle-off left the storage patch installed');
+          console.log(`PASS promotional tips: ${tip}, persisted history preserved, clean toggle-off`);
+        } finally {
+          await context.close();
+        }
+      }
+    }
     const home = await page.context().newPage();
     await home.setExtraHTTPHeaders({ Authorization: authorization });
     await home.addInitScript(snippets.pathHover);

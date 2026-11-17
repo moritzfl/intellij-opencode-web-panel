@@ -93,6 +93,16 @@ internal class OpenCodePanelInjections(
             enabledInSettings = { OpenCodeSettingsState.getInstance().hideWebsiteButton },
             buildScript = { OpenCodeBrowserSnippets.buildHideWebsiteButtonScript(enabled = true) },
         )
+    val hidePromotionalTipsFeature =
+        EarlyInjectedFeature(
+            enabledInSettings = {
+                OpenCodeSettingsState.getInstance().hidePromotionalTips &&
+                    serverManager.getWireProtocol() == OpenCodeWireProtocol.V2_CLI
+            },
+            buildScript = {
+                OpenCodeBrowserSnippets.buildHidePromotionalTipsScript(enabled = true)
+            },
+        )
     val pathHoverPreviewFeature =
         EarlyInjectedFeature(
             enabledInSettings = { OpenCodeSettingsState.getInstance().fasterPathHoverPreview },
@@ -139,6 +149,7 @@ internal class OpenCodePanelInjections(
             matchMediaPatchFeature,
             compactHomeLayoutFeature,
             hideWebsiteButtonFeature,
+            hidePromotionalTipsFeature,
             pathHoverPreviewFeature,
             responseModelLabelFeature,
             eventStreamWatchdogFeature,

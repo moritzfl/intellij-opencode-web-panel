@@ -205,6 +205,14 @@ class OpenCodeSettingsStateTest {
     }
 
     @Test
+    fun promotionalTipsAreHiddenByDefaultAndLoadTheSavedOptOut() {
+        val settings = OpenCodeSettingsState()
+        assertEquals(true, settings.hidePromotionalTips)
+        settings.loadState(OpenCodeSettingsState().apply { hidePromotionalTips = false })
+        assertEquals(false, settings.hidePromotionalTips)
+    }
+
+    @Test
     fun hideWebsiteButtonLoadsPersistedValue() {
         val settings = OpenCodeSettingsState()
 

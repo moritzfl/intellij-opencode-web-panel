@@ -207,6 +207,22 @@ try {
   fi
 fi
 
+# The promotional queue first shipped in CLI 2.3. Its snooze history is a consumed
+# storage contract; earlier generations have no queue to suppress.
+if [ "$CLI2X" = 1 ]; then
+  if curl -fsu "$AUTH" "$BASE_URL/api/info" | node --input-type=module -e '
+import { readFileSync } from "node:fs";
+try {
+  const version = JSON.parse(readFileSync(0, "utf8")).version?.match(/(\d+)\.(\d+)\.(\d+)/);
+  if (!version) process.exit(1);
+  const [major, minor] = version.slice(1).map(Number);
+  process.exit(major > 2 || (major === 2 && minor >= 3) ? 0 : 1);
+} catch { process.exit(1); }
+'; then
+    MARKERS_V2+=('tips.queue' 'shownAt' 'dismissedAt')
+  fi
+fi
+
 marker_present() {
   local marker="$1"
   if grep -qF -- "$marker" "$WORKDIR/bundle.js"; then
