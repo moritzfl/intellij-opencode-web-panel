@@ -32,6 +32,8 @@ const classified = new Set([
   'global:sidebar.view',
   // Page-local snoozed view when hidePromotionalTips is on; original history is never written/mirrored.
   'global:tips.queue',
+  // OpenCode 1.19.6 stores the upgrade prompt's "Later" timestamp on this origin.
+  'global:update.major',
   'global:voice.panel',
   'global:workspace-onboarding',
   'window:tabs',

@@ -60,6 +60,11 @@ test('classifies 2.3.0 session, sidebar, tip and free-limit state', () => {
     { status: 0, output: '', count: '7 0' });
 });
 
+test('classifies 1.19.6 major-update prompt state', () => {
+  assert.deepEqual(classify('p.global("home.servers");p.global("update.major")'),
+    { status: 0, output: '', count: '2 0' });
+});
+
 test('handles large embedded data without quadratic identifier retries', () => {
   assert.deepEqual(classify(`const asset="${'a'.repeat(2 * 1024 * 1024)}";p.global("home.servers")`),
     { status: 0, output: '', count: '1 0' });
