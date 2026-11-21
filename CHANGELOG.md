@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Files written to `opencode-sbx/` by Apply, a sandbox start or the
+  extra-network kit appear in the Project view and the IDE's file chooser
+  right away, not only after the IDE refreshed its files.
+
 ## [2.11.0] - 2026-11-17
 
 ### Added

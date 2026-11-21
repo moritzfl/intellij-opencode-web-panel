@@ -4,6 +4,7 @@ import com.intellij.mock.MockProject
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.options.ConfigurationException
 import com.intellij.openapi.ui.TextFieldWithBrowseButton
+import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.testFramework.ApplicationRule
 import com.intellij.testFramework.DisposableRule
 import com.intellij.testFramework.PlatformTestUtil
@@ -32,6 +33,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -692,6 +694,24 @@ class OpenCodeProjectSettingsConfigurableTest {
             assertEquals(
                 OpenCodeProjectDirectoryMode.AUTO,
                 projectSettings.projectDirectoryModeValue(),
+            )
+        }
+    }
+
+    @Test
+    fun applyShowsTheWrittenSandboxFilesToTheIdeWithoutAManualRefresh() {
+        val root = temp.root.toPath().toRealPath()
+        ApplicationManager.getApplication().invokeAndWait {
+            val folder = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(root)!!
+            // Like a Project view that has listed the folder: new entries need a refresh.
+            folder.children
+            assertNull(folder.findChild("opencode-sbx"))
+            field<AbstractButton>("sbxRuntimeRadioButton").isSelected = true
+            configurable.apply()
+            PlatformTestUtil.waitWithEventsDispatching(
+                "The IDE never saw opencode-sbx/opencode-sbx.yaml",
+                { folder.findChild("opencode-sbx")?.findChild("opencode-sbx.yaml") != null },
+                10,
             )
         }
     }

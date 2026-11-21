@@ -672,6 +672,7 @@ internal data class SbxLaunchSpec(
                     inspectionCache.clear()
                 }
                 removeLegacyProjectArtifacts(Path.of(directory))
+                refreshIdeFiles(directory)
                 val app = com.intellij.openapi.application.ApplicationManager.getApplication()
                 if (app != null && !app.isDisposed && !app.isUnitTestMode) {
                     runCatching {
@@ -692,6 +693,31 @@ internal data class SbxLaunchSpec(
                         .warn("Could not persist SBX launch spec: ${error.message}")
                 }
                 .getOrNull()
+        }
+
+        /**
+         * The files here are written with java.nio, which the IDE only notices at its next refresh.
+         * Without this the Project view and the IDE's file chooser keep showing the project without
+         * `opencode-sbx/` until the window regains focus.
+         */
+        fun refreshIdeFiles(canonicalDirectory: String) {
+            // The project folder itself lists the new control directory and drops the legacy
+            // root files; everything below the control directory is ours.
+            refreshIdePaths(listOf(Path.of(canonicalDirectory)), recursive = false)
+            refreshIdePaths(listOf(projectControlDir(canonicalDirectory)), recursive = true)
+        }
+
+        fun refreshIdePaths(paths: List<Path>, recursive: Boolean) {
+            val app = com.intellij.openapi.application.ApplicationManager.getApplication()
+            if (app == null || app.isDisposed) return
+            runCatching {
+                com.intellij.openapi.vfs.LocalFileSystem.getInstance()
+                    .refreshNioFiles(paths, true, recursive, null)
+            }
+                .onFailure { error ->
+                    logger<SbxLaunchSpec>()
+                        .warn("Could not refresh the IDE's view of $paths: ${error.message}")
+                }
         }
 
         fun yamlScalar(value: String): String {
