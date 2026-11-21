@@ -196,7 +196,10 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
             // completely and it is not reliably shown again after re-enabling.
             addBrowseFolderListener(
                 null,
-                FileChooserDescriptorFactory.createSingleFolderDescriptor(),
+                FileChooserDescriptorFactory.createSingleFolderDescriptor()
+                    .withTitle("Select OpenCode Directory")
+                    .withDescription("The folder OpenCode opens for this IDE project.")
+                    .withShowHiddenFiles(true),
             )
             addActionListener { customProjectDirectoryRadioButton.isSelected = true }
         }
@@ -267,10 +270,11 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
     private fun cpusText(): String = sbxCpusField.number.toString()
 
     private val sbxWorkingDirectoryField =
-        JBTextField().apply {
-            columns = 24
+        TextFieldWithBrowseButton().apply {
+            textField.columns = 24
             toolTipText = "OpenCode working directory relative to the mounted repository root"
-            accessibleContext.accessibleName = "Sandbox OpenCode working directory"
+            textField.accessibleContext.accessibleName = "Sandbox OpenCode working directory"
+            addActionListener { browseWorkingDirectory() }
         }
     private val sbxShareHostConfigCheckBox =
         JBCheckBox("Share your OpenCode config with the sandbox (read-only)")
@@ -1571,6 +1575,47 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         editKitSpec(spec, if (network) SbxCli.networkKitTemplateYaml() else null)
         kitChecks.clear()
         kitTable.repaint()
+    }
+
+    private fun browseWorkingDirectory() {
+        val workspace = workspaceDirectory() ?: return
+        val root = runCatching { Path.of(workspace) }.getOrNull() ?: return
+        val current =
+            runCatching {
+                root.resolve(sbxWorkingDirectoryField.text.trim().ifBlank { "./" }).normalize()
+            }
+                .getOrNull()
+                ?.takeIf { it.startsWith(root) && Files.isDirectory(it) } ?: root
+        val descriptor =
+            FileChooserDescriptorFactory.createSingleFolderDescriptor()
+                .withTitle("Select Working Directory")
+                .withDescription(
+                    "A folder inside the OpenCode directory. OpenCode starts there; the whole " +
+                        "project stays mounted.",
+                )
+                .withShowHiddenFiles(true)
+                .apply { isForcedToUseIdeaFileChooser = true }
+        // Only the project is offered: a working directory outside it cannot be used.
+        runCatching { LocalFileSystem.getInstance().refreshAndFindFileByNioFile(root) }
+            .getOrNull()
+            ?.let { descriptor.withRoots(it).withTreeRootVisible(true) }
+        val chosen = chooseFiles(descriptor, current).firstOrNull() ?: return
+        val relative =
+            SbxCli.portableHostPath(
+                chosen.toString(),
+                workspace,
+                home = "",
+                realPath = runCatching { chosen.toRealPath().toString() }.getOrNull(),
+            )
+        if (!relative.startsWith("./")) {
+            Messages.showWarningDialog(
+                panel ?: sbxWorkingDirectoryField,
+                "Choose a folder inside $workspace.",
+                "Working Directory Outside the Project",
+            )
+            return
+        }
+        sbxWorkingDirectoryField.text = relative
     }
 
     private fun addAction(text: String, icon: javax.swing.Icon, run: () -> Unit): AnAction =

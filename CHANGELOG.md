@@ -22,6 +22,10 @@
 - The mount and kit tables show what each entry is, and mark a path missing on
   this computer or a kit folder without `spec.yaml` with the reason beside it.
   A click selects a row and a double click edits it; long paths keep both ends.
+- The sandbox **Working directory** has a folder chooser limited to the
+  project.
+- The choosers for the OpenCode directory and the OpenCode and `sbx`
+  executables show hidden folders such as `~/.opencode/bin`.
 
 ### Fixed
 

@@ -218,7 +218,7 @@ class OpenCodeProjectSettingsConfigurableTest {
                 { restarts == 1 },
                 5,
             )
-            field<JTextField>("sbxWorkingDirectoryField").text = "./app"
+            field<TextFieldWithBrowseButton>("sbxWorkingDirectoryField").text = "./app"
             assertTrue(configurable.isModified())
             configurable.apply()
             PlatformTestUtil.waitWithEventsDispatching(
@@ -231,11 +231,11 @@ class OpenCodeProjectSettingsConfigurableTest {
             assertEquals(workdir.toString(), spec.hostWorkingDirectory())
             assertFalse(configurable.isModified())
 
-            field<JTextField>("sbxWorkingDirectoryField").text = "../elsewhere"
+            field<TextFieldWithBrowseButton>("sbxWorkingDirectoryField").text = "../elsewhere"
             assertThrows(ConfigurationException::class.java) { configurable.apply() }
             assertEquals("./app", SbxLaunchSpec.load(project.basePath)!!.workingDirectory)
             configurable.reset()
-            assertEquals("./app", field<JTextField>("sbxWorkingDirectoryField").text)
+            assertEquals("./app", field<TextFieldWithBrowseButton>("sbxWorkingDirectoryField").text)
         }
     }
 
@@ -833,6 +833,40 @@ class OpenCodeProjectSettingsConfigurableTest {
             }
         } finally {
             outside.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun theWorkingDirectoryChooserStartsInTheProjectAndWritesARelativePath() {
+        val root = temp.root.toPath().toRealPath()
+        val service = Files.createDirectories(root.resolve("services/api"))
+        SwingUtilities.invokeAndWait {
+            configurable.createComponent()
+            val starts = ArrayList<Path?>()
+            var next = service
+            configurable.chooseFiles = { _, start ->
+                starts += start
+                listOf(next)
+            }
+            var chooser: FileChooserDescriptor? = null
+            configurable.chooseFiles = { descriptor, start ->
+                chooser = descriptor
+                starts += start
+                listOf(next)
+            }
+            val workdir = field<TextFieldWithBrowseButton>("sbxWorkingDirectoryField")
+            call("browseWorkingDirectory")
+            assertEquals("./services/api", workdir.text)
+            assertEquals(
+                "Only the project is offered",
+                listOf(root),
+                chooser!!.roots.map { it.toNioPath() },
+            )
+            assertEquals(root, starts.last())
+            next = root
+            call("browseWorkingDirectory")
+            assertEquals("./", workdir.text)
+            assertEquals("The chooser reopens at the current choice", service, starts.last())
         }
     }
 

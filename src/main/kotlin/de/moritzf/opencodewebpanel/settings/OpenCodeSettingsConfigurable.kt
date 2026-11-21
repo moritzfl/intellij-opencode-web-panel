@@ -109,10 +109,7 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
             // The chooser stays usable in auto mode as a way to fill the path; only typing is
             // custom-only. Never disable the whole component: disabling hides the browse button
             // completely and it is not reliably shown again after re-enabling.
-            addBrowseFolderListener(
-                null,
-                FileChooserDescriptorFactory.createSingleFileNoJarsDescriptor(),
-            )
+            addBrowseFolderListener(null, executableChooser("Select sbx Executable"))
             addActionListener { customSbxRadioButton.isSelected = true }
         }
     private val sbxLoginHintLabel =
@@ -130,10 +127,7 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
         TextFieldWithBrowseButton().apply {
             textField.columns = 40
             toolTipText = "Path to the opencode executable"
-            addBrowseFolderListener(
-                null,
-                FileChooserDescriptorFactory.createSingleFileNoJarsDescriptor(),
-            )
+            addBrowseFolderListener(null, executableChooser("Select OpenCode Executable"))
             addActionListener { customBinaryRadioButton.isSelected = true }
         }
     private val ideProxyRadioButton = JBRadioButton("Use IDE HTTP Proxy")
@@ -1454,5 +1448,11 @@ class OpenCodeSettingsConfigurable : Configurable, Configurable.NoMargin {
         const val ID = "opencode.web.panel.settings"
         private const val SBX_POLICY_DOCS_URL =
             "https://docs.docker.com/ai/sandboxes/security/defaults/"
+
+        /** Installers put both executables into dot-folders such as ~/.opencode/bin. */
+        private fun executableChooser(title: String) =
+            FileChooserDescriptorFactory.createSingleFileNoJarsDescriptor()
+                .withTitle(title)
+                .withShowHiddenFiles(true)
     }
 }
