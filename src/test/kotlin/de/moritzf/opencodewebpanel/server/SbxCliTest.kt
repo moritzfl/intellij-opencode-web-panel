@@ -1285,6 +1285,95 @@ class SbxCliTest {
         )
     }
 
+    @Test
+    fun chosenHostPathsAreWrittenSoTheSpecWorksForAColleague() {
+        val workspace = "/Users/ada/git/project"
+        val home = "/Users/ada"
+        fun portable(path: String, real: String? = null) =
+            SbxCli.portableHostPath(path, workspace, home, real)
+        assertEquals("./", portable("/Users/ada/git/project"))
+        assertEquals("./opencode-sbx/kit", portable("/Users/ada/git/project/opencode-sbx/kit/"))
+        assertEquals("~/.gradle", portable("/Users/ada/.gradle"))
+        assertEquals("~", portable("/Users/ada"))
+        assertEquals("/opt/tools", portable("/opt/tools"))
+        assertEquals(
+            "A sibling that only shares the prefix is not inside",
+            "~/git/project-two/kit",
+            portable("/Users/ada/git/project-two/kit"),
+        )
+        assertEquals(
+            "The chooser's spelling goes through a link; the project root is stored resolved",
+            "./kits/tools",
+            SbxCli.portableHostPath(
+                "/var/work/project/kits/tools",
+                "/private/var/work/project",
+                home,
+                realPath = "/private/var/work/project/kits/tools",
+            ),
+        )
+        assertEquals(
+            "./app",
+            SbxCli.portableHostPath("C:\\Users\\Ada\\project\\app", "c:/users/ada/project", ""),
+        )
+        assertEquals(
+            "No workspace and no home leave the path alone",
+            "/data/x",
+            SbxCli.portableHostPath("/data/x", null, ""),
+        )
+    }
+
+    @Test
+    fun localKitsAreAFolderWithADescriptorOrAZipFile() {
+        val root = java.nio.file.Files.createTempDirectory("ocwp-kits")
+        try {
+            val workspace = root.toString()
+            val folder = java.nio.file.Files.createDirectories(root.resolve("kits/tools"))
+            assertEquals(
+                "No spec.yaml in this folder",
+                SbxCli.localKitProblem("./kits/tools", workspace)!!.substringBefore(": "),
+            )
+            val spec = java.nio.file.Files.writeString(folder.resolve("spec.yml"), "kind: mixin\n")
+            assertNull(SbxCli.localKitProblem("./kits/tools", workspace))
+            assertEquals(spec, SbxCli.localKitSpecFile(folder))
+            val preferred =
+                java.nio.file.Files.writeString(folder.resolve("spec.yaml"), "kind: mixin\n")
+            assertEquals(preferred, SbxCli.localKitSpecFile(folder))
+            assertEquals(
+                "Choosing the descriptor means its folder",
+                folder,
+                SbxCli.kitPathForChosenFile(preferred),
+            )
+
+            val archive = java.nio.file.Files.writeString(root.resolve("kits/team.zip"), "zip")
+            assertNull(SbxCli.localKitProblem("./kits/team.zip", workspace))
+            assertEquals(archive, SbxCli.kitPathForChosenFile(archive))
+            java.nio.file.Files.writeString(root.resolve("kits/notes.txt"), "x")
+            assertTrue(
+                SbxCli.localKitProblem("./kits/notes.txt", workspace)!!.startsWith("Not a kit"),
+            )
+            assertTrue(
+                SbxCli.localKitProblem("./kits/gone", workspace)!!.startsWith(
+                    "Not on this computer",
+                ),
+            )
+            assertNull(
+                "Registry and Git kits are not checked on disk",
+                SbxCli.localKitProblem("docker.io/sbx/playwright-kit:latest", workspace),
+            )
+            assertNull(SbxCli.localKitPath("git+https://github.com/team/kits.git", workspace))
+
+            assertEquals(SbxCli.KitSource.LOCAL, SbxCli.kitSource("./kits/tools"))
+            assertEquals(SbxCli.KitSource.LOCAL, SbxCli.kitSource("~/kits/team.zip"))
+            assertEquals(
+                SbxCli.KitSource.GIT,
+                SbxCli.kitSource("git+https://github.com/team/kits.git#ref=v1"),
+            )
+            assertEquals(SbxCli.KitSource.REGISTRY, SbxCli.kitSource("sbx/playwright:1.0.0"))
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
+
     private fun resource(name: String): String {
         return javaClass.getResource("/de/moritzf/opencodewebpanel/server/$name")!!.readText()
     }

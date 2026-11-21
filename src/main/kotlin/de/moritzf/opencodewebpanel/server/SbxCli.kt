@@ -137,6 +137,8 @@ internal object SbxCli {
 
     const val PROJECT_CONTROL_DIR = "opencode-sbx"
     const val NETWORK_KIT_DIR = "opencode-network-kit"
+    /** Descriptor names sbx accepts in a kit folder, preferred first. */
+    val KIT_SPEC_NAMES = listOf("spec.yaml", "spec.yml")
 
     /** Common provider hosts that Docker's OpenCode kits (1.x and 2.x) do not already allow. */
     val NETWORK_KIT_HOST_PRESETS =
@@ -527,6 +529,102 @@ internal object SbxCli {
             trimmed[0].isLetter() &&
             trimmed[1] == ':' &&
             trimmed[2] == '/'
+    }
+
+    /** Where a kit reference comes from, for the settings table. */
+    enum class KitSource {
+        LOCAL,
+        GIT,
+        REGISTRY,
+    }
+
+    fun kitSource(ref: String): KitSource =
+        when {
+            isLocalKitRef(ref) -> KitSource.LOCAL
+            posixPath(ref).startsWith("git+", ignoreCase = true) -> KitSource.GIT
+            else -> KitSource.REGISTRY
+        }
+
+    /** The host path a local kit reference names; null for Git and registry references. */
+    fun localKitPath(
+        ref: String,
+        workspace: String,
+        hostHome: String = System.getProperty("user.home").orEmpty(),
+    ): Path? {
+        if (!isLocalKitRef(ref)) return null
+        return runCatching {
+            Path.of(workspace).resolve(expandUserHome(posixPath(ref), hostHome)).normalize()
+        }
+            .getOrNull()
+    }
+
+    /** The descriptor of a local kit folder (`spec.yaml`, or sbx's other spelling `spec.yml`). */
+    fun localKitSpecFile(kit: Path): Path? =
+        KIT_SPEC_NAMES.map { kit.resolve(it) }.firstOrNull { Files.isRegularFile(it) }
+
+    /**
+     * Why sbx would refuse a local kit reference, or null. sbx loads a folder that holds a
+     * descriptor, or a ZIP file (`sbx kit validate`, verified on 0.53).
+     */
+    fun localKitProblem(
+        ref: String,
+        workspace: String,
+        hostHome: String = System.getProperty("user.home").orEmpty(),
+    ): String? {
+        if (!isLocalKitRef(ref)) return null
+        val path = localKitPath(ref, workspace, hostHome) ?: return "Not a usable path"
+        val shown = posixPath(path.toString())
+        return when {
+            Files.isDirectory(path) ->
+                if (localKitSpecFile(path) != null) null
+                else "No ${KIT_SPEC_NAMES.first()} in this folder: $shown"
+            Files.isRegularFile(path) ->
+                if (isKitArchive(path)) null
+                else "Not a kit: choose the kit's folder or a .zip file"
+            else -> "Not on this computer: $shown"
+        }
+    }
+
+    fun isKitArchive(path: Path): Boolean =
+        path.fileName?.toString().orEmpty().endsWith(".zip", ignoreCase = true)
+
+    /** A chosen descriptor stands for the kit folder that holds it. */
+    fun kitPathForChosenFile(chosen: Path): Path =
+        if (chosen.fileName?.toString() in KIT_SPEC_NAMES) chosen.parent ?: chosen else chosen
+
+    /**
+     * How to write a chosen host path into the project spec so it also works for a colleague:
+     * relative to the project when inside it, `~` when under the home folder. [realPath] is the
+     * chosen path with links resolved, since the project root is stored that way.
+     */
+    fun portableHostPath(
+        path: String,
+        workspace: String?,
+        home: String = System.getProperty("user.home").orEmpty(),
+        realPath: String? = null,
+    ): String {
+        fun clean(value: String) =
+            posixPath(value).let { if (it.length > 1) it.trimEnd('/') else it }
+        fun below(parent: String?, child: String): String? {
+            val root = parent?.takeIf { it.isNotBlank() }?.let(::clean) ?: return null
+            // Windows drive paths differ in case only by spelling.
+            val ignoreCase = root.length >= 2 && root[1] == ':'
+            if (child.equals(root, ignoreCase)) return ""
+            val prefix = if (root.endsWith("/")) root else "$root/"
+            return if (child.startsWith(prefix, ignoreCase)) child.substring(prefix.length)
+            else null
+        }
+        val raw = clean(path)
+        if (raw.isEmpty()) return raw
+        for (candidate in listOfNotNull(raw, realPath?.let(::clean)).distinct()) {
+            below(workspace, candidate)?.let {
+                return "./$it"
+            }
+        }
+        below(home, raw)?.let {
+            return if (it.isEmpty()) "~" else "~/$it"
+        }
+        return raw
     }
 
     fun sandboxProtectMounts(

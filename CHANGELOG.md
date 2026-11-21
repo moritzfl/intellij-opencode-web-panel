@@ -4,11 +4,31 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **Mounts** and **Kits** in the project settings are added through a chooser.
+  **+** offers a file or folder for a mount, and for a kit a folder or `.zip`
+  file, a typed registry or Git reference, or the project's extra-network kit.
+  A chosen `spec.yaml` stands for its kit folder, and a folder without one is
+  refused in the chooser. Chosen paths are written relative to the project, or
+  with `~` under your home folder, so the shared `opencode-sbx.yaml` also works
+  on a colleague's computer.
+- **Extra-Network Kit for This Project…** replaces **Create Extra-Network Kit
+  Template**. It writes the template when there is none, adds the kit, and
+  opens its `spec.yaml` in an editor inside Settings, so the hosts can be
+  chosen before Apply installs the kit. **Edit spec.yaml** opens any local kit
+  folder the same way. An existing kit is no longer replaced; **Restore
+  Template** in the editor brings the template back.
+- The mount and kit tables show what each entry is, and mark a path missing on
+  this computer or a kit folder without `spec.yaml` with the reason beside it.
+  A click selects a row and a double click edits it; long paths keep both ends.
+
 ### Fixed
 
 - Files written to `opencode-sbx/` by Apply, a sandbox start or the
   extra-network kit appear in the Project view and the IDE's file chooser
   right away, not only after the IDE refreshed its files.
+- **Docker kit docs** opens Docker's page for the current kit format.
 
 ## [2.11.0] - 2026-11-17
 

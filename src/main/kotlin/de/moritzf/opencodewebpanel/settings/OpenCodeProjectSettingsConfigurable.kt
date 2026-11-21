@@ -3,25 +3,37 @@ package de.moritzf.opencodewebpanel.settings
 import com.intellij.icons.AllIcons
 import com.intellij.ide.BrowserUtil
 import com.intellij.ide.DataManager
+import com.intellij.openapi.actionSystem.ActionUpdateThread
+import com.intellij.openapi.actionSystem.AnAction
+import com.intellij.openapi.actionSystem.AnActionEvent
+import com.intellij.openapi.actionSystem.DefaultActionGroup
+import com.intellij.openapi.actionSystem.Separator
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
+import com.intellij.openapi.fileChooser.FileChooser
+import com.intellij.openapi.fileChooser.FileChooserDescriptor
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
 import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.options.ConfigurationException
 import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.options.ex.Settings
+import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.ComboBox
 import com.intellij.openapi.ui.MessageDialogBuilder
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.ui.TextFieldWithBrowseButton
+import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.util.text.StringUtil
+import com.intellij.openapi.vfs.LocalFileSystem
+import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.CollectionComboBoxModel
 import com.intellij.ui.ColorUtil
 import com.intellij.ui.DocumentAdapter
 import com.intellij.ui.JBIntSpinner
 import com.intellij.ui.SimpleTextAttributes
 import com.intellij.ui.ToolbarDecorator
+import com.intellij.ui.awt.RelativePoint
 import com.intellij.ui.components.ActionLink
 import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.JBLabel
@@ -69,15 +81,11 @@ import de.moritzf.opencodewebpanel.ui.confirmOpenCodeSandboxBinaryUpgrade
 import de.moritzf.opencodewebpanel.ui.confirmOpenCodeSandboxReset
 import de.moritzf.opencodewebpanel.ui.confirmOpenCodeServerRestart
 import de.moritzf.opencodewebpanel.ui.sandboxSessionRetentionSummary
-import java.awt.Component
 import java.awt.event.HierarchyEvent
 import java.awt.event.ItemEvent
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
-import java.util.Optional
-import java.util.concurrent.ConcurrentHashMap
-import javax.swing.AbstractCellEditor
 import javax.swing.ButtonGroup
 import javax.swing.JButton
 import javax.swing.JComponent
@@ -86,7 +94,6 @@ import javax.swing.JSpinner
 import javax.swing.JTable
 import javax.swing.SwingUtilities
 import javax.swing.event.DocumentEvent
-import javax.swing.table.DefaultTableCellRenderer
 import javax.swing.table.TableCellEditor
 import javax.swing.table.TableCellRenderer
 import javax.swing.text.DefaultFormatter
@@ -273,24 +280,22 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         JBCheckBox("Persist sandbox sessions and sign-ins across Reset Sandbox")
     private val sbxEnableIntellijMcpCheckBox =
         JBCheckBox("Let OpenCode in the sandbox use IntelliJ's MCP server")
+    /** Tests replace these: they cannot show a chooser or a dialog. */
+    internal var chooseFiles: (FileChooserDescriptor, Path?) -> List<Path> = ::chooseWithIde
+    internal var editKitSpec: (Path, String?) -> Unit = { spec, template ->
+        panel?.let {
+            SbxKitSpecDialog(project, it, spec, portablePath(spec).removePrefix("./"), template)
+                .show()
+        }
+    }
     private val hostPathEditor =
-        BrowsePathCellEditor(
-            FileChooserDescriptorFactory.createSingleFileOrFolderDescriptor()
-                .withTitle("Select Host Path")
-                .withDescription("Choose a file or folder to mount into the sandbox.")
-                .withShowHiddenFiles(true)
-                .apply { isForcedToUseIdeaFileChooser = true },
-        )
+        SbxBrowsePathCellEditor("~/folder, /path or \${NAME:-fallback}/path") { current ->
+            chooseHostPaths(current, multiple = false).firstOrNull()
+        }
     private val kitPathEditor =
-        BrowsePathCellEditor(
-            FileChooserDescriptorFactory.createSingleFolderDescriptor()
-                .withTitle("Select Kit")
-                .withDescription(
-                    "Choose a local kit directory. File refs, Git URLs, and OCI refs can be typed. Protect sandbox files only overlays kit directories.",
-                )
-                .withShowHiddenFiles(true)
-                .apply { isForcedToUseIdeaFileChooser = true },
-        )
+        SbxBrowsePathCellEditor("docker.io/org/kit:tag, git+https://… or a local kit") { current ->
+            chooseKit(current)
+        }
     private val extraMountTableModel =
         ListTableModel<ExtraMountRow>(
             object : ColumnInfo<ExtraMountRow, String>("Host Path") {
@@ -299,6 +304,8 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                 override fun isCellEditable(item: ExtraMountRow): Boolean = true
 
                 override fun setValue(item: ExtraMountRow, value: String?) {
+                    // A sandbox path that was the host path keeps following it.
+                    if (item.sandboxPath == item.hostPath) item.sandboxPath = ""
                     item.hostPath = SbxCli.posixPath(value.orEmpty())
                 }
 
@@ -307,13 +314,18 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                 override fun getRenderer(item: ExtraMountRow): TableCellRenderer = hostPathRenderer
             },
             object : ColumnInfo<ExtraMountRow, String>("Sandbox Path") {
-                override fun valueOf(item: ExtraMountRow): String = item.sandboxPath
+                // Shown empty while it is the host path, so only a real choice reads as one.
+                override fun valueOf(item: ExtraMountRow): String =
+                    item.sandboxPath.takeUnless { it == item.hostPath }.orEmpty()
 
                 override fun isCellEditable(item: ExtraMountRow): Boolean = true
 
                 override fun setValue(item: ExtraMountRow, value: String?) {
                     item.sandboxPath = SbxCli.posixPath(value.orEmpty())
                 }
+
+                override fun getRenderer(item: ExtraMountRow): TableCellRenderer =
+                    sandboxPathRenderer
             },
             object : ColumnInfo<ExtraMountRow, Boolean>("Read-only") {
                 override fun valueOf(item: ExtraMountRow): Boolean = item.readOnly
@@ -328,47 +340,50 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
             },
         )
     /** Marks host paths a start would skip, so a typo is visible before the sandbox starts. */
-    private val hostPathRenderer =
-        object : DefaultTableCellRenderer() {
-            override fun getTableCellRendererComponent(
-                table: JTable,
-                value: Any?,
-                isSelected: Boolean,
-                hasFocus: Boolean,
-                row: Int,
-                column: Int,
-            ): Component {
-                super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column)
-                val problem = cachedHostPathProblem(value as? String, table)
-                icon = if (problem != null) AllIcons.General.Warning else null
-                toolTipText = problem
-                return this
-            }
-        }
-
-    // Renderers run on every paint, and `Files.exists` on a network or automounted path can stall:
-    // check each path once off the EDT, then repaint.
-    private val hostPathProblems = ConcurrentHashMap<Pair<String, String>, Optional<String>>()
-    private val hostPathChecks: MutableSet<Pair<String, String>> = ConcurrentHashMap.newKeySet()
-
-    private fun cachedHostPathProblem(raw: String?, table: JTable): String? {
-        val text = raw?.trim().orEmpty()
-        if (text.isEmpty()) return null
-        val workspace = effectiveDirectory() ?: return null
-        val key = workspace to text
-        hostPathProblems[key]?.let {
-            return it.orElse(null)
-        }
-        if (hostPathChecks.add(key)) {
-            val application = ApplicationManager.getApplication()
-            application.executeOnPooledThread {
-                hostPathProblems[key] = Optional.ofNullable(hostPathProblem(text, workspace))
-                hostPathChecks.remove(key)
-                application.invokeLater({ table.repaint() }, ModalityState.any())
-            }
-        }
-        return null
+    private val hostPathChecks = SbxPathChecks { text, workspace ->
+        val problem = hostPathProblem(text, workspace)
+        SbxPathState(problem, file = problem == null && hostPathIsFile(text, workspace))
     }
+    private val hostPathRenderer =
+        SbxPathCellRenderer(
+            state = { text, table -> hostPathChecks.state(text, workspaceDirectory(), table) },
+            icon = { _, state ->
+                if (state?.file == true) AllIcons.FileTypes.Any_type else AllIcons.Nodes.Folder
+            },
+        )
+    private val sandboxPathRenderer =
+        SbxPathCellRenderer(
+            state = { _, _ -> null },
+            icon = { _, _ -> null },
+            placeholder = "Same as host path",
+        )
+    /** Marks local kits sbx could not load: a missing folder, or one without a descriptor. */
+    private val kitChecks = SbxPathChecks { text, workspace ->
+        SbxPathState(SbxCli.localKitProblem(text, workspace))
+    }
+    private val kitRenderer =
+        SbxPathCellRenderer(
+            state = { text, table -> kitChecks.state(text, workspaceDirectory(), table) },
+            icon = { text, _ ->
+                when (SbxCli.kitSource(text)) {
+                    SbxCli.KitSource.LOCAL ->
+                        if (text.endsWith(".zip", ignoreCase = true)) AllIcons.FileTypes.Archive
+                        else AllIcons.Nodes.Folder
+                    SbxCli.KitSource.GIT -> AllIcons.Vcs.Branch
+                    SbxCli.KitSource.REGISTRY -> AllIcons.Nodes.PpLib
+                }
+            },
+        )
+
+    private fun hostPathIsFile(raw: String, workspace: String): Boolean = runCatching {
+        val text = raw.trim().removeSuffix(":ro").removeSuffix(":RO")
+        val host =
+            SbxCli.resolveExtraMounts(listOf(SbxExtraMount(text, "", false)), workspace)
+                .single()
+                .hostPath
+        Files.isRegularFile(Path.of(host))
+    }
+        .getOrDefault(false)
 
     private fun hostPathProblem(raw: String?, workspace: String): String? {
         val text = raw?.trim().orEmpty().removeSuffix(":ro").removeSuffix(":RO")
@@ -396,13 +411,25 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                     "at the host path; ~ and relative paths are under /home/agent.<br>Paths missing " +
                     "on this computer are skipped.</html>"
             emptyText.text = "No extra mounts"
-            emptyText.appendSecondaryText("Add a mount", SimpleTextAttributes.LINK_ATTRIBUTES) {
-                addTableRow(this, extraMountTableModel, ExtraMountRow())
+            emptyText.appendSecondaryText(
+                "Choose a file or folder…",
+                SimpleTextAttributes.LINK_ATTRIBUTES,
+            ) {
+                addMountsFromChooser()
             }
         }
     private val extraMountPanel =
         ToolbarDecorator.createDecorator(extraMountTable)
-            .setAddAction { addTableRow(extraMountTable, extraMountTableModel, ExtraMountRow()) }
+            .setAddActionName("Add Mount")
+            .setAddAction { button ->
+                showAddPopup(
+                    button.preferredPopupPoint,
+                    addAction("File or Folder…", AllIcons.Nodes.Folder) { addMountsFromChooser() },
+                    addAction("Type a Path, ~ or \${VARIABLE}", AllIcons.Actions.Edit) {
+                        addTableRow(extraMountTable, extraMountTableModel, ExtraMountRow())
+                    },
+                )
+            }
             .setRemoveActionUpdater { extraMountTable.selectedObject != null }
             .setRemoveAction {
                 extraMountTable.selectedObject?.let {
@@ -411,7 +438,8 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
             }
             .disableUpDownActions()
             .createPanel()
-            .apply { preferredSize = JBUI.size(480, 140) }
+            // Toolbar, header and five rows.
+            .apply { preferredSize = JBUI.size(480, 180) }
     private val kitTableModel =
         ListTableModel<KitRow>(
             object : ColumnInfo<KitRow, String>("Kit") {
@@ -424,36 +452,72 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                 }
 
                 override fun getEditor(item: KitRow): TableCellEditor = kitPathEditor
+
+                override fun getRenderer(item: KitRow): TableCellRenderer = kitRenderer
             },
         )
     private val kitTable =
         TableView<KitRow>(kitTableModel).apply {
-            tableHeader.reorderingAllowed = false
+            // One column: the "Kits:" label above already names it.
+            tableHeader = null
             visibleRowCount = 4
             accessibleContext.accessibleName = "Sandbox kits"
             toolTipText =
-                "Local kit folder, Git URL, or OCI ref (for example docker.io/sbx/playwright-kit:latest)"
+                "A local kit folder or .zip file, a registry reference (for example " +
+                    "docker.io/sbx/playwright-kit:latest) or a Git URL (git+https://…)"
             emptyText.text = "No kits"
-            emptyText.appendSecondaryText("Add a kit", SimpleTextAttributes.LINK_ATTRIBUTES) {
-                addTableRow(this, kitTableModel, KitRow())
+            emptyText.appendSecondaryText(
+                "Choose a kit folder or .zip…",
+                SimpleTextAttributes.LINK_ATTRIBUTES,
+            ) {
+                addKitFromChooser()
             }
+        }
+    private val editKitSpecAction =
+        object :
+            DumbAwareAction(
+                "Edit spec.yaml",
+                "Edit the selected local kit's descriptor",
+                AllIcons.Actions.Edit,
+            ) {
+            override fun getActionUpdateThread() = ActionUpdateThread.EDT
+
+            override fun update(event: AnActionEvent) {
+                // No disk access here: toolbars update often. A missing file is reported on click.
+                val ref = kitTable.selectedObject?.ref.orEmpty()
+                event.presentation.isEnabled =
+                    SbxCli.isLocalKitRef(ref) && !ref.endsWith(".zip", ignoreCase = true)
+            }
+
+            override fun actionPerformed(event: AnActionEvent) = editSelectedKitSpec()
         }
     private val kitPanel =
         ToolbarDecorator.createDecorator(kitTable)
-            .setAddAction { addTableRow(kitTable, kitTableModel, KitRow()) }
+            .setAddActionName("Add Kit")
+            .setAddAction { button ->
+                showAddPopup(
+                    button.preferredPopupPoint,
+                    addAction("Kit Folder or ZIP File…", AllIcons.Nodes.Folder) {
+                        addKitFromChooser()
+                    },
+                    addAction("Registry or Git Reference", AllIcons.Nodes.PpLib) {
+                        addTableRow(kitTable, kitTableModel, KitRow())
+                    },
+                    Separator.getInstance(),
+                    addAction("Extra-Network Kit for This Project…", AllIcons.General.Web) {
+                        addNetworkKit()
+                    },
+                )
+            }
             .setRemoveActionUpdater { kitTable.selectedObject != null }
             .setRemoveAction {
                 kitTable.selectedObject?.let { kitTableModel.removeRow(kitTableModel.indexOf(it)) }
             }
+            .addExtraAction(editKitSpecAction)
             .disableUpDownActions()
             .createPanel()
-            .apply { preferredSize = JBUI.size(480, 140) }
-    private val createNetworkKitButton =
-        JButton("Create Extra-Network Kit Template").apply {
-            toolTipText =
-                "Writes opencode-sbx/opencode-network-kit/spec.yaml with common hosts commented out"
-            accessibleContext.accessibleName = "Create extra-network kit template"
-        }
+            // Toolbar and five rows.
+            .apply { preferredSize = JBUI.size(480, 154) }
     private var resourcesGroup: CollapsibleRow? = null
     private val sandboxOnlyPanel = panel {
         group("Docker Sandbox") {
@@ -548,19 +612,13 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
                             .align(AlignX.FILL)
                             .comment(
                                 "Mixin kits with schemaVersion \"3\": tools, files, environment and network access for the sandbox. " +
-                                    "A new kit at the end is added to a running sandbox unless it asks for new permissions; removing or reordering needs a new sandbox. " +
+                                    "A new kit at the end is added to a running sandbox unless it asks for new permissions; removing, reordering or editing an installed kit needs a new sandbox. " +
                                     "<a href=\"$SBX_KIT_DOCS_URL\">Docker kit docs</a>",
                                 action =
                                     HyperlinkEventAction { event ->
                                         val href = event.url?.toString() ?: event.description
                                         if (!href.isNullOrBlank()) BrowserUtil.browse(href)
                                     },
-                            )
-                    }
-                    row {
-                        cell(createNetworkKitButton)
-                            .comment(
-                                "Adds opencode-sbx/opencode-network-kit with common hosts commented out. Edit it before the first start: changing an installed kit needs Reset Sandbox.",
                             )
                     }
                 }
@@ -841,7 +899,8 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
 
     override fun reset() {
         val settings = OpenCodeProjectSettingsState.getInstance(project)
-        hostPathProblems.clear()
+        hostPathChecks.clear()
+        kitChecks.clear()
         hydrating = true
         try {
             when (settings.projectDirectoryModeValue()) {
@@ -946,7 +1005,6 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         // Selecting 2.x deselects 1.x before 2.x reads as selected; update on both events.
         sbxOpenCodeV1RadioButton.addItemListener { updateSandboxControls() }
         sbxOpenCodeV2RadioButton.addItemListener { updateSandboxControls() }
-        createNetworkKitButton.addActionListener { createNetworkKitTemplate() }
         checkSetupButton.addActionListener { checkSandboxSetup() }
     }
 
@@ -1344,61 +1402,198 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         kitTableModel.items = kits.map { KitRow(it) }
     }
 
-    private fun createNetworkKitTemplate() {
-        val directory =
-            effectiveDirectory()
+    /** The spec's project root, spelled like the saved spec spells it. */
+    private fun workspaceDirectory(): String? =
+        effectiveDirectory()?.let { OpenCodeServerProtocol.canonicalOpenCodeDirectory(it) ?: it }
+
+    private fun chooseWithIde(descriptor: FileChooserDescriptor, startAt: Path?): List<Path> {
+        // Looking the start folder up also shows the chooser what was just written to disk.
+        val start = startAt?.let {
+            runCatching { LocalFileSystem.getInstance().refreshAndFindFileByNioFile(it) }
+                .getOrNull()
+        }
+        return FileChooser.chooseFiles(descriptor, panel, project, start).mapNotNull {
+            runCatching { it.toNioPath() }.getOrNull()
+        }
+    }
+
+    /** Project-relative inside the project, `~` under home: the spec is shared with the team. */
+    private fun portablePath(path: Path): String =
+        SbxCli.portableHostPath(
+            path.toString(),
+            workspaceDirectory(),
+            realPath = runCatching { path.toRealPath().toString() }.getOrNull(),
+        )
+
+    private fun chooseHostPaths(current: String, multiple: Boolean): List<String> {
+        val workspace = workspaceDirectory()
+        val start =
+            current
+                .takeIf { it.isNotBlank() && workspace != null }
+                ?.let { text ->
+                    runCatching {
+                        SbxCli.resolveExtraMounts(
+                                listOf(SbxExtraMount(text, "", false)),
+                                workspace!!,
+                            )
+                            .single()
+                            .hostPath
+                    }
+                        .getOrNull()
+                }
+                ?.let { runCatching { Path.of(it) }.getOrNull() }
+        val descriptor =
+            FileChooserDescriptor(true, true, true, true, false, multiple)
+                .withTitle(if (multiple) "Select Files or Folders to Mount" else "Select Host Path")
+                .withDescription("Files and folders the sandbox may use besides the project.")
+                .withShowHiddenFiles(true)
+                .apply { isForcedToUseIdeaFileChooser = true }
+        return chooseFiles(descriptor, start).map(::portablePath)
+    }
+
+    private fun addMountsFromChooser() {
+        val chosen = chooseHostPaths("", multiple = true)
+        if (chosen.isEmpty()) return
+        if (extraMountTable.isEditing) extraMountTable.cellEditor?.stopCellEditing()
+        hostPathChecks.clear()
+        var last = -1
+        chosen.forEach { host ->
+            val existing = extraMountTableModel.items.indexOfFirst { it.hostPath == host }
+            last =
+                if (existing >= 0) existing
+                else {
+                    extraMountTableModel.addRow(ExtraMountRow(hostPath = host))
+                    extraMountTableModel.rowCount - 1
+                }
+        }
+        selectRow(extraMountTable, last)
+    }
+
+    /** A kit folder, its descriptor (which stands for the folder), or a kit ZIP file. */
+    private fun kitChooserDescriptor(): FileChooserDescriptor =
+        object : FileChooserDescriptor(true, true, true, true, false, false) {
+                override fun validateSelectedFiles(files: Array<VirtualFile>) {
+                    files.forEach { file ->
+                        val kit = SbxCli.kitPathForChosenFile(file.toNioPath())
+                        val usable =
+                            if (Files.isDirectory(kit)) SbxCli.localKitSpecFile(kit) != null
+                            else SbxCli.isKitArchive(kit)
+                        if (!usable) {
+                            throw ConfigurationException(
+                                "${file.name} is not a kit. Choose a folder that holds " +
+                                    "spec.yaml, that spec.yaml, or a kit .zip file.",
+                            )
+                        }
+                    }
+                }
+            }
+            .withTitle("Select Kit")
+            .withDescription("A kit folder (the one that holds spec.yaml) or a kit .zip file.")
+            .withShowHiddenFiles(true)
+            .apply { isForcedToUseIdeaFileChooser = true }
+
+    /** The reference for a chosen kit, or null when the chooser was cancelled. */
+    private fun chooseKit(current: String): String? {
+        val workspace = workspaceDirectory()
+        val start = workspace?.let { root ->
+            SbxCli.localKitPath(current, root)?.takeIf { current.isNotBlank() }
+                ?: SbxLaunchSpec.projectControlDir(root).takeIf { Files.isDirectory(it) }
+                ?: runCatching { Path.of(root) }.getOrNull()
+        }
+        val chosen = chooseFiles(kitChooserDescriptor(), start).firstOrNull() ?: return null
+        return portablePath(SbxCli.kitPathForChosenFile(chosen))
+    }
+
+    private fun addKitFromChooser() {
+        val ref = chooseKit("") ?: return
+        selectOrAddKit(ref)
+    }
+
+    private fun selectOrAddKit(ref: String) {
+        if (kitTable.isEditing) kitTable.cellEditor?.stopCellEditing()
+        kitChecks.clear()
+        var row = kitTableModel.items.indexOfFirst { SbxCli.posixPath(it.ref) == ref }
+        if (row < 0) {
+            kitTableModel.addRow(KitRow(ref))
+            row = kitTableModel.rowCount - 1
+        }
+        selectRow(kitTable, row)
+    }
+
+    /**
+     * Adds the project's extra-network kit, writing its commented template first when there is
+     * none, and opens it for editing: Settings is modal, so this is the moment to choose the hosts
+     * before Apply installs the kit.
+     */
+    private fun addNetworkKit() {
+        val workspace =
+            workspaceDirectory()
                 ?: run {
                     Messages.showWarningDialog(
-                        panel ?: createNetworkKitButton,
+                        panel ?: kitTable,
                         "Set an OpenCode project directory first.",
                         "OpenCode Project Directory Not Found",
                     )
                     return
                 }
-        val canonical = OpenCodeServerProtocol.canonicalOpenCodeDirectory(directory) ?: directory
-        val kitDir =
-            java.nio.file.Path.of(canonical, SbxCli.PROJECT_CONTROL_DIR, SbxCli.NETWORK_KIT_DIR)
-        val specPath = kitDir.resolve("spec.yaml")
-        if (java.nio.file.Files.isRegularFile(specPath)) {
-            val overwrite =
-                MessageDialogBuilder.yesNo(
-                        "Replace Extra-Network Kit Template",
-                        "A kit already exists at ${SbxCli.posixPath(specPath.toString())}. Replace it with a fresh commented template?",
+        val spec = SbxLaunchSpec.networkKitSpecPath(workspace)
+        if (!Files.isRegularFile(spec)) {
+            runCatching { SbxLaunchSpec.writeNetworkKitTemplate(workspace) }
+                .onFailure { error ->
+                    Messages.showErrorDialog(
+                        panel ?: kitTable,
+                        error.message ?: error::class.java.simpleName,
+                        "Could Not Write the Extra-Network Kit",
                     )
-                    .yesText("Replace")
-                    .noText("Keep Existing")
-                    .ask(panel)
-            if (!overwrite) {
-                addNetworkKitRefIfMissing()
-                return
-            }
+                    return
+                }
         }
-        runCatching {
-            java.nio.file.Files.createDirectories(kitDir)
-            java.nio.file.Files.writeString(specPath, SbxCli.networkKitTemplateYaml())
-        }
-            .onFailure { error ->
-                Messages.showErrorDialog(
-                    panel ?: createNetworkKitButton,
-                    error.message ?: error::class.java.simpleName,
-                    "Could Not Write Kit Template",
-                )
-                return
-            }
-        addNetworkKitRefIfMissing()
-        Messages.showInfoMessage(
-            panel ?: createNetworkKitButton,
-            "Wrote ${SbxCli.posixPath(specPath.toString())}. Configure it before Apply: a sandbox that already exists needs Recreate Sandbox to add network access, because sbx approves new permissions for an existing sandbox only in a terminal. Editing an installed kit also requires Reset Sandbox, which deletes VM-only data; Restart alone does not reload it.",
-            "Extra-Network Kit Template",
-        )
+        selectOrAddKit(SbxCli.networkKitRef())
+        editKitSpec(spec, SbxCli.networkKitTemplateYaml())
+        kitChecks.clear()
     }
 
-    private fun addNetworkKitRefIfMissing() {
-        val ref = SbxCli.networkKitRef()
-        if (kitTable.isEditing) kitTable.cellEditor?.stopCellEditing()
-        if (kitTableModel.items.none { SbxCli.posixPath(it.ref) == ref }) {
-            kitTableModel.addRow(KitRow(ref))
+    private fun editSelectedKitSpec() {
+        val ref = kitTable.selectedObject?.ref ?: return
+        val workspace = workspaceDirectory() ?: return
+        val kit = SbxCli.localKitPath(ref, workspace) ?: return
+        val spec =
+            SbxCli.localKitSpecFile(kit)
+                ?: run {
+                    Messages.showWarningDialog(
+                        panel ?: kitTable,
+                        SbxCli.localKitProblem(ref, workspace) ?: "This kit has no spec.yaml.",
+                        "Cannot Edit Kit",
+                    )
+                    return
+                }
+        val network = SbxCli.posixPath(ref) == SbxCli.networkKitRef()
+        editKitSpec(spec, if (network) SbxCli.networkKitTemplateYaml() else null)
+        kitChecks.clear()
+        kitTable.repaint()
+    }
+
+    private fun addAction(text: String, icon: javax.swing.Icon, run: () -> Unit): AnAction =
+        object : DumbAwareAction(text, null, icon) {
+            override fun actionPerformed(event: AnActionEvent) = run()
         }
+
+    private fun showAddPopup(anchor: RelativePoint, vararg actions: AnAction) {
+        JBPopupFactory.getInstance()
+            .createActionGroupPopup(
+                null,
+                DefaultActionGroup(*actions),
+                DataManager.getInstance().getDataContext(anchor.component),
+                JBPopupFactory.ActionSelectionAid.SPEEDSEARCH,
+                false,
+            )
+            .show(anchor)
+    }
+
+    private fun selectRow(table: JTable, row: Int) {
+        if (row !in 0 until table.rowCount) return
+        table.selectionModel.setSelectionInterval(row, row)
+        table.scrollRectToVisible(table.getCellRect(row, 0, true))
     }
 
     private fun commitTableEditors() {
@@ -1641,7 +1836,7 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
         /** plugin.xml `projectConfigurable` id. */
         const val ID = "opencode.web.panel.project.settings"
         const val PROJECT_SETTINGS_DISPLAY_NAME = "This Project"
-        private const val SBX_KIT_DOCS_URL = "https://docs.docker.com/ai/sandboxes/customize/kits/"
+        private const val SBX_KIT_DOCS_URL = "https://docs.docker.com/ai/sandboxes/customize/"
         private const val OPENCODE_IMAGE_TAGS_PAGE = "https://hub.docker.com/r/sbx/opencode/tags"
     }
 
@@ -1653,30 +1848,13 @@ class OpenCodeProjectSettingsConfigurable(private val project: Project) : Config
 
     private class KitRow(var ref: String = "")
 
-    private class BrowsePathCellEditor(
-        descriptor: com.intellij.openapi.fileChooser.FileChooserDescriptor,
-    ) : AbstractCellEditor(), TableCellEditor {
-        private val field =
-            TextFieldWithBrowseButton().apply { addBrowseFolderListener(null, descriptor) }
-
-        override fun getTableCellEditorComponent(
-            table: JTable,
-            value: Any?,
-            isSelected: Boolean,
-            row: Int,
-            column: Int,
-        ): Component {
-            field.text = value as? String ?: ""
-            return field
-        }
-
-        override fun getCellEditorValue(): Any = SbxCli.posixPath(field.text)
-    }
-
     private fun <T> addTableRow(table: TableView<T>, model: ListTableModel<T>, item: T) {
         model.addRow(item)
         val row = model.rowCount - 1
         table.selectionModel.setSelectionInterval(row, row)
-        table.editCellAt(row, 0)
+        table.scrollRectToVisible(table.getCellRect(row, 0, true))
+        if (table.editCellAt(row, 0)) {
+            (table.cellEditor as? SbxBrowsePathCellEditor)?.focusTarget?.requestFocusInWindow()
+        }
     }
 }

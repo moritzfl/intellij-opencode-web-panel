@@ -2,6 +2,7 @@ package de.moritzf.opencodewebpanel.settings
 
 import com.intellij.mock.MockProject
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.fileChooser.FileChooserDescriptor
 import com.intellij.openapi.options.ConfigurationException
 import com.intellij.openapi.ui.TextFieldWithBrowseButton
 import com.intellij.openapi.vfs.LocalFileSystem
@@ -25,6 +26,7 @@ import de.moritzf.opencodewebpanel.server.SbxOpenCodeVersion
 import de.moritzf.opencodewebpanel.server.SbxSandboxRecordStore
 import de.moritzf.opencodewebpanel.server.SharedOpenCodeServerManager
 import java.nio.file.Files
+import java.nio.file.Path
 import javax.swing.AbstractButton
 import javax.swing.JComponent
 import javax.swing.JTextField
@@ -714,6 +716,137 @@ class OpenCodeProjectSettingsConfigurableTest {
                 10,
             )
         }
+    }
+
+    @Test
+    fun aChosenKitFolderDescriptorOrZipIsAddedRelativeToTheProject() {
+        val root = temp.root.toPath().toRealPath()
+        val kit = Files.createDirectories(root.resolve("kits/tools"))
+        val descriptor = Files.writeString(kit.resolve("spec.yaml"), "schemaVersion: \"3\"\n")
+        val archive = Files.writeString(root.resolve("kits/team.zip"), "zip")
+        SwingUtilities.invokeAndWait {
+            configurable.createComponent()
+            val starts = ArrayList<Path?>()
+            var chooser: FileChooserDescriptor? = null
+            var next = listOf(kit)
+            configurable.chooseFiles = { descriptor, start ->
+                chooser = descriptor
+                starts += start
+                next
+            }
+            call("addKitFromChooser")
+            assertEquals("Without opencode-sbx/ the chooser opens the project", root, starts.last())
+            // What the chooser lets through: kit folders, their descriptor, and kit ZIP files.
+            val files = LocalFileSystem.getInstance()
+            fun virtual(path: Path) = files.refreshAndFindFileByNioFile(path)!!
+            val notes = virtual(Files.writeString(root.resolve("kits/notes.txt"), "x"))
+            val descriptorFile = chooser!!
+            for (path in listOf(kit, descriptor, archive)) {
+                assertTrue("$path", descriptorFile.isFileSelectable(virtual(path)))
+                descriptorFile.validateSelectedFiles(arrayOf(virtual(path)))
+                assertEquals(
+                    "A ZIP is chosen as the file it is, not opened as a folder",
+                    path,
+                    descriptorFile.getFileToSelect(virtual(path))!!.toNioPath(),
+                )
+            }
+            for (wrong in listOf(notes, virtual(root.resolve("kits")))) {
+                val refused =
+                    assertThrows(Exception::class.java) {
+                        descriptorFile.validateSelectedFiles(arrayOf(wrong))
+                    }
+                assertTrue(refused.message, refused.message!!.contains("is not a kit"))
+            }
+            next = listOf(descriptor)
+            call("addKitFromChooser")
+            assertEquals("The descriptor stands for its folder", listOf("./kits/tools"), kitRefs())
+            next = listOf(archive)
+            call("addKitFromChooser")
+            assertEquals(listOf("./kits/tools", "./kits/team.zip"), kitRefs())
+            assertEquals(1, field<TableView<*>>("kitTable").selectedRow)
+            next = emptyList()
+            call("addKitFromChooser")
+            assertEquals("Cancel adds nothing", 2, kitRefs().size)
+            assertTrue(configurable.isModified())
+        }
+    }
+
+    @Test
+    fun theExtraNetworkKitIsWrittenOnceAddedAndOpenedForEditing() {
+        SwingUtilities.invokeAndWait {
+            configurable.createComponent()
+            val edited = ArrayList<Pair<Path, String?>>()
+            configurable.editKitSpec = { spec, template -> edited += spec to template }
+            val spec = SbxLaunchSpec.networkKitSpecPath(project.basePath!!)
+            call("addNetworkKit")
+            assertEquals(SbxCli.networkKitTemplateYaml(), Files.readString(spec))
+            assertEquals(listOf(SbxCli.networkKitRef()), kitRefs())
+            assertEquals(listOf(spec to SbxCli.networkKitTemplateYaml()), edited)
+
+            Files.writeString(spec, "edited")
+            call("addNetworkKit")
+            assertEquals("An existing kit is never overwritten", "edited", Files.readString(spec))
+            assertEquals("And not listed twice", 1, kitRefs().size)
+            assertEquals(2, edited.size)
+
+            field<TableView<*>>("kitTable").selectionModel.setSelectionInterval(0, 0)
+            call("editSelectedKitSpec")
+            assertEquals("Edit spec.yaml opens the selected local kit", 3, edited.size)
+            assertEquals(spec, edited.last().first)
+        }
+    }
+
+    @Test
+    fun chosenMountsArePortableAndTheirSandboxPathFollows() {
+        val root = temp.root.toPath().toRealPath()
+        val inside = Files.createDirectories(root.resolve("shared"))
+        val outside = Files.createTempDirectory("ocwp-mount").toRealPath()
+        try {
+            ApplicationManager.getApplication().invokeAndWait {
+                configurable.createComponent()
+                configurable.chooseFiles = { _, _ -> listOf(inside, outside) }
+                call("addMountsFromChooser")
+                call("addMountsFromChooser")
+                val table = field<TableView<*>>("extraMountTable")
+                val outsideText = SbxCli.portableHostPath(outside.toString(), root.toString())
+                assertEquals("Choosing a mount again does not list it twice", 2, table.rowCount)
+                assertEquals("./shared", table.getValueAt(0, 0))
+                assertEquals(outsideText, table.getValueAt(1, 0))
+                assertEquals("Empty means the host path", "", table.getValueAt(0, 1))
+                field<AbstractButton>("sbxRuntimeRadioButton").isSelected = true
+                configurable.apply()
+                assertEquals(
+                    listOf(
+                        SbxExtraMount("./shared", "./shared", false),
+                        SbxExtraMount(outsideText, outsideText, false),
+                    ),
+                    SbxLaunchSpec.load(project.basePath)!!.extraMounts,
+                )
+                assertFalse(configurable.isModified())
+                // A loaded row whose sandbox path is the host path keeps following an edit.
+                table.setValueAt("./other", 0, 0)
+                configurable.apply()
+                assertEquals(
+                    SbxExtraMount("./other", "./other", false),
+                    SbxLaunchSpec.load(project.basePath)!!.extraMounts.first(),
+                )
+            }
+        } finally {
+            outside.toFile().deleteRecursively()
+        }
+    }
+
+    private fun kitRefs(): List<String> {
+        val table = field<TableView<*>>("kitTable")
+        return (0 until table.rowCount).map { table.getValueAt(it, 0) as String }
+    }
+
+    private fun call(name: String) {
+        OpenCodeProjectSettingsConfigurable::class
+            .java
+            .getDeclaredMethod(name)
+            .apply { isAccessible = true }
+            .invoke(configurable)
     }
 
     @Suppress("UNCHECKED_CAST")

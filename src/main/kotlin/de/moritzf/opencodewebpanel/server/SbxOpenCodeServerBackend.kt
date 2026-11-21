@@ -1554,8 +1554,8 @@ internal class SbxOpenCodeServerBackend(
         val hint =
             if (SbxCli.reportsLegacyKitFormat(output)) {
                 "Docker's OpenCode sandbox kit uses kit schemaVersion \"3\", and sbx cannot combine it with " +
-                    "v1/v2 kits. Convert those kits to v3 (Project Settings → Create extra-network kit " +
-                    "template writes one), then Retry."
+                    "v1/v2 kits. Convert those kits to v3 (in the project settings, Kits → Edit " +
+                    "spec.yaml → Restore Template rewrites the extra-network kit), then Retry."
             } else if (error.stage == "Link extra mount") {
                 when {
                     output.contains("failed to start runtime", ignoreCase = true) ||

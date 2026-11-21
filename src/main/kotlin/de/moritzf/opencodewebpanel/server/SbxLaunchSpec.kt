@@ -695,6 +695,21 @@ internal data class SbxLaunchSpec(
                 .getOrNull()
         }
 
+        /** Path of the extra-network kit's descriptor, whether or not it exists yet. */
+        fun networkKitSpecPath(canonicalDirectory: String): Path =
+            projectControlDir(canonicalDirectory)
+                .resolve(SbxCli.NETWORK_KIT_DIR)
+                .resolve(SbxCli.KIT_SPEC_NAMES.first())
+
+        /** Writes the commented extra-network kit, replacing one that exists. */
+        fun writeNetworkKitTemplate(canonicalDirectory: String): Path {
+            val path = networkKitSpecPath(canonicalDirectory)
+            Files.createDirectories(path.parent)
+            Files.writeString(path, SbxCli.networkKitTemplateYaml(), StandardCharsets.UTF_8)
+            refreshIdeFiles(canonicalDirectory)
+            return path
+        }
+
         /**
          * The files here are written with java.nio, which the IDE only notices at its next refresh.
          * Without this the Project view and the IDE's file chooser keep showing the project without
